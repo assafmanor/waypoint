@@ -68,6 +68,11 @@ function tripHasEnded(endDate: Date, timezone: string): boolean {
   return todayKey > endKey;
 }
 
+const inviteExpired = () =>
+  new GoneException({
+    error: { code: ERROR_CODE.INVITE_EXPIRED, message: 'This trip has ended.' },
+  });
+
 @Injectable()
 export class TripsService {
   constructor(
@@ -175,8 +180,10 @@ export class TripsService {
 
   /** The trip's one durable invite (ADR-0067): returns the current code, minting
    *  one only if the trip has none. Stable across calls, so opening trip-settings
-   *  shows the same link rather than churning a new one each time. */
+   *  shows the same link rather than churning a new one each time. An ended trip
+   *  hands out no link at all (ADR-0239 §5): the join route would refuse it. */
   async getOrCreateInvite(tripId: string, actorUserId: string): Promise<string> {
+    await this.assertTripNotEnded(tripId);
     const existing = await this.prisma.invite.findUnique({ where: { tripId } });
     if (existing) return existing.code;
     return this.mintInvite(tripId, actorUserId);
@@ -186,6 +193,7 @@ export class TripsService {
    *  the row in place, so the previously shared code stops resolving at once. */
   async rotateInvite(tripId: string, actorUserId: string): Promise<string> {
     await this.assertAdmin(tripId, actorUserId);
+    await this.assertTripNotEnded(tripId);
     return this.mintInvite(tripId, actorUserId);
   }
 
@@ -415,12 +423,18 @@ export class TripsService {
       select: { endDate: true, timezone: true },
     });
     if (!trip) throw new NotFoundException('Invite not found');
-    if (tripHasEnded(trip.endDate, trip.timezone)) {
-      throw new GoneException({
-        error: { code: ERROR_CODE.INVITE_EXPIRED, message: 'This trip has ended.' },
-      });
-    }
+    if (tripHasEnded(trip.endDate, trip.timezone)) throw inviteExpired();
     return invite.tripId;
+  }
+
+  /** Minting and joining answer an ended trip with the same 410, so the link the
+   *  share sheet hands out and the route that reads it cannot disagree (ADR-0239 §5). */
+  private async assertTripNotEnded(tripId: string): Promise<void> {
+    const trip = await this.prisma.trip.findUniqueOrThrow({
+      where: { id: tripId },
+      select: { endDate: true, timezone: true },
+    });
+    if (tripHasEnded(trip.endDate, trip.timezone)) throw inviteExpired();
   }
 
   async listForUser(userId: string): Promise<Trip[]> {

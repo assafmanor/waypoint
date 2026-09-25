@@ -1,7 +1,12 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { NO_SENSITIVE_FIELDS, SHARE_DETAIL_LEVEL, type TripShareConfig } from '@waypoint/shared';
+import {
+  ERROR_CODE,
+  NO_SENSITIVE_FIELDS,
+  SHARE_DETAIL_LEVEL,
+  type TripShareConfig,
+} from '@waypoint/shared';
 import { t } from '../i18n/he';
 import { wrapNav } from '../test/nav-harness';
 
@@ -54,13 +59,19 @@ const systemShare = vi.hoisted(() => ({
 }));
 const auth = vi.hoisted(() => ({ userId: 'u-assaf' }));
 
-vi.mock('../lib/api', () => api);
+// Partial: the error predicates stay real, so a 410 below is the ApiError the app would see.
+vi.mock('../lib/api', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/api')>()),
+  ...api,
+}));
 vi.mock('../lib/system-share', () => systemShare);
 vi.mock('../state/auth-state', () => ({
   useAuth: () => ({ status: 'authed', me: { user: { id: auth.userId } } }),
 }));
 
 const { ShareItinerarySheet } = await import('./ShareItinerarySheet');
+const { useShareSheet } = await import('./useShareSheet');
+const { ApiError } = await import('../lib/api');
 
 const members = (role: 'admin' | 'peer') => ({
   trip: {},
@@ -72,9 +83,16 @@ const members = (role: 'admin' | 'peer') => ({
 
 // Every overlay renders through `Modal`, which registers into the back stack (ADR-0090),
 // so the sheet needs the app's nav context exactly as any other sheet's spec does.
-const renderSheet = () =>
+const renderSheet = (finished = false) =>
   render(
-    wrapNav(<ShareItinerarySheet tripId="t1" tripName="איסלנד עם המשפחה" onClose={() => {}} />),
+    wrapNav(
+      <ShareItinerarySheet
+        tripId="t1"
+        tripName="איסלנד עם המשפחה"
+        finished={finished}
+        onClose={() => {}}
+      />,
+    ),
   );
 
 /** **Join is the default audience** (ADR-0213's 2026-08-30 amendment), so every assertion
@@ -626,6 +644,66 @@ describe('ShareItinerarySheet', () => {
       expect(
         screen.queryByRole('button', { name: new RegExp(t.share.owner.actions.another) }),
       ).toBeNull();
+    });
+  });
+  // **After the trip, a share is for reading** (ADR-0239 §5). The join route answers an ended
+  // trip with 410, so the sheet must neither open on join nor mint a link it would refuse.
+  describe('a finished trip', () => {
+    const endedLine = () => screen.findByText(t.share.owner.join.ended.title);
+
+    it('opens on read and asks for no invite', async () => {
+      renderSheet(true);
+      const read = await screen.findByRole('radio', { name: t.share.owner.audience.read });
+      expect(read.getAttribute('aria-checked')).toBe('true');
+      await screen.findByRole('button', { name: new RegExp(t.share.owner.actions.createAndShare) });
+      expect(api.createInvite).not.toHaveBeenCalled();
+    });
+
+    it('says the trip has ended on join, with no link, no send and no rotate', async () => {
+      renderSheet(true);
+      fireEvent.click(await screen.findByRole('radio', { name: t.share.owner.audience.join }));
+      expect(await endedLine()).toBeTruthy();
+      expect(screen.queryByText(new RegExp(`/join/`))).toBeNull();
+      expect(
+        screen.queryByRole('button', { name: new RegExp(t.share.owner.join.action) }),
+      ).toBeNull();
+      expect(screen.queryByRole('button', { name: t.share.owner.join.rotate })).toBeNull();
+      expect(api.createInvite).not.toHaveBeenCalled();
+    });
+
+    // Both entries mount the one `useShareSheet`; each decides "finished" itself (the shell
+    // from the mode's phase, /trips from the card's bucket) and hands the answer over here.
+    it.each([
+      ['the trip header', { id: 't1', name: 'איסלנד עם המשפחה' }],
+      ['a held /trips card', { id: 't1', name: 'איסלנד עם המשפחה', startDate: '2024-03-01' }],
+    ])('arrives finished from %s', async (_entry, trip) => {
+      function Host() {
+        const share = useShareSheet();
+        return (
+          <>
+            <button type="button" onClick={() => share.open(trip, true)}>
+              open
+            </button>
+            {share.sheet}
+          </>
+        );
+      }
+      render(wrapNav(<Host />));
+      fireEvent.click(screen.getByRole('button', { name: 'open' }));
+      const read = await screen.findByRole('radio', { name: t.share.owner.audience.read });
+      expect(read.getAttribute('aria-checked')).toBe('true');
+      await screen.findByRole('button', { name: new RegExp(t.share.owner.actions.createAndShare) });
+      expect(api.createInvite).not.toHaveBeenCalled();
+    });
+
+    // The caller's clock and the server's can disagree for a few hours around the last
+    // midnight (the flight home, ADR-0236). The server's 410 then settles it: the same
+    // ended line, never the generic failure.
+    it('turns a 410 from the server into the ended line on a trip the caller thought live', async () => {
+      api.createInvite.mockRejectedValue(new ApiError(410, ERROR_CODE.INVITE_EXPIRED));
+      renderSheet(false);
+      expect(await endedLine()).toBeTruthy();
+      expect(screen.queryByText(t.share.owner.failed)).toBeNull();
     });
   });
 });

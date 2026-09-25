@@ -117,7 +117,23 @@ describe('AllTrips sharing entry', () => {
     } finally {
       vi.useRealTimers();
     }
-    expect(onShare).toHaveBeenCalledWith(expect.objectContaining({ id: 't2' }));
+    expect(onShare).toHaveBeenCalledWith(expect.objectContaining({ id: 't2' }), false);
+  });
+
+  // There is no ModeProvider here, so the card's own bucket says "finished" (ADR-0239 §5):
+  // the sheet then opens on read and mints no invite the join route would refuse.
+  it('tells the sheet a past card is finished', async () => {
+    const { onShare } = renderTrips();
+    await screen.findByText('ליסבון');
+
+    vi.useFakeTimers();
+    try {
+      pointer(screen.getByText('ליסבון').closest('button')!, 'pointerdown', 10);
+      act(() => vi.advanceTimersByTime(DRAG_HOLD_MS));
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(onShare).toHaveBeenCalledWith(expect.objectContaining({ id: 't3' }), true);
   });
 
   // Time arbitrates, not direction: a finger that moved was scrolling the list, and a list

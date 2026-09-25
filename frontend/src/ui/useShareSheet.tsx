@@ -15,17 +15,24 @@ import { ShareItinerarySheet } from './ShareItinerarySheet';
  * root of an app whose root has no business holding it.
  */
 export function useShareSheet(): {
-  open: (trip: { id: string; name: string }) => void;
+  open: (trip: { id: string; name: string }, finished: boolean) => void;
   sheet: ReactNode;
 } {
-  const [sharing, setSharing] = useState<{ id: string; name: string } | undefined>();
-  const open = useCallback((trip: { id: string; name: string }) => setSharing(trip), []);
+  const [sharing, setSharing] = useState<
+    { id: string; name: string; finished: boolean } | undefined
+  >();
+  const open = useCallback(
+    ({ id, name }: { id: string; name: string }, finished: boolean) =>
+      setSharing({ id, name, finished }),
+    [],
+  );
   return {
     open,
     sheet: sharing ? (
       <ShareItinerarySheet
         tripId={sharing.id}
         tripName={sharing.name}
+        finished={sharing.finished}
         onClose={() => setSharing(undefined)}
       />
     ) : null,

@@ -15,6 +15,7 @@ import {
   fetchSnapshot,
   fetchTripShares,
   fetchTripWithMembers,
+  isInviteExpiredError,
   rotateInvite,
   rotateTripShare,
   stopAllTripShares,
@@ -111,19 +112,27 @@ interface DocumentChoice {
 export function ShareItinerarySheet({
   tripId,
   tripName,
+  finished,
   onClose,
 }: {
   tripId: string;
   tripName: string;
+  /** The caller's answer, because the two entries know different things (ADR-0239 §5): the
+   *  shell has the mode's phase, an All Trips card only its dates. */
+  finished: boolean;
   onClose: () => void;
 }) {
   // Resolved here rather than passed in, because the two entries know different things: the
   // trip header already holds the roster, an All Trips card holds only a `Trip`. One small
   // read makes both callers identical instead of one of them fetching on the other's behalf.
   const [isAdmin, setIsAdmin] = useState(false);
-  // Join is the default: it is the common audience for a live trip, and it is the one that
-  // could not be reached at all without leaving this screen for Trip Settings.
-  const [audience, setAudience] = useState<Audience>(AUDIENCE.JOIN);
+  // Join is the default on a live trip: it is the common audience there, and it is the one
+  // that could not be reached at all without leaving this screen for Trip Settings. A
+  // finished trip takes no one new, so it opens on reading (ADR-0239 §5).
+  const [audience, setAudience] = useState<Audience>(finished ? AUDIENCE.READ : AUDIENCE.JOIN);
+  // Seeded by the caller, and also set by the server's 410: the two clocks can disagree for
+  // a few hours around the last midnight, and the server's is the one the join route obeys.
+  const [ended, setEnded] = useState(finished);
   const [invite, setInvite] = useState<string | undefined>();
   const [shares, setShares] = useState<TripShareConfig[]>([]);
   const [loading, setLoading] = useState(true);
@@ -176,21 +185,25 @@ export function ShareItinerarySheet({
     };
   }, [tripId, myUserId]);
 
-  // **Get-or-create, once, for whoever opened the sheet** (ADR-0067). Join is the default
-  // branch, so opening the sheet mints an `Invite` row for a trip that has never had one —
+  // **Get-or-create, once, for whoever opened the sheet** (ADR-0067). Join is a live trip's
+  // default branch, so opening the sheet mints an `Invite` row for a trip that has never had one —
   // which is the same act Trip Settings' `הצגת הלינק` already performed, and no more of a
   // grant: the code is unreachable until somebody sends it. Guarded on `invite` rather than
   // on the branch, so crossing the fork twice is not a second write.
   useEffect(() => {
-    if (audience !== AUDIENCE.JOIN || invite) return;
+    if (audience !== AUDIENCE.JOIN || invite || ended) return;
     let live = true;
     void createInvite(tripId)
       .then((res) => live && setInvite(res.inviteUrl))
-      .catch(() => live && setError(t.share.owner.failed));
+      .catch((err: unknown) => {
+        if (!live) return;
+        if (isInviteExpiredError(err)) setEnded(true);
+        else setError(t.share.owner.failed);
+      });
     return () => {
       live = false;
     };
-  }, [audience, invite, tripId]);
+  }, [audience, invite, ended, tripId]);
 
   // Only Everything needs the file list, and only once.
   useEffect(() => {
@@ -403,7 +416,18 @@ export function ShareItinerarySheet({
       ? t.share.owner.liveNote
       : t.share.owner.noLinkYet;
 
-  const joinBranch = (
+  const endedBranch = (
+    <div className="share-group">
+      <div className="share-scope-note">
+        <strong>{t.share.owner.join.ended.title}</strong>
+        <span>{t.share.owner.join.ended.detail}</span>
+      </div>
+    </div>
+  );
+
+  const joinBranch = ended ? (
+    endedBranch
+  ) : (
     <>
       {/* **What the link is and how to send it are one group**, 8px apart, while the
           audience question above sits 16px away — the rhythm says which blocks belong
@@ -816,7 +840,9 @@ export function ShareItinerarySheet({
                 setInvite(res.inviteUrl);
                 toast(CONTROL_ICON.done, t.share.owner.join.rotated);
               })
-              .catch(() => setError(t.share.owner.failed));
+              .catch((err: unknown) =>
+                isInviteExpiredError(err) ? setEnded(true) : setError(t.share.owner.failed),
+              );
           }}
         />
       ) : null}

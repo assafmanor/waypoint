@@ -76,7 +76,7 @@ export function AllTrips({
   /** Opens the one `ShareItinerarySheet` the shell owns. This screen has no share control of
    *  its own: the way in here is a hold on the card (ADR-0033's 2026-08-30 amendment), and the
    *  visible twin that pays for the gesture is the trip header's share. */
-  onShare: (trip: Trip) => void;
+  onShare: (trip: Trip, finished: boolean) => void;
 }) {
   const navigate = useNavigate();
   const { me } = useAuth();
@@ -123,7 +123,8 @@ export function AllTrips({
   // shape, because a hook cannot be called inside `.map()`.
   const held = useRef<Trip | null>(null);
   const hold = useHoldToOpen(() => {
-    if (held.current) onShare(held.current);
+    // The card's own bucket, not the mode's phase: there is no ModeProvider on this screen.
+    if (held.current) onShare(held.current, tripChip(held.current, now) === 'past');
   });
   const holdProps = (trip: Trip) => ({
     ...hold,

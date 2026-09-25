@@ -51,9 +51,11 @@ vi.mock('../lib/api', () => ({
   createInvite: vi.fn(),
   fetchRemovedMembers: vi.fn().mockResolvedValue([]),
   rotateInvite: vi.fn(),
+  isInviteExpiredError: () => false,
 }));
 
 const { TripSettings } = await import('./TripSettings');
+const { setSimulatedNow } = await import('../lib/useClock');
 const { t } = await import('../i18n/he');
 // `IconPicker` registers a back layer, so the form cannot be rendered bare (frontend/CLAUDE.md).
 const { wrapNav } = await import('../test/nav-harness');
@@ -140,5 +142,25 @@ describe('TripSettings — the currency field is a picker trigger, not a select'
     openEditor();
     fireEvent.click(document.querySelector('#s-currency')!);
     expect(screen.getByPlaceholderText(t.currencyPicker.searchPlaceholder)).toBeTruthy();
+  });
+});
+
+// ADR-0239 §5: this route has no ModeProvider, so the trip's dates decide. An ended trip
+// offers no join link, because the join route would refuse it with 410.
+describe('TripSettings — the invite section', () => {
+  afterEach(() => setSimulatedNow(null));
+
+  it('offers the link while the trip runs', () => {
+    setSimulatedNow(Date.parse('2026-07-20T09:00:00.000Z'));
+    render(wrapNav(<TripSettings />));
+    expect(screen.getByText(t.settings.inviteGenerate)).toBeTruthy();
+    expect(screen.queryByText(t.settings.inviteEnded)).toBeNull();
+  });
+
+  it('says the trip has ended, and offers nothing to mint, once it has', () => {
+    setSimulatedNow(Date.parse('2026-07-29T09:00:00.000Z'));
+    render(wrapNav(<TripSettings />));
+    expect(screen.getByText(t.settings.inviteEnded)).toBeTruthy();
+    expect(screen.queryByText(t.settings.inviteGenerate)).toBeNull();
   });
 });

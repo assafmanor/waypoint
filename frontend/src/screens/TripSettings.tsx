@@ -32,7 +32,15 @@ import { TripLinkRow } from '../ui/TripLinkRow';
 import { useToast } from '../ui/Toast';
 import { useIsOffline, useOutboxCount } from '../lib/outbox';
 import { formatTripDates } from '../lib/time';
-import { allowMemberBack, createInvite, fetchRemovedMembers, rotateInvite } from '../lib/api';
+import {
+  allowMemberBack,
+  createInvite,
+  fetchRemovedMembers,
+  isInviteExpiredError,
+  rotateInvite,
+} from '../lib/api';
+import { tripChip } from '../lib/active-trip';
+import { useClock } from '../lib/useClock';
 import { publicAppLink, publicAppUrl } from '../lib/invite-link';
 import { DEFAULT_TRIP_ICON, DEVICE_TIMEZONE, DOT_SEPARATOR, CONTROL_ICON } from '../constants';
 import { NavArrow } from '../ui/NavArrow';
@@ -65,6 +73,11 @@ export function TripSettings() {
   const [sheetFor, setSheetFor] = useState<Membership | null>(null);
   const [confirm, setConfirm] = useState<ConfirmState | null>(null);
   const [invite, setInvite] = useState<{ path: string } | 'loading' | null>(null);
+  // Outside the mode shell, so the trip's dates decide, as on /trips; a 410 from the server
+  // settles it the other way when the two clocks disagree (ADR-0239 §5).
+  const now = useClock();
+  const [serverEnded, setServerEnded] = useState(false);
+  const inviteEnded = serverEnded || tripChip(trip, now) === 'past';
   const [removed, setRemoved] = useState<RemovedMember[] | null>(null);
 
   // Leave for /trips once the trip is gone — whether we deleted it or a remote
@@ -153,9 +166,10 @@ export function TripSettings() {
     createInvite(trip.id).then(
       // The PATH — `publicAppLink` for the row, `publicAppUrl` for the clipboard.
       (res) => setInvite({ path: res.inviteUrl }),
-      () => {
+      (err: unknown) => {
         setInvite(null);
-        toast(CONTROL_ICON.warn, t.toast.writeFailed);
+        if (isInviteExpiredError(err)) setServerEnded(true);
+        else toast(CONTROL_ICON.warn, t.toast.writeFailed);
       },
     );
   };
@@ -174,9 +188,10 @@ export function TripSettings() {
             setInvite({ path: res.inviteUrl });
             toast(CONTROL_ICON.done, t.settings.inviteReset_done);
           },
-          () => {
+          (err: unknown) => {
             setInvite(null);
-            toast(CONTROL_ICON.warn, t.toast.writeFailed);
+            if (isInviteExpiredError(err)) setServerEnded(true);
+            else toast(CONTROL_ICON.warn, t.toast.writeFailed);
           },
         );
       },
@@ -317,7 +332,7 @@ export function TripSettings() {
         {/* ===== Invite ===== */}
         <div className="set-sec-title">
           {t.settings.invite}
-          {isAdmin && invite && invite !== 'loading' && (
+          {isAdmin && !inviteEnded && invite && invite !== 'loading' && (
             <button className="set-edit" onClick={resetInvite}>
               {t.settings.inviteReset}
             </button>
@@ -326,18 +341,24 @@ export function TripSettings() {
         {/* The same row the share sheet shows (ADR-0213's 2026-08-30 amendment) — one
             component, not a second copy of "the trip's link", and neutral rather than the
             plan violet `.invite-box` painted here outside Plan mode. */}
-        {invite && invite !== 'loading' ? (
-          <TripLinkRow url={publicAppLink(invite.path)} onCopy={copyInvite} />
+        {inviteEnded ? (
+          <div className="set-hint-block">{t.settings.inviteEnded}</div>
         ) : (
-          <button
-            className="set-invite-btn"
-            onClick={generateInvite}
-            disabled={invite === 'loading'}
-          >
-            <Icon name="share" /> {t.settings.inviteGenerate}
-          </button>
+          <>
+            {invite && invite !== 'loading' ? (
+              <TripLinkRow url={publicAppLink(invite.path)} onCopy={copyInvite} />
+            ) : (
+              <button
+                className="set-invite-btn"
+                onClick={generateInvite}
+                disabled={invite === 'loading'}
+              >
+                <Icon name="share" /> {t.settings.inviteGenerate}
+              </button>
+            )}
+            <div className="set-hint-block">{t.settings.inviteHint}</div>
+          </>
         )}
-        <div className="set-hint-block">{t.settings.inviteHint}</div>
 
         {/* ===== Danger zone ===== */}
         <div className="set-sec-title set-danger-title">{t.settings.dangerZone}</div>

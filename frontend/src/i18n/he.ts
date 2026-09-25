@@ -3531,6 +3531,12 @@ export const t = {
         rotateBody: 'הלינק הקודם יפסיק לעבוד מיד. מי שכבר הצטרף נשאר בטיול.',
         rotateConfirm: 'יצירה',
         rotated: 'נוצר לינק חדש · הקודם בוטל',
+        // ADR-0239 §5: an ended trip takes no one new, so this branch says so and points
+        // at the audience that still works, instead of a link the join route would refuse.
+        ended: {
+          title: 'הטיול הסתיים',
+          detail: 'אי אפשר להצטרף לטיול שכבר נגמר · אפשר לשתף אותו לצפייה',
+        },
       },
     },
     public: {
@@ -3770,6 +3776,7 @@ export const t = {
     invite: "הזמנת החבר'ה",
     inviteGenerate: 'הצגת הלינק',
     inviteHint: 'לינק אחד לטיול · פעיל עד סוף הטיול · שתפו בקבוצה',
+    inviteEnded: 'הטיול הסתיים · אין יותר לינק להצטרפות',
     inviteCopied: 'הלינק הועתק · שתפו בקבוצה',
     inviteReset: 'לינק חדש',
     inviteResetHint: 'מבטל את הלינק הקודם ויוצר חדש · למנהל בלבד',
