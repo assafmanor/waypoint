@@ -104,6 +104,7 @@ let tripEvents: TripEvent[] = [];
 let tripEnrichments: TripEnrichments = {};
 let activeDate = DAY;
 
+vi.mock('../state/mode-state', () => import('../test/mode-from-trip'));
 vi.mock('../state/trip-state', () => ({
   byStart: (a: TripEvent, b: TripEvent) =>
     Date.parse(a.startsAt ?? a.date) - Date.parse(b.startsAt ?? b.date),

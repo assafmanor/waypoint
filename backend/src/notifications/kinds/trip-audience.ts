@@ -122,6 +122,11 @@ export interface TripAudience {
    *  nothing — but a trip that has not STARTED notifies fully, which is the owner's
    *  correction of 2026-08-20 and the reason this is `endDate`, not the access window. */
   isLive(tripId: string): boolean;
+  /** **The task kinds' gate, and theirs alone** (ADR-0239 §3): live, or this task falls due
+   *  after the trip ended. A VAT refund or an insurance claim is owed after the flight home,
+   *  so its deadline still notifies. Not a widening of `isLive`, which also gates the
+   *  readiness nudges and the event kinds, all of which a past trip must keep silent. */
+  isLiveForTask(task: { tripId: string; dueAt: Date | null }): boolean;
   /** The trip's zone, for a kind that needs the wall clock rather than an instant. */
   primaryZone(tripId: string): string;
   /** The assignee, or **the whole group** when nothing is assigned — "one of us" is a promise
@@ -158,13 +163,13 @@ export async function tripAudience(
     }),
   ]);
 
-  const live = new Map<string, { live: boolean; zone: string }>();
+  const live = new Map<string, { live: boolean; endsAfterMs: number; zone: string }>();
   for (const trip of trips) {
     // `endDate` is a `@db.Date`, so it lands at midnight UTC of the last day. A trip is
     // still live for the whole of that day, hence the generous day's grace rather than a
     // comparison that would go dark at midnight UTC mid-trip.
     const endsAfterMs = trip.endDate.getTime() + 24 * 60 * 60 * 1000;
-    live.set(trip.id, { live: endsAfterMs >= nowMs, zone: trip.timezone });
+    live.set(trip.id, { live: endsAfterMs >= nowMs, endsAfterMs, zone: trip.timezone });
   }
 
   const byTrip = new Map<string, string[]>();
@@ -176,6 +181,11 @@ export async function tripAudience(
 
   return {
     isLive: (tripId) => live.get(tripId)?.live === true,
+    isLiveForTask: ({ tripId, dueAt }) => {
+      const trip = live.get(tripId);
+      if (!trip) return false;
+      return trip.live || (dueAt !== null && dueAt.getTime() >= trip.endsAfterMs);
+    },
     primaryZone: (tripId) => live.get(tripId)?.zone ?? 'UTC',
     members: (tripId) => byTrip.get(tripId) ?? [],
     recipients: (subject) => {
@@ -192,6 +202,7 @@ export async function tripAudience(
 function emptyAudience(): TripAudience {
   return {
     isLive: () => false,
+    isLiveForTask: () => false,
     primaryZone: () => 'UTC',
     members: () => [],
     recipients: () => [],

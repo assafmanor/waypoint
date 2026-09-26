@@ -106,10 +106,69 @@ describe('tripAudience', () => {
       expect(after.isLive('t')).toBe(false);
     });
 
+    it('stays false for an ended trip, whatever its tasks owe', async () => {
+      // It gates the readiness nudges and the event kinds too, so ADR-0239 §3's exception
+      // lives in `isLiveForTask`, not here.
+      const endDate = new Date(utc('2026-08-10T00:00:00Z'));
+      const { prisma } = fake(
+        [{ id: 't', endDate, timezone: 'UTC' }],
+        [{ tripId: 't', userId: 'u' }],
+      );
+      const audience = await tripAudience(prisma, [{ tripId: 't' }], NOW);
+      expect(audience.isLive('t')).toBe(false);
+      expect(audience.isLiveForTask({ tripId: 't', dueAt: new Date(NOW) })).toBe(true);
+    });
+
     it('treats a trip the query did not return as not live', async () => {
       const { prisma } = fake([], []);
       const audience = await tripAudience(prisma, [{ tripId: 'ghost' }], NOW);
       expect(audience.isLive('ghost')).toBe(false);
+    });
+  });
+
+  describe('isLiveForTask', () => {
+    // ADR-0239 §3: a deadline that falls after the trip is still owed.
+    const endDate = new Date(utc('2026-08-10T00:00:00Z'));
+    const ended = () =>
+      tripAudience(
+        fake([{ id: 't', endDate, timezone: 'UTC' }], [{ tripId: 't', userId: 'u' }]).prisma,
+        [{ tripId: 't' }],
+        NOW,
+      );
+
+    it('lets a post-trip deadline on an ended trip through', async () => {
+      const audience = await ended();
+      expect(
+        audience.isLiveForTask({ tripId: 't', dueAt: new Date(utc('2026-08-15T09:00:00Z')) }),
+      ).toBe(true);
+    });
+
+    it('keeps a deadline inside the trip silent, the last day included', async () => {
+      const audience = await ended();
+      expect(
+        audience.isLiveForTask({ tripId: 't', dueAt: new Date(utc('2026-08-05T09:00:00Z')) }),
+      ).toBe(false);
+      expect(
+        audience.isLiveForTask({ tripId: 't', dueAt: new Date(utc('2026-08-10T22:00:00Z')) }),
+      ).toBe(false);
+    });
+
+    it('keeps an undated task on an ended trip silent', async () => {
+      expect((await ended()).isLiveForTask({ tripId: 't', dueAt: null })).toBe(false);
+    });
+
+    it('is simply isLive on a trip that has not ended', async () => {
+      const { prisma } = fake(
+        [{ id: 't', endDate: new Date(utc('2027-06-01T00:00:00Z')), timezone: 'UTC' }],
+        [{ tripId: 't', userId: 'u' }],
+      );
+      const audience = await tripAudience(prisma, [{ tripId: 't' }], NOW);
+      expect(audience.isLiveForTask({ tripId: 't', dueAt: null })).toBe(true);
+    });
+
+    it('treats a trip the query did not return as not live', async () => {
+      const audience = await tripAudience(fake([], []).prisma, [{ tripId: 'ghost' }], NOW);
+      expect(audience.isLiveForTask({ tripId: 'ghost', dueAt: new Date(NOW) })).toBe(false);
     });
   });
 

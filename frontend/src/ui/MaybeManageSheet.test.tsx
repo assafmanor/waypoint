@@ -26,6 +26,7 @@ const idea: MaybeItem = {
 let tripNotes: Note[] = [];
 const createNote = vi.fn(() => Promise.resolve(undefined));
 
+vi.mock('../state/mode-state', () => import('../test/mode-from-trip'));
 vi.mock('../state/trip-state', () => ({
   useTrip: () => ({
     trip: { id: 't1', timezone: 'Asia/Jerusalem', startDate: '2026-08-15', endDate: '2026-08-20' },

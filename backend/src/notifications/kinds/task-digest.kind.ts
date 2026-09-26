@@ -59,7 +59,7 @@ export const taskDigestKind: NotificationKind = {
     const audience = await tripAudience(prisma, tasks, nowMs);
     const byTrip = new Map<string, TaskRow[]>();
     for (const task of tasks) {
-      if (!audience.isLive(task.tripId)) continue;
+      if (!audience.isLiveForTask(task)) continue;
       const list = byTrip.get(task.tripId);
       if (list) list.push(task);
       else byTrip.set(task.tripId, [task]);

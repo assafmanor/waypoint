@@ -7,6 +7,7 @@ import {
   TASK_FACET,
   taskBand,
   taskDue,
+  taskDueClass,
   taskMatchesFacet,
   taskPreview,
   taskRowMatchesFacet,
@@ -29,6 +30,7 @@ const clock: TaskDueClock = {
   crossings: [],
   primaryZone: JLM,
   trip: { startDate: '2026-08-01', endDate: '2026-08-31' },
+  phase: 'live',
 };
 
 const task = (id: string, over: Partial<Task> = {}): Task => ({
@@ -278,6 +280,46 @@ describe('taskDue', () => {
     const here = taskDue(task('f', due), clock);
     const there = taskDue(task('f', { ...due, displayTimezone: TYO }), clock);
     expect(here?.day).not.toBe(there?.day);
+  });
+});
+
+// ADR-0239 §3: once the trip is over, what fell due inside it was never done rather than late,
+// and what falls due after it (a VAT refund, an insurance claim) is still owed.
+describe('a finished trip', () => {
+  const trip = { startDate: '2026-08-01', endDate: '2026-08-10' };
+  const finished: TaskDueClock = { ...clock, trip, phase: 'past' };
+  const beforeEnd = task('souvenirs', { dueAt: '2026-08-05T09:00:00.000Z' });
+  // 23:00 on the last day in Jerusalem: still the trip's.
+  const lastNight = task('last', { dueAt: '2026-08-10T20:00:00.000Z', dueHasTime: true });
+  const afterEnd = task('vat', { dueAt: '2026-08-12T09:00:00.000Z' });
+
+  it('reads a task that fell due before the end as never done: not late, in neutral', () => {
+    expect(taskDue(beforeEnd, finished)).toMatchObject({ late: false, lapsed: true });
+    expect(taskDue(lastNight, finished)).toMatchObject({ late: false, lapsed: true });
+    expect(taskDueClass(taskDue(beforeEnd, finished)!)).toBe('tsk-due lapsed');
+  });
+
+  it('keeps a passed deadline after the end late', () => {
+    expect(taskDue(afterEnd, finished)).toMatchObject({ late: true, lapsed: false });
+    expect(taskDueClass(taskDue(afterEnd, finished)!)).toBe('tsk-due late');
+  });
+
+  it('keeps a deadline after the end that has not passed as it was', () => {
+    const later = task('claim', { dueAt: '2026-08-25T09:00:00.000Z' });
+    expect(taskDue(later, finished)).toMatchObject({ late: false, lapsed: false });
+  });
+
+  it('leaves a live trip unchanged', () => {
+    expect(taskDue(beforeEnd, { ...finished, phase: 'live' })).toMatchObject({
+      late: true,
+      lapsed: false,
+    });
+  });
+
+  it('counts only the post-trip deadlines as overdue on the tile', () => {
+    const tasks = [beforeEnd, lastNight, afterEnd];
+    expect(taskPreview(tasks, [], finished).overdue).toBe(1);
+    expect(taskPreview(tasks, [], { ...finished, phase: 'live' }).overdue).toBe(3);
   });
 });
 

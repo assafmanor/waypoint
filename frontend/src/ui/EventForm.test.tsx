@@ -59,6 +59,7 @@ const tripState = {
   documentAttachments: [] as unknown[],
   attachmentVerbs: { attachDocument: vi.fn(() => Promise.resolve(undefined)) },
 };
+vi.mock('../state/mode-state', () => import('../test/mode-from-trip'));
 vi.mock('../state/trip-state', () => ({ useTrip: () => tripState }));
 // The attach slot reads the outbox for queued uploads (ADR-0173 §5 / ADR-0056); there is no
 // IndexedDB here, and a queued upload is not what these tests are about.
