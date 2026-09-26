@@ -514,6 +514,7 @@ rendered at L\* 68, the brightest surface in the app, in the calm mode.
 | `--ok-deep` (ok as ink)      | `#2B7050`             | `#6FD49F` (ADR-0240)                                                                       |
 | `--memory` / `--memory-deep` | `#A9507F` / `#86395F` | `#DC8AB5` / `#EBA5C9` (ADR-0240)                                                           |
 | `--chrome-bg-memory`         | `#EFD9E2`             | `#33202B`, a literal: rose mixed off the blue `--card` lands on violet's angle             |
+| `--memory-surface` / `-2`    | `#86395F` / `#6E2C4C` | `#3A2433` / `#2A1A25` (the archive's loud surface, as `--plan-surface` is plan's)          |
 
 **Status — designed, not built.** ADR-0158 §10 phases it: (1) on-fill ink,
 (2) the `--on-dark-*` ramp, (3) surface + chrome tokens, (4) the theme itself —
