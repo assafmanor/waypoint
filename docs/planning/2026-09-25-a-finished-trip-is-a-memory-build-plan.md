@@ -119,6 +119,8 @@ Built · PR #869
 
 ### 0.6 · Share after the trip (F10 · §5)
 
+Built · PR #868
+
 - **Files:**
   - `ui/ShareItinerarySheet.tsx:126`: the audience defaults to `READ` when finished. The join branch renders an ended-trip line (new Hebrew in `i18n/he.ts`, no em dash) and mints nothing.
   - `screens/TripSettings.tsx`: the invite section, likewise.

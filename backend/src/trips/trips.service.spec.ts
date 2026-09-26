@@ -6,6 +6,7 @@ import {
   GoneException,
   NotFoundException,
 } from '@nestjs/common';
+import { ERROR_CODE } from '@waypoint/shared';
 import { ENRICHMENT_DISABLED, WEATHER_DISABLED } from '../common/env';
 import { EnrichmentRegistry } from '../enrichment/enrichment.registry';
 import { FxService } from '../fx/fx.service';
@@ -201,11 +202,48 @@ describe('TripsService', () => {
   });
 
   it('410s a code whose trip has already ended', async () => {
-    const tripId = await freshTrip(ENDED_TRIP_INPUT);
+    // Minted while the trip was live, then the trip ends: the code in circulation dies.
+    const tripId = await freshTrip();
     const code = await service.getOrCreateInvite(tripId, DEV_USER);
+    await prisma.trip.update({
+      where: { id: tripId },
+      data: {
+        startDate: new Date(ENDED_TRIP_INPUT.startDate),
+        endDate: new Date(ENDED_TRIP_INPUT.endDate),
+      },
+    });
 
     await expect(service.getInvitePreview(code)).rejects.toThrow(GoneException);
     await expect(service.joinByCode(PEER_USER, code)).rejects.toThrow(GoneException);
+  });
+
+  // ADR-0239 §5: an ended trip hands out no link, with the same 410 the join route answers.
+  it('410s minting an invite for an ended trip, and mints nothing', async () => {
+    const tripId = await freshTrip(ENDED_TRIP_INPUT);
+
+    await expect(service.getOrCreateInvite(tripId, DEV_USER)).rejects.toMatchObject({
+      status: 410,
+      response: { error: { code: ERROR_CODE.INVITE_EXPIRED } },
+    });
+    expect(await prisma.invite.findUnique({ where: { tripId } })).toBeNull();
+  });
+
+  it('410s rotating the invite of an ended trip, and the old code stays as it was', async () => {
+    const tripId = await freshTrip();
+    const code = await service.getOrCreateInvite(tripId, DEV_USER);
+    await prisma.trip.update({
+      where: { id: tripId },
+      data: {
+        startDate: new Date(ENDED_TRIP_INPUT.startDate),
+        endDate: new Date(ENDED_TRIP_INPUT.endDate),
+      },
+    });
+
+    await expect(service.rotateInvite(tripId, DEV_USER)).rejects.toMatchObject({
+      status: 410,
+      response: { error: { code: ERROR_CODE.INVITE_EXPIRED } },
+    });
+    expect((await prisma.invite.findUnique({ where: { tripId } }))?.code).toBe(code);
   });
 
   it('previews a trip (with tripId for the already-member redirect) for a valid code', async () => {
