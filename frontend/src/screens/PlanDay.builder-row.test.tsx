@@ -402,3 +402,47 @@ describe('the badge photo (ADR-0219 §1)', () => {
     expect(container.querySelector('.bld-bd')!.hasAttribute('data-photo')).toBe(false);
   });
 });
+
+// **THE ARCHIVE ROW IS A RECORD** (ADR-0240 §5). A done row carried the `היינו ✓` chip AND a
+// filled ✓ circle; the chip is the mark and the undo now, as on Trip's card (ADR-0230 §1), and
+// the slot keeps only what is still a question or an action.
+describe('the finished-trip settle record (ADR-0240 §5)', () => {
+  afterEach(() => cleanup());
+
+  const settled = (status: TripEvent['status']) => {
+    const verbs = { onDone: vi.fn(), onSkip: vi.fn(), onRestore: vi.fn() };
+    const { container } = render(
+      wrapNav(
+        <BuilderRow
+          event={{ ...A, status }}
+          tz={TZ}
+          onOpen={vi.fn()}
+          onEdit={vi.fn()}
+          onDelete={vi.fn()}
+          readOnly
+          settle={{ status, ...verbs }}
+        />,
+      ),
+    );
+    return { container, verbs };
+  };
+
+  it('marks a done row once, with the chip, and the chip takes it back', () => {
+    const { container, verbs } = settled(EVENT_STATUS.DONE);
+    expect(container.querySelector('.bld-settle')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: t.actions.undoDone }));
+    expect(verbs.onRestore).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the slot for a skipped row, which restores', () => {
+    const { container, verbs } = settled(EVENT_STATUS.SKIPPED);
+    expect(container.querySelector('.bld.is-skip')).not.toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: t.actions.restore }));
+    expect(verbs.onRestore).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the slot for an unresolved row, which asks', () => {
+    const { container } = settled(EVENT_STATUS.PLANNED);
+    expect(container.querySelector('.bld-settle.ghost')).not.toBeNull();
+  });
+});

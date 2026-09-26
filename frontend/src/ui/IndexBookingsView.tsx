@@ -346,6 +346,7 @@ export function IndexBookingsView({
           title={t.index.search.modeTitle}
           contextLabel={trip.name}
           mode={mode}
+          finished={finished}
           query={query}
           onQueryChange={setQuery}
           placeholder={t.index.search.placeholder}

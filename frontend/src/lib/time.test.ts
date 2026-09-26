@@ -800,6 +800,26 @@ describe('buildTimeTree — containment forest + per-level clustering', () => {
     const tree = buildTimeTree([done, skipped, unscheduled, ev('A', '13:00', '14:00')]);
     expect(shape(tree)).toEqual(['D', 'A']);
   });
+
+  // A finished trip's archive keeps what was skipped in the record, where it was planned
+  // (ADR-0044); before this option PlanDay kept the row and the layout dropped it (ADR-0240 §5).
+  it('keeps skipped events in place when asked to, and still drops the unscheduled', () => {
+    const done = { ...ev('D', '09:00', '10:00'), status: EVENT_STATUS.DONE };
+    const skipped = { ...ev('S', '11:00', '12:00'), status: EVENT_STATUS.SKIPPED };
+    const unscheduled = ev('U', null, null);
+    const tree = buildTimeTree([done, skipped, unscheduled, ev('A', '13:00', '14:00')], {
+      keepSkipped: true,
+    });
+    expect(shape(tree)).toEqual(['D', 'S', 'A']);
+  });
+
+  it('never clusters or nests a kept skipped event: it did not happen, so it overlapped nothing', () => {
+    const done = { ...ev('D', '21:30', '22:30'), status: EVENT_STATUS.DONE };
+    const skipped = { ...ev('S', '22:00', '22:45'), status: EVENT_STATUS.SKIPPED };
+    const inner = { ...ev('I', '21:40', '21:50'), status: EVENT_STATUS.SKIPPED };
+    const tree = buildTimeTree([done, skipped, inner], { keepSkipped: true });
+    expect(shape(tree)).toEqual(['D', 'I', 'S']);
+  });
 });
 
 describe('deriveNow — concurrent now/next sets', () => {

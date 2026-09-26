@@ -405,6 +405,17 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
       expect(row('food')!.querySelector('.wp-settle-btn')).toBeTruthy();
     });
 
+    // ADR-0239 §4: settling is a finished trip's only write, so a selected place can be neither
+    // renamed nor deleted (the Phase 0 guard covered only the two ADD sources).
+    it('a selected row can be neither renamed nor deleted', () => {
+      seed();
+      finish();
+      render(wrap(<MapView />));
+      fireEvent.click(row('food')!);
+      expect(screen.queryByRole('button', { name: t.map.make.edit })).toBeNull();
+      expect(screen.queryByRole('button', { name: t.map.del.aria('food') })).toBeNull();
+    });
+
     it('a search result has no `＋ אולי`', () => {
       seed();
       finish();

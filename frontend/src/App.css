@@ -573,6 +573,12 @@
   color: var(--chrome-ink-num);
   line-height: 1.1;
 }
+/* A finished trip's age (`4 ימים`, `שנה`) is words, not a counter (ADR-0240 §3). */
+.hdr-anchor .num.is-words {
+  font-family: var(--font-body);
+  font-size: 12.5px;
+  white-space: nowrap;
+}
 /* An OPAQUE warm chip, not a translucent amber veil — and the difference is the
    whole reason this looked wrong the moment the chrome went light. Amber sits at
    hue +72°, the light band at -83°: near-complementary. A 16% amber wash over
@@ -1947,18 +1953,6 @@
   font-size: 12px;
 }
 
-/* finished trips read one notch quieter */
-.trip-card.is-past {
-  background: var(--card);
-}
-.trip-card.is-past .flag {
-  filter: saturate(0.7);
-  opacity: 0.9;
-}
-.trip-card.is-past .t {
-  color: var(--muted);
-}
-
 /* Active-trip hero (ADR-0033) — the single loud element on a paper page. Uses
    the chrome-base indigo (NOT the darker --board), with no glow, no pulse and
    no now/next hero, so it reads as a prominent nav card, not the rationed
@@ -2277,6 +2271,64 @@
 }
 .app[data-mode='plan'] .hdr-mode {
   background: var(--plan-tint);
+}
+
+/* ============================================================
+   The archive's chrome — a finished trip (ADR-0240 §3, mockups/past-trip-v1.html).
+   A finished trip still reads `data-mode='plan'` for its light-band layout; `data-phase`
+   swaps the hue. On `.mode-chrome` as well as `.app`: plan sets `--chrome-bg` on the header
+   ITSELF, so an `.app`-level value never reaches it. No drafting grid — a record is not
+   being drafted. The ink ramp is shared and clears on this band too.
+   ============================================================ */
+.app[data-phase='past'],
+.mode-chrome[data-phase='past'] {
+  --chrome-bg: var(--chrome-bg-memory);
+}
+.app[data-phase='past'] .header::before,
+.mode-chrome[data-phase='past']::before {
+  opacity: 0;
+}
+.app[data-phase='past'] .hdr-trip {
+  background: var(--memory-tint);
+  border-color: color-mix(in srgb, var(--memory) 28%, transparent);
+}
+@media (hover: hover) and (pointer: fine) {
+  .app[data-phase='past'] .hdr-trip:hover {
+    background: color-mix(in srgb, var(--memory) 16%, transparent);
+  }
+}
+.app[data-phase='past'] .hdr-swap {
+  background: color-mix(in srgb, var(--memory) 16%, transparent);
+}
+.app[data-phase='past'] .hdr-trip:focus-visible {
+  outline-color: var(--memory);
+}
+.app[data-phase='past'] .gear-btn,
+.mode-chrome[data-phase='past'] .chrome-ghost-btn {
+  color: var(--memory-deep);
+}
+@media (hover: hover) and (pointer: fine) {
+  .app[data-phase='past'] .gear-btn:hover,
+  .mode-chrome[data-phase='past'] .chrome-ghost-btn:hover {
+    color: var(--memory);
+  }
+}
+.app[data-phase='past'] .gear-btn:focus-visible,
+.mode-chrome[data-phase='past'] .chrome-ghost-btn:focus-visible {
+  outline-color: var(--memory);
+}
+.app[data-phase='past'] .av.is-me {
+  box-shadow:
+    0 0 0 2px var(--chrome-ring),
+    0 0 0 3.5px color-mix(in srgb, var(--memory) 60%, transparent);
+}
+.app[data-phase='past'] .av.more {
+  background: var(--memory-tint);
+  color: var(--memory-deep);
+}
+.app[data-phase='past'] .nav {
+  --nav-accent: var(--memory-deep);
+  --nav-tint: var(--memory-tint);
 }
 /* The Plan-mode day-strip re-skin (light pills, violet selection, dashed
    empty-day markers) moved into the DayStrip component, keyed off its own

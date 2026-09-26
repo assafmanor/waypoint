@@ -156,6 +156,15 @@
   border: 1px dashed var(--soft-line);
   background: transparent;
 }
+/* A finished trip selects in the archive's rose (ADR-0240 §3), and dims no day: the strip
+   withholds `.past` there rather than overriding it. */
+.wp-daystrip[data-phase='past'] .wp-daypill.on {
+  background: var(--memory);
+  color: var(--on-fill);
+}
+.wp-daystrip[data-phase='past'] .wp-daypill.on .n {
+  color: var(--on-fill);
+}
 /* The gap marker stays RED — it means "nothing planned here", and that meaning
    is --miss's. What changes is that it is written rather than painted, so it
    takes the ink variant. */

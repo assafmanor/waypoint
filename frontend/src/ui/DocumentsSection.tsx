@@ -225,6 +225,7 @@ export function DocumentsSection({
           title={t.docs.search.modeTitle}
           contextLabel={trip.name}
           mode={mode}
+          finished={finished}
           query={query}
           onQueryChange={setQuery}
           placeholder={t.docs.search.placeholder}

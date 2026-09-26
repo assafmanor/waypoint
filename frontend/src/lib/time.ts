@@ -820,7 +820,10 @@ const spansOverlap = (a: Span, b: Span): boolean => a.start < b.end && b.start <
 
 /** Groups the day's timed events into the concurrency forest the day view renders.
  *  Returns the top-level groups (roots), each carrying its nested subtree. */
-export function buildTimeTree(events: TripEvent[]): TimeGroup[] {
+export function buildTimeTree(
+  events: TripEvent[],
+  { keepSkipped = false }: { keepSkipped?: boolean } = {},
+): TimeGroup[] {
   // Layout includes done events (they still occupy their slot) but not skipped
   // ones (parked on the shelf, ADR-0027) or untimed ones (no span to place).
   const timed = events.filter((e) => e.startsAt && e.status !== EVENT_STATUS.SKIPPED);
@@ -897,7 +900,19 @@ export function buildTimeTree(events: TripEvent[]): TimeGroup[] {
     return groups;
   };
 
-  return layout(childrenOf.get(null) ?? []);
+  const roots = layout(childrenOf.get(null) ?? []);
+  if (!keepSkipped) return roots;
+  // `keepSkipped` is the finished trip's archive, where what was skipped is part of the record
+  // (ADR-0044); without it the row PlanDay kept for exactly that reason was dropped here,
+  // before layout (ADR-0240 §5). It sits where it was planned, as a single at the top level —
+  // and it takes no part in the nesting or the overlap clusters above, because a thing that
+  // did not happen cannot have overlapped anything that did.
+  const skipped = events
+    .filter((e) => e.startsAt && e.status === EVENT_STATUS.SKIPPED)
+    .map((e): TimeGroup => ({ kind: 'single', item: { event: e, children: [] } }));
+  const startOf = (g: TimeGroup) =>
+    g.kind === 'cluster' ? g.startMs : Date.parse(g.item.event.startsAt!);
+  return [...roots, ...skipped].sort((a, b) => startOf(a) - startOf(b));
 }
 
 /** An hour of the day as the app's own wall-clock string — `7` → `07:00`. */

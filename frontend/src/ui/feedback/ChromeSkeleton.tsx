@@ -8,19 +8,22 @@
 // (RootSurface's resolved trips list), so that part never pops in later; only
 // the avatar (needs member data the snapshot hasn't loaded) stays a shimmer.
 import type { Trip } from '@waypoint/shared';
-import type { Mode } from '../../lib/mode';
+import type { Mode, TripPhase } from '../../lib/mode';
 import { DEFAULT_TRIP_ICON } from '../../constants';
 import { Skeleton } from './Skeleton';
 
 export function ChromeSkeleton({
   mode,
+  phase,
   trip,
 }: {
   mode: Mode;
+  /** `past` wears the archive's band (ADR-0240 §3), so a finished trip does not load violet. */
+  phase?: TripPhase;
   trip?: Pick<Trip, 'name' | 'icon'> | null;
 }) {
   return (
-    <header className="header mode-chrome" data-mode={mode} aria-hidden="true">
+    <header className="header mode-chrome" data-mode={mode} data-phase={phase} aria-hidden="true">
       <div className="hdr-top">
         <div className="hdr-trip">
           <span className="trip-glyph">

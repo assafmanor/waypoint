@@ -22,7 +22,7 @@ import { IndexBookingsView } from '../ui/IndexBookingsView';
 import { IndexDocumentsView } from '../ui/IndexDocumentsView';
 import { IndexNotesView } from '../ui/IndexNotesView';
 import { IndexTasksView } from '../ui/IndexTasksView';
-import { IndexTile } from '../ui/domain';
+import { ArchiveBanner, IndexTile } from '../ui/domain';
 import { Icon } from '../ui/Icon';
 import { useSettledHosts } from '../ui/HostTasks';
 import {
@@ -190,6 +190,8 @@ export function Index() {
       <>
         <Icon name="lock" /> {docGroups.map((g) => t.docs.group[g.type]).join(' · ')}
       </>
+    ) : isFinished ? (
+      t.index.tile.noDocuments
     ) : (
       t.index.tile.emptyDocuments
     );
@@ -205,7 +207,9 @@ export function Index() {
     : '';
   const notesSubtitle = latestNote
     ? t.notes.tile.latest(latestAuthor, noteTitleText(latestNote))
-    : t.notes.tile.empty;
+    : isFinished
+      ? t.notes.tile.none
+      : t.notes.tile.empty;
 
   // **The next thing due, with an overdue count when there is one** (brief §13). A task
   // collection has no "newest" worth a glance the way notes do and no type groups the way
@@ -251,6 +255,9 @@ export function Index() {
 
   return (
     <div className="index">
+      {/* ADR-0049 §2's banner, built as ADR-0240 §6 drew it: Trip's past-day banner in the
+          archive's hue, and no wash over the tiles. */}
+      {isFinished && <ArchiveBanner label={t.index.archiveBanner} memory />}
       {/* Offline status is a page-level fact — shown once, on the landing. */}
       <div className="index-status">
         <span className="badge-offline">

@@ -2234,9 +2234,10 @@ export function MapView() {
 
   const openDraft = useRef<(next: MapDraft, frameAt?: LatLng) => void>(() => {});
   openDraft.current = (next, frameAt) => {
-    // The two ADD sources stop here on a finished trip (ADR-0239 §4); their controls are
-    // already absent, but a long press on blank canvas has no control to withhold.
-    if (finished && next.kind !== 'rename') return;
+    // Every source stops here on a finished trip (ADR-0239 §4: settling is its only write).
+    // Their controls are already absent, rename's included, but a long press on blank canvas
+    // has no control to withhold.
+    if (finished) return;
     // **EXACTLY ONE CARD ON THIS CANVAS** (ADR-0125 §6, ADR-0122 §7). A canvas gesture lands
     // on something that is not ours, so it replaces the selection outright — which is also
     // what every map app does when you tap something else. The other two sources are ABOUT
@@ -3072,12 +3073,17 @@ export function MapView() {
           // Selected only, and never under an errand: the tab is then answering one question,
           // and ADR-0134 §3 has the verbs CHANGE rather than accumulate — the same rule that
           // takes `נווט` and the schedule verb off this row.
+          // Never on a finished trip: settling is its only write (ADR-0239 §4).
           onRename={
-            selected && !pendingErrand ? () => beginRename.current(usage.placeId) : undefined
+            selected && !pendingErrand && !finished
+              ? () => beginRename.current(usage.placeId)
+              : undefined
           }
           // Selection-gated on the same rule as the pencil (ADR-0157 §2), so the trash is
           // wherever the row is — the sheet's list AND the canvas card, one `renderRow`.
-          onDelete={selected && !pendingErrand ? () => setDeletingId(usage.placeId) : undefined}
+          onDelete={
+            selected && !pendingErrand && !finished ? () => setDeletingId(usage.placeId) : undefined
+          }
           onClose={opts.onClose}
           collapsed={opts.collapsed}
           onToggleCollapsed={opts.onToggleCollapsed}
@@ -3960,6 +3966,7 @@ export function MapView() {
             setDetailBooking(null);
             setEditBooking(booking);
           }}
+          frozen={finished}
         />
       )}
       {(editBooking || bookingDraft) && (
@@ -4011,7 +4018,12 @@ export function MapView() {
   // genuinely unavailable, and preserves the useful list without inventing a broken frame.
   if (!hasMap) {
     return (
-      <div className="map-screen" data-mode={mode} data-offline={offline || undefined}>
+      <div
+        className="map-screen"
+        data-mode={mode}
+        data-phase={phase}
+        data-offline={offline || undefined}
+      >
         {offline && <StatusBanner tone="offline">{t.header.offlineNow}</StatusBanner>}
         {controlsRow}
         {geoPrompt}
@@ -4026,6 +4038,7 @@ export function MapView() {
     <div
       className="map-screen is-split"
       data-mode={mode}
+      data-phase={phase}
       data-view={sheetView}
       data-scope={allDays ? 'all' : 'day'}
       // EVERY TRIP PIN IS CONTEXT WHILE AN ERRAND IS LIVE (owner, session 166). One

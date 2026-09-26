@@ -99,13 +99,15 @@ import { observeVisibility } from './lib/visibility';
 import { useShrinkToFit } from './lib/useShrinkToFit';
 import {
   DEFAULT_TRIP_ICON,
+  MINUTES_PER_DAY,
   OUTBOX_RETRY_MS,
   PEOPLE_STACK_CAP,
   TABS,
   TRIP_NAME_FIT,
   type TabId,
 } from './constants';
-import { tripToday, type Mode } from './lib/mode';
+import { daysSinceEnd, tripToday, type Mode } from './lib/mode';
+import { formatDuration } from './lib/duration';
 import { monthLabelFor, tripDates, tripDayNumber, weekdayLetter } from './lib/time';
 import { t } from './i18n/he';
 import './App.css';
@@ -241,7 +243,7 @@ export function Header({
   const { me } = useAuth();
   // The chrome paints `chromeMode`: it differs from `mode` only during the first morning's
   // hold (ADR-0221 §4), when the header is still violet over a trip that is already live.
-  const { chromeMode: mode, isFinished } = useMode();
+  const { chromeMode: mode, phase, isFinished } = useMode();
   // **Which surface is asking** decides whether the strip singles out a day at all
   // (field report #39). The remembered day is the `?day=` param wherever you are
   // (ADR-0035 §4 — one copy, nothing to sync), but it is only shown as selected on a
@@ -329,6 +331,8 @@ export function Header({
   // on today it reads the trip's progress, off it becomes the way back. Only in
   // Trip mode — Plan mode has no "now" to return to.
   const offToday = mode === 'trip' && activeDate !== today;
+  // `null` on the last date itself, which the anchor reads as `הסתיים · היום`.
+  const agoPhrase = isFinished ? formatDuration(daysSinceEnd(trip, today) * MINUTES_PER_DAY) : null;
   // Offline and pending resolve by themselves, so they stay a passive mark on the
   // glyph (an exception indicator, silent when synced — ADR-0092). `failed` is the
   // one sync state a person can act on and ADR-0080 requires a path to the
@@ -336,7 +340,7 @@ export function Header({
   // chip navigates away, which means the badge cannot be that path.
   const passiveSync = offline ? 'offline' : pendingCount > 0 ? 'pending' : null;
   return (
-    <header className="header mode-chrome" data-mode={mode}>
+    <header className="header mode-chrome" data-mode={mode} data-phase={phase}>
       <div className="hdr-top">
         <button
           ref={tripChipRef}
@@ -471,11 +475,16 @@ export function Header({
           </button>
         ) : (
           /* Not a control on today, and not labelled as one: `יום` over `3/10` is
-             what it says, and that reads correctly on its own. A finished trip keeps
-             the slot and reads no progress through it (ADR-0239 §3); Phase 3 gives it
-             words. */
+             what it says, and that reads correctly on its own. A finished trip reads no
+             progress through it (ADR-0239 §3); it says how long ago the trip was, on the
+             app's one elapsed ladder (ADR-0240 §3, ADR-0114). */
           <div className="hdr-anchor">
-            {!isFinished && (
+            {isFinished ? (
+              <span className="anchor-progress">
+                <span className="cap">{agoPhrase ? t.header.agoCap : t.header.endedCap}</span>
+                <span className="num is-words">{agoPhrase ?? t.header.endedToday}</span>
+              </span>
+            ) : (
               <>
                 <span className="anchor-progress">
                   <span className="cap">{t.header.dayCap}</span>
@@ -548,7 +557,7 @@ function Shell({ otherTripCount }: { otherTripCount: number }) {
   // Give Android's OS back an in-app entry to traverse into (ADR-0090) so a cold
   // launch straight into the trip can't let a system-back slip out of the app.
   useTripBackGuard();
-  const { mode, isFinished, chromeMode, goingLive } = useMode();
+  const { mode, phase, isFinished, chromeMode, goingLive } = useMode();
   const { trip, tripDeleted, usingCachedSnapshot } = useTrip();
   const navigate = useNavigate();
   const closeAllOverlays = useCloseAllOverlays();
@@ -651,6 +660,7 @@ function Shell({ otherTripCount }: { otherTripCount: number }) {
   return (
     <AppShell
       mode={chromeMode}
+      phase={phase}
       switching={switching ?? undefined}
       bodyKey={tab}
       bodyClassName={fullBleed ? BODY_FULLBLEED : undefined}

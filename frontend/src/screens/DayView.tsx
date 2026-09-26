@@ -38,6 +38,7 @@ import { rowPhoto } from '../lib/place-photo';
 import { dayHeadTitle } from '../lib/day-title';
 import { dayShot, type DayShot } from '../lib/day-photo';
 import { DayHead } from '../ui/domain/DayHead';
+import { ArchiveBanner } from '../ui/domain/ArchiveBanner';
 import { ReadBand } from '../ui/domain/ReadBand';
 import { EventDetail } from '../ui/EventDetail';
 import { MediaViewer } from '../ui/MediaViewer';
@@ -1558,18 +1559,17 @@ export function DayView() {
         )}
 
         {readOnly && (
-          <div className="archive-banner">
-            <span className="ab-ic" aria-hidden="true">
-              <Icon name="archive" />
-            </span>
-            {/* **The banner keeps its control and loses its heading** (ADR-0219 §2). It read
-              `{heading} · לקריאה בלבד`, and the head under it now says the date — so the
-              banner says only what the banner is for. */}
-            <span className="ab-main">{t.day.archiveTag}</span>
-            <button className="ab-back" onClick={() => setActiveDate(today)}>
-              {t.header.backToToday}
-            </button>
-          </div>
+          /* **The banner keeps its control and loses its heading** (ADR-0219 §2). It read
+             `{heading} · לקריאה בלבד`, and the head under it now says the date — so the
+             banner says only what the banner is for. */
+          <ArchiveBanner
+            label={t.day.archiveTag}
+            action={
+              <button className="ab-back" onClick={() => setActiveDate(today)}>
+                {t.header.backToToday}
+              </button>
+            }
+          />
         )}
 
         {/* **A DAY IS A PLACE YOU CAN SEE** (ADR-0219 §2/§3), and this replaces `.sec-title`'s

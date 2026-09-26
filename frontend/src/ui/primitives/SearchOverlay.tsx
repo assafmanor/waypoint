@@ -28,6 +28,7 @@ export function SearchOverlay({
   title,
   contextLabel,
   mode,
+  finished,
   query,
   onQueryChange,
   placeholder,
@@ -42,6 +43,8 @@ export function SearchOverlay({
   contextLabel?: string;
   /** Which mode-tint the top bar wears (`useMode()`) — Trip blue or Plan light. */
   mode: Mode;
+  /** A finished trip's bar wears the archive's band (ADR-0240 §3), as the header does. */
+  finished?: boolean;
   query: string;
   onQueryChange: (query: string) => void;
   placeholder: string;
@@ -60,7 +63,11 @@ export function SearchOverlay({
           "one dismissal, one path" rule that governs the back stack itself. */}
       {(close) => (
         <div className="search-overlay">
-          <div className="search-overlay-bar mode-chrome" data-mode={mode}>
+          <div
+            className="search-overlay-bar mode-chrome"
+            data-mode={mode}
+            data-phase={finished ? 'past' : undefined}
+          >
             <button
               type="button"
               className="chrome-ghost-btn"

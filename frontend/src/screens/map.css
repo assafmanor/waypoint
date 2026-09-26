@@ -16,6 +16,10 @@
 .map-screen[data-mode='plan'] {
   --idx-accent: var(--plan);
 }
+/* A finished trip selects in the archive's rose, as its day strip does (ADR-0240 §3). */
+.map-screen[data-phase='past'] {
+  --idx-accent: var(--memory);
+}
 
 /* ── The split (Phase 6, ADR-0121 §5; the controls leave the layout in ADR-0122 §1) ──
    The tab opts out of the scrolling body (`.body.is-fullbleed`, App.css) and owns its

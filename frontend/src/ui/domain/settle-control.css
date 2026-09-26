@@ -30,6 +30,9 @@
 .app[data-mode='plan'] .wp-settle-btn:focus-visible {
   outline-color: var(--plan);
 }
+.app[data-phase='past'] .wp-settle-btn:focus-visible {
+  outline-color: var(--memory);
+}
 
 /* THE PAIR IS SYMMETRIC, and that is the alignment this extraction is for: the day
    view gave ✓ its `--ok` and left the skip a bare word — neutral, text-only, and

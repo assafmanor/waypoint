@@ -106,6 +106,12 @@ export function daysUntilStart(
   return calendarDaysBetween(today, trip.startDate);
 }
 
+/** Calendar days since the trip's last date, from the trip's own today: what a finished trip's
+ *  header anchor says instead of `יום N/M` (ADR-0240 §3). Zero on the last date itself. */
+export function daysSinceEnd(trip: TripWindow, today: string): number {
+  return Math.max(0, calendarDaysBetween(trip.endDate, today));
+}
+
 /** **Whole calendar days to `startDate` from the DEVICE's today** — for the screens with no
  *  trip loaded, the all-trips list and the join ticket, where the person is wherever the phone
  *  is and there is no itinerary to read (ADR-0107, 2026-09-09 amendment). The trip's primary

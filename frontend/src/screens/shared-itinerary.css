@@ -299,8 +299,10 @@
    treatment rather than a badge: a chip that every card in a chronological run carries
    repeats the date already printed beside it and tells no two cards apart — which is exactly
    why `.chip.past` was deleted from the All Trips list rather than promoted (`App.css`).
-   These are that list's own two moves, `.trip-card.is-past`'s desaturation and muted title,
-   at this page's scale. They cost no layout. */
+   These were that list's own two moves, the desaturation and muted title of what was
+   `.trip-card.is-past`, at this page's scale. They cost no layout. The list itself dropped
+   them (ADR-0240 §7): a finished trip there is a memory, not a disabled row, where a day of
+   a trip still running is genuinely behind you. */
 .sh-day.is-past {
   filter: saturate(0.82);
 }

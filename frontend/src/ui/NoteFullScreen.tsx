@@ -71,7 +71,7 @@ export function NoteFullScreen({
   // 169 tests in six unrelated specs into "useMode must be used within <ModeProvider>". The
   // read belongs where the tint is used: this component mounts only when a note is opened, so
   // only a spec that opens one needs to say anything about mode.
-  const { mode } = useMode();
+  const { mode, phase } = useMode();
   const author = users.find((u) => u.id === note.createdBy)?.displayName;
   const href = externalHref(note.url);
   // A url-only note has no words to print, so the link IS the content and reads as the verb.
@@ -86,7 +86,7 @@ export function NoteFullScreen({
           {/* `.mode-chrome` and `.chrome-ghost-btn` are App.css's, two of the three
               `SearchOverlay` borrows, so this reads as part of the app rather than as a
               foreign white overlay — and it wears the mode's tint for free. */}
-          <div className="note-full-bar mode-chrome" data-mode={mode}>
+          <div className="note-full-bar mode-chrome" data-mode={mode} data-phase={phase}>
             <button
               type="button"
               className="chrome-ghost-btn"
