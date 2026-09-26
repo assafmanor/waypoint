@@ -2,6 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2026-07-12
+**Amended by:** [0240](0240-the-archive-is-rose.md) (2026-09-26): the budget gains a fourth hue, **archive rose (`--memory`) for a finished trip only**, and `--ok-deep` joins the status mini-palette as `--ok`'s ink.
 **Builds on:** [0016](0016-plan-trip-modes-one-surface.md) (Plan/Trip modes, one surface), [0011](0011-hard-soft-event-model.md) (hard/soft grammar)
 
 ## Context
