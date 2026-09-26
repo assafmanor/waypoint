@@ -62,16 +62,19 @@ Already designed in `mockups/trip-dashboard-v2.html` and `docs/design/design-lan
   - **Outside the window** (before the start / after the end): **Plan only.** The Trip-mode override is **not offered** and the mode toggle is hidden — Trip mode's now/next surface has no coherent "now" to stand on, and the departure board stays scarce ("the board = the trip is speaking," ADR-0033). The principle: you can always drop _down_ into Plan from Trip, but you can only be _in_ Trip while the trip is live.
 - **Location-awareness is deferred:** flipping to Trip mode on _arrival_ (geolocation) rather than by calendar is a nice future upgrade, out of v1 scope.
 
-## Before and after the trip (ADR-0040)
+## Before and after the trip (ADR-0040, ADR-0239)
 
 - **Before the trip (pre-trip):** Plan mode, **prep dashboard** — countdown, bookings, gaps to fill, who's connected. The purpose-built before-the-trip surface (unchanged).
-- **After the trip (past trip): a read-only archive.** Plan mode; the trip is finished and frozen for itinerary content:
-  - **Home** is a **calm retrospective** — a quiet header (destination · dates · "past trip"), a read-only day list, quick access to Index/Map. No prep dashboard, no board.
-  - **Day-by-day** is **read-only history** (ADR-0029's past-day visual for the whole trip); create/edit/delete/move are locked.
-  - **Index / Map** are full reference (offline) — confirmation codes/documents and "where we went."
+- **After the trip (past trip): a record, not a plan (ADR-0239 §1–§5).** The trip is finished once its last running commitment has ended (ADR-0236), and every surface reads that from the one phase `useMode()` derives. Mode stays Plan and the toggle stays hidden (ADR-0040).
+  - **Home** says `הטיול הסתיים` over the destination and dates, and counts what the trip held: days, events, bookings. No prep dashboard, no countdown, no board.
+  - **Day-by-day opens on day 1** and is frozen history: no create, edit, delete or move. The header strip marks no empty day as a gap and shows no `יום N/M` progress.
+  - **Settling is the one write** (ADR-0044): `היינו` / `דילגנו` / restore stay open on every day, so stragglers can still be marked.
+  - **The Map opens on `כל הימים`**, in one chronological list from day 1. The live trip's help is gone: no location offer, no `קרוב עכשיו`, no locate control, no `ניווט`.
+  - **The Index is a record.** Every booking sits in one open list with nothing to manage, the bookings tile names the kinds of booking the trip had, and no list (bookings, documents, tasks, notes) offers to add.
+  - **Tasks outlive the trip only where they are still owed.** The readiness checks retire. A task that fell due before the trip ended reads as never done, in neutral rather than `--miss`, and leaves the tile's overdue count. A task due after the trip (a VAT refund, an insurance claim) keeps its urgency and **keeps notifying**, the exception ADR-0198 now makes for a past trip. Ticking a task stays available.
+  - **Sharing is for reading.** The share sheet opens on `רק לצפייה`; the join branch and trip settings say the trip has ended, and the server refuses to mint an invite for it (`INVITE_EXPIRED`).
   - **Trip-settings** admin **rename/delete** stay available (governance, not itinerary building, ADR-0039).
-  - We deliberately do **not** allow settling stragglers (Done/Skip) post-trip — unresolved items just read as unresolved.
-  - **Future direction (not v1):** a richer **retrospective** — "trip wrapped"-style stats, highlights, a map of everywhere you went, per-member views, photos — would be a new feature surface with its own `mockups/past-trip-v1.html`. v1 ships the calm archive.
+  - **Not built yet:** the archive's own palette (a finished trip still wears Plan's chrome), the memory Home, the map as a journey, the coming-home beat, share outputs and the anniversary resurface. They are ADR-0239 §6–§9, phased in its [build plan](../planning/2026-09-25-a-finished-trip-is-a-memory-build-plan.md).
 
 ## Device note
 

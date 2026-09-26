@@ -339,9 +339,8 @@ Three requests triaged together: a user settings page reachable from inside a tr
 
 ## The finished trip epic (decision: [ADR-0239](decisions/0239-a-finished-trip-is-a-memory-not-a-plan.md); phases and what blocks what: [build plan](planning/2026-09-25-a-finished-trip-is-a-memory-build-plan.md))
 
-A finished trip becomes a memory with a palette of its own, not a read-only Plan. Investigation and spec: [`2026-09-25-what-a-finished-trip-is-for.md`](planning/2026-09-25-what-a-finished-trip-is-for.md). This replaces the _Archive presentation_ line that stood under _Screens not built_. Three lanes can start at once: Phase 0, 1A and 2.
+A finished trip becomes a memory with a palette of its own, not a read-only Plan. Investigation and spec: [`2026-09-25-what-a-finished-trip-is-for.md`](planning/2026-09-25-what-a-finished-trip-is-for.md). This replaces the _Archive presentation_ line that stood under _Screens not built_. Phase 0 (ADR-0239 §1–§5) is built; 1A and 2 can start at once.
 
-- **Phase 0 · the trip knows it ended:** ten carried-over bugs (F1–F10). 0.1, the phase read everywhere, lands first; 0.2–0.6 then run in parallel; 0.7 (the count-up at `0`) needs nothing. This includes ADR-0049 §2's never-built add-affordance removal, and the server refusing to mint an invite for an ended trip.
 - **Phase 1A · design, the archive's palette and posture:** `mockups/past-trip-v1.html` plus a palette ADR amending ADR-0028, `design-language.md` and root rule 4. Blocks 3, 4 and 6B; it is the critical path.
 - **Phase 1B · design, motion and the outputs:** the map journey, replay, the coming-home beat, the trip book, the group-chat card and the anniversary copy. Blocks 5 and 6A.
 - **Phase 2 · the recap derivation:** `tripRecap` in `packages/shared` with client and server adapters. Owes the enrichment-image TTL decision before a cover ships.
