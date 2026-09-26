@@ -12,7 +12,7 @@
 // callbacks — no `verbs` hook, no trip-state.
 //
 // Domain UI may use the shared copy/icon/time helpers (not state); it does.
-import { useState, type HTMLAttributes, type KeyboardEvent, type ReactNode } from 'react';
+import { useState, type KeyboardEvent, type ReactNode } from 'react';
 import { clockRange, formatTime, crossesMidnightZoned } from '../../lib/time';
 import type { EventKind, EventPhaseName } from './event-phase';
 import type { EventZones } from '../../lib/places';
@@ -25,6 +25,7 @@ import { RowManageSheet, type RowAction } from './ListRow';
 import { EventActions } from './EventActions';
 import { PlaceBadge } from './PlaceBadge';
 import { SettleControl } from './SettleControl';
+import { DoneChip } from './DoneChip';
 import { NoteMark } from './NoteMark';
 import { TaskMark } from './TaskMark';
 import { DocumentMark } from './DocumentMark';
@@ -302,41 +303,11 @@ export function EventCard(props: EventCardProps) {
   // said nothing about it. Status first, kind second: the ladder below is the order the
   // slot's own job implies, not a per-kind list.
   //
-  // **AND ON THE DONE ARM THE CHIP IS ALSO THE CONTROL** (ADR-0230 §1). One verb was spelled
-  // four ways — this label, a ✓ circle on the face, a `שחזור` button in the verb band, and
-  // Plan's own circle — and the circle's meaning lived in a `hover`/`focus-visible` morph,
-  // neither of which a phone tap produces (ADR-0017). The chip already carries the word, so
-  // it is the one mark that explains itself, and the other two on this card are gone.
-  //
-  // A `role="button"` SPAN, not a `<button>`: the face is itself one, and a nested button is
-  // invalid HTML — the parser closes the outer and reparents the rest (`frontend/CLAUDE.md`;
-  // the first render of the mockup grew the card +64px proving it). Same reason
-  // `PlaceBadge` and the `⋯` below are spans with a role.
+  // The done arm is `DoneChip`, which is also the undo (ADR-0230 §1) and is shared with Plan's
+  // archive row (ADR-0240 §5).
   const hasWhenSlot = !!startsAt;
-  const undoDone = (e: { preventDefault: () => void; stopPropagation: () => void }) => {
-    e.preventDefault();
-    e.stopPropagation();
-    onRestore?.();
-  };
-  // Everything the chip needs to BE the control, or nothing — so the label is written once
-  // and the two arms cannot drift in what they say. `title` as well as `aria-label`, because
-  // `היינו ✓` names the state and the tap does the opposite of it.
-  const undoProps: HTMLAttributes<HTMLSpanElement> = onRestore
-    ? {
-        role: 'button',
-        tabIndex: 0,
-        'aria-label': t.actions.undoDone,
-        title: t.actions.undoDone,
-        onClick: undoDone,
-        onKeyDown: (e) => {
-          if (e.key === 'Enter' || e.key === ' ') undoDone(e);
-        },
-      }
-    : {};
   const tag = isDone ? (
-    <span className={`wp-event-tag-done${onRestore ? ' btn' : ''}`} {...undoProps}>
-      <Icon name="check" /> {t.event.didThis}
-    </span>
+    <DoneChip onUndo={onRestore} />
   ) : isPassed ? (
     <span className="wp-event-tag-phase">{t.event.notMarked}</span>
   ) : isHard ? (

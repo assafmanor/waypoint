@@ -117,6 +117,19 @@ describe('Index landing (ADR-0098)', () => {
     expect(bookingsSub()).toBe(t.index.bookingType.flight);
   });
 
+  // ADR-0049 §2's banner, as ADR-0240 §6 builds it: Trip's past-day banner in the archive's
+  // hue, above the tiles, and only after the trip.
+  it('shows the archive banner on a finished trip, and not on a live one', () => {
+    render(wrap(<Index />));
+    expect(document.querySelector('.archive-banner')).toBeNull();
+    cleanup();
+    clockNow = '2026-07-30T03:00:00Z';
+    render(wrap(<Index />));
+    const banner = document.querySelector('.archive-banner.is-memory')!;
+    expect(banner.textContent).toBe(t.index.archiveBanner);
+    expect(banner.querySelector('.ab-back')).toBeNull();
+  });
+
   it('renders a bookings tile and a documents tile with their counts', () => {
     render(wrap(<Index />));
     expect(screen.getByRole('button', { name: new RegExp(t.index.bookingsTitle) })).toBeTruthy();

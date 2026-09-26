@@ -49,6 +49,7 @@ import { rowPhoto } from '../lib/place-photo';
 import { dayHeadTitle } from '../lib/day-title';
 import { dayShot, type DayShot } from '../lib/day-photo';
 import { DayHead } from '../ui/domain/DayHead';
+import { DoneChip } from '../ui/domain/DoneChip';
 import { MediaViewer } from '../ui/MediaViewer';
 import { useSpringLoadedDay } from '../lib/useSpringLoadedDay';
 import { useEdgeDayStep } from '../lib/useEdgeDayStep';
@@ -419,7 +420,7 @@ export function PlanDay() {
   // "15:00 on a check-in is a floor" is a fact about the booking, not about the screen
   // reading it. So Plan places nothing differently; what it does not do is offer to act
   // on it, because there is nowhere yet to store a placement.
-  const planGroups = buildTimeTree(dayEvents);
+  const planGroups = buildTimeTree(dayEvents, { keepSkipped: readOnly });
   // **THE SAME TWO FACTS, FROM THE SAME FUNCTION** (ADR-0209 §1). Trip mode reads
   // `dayBookendStays` too, and so does the map's stop sequence — ADR-0159 §1 allows the two day
   // surfaces to differ in posture and forbids a difference about a fact, and "you slept there" is
@@ -2837,9 +2838,7 @@ export function BuilderRow({
   // live trip, which is why the slot is usually empty now.
   const settleTag = settle ? (
     settle.status === EVENT_STATUS.DONE ? (
-      <span className="tag-done">
-        <Icon name="check" /> {t.event.didThis}
-      </span>
+      <DoneChip onUndo={settle.onRestore} />
     ) : settle.status === EVENT_STATUS.SKIPPED ? (
       <span className="tag-skip">{t.event.skipped}</span>
     ) : (
@@ -3013,28 +3012,13 @@ export function BuilderRow({
           <Icon name="more" />
         </button>
       )}
-      {/* Archive settle control (ADR-0044) — takes the ⋯ slot the read-only row
-          leaves free. Done ✓ / skipped ↩ restore in one tap (the ✓ morphs to an
-          undo arrow on hover/focus); an unresolved ○ opens the settle chooser. */}
+      {/* Archive settle control (ADR-0044) — takes the ⋯ slot the read-only row leaves
+          free, for what is still a question (○ opens the chooser) or an action (↩ restores a
+          skipped row). A done row has no circle: its `היינו ✓` chip is the mark and the undo,
+          as on Trip's card (ADR-0240 §5, ADR-0230 §1). */}
       {settle &&
-        (settle.status === EVENT_STATUS.DONE ? (
-          <span
-            className="bld-settle done"
-            role="button"
-            tabIndex={0}
-            aria-label={t.actions.undoDone}
-            title={t.actions.undoDone}
-            onClick={settle.onRestore}
-            onKeyDown={onSettleKey(settle.onRestore)}
-          >
-            <span className="mark" aria-hidden="true">
-              <Icon name="check" />
-            </span>
-            <span className="undo" aria-hidden="true">
-              <Icon name="undo" />
-            </span>
-          </span>
-        ) : settle.status === EVENT_STATUS.SKIPPED ? (
+        settle.status !== EVENT_STATUS.DONE &&
+        (settle.status === EVENT_STATUS.SKIPPED ? (
           <span
             className="bld-settle restore"
             role="button"

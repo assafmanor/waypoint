@@ -129,6 +129,37 @@ describe('DayStrip', () => {
     expect(container.querySelectorAll('.empty')).toHaveLength(0);
   });
 
+  // Every day is behind you after the trip, so none is dimmed, and the strip names the
+  // phase for the archive's rose selection (ADR-0240 §3).
+  it('dims no day and carries the phase on a finished trip', () => {
+    const { container } = render(
+      <DayStrip
+        days={DAYS}
+        selected="2026-07-20"
+        today="2026-07-20"
+        mode="plan"
+        onSelect={() => {}}
+        finished
+      />,
+    );
+    expect(container.querySelector('.wp-daystrip')?.getAttribute('data-phase')).toBe('past');
+    expect(container.querySelectorAll('.past')).toHaveLength(0);
+  });
+
+  it('dims the days before the selected one while planning', () => {
+    const { container } = render(
+      <DayStrip
+        days={DAYS}
+        selected="2026-07-20"
+        today="2026-07-18"
+        mode="plan"
+        onSelect={() => {}}
+      />,
+    );
+    expect(container.querySelector('.wp-daystrip')?.hasAttribute('data-phase')).toBe(false);
+    expect(container.querySelectorAll('.past')).toHaveLength(2);
+  });
+
   // `unscoped` = the host surface isn't showing one day: the Map's all-days scope
   // (ADR-0110 §4) and a trip-wide tab like the Index (field report #39). Both want
   // exactly this — the day is still in the URL, it is simply not the selected one here.

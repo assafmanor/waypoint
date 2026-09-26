@@ -42,6 +42,12 @@
   --plan: #6e59d6; /* plan-mode accent — plan/builder actions only */
   --plan-deep: #5747b4;
   --plan-tint: rgba(110, 89, 214, 0.1);
+  /* A finished trip's hue (ADR-0240), shaped like plan's: a fill, its ink, a wash. Rose is the
+     last wide gap on the hue wheel: its nearest meaning is --miss at ~20 ΔE00, where the app's
+     tightest shipped pair (teal against --ok) sits at 11.6. A finished trip only. */
+  --memory: #a9507f;
+  --memory-deep: #86395f;
+  --memory-tint: rgba(169, 80, 127, 0.1);
   --indigo-tint: rgba(27, 42, 74, 0.1); /* chrome-accent wash — active nav pill in Trip mode */
   --cta: var(--ink); /* neutral primary button; amber/teal/plan are semantic, never CTAs */
   --cta-text: var(--on-fill); /* the CTA is just one more fill — see --on-fill below */
@@ -178,6 +184,8 @@
      value and App.css only knows about modes. Violet needs no help — --plan is
      chroma 73.6 — so this one stays a mix and simply matches trip's weight. */
   --chrome-bg-plan: #dcd5f2;
+  /* The archive's band (ADR-0240 §3). Read by `.app[data-phase='past']` exactly as plan's is. */
+  --chrome-bg-memory: #efd9e2;
   --chrome-ink: #16233d; /* titles, active glyphs — also the wash base */
   --chrome-ink-mid: #2c3a56; /* control glyphs: the back chevron, the +N count */
   --chrome-ink-num: #3c4763; /* numerals — the day number, the anchor's value */
@@ -224,6 +232,9 @@
      phase did not do, and the backlog carries them. Naming it is what stops
      the 37th from being another literal. */
   --miss-deep: #96443c;
+  /* --ok AS INK, the same split (ADR-0240 §2). `.tag-done` wrote --ok at 10px on its own tint
+     at 3.03:1; on a finished trip that chip is the only done mark, so it has to read. */
+  --ok-deep: #2b7050;
 
   /* Category pin palette (ADR-0038 §2 / ADR-0028 decorative palette) — 5 pastel
      hues, "never amber or teal": colour = category on the Map list badge + pin
@@ -672,6 +683,9 @@ textarea {
      which lifts the band clear of the screen and restores the plane order. */
   --chrome-bg: color-mix(in srgb, var(--indigo) 12%, var(--card));
   --chrome-bg-plan: color-mix(in srgb, var(--plan) 12%, var(--card));
+  /* A LITERAL, not plan's recipe: --card is a blue, and rose mixed off it lands at hue 292–305°,
+     --plan's own angle (ΔE00 3.6 against plan's band, measured in mockups/past-trip-v1.html). */
+  --chrome-bg-memory: #33202b;
   --chrome-ink: #ffffff;
   --chrome-ink-mid: #dce3f2;
   --chrome-ink-num: #b9c4de;
@@ -702,6 +716,9 @@ textarea {
   --plan: #8b79e8;
   --plan-deep: #a99af2; /* used as text — lighter on dark */
   --plan-tint: rgba(139, 121, 232, 0.14);
+  --memory: #dc8ab5;
+  --memory-deep: #eba5c9; /* used as text — lighter on dark */
+  --memory-tint: rgba(220, 138, 181, 0.14);
   --indigo-tint: rgba(141, 168, 232, 0.16); /* brightened for the dark nav bar */
   --cta: #e7eaf2;
   --cta-text: var(--on-fill); /* tracks the family; the CTA is one more fill */
@@ -710,6 +727,7 @@ textarea {
   /* Deep means FURTHER FROM THE GROUND, not darker — on dark that is lighter,
      the same inversion --amber-deep and --plan-deep already make. */
   --miss-deep: #e3877d;
+  --ok-deep: #6fd49f;
   /* Category pins, nudged brighter so the pastels clear the dark board (dark is
      readiness-only today, ADR-0028/0105 — inert until data-theme=dark is set). */
   /* Identity ramp, lifted like the pin hues so a pastel ground still carries the

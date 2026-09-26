@@ -139,7 +139,7 @@ import { useAuth } from './auth-state';
 import { DAY_PARAM, HOME_TAB, TAB_PARAM, daySelectTarget, resolveActiveDate } from './nav-state';
 import { AppShell } from '../ui/layout';
 import { ChromeSkeleton, ErrorState, HomeSkeleton, LoadingState } from '../ui/feedback';
-import { deriveMode, tripToday } from '../lib/mode';
+import { tripPhase, tripToday } from '../lib/mode';
 import { t } from '../i18n/he';
 
 export type { RippleSuggestion };
@@ -876,9 +876,14 @@ export function TripProvider({
     // The one tier that needs a mode variant (ADR-0105): the chrome is already
     // mode-themed by the time this shows, so the skeleton shape-matches what
     // Home resolves into rather than popping from a mismatched shape.
-    const mode = knownTrip ? deriveMode(knownTrip, new Date(getNow())) : 'trip';
+    const phase = knownTrip ? tripPhase(knownTrip, new Date(getNow())) : 'live';
+    const mode = phase === 'live' ? 'trip' : 'plan';
     return (
-      <AppShell mode={mode} header={<ChromeSkeleton mode={mode} trip={knownTrip} />}>
+      <AppShell
+        mode={mode}
+        phase={phase}
+        header={<ChromeSkeleton mode={mode} phase={phase} trip={knownTrip} />}
+      >
         <LoadingState label={t.snapshot.loading} skeleton={<HomeSkeleton mode={mode} />} />
       </AppShell>
     );

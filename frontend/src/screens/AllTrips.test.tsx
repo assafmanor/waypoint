@@ -176,4 +176,12 @@ describe('AllTrips sharing entry', () => {
     expect(screen.getByText('ליסבון').closest('button')!.querySelector('.chip')).toBeNull();
     expect(container.querySelector('.chip.past')).toBeNull();
   });
+
+  // ADR-0240 §7: a finished trip is a memory, not a disabled row, so its card is the same
+  // card as an upcoming one's.
+  it('does not dim a finished trip', async () => {
+    renderTrips();
+    const past = (await screen.findByText('ליסבון')).closest('button')!;
+    expect(past.className).toBe('trip-card');
+  });
 });

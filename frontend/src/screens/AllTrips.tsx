@@ -173,12 +173,13 @@ export function AllTrips({
 
   // **`הסתיים` is deleted rather than promoted** (amendment §3): under a `הסתיים` heading,
   // over dates already past, the chip repeats its own heading and tells no two cards apart.
-  // `.is-past` already dims the card, so nothing is lost — and the countdown, which is the
-  // one fact that varies INSIDE a section, gets the trailing slot to itself.
+  // The heading already says it, so nothing is lost — and the countdown, which is the one fact
+  // that varies INSIDE a section, gets the trailing slot to itself. A finished trip is not
+  // dimmed either (ADR-0240 §7): a memory is not a disabled row.
   const row = (trip: Trip, chip: 'soon' | 'past') => (
     <button
       key={trip.id}
-      className={'trip-card' + (chip === 'past' ? ' is-past' : '')}
+      className="trip-card"
       onClick={(e) => pick(trip, e.currentTarget)}
       {...holdProps(trip)}
     >

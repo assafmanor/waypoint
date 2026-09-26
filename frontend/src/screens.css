@@ -766,18 +766,6 @@ body.wp-dragging
   padding: 2px 6px;
   border-radius: 6px;
 }
-.tag-done {
-  font-size: 10px;
-  font-weight: 700;
-  color: var(--ok);
-  background: rgba(60, 154, 107, 0.13);
-  padding: 2px 6px;
-  border-radius: 6px;
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-}
-
 /* ripple suggestion bar — pinned to the top of the scroll viewport so the
    ripple prompt stays reachable however far the day is scrolled (it's the one
    time-sensitive decision on the board). The amber tint is composited over an
@@ -905,42 +893,6 @@ body.wp-dragging
    desaturated list. No now-line (a day that's over has no "now"). */
 .day-list.archive {
   filter: saturate(0.9);
-}
-.archive-banner {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  background: var(--paper);
-  border: 1px solid color-mix(in srgb, var(--ink) 9%, transparent);
-  border-radius: 12px;
-  padding: 9px 12px;
-  margin-bottom: 12px;
-  font-size: 12px;
-  color: var(
-    --ink
-  ); /* was #5f6577; --ink matches the banner's own ab-back ink and holds AA on --paper */
-  font-weight: 600;
-}
-.archive-banner .ab-ic {
-  font-size: 14px;
-}
-.archive-banner .ab-main {
-  min-width: 0;
-}
-.archive-banner .ab-back {
-  margin-inline-start: auto;
-  font: inherit;
-  font-weight: 700;
-  color: var(--ink);
-  background: none;
-  border: 0;
-  cursor: pointer;
-  white-space: nowrap;
-}
-.archive-banner .ab-back:focus-visible {
-  outline: 2.5px solid var(--teal);
-  outline-offset: 2px;
-  border-radius: 6px;
 }
 .past-build-hint {
   display: flex;
@@ -2387,6 +2339,31 @@ body.wp-dragging
 .bld.soft .bld-bd {
   background: color-mix(in srgb, var(--ink) 5%, transparent);
 }
+/* A finished trip's rows are a record, not a builder (ADR-0240 §5): nothing moves after the
+   trip, so the soft dash and the soft badge wash have nothing left to say. A hard row keeps its
+   lock on the when line. */
+.app[data-phase='past'] .bld.soft {
+  border-style: solid;
+  border-color: var(--line);
+}
+.app[data-phase='past'] .bld.soft .bld-bd {
+  background: var(--paper);
+}
+/* An overlap on a finished trip is a fact about what happened, not a conflict to resolve, and
+   the cluster's violet is plan's alone (rule 4). The box and its seam tags go neutral; the
+   resolve button is already absent on a read-only row. */
+.app[data-phase='past'] .bld-cluster {
+  border-color: var(--line);
+  background: color-mix(in srgb, var(--ink) 3%, transparent);
+}
+.app[data-phase='past'] .bld-cluster-head,
+.app[data-phase='past'] .bld-cluster-head .win {
+  color: var(--muted);
+}
+.app[data-phase='past'] .seam-tag {
+  color: var(--muted);
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+}
 .bld-main {
   grid-area: title;
   margin-inline-start: 10px;
@@ -2623,14 +2600,11 @@ button.bld-time.empty {
   outline-offset: 2px;
 }
 
-/* Archive settle control (ADR-0044) — a soft row in a finished trip settles in
-   place, taking the ⋯ slot the read-only row leaves free. --ok green record
-   (status is mode-neutral, ADR-0028 — the same check the Trip archive uses); the
-   ✓ morphs to an undo arrow on hover/focus, and a thin persistent ring hints it
-   is tappable on touch. Done ✓ / skipped ↩ restore in one tap; unresolved ○
-   opens the settle chooser. */
-/* The archive's settle control takes the ⋯ cell, which a read-only row leaves
-   free (ADR-0044). */
+/* Archive settle control (ADR-0044) — a soft row in a finished trip settles in place,
+   taking the ⋯ slot the read-only row leaves free, for what is still a question (○ opens
+   the chooser) or an action (↩ restores a skipped row). A done row has no circle here: its
+   `היינו ✓` chip is the mark and the undo (ADR-0240 §5, `DoneChip`). The slot only exists
+   on a finished trip, so its focus ring is the archive's hue. */
 .bld-settle {
   grid-area: menu;
   align-self: center;
@@ -2652,60 +2626,8 @@ button.bld-time.empty {
     background var(--t-quick);
 }
 .bld-settle:focus-visible {
-  outline: 2.5px solid var(--plan);
+  outline: 2.5px solid var(--memory);
   outline-offset: 2px;
-}
-.bld-settle.done {
-  background: var(--ok);
-  color: var(--on-fill);
-}
-.bld-settle.done .mark,
-.bld-settle.done .undo {
-  grid-area: 1 / 1;
-  transition:
-    opacity var(--t-quick),
-    transform var(--t-quick);
-}
-.bld-settle.done .undo {
-  opacity: 0;
-  transform: scale(0.6);
-}
-.bld-settle.done::after {
-  content: '';
-  position: absolute;
-  inset: -4px;
-  border-radius: 999px;
-  box-shadow: 0 0 0 1.5px rgba(60, 154, 107, 0.35);
-}
-.bld-settle.done:focus-visible {
-  box-shadow: 0 0 0 4px rgba(60, 154, 107, 0.18);
-  transform: scale(1.06);
-}
-@media (hover: hover) and (pointer: fine) {
-  .bld-settle.done:hover {
-    box-shadow: 0 0 0 4px rgba(60, 154, 107, 0.18);
-    transform: scale(1.06);
-  }
-}
-.bld-settle.done:focus-visible .mark {
-  opacity: 0;
-  transform: scale(0.6);
-}
-@media (hover: hover) and (pointer: fine) {
-  .bld-settle.done:hover .mark {
-    opacity: 0;
-    transform: scale(0.6);
-  }
-}
-.bld-settle.done:focus-visible .undo {
-  opacity: 1;
-  transform: scale(1);
-}
-@media (hover: hover) and (pointer: fine) {
-  .bld-settle.done:hover .undo {
-    opacity: 1;
-    transform: scale(1);
-  }
 }
 .bld-settle.ghost {
   border: 1.5px dashed var(--soft-line);

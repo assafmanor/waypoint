@@ -6,7 +6,14 @@ import {
   type TripEvent,
   type ZoneEvidence,
 } from '@waypoint/shared';
-import { daysUntilStart, daysUntilStartOnDevice, deriveMode, tripPhase, tripToday } from './mode';
+import {
+  daysSinceEnd,
+  daysUntilStart,
+  daysUntilStartOnDevice,
+  deriveMode,
+  tripPhase,
+  tripToday,
+} from './mode';
 
 const NOW = '2026-07-01T00:00:00Z';
 import { TRIP } from '../fixtures';
@@ -58,6 +65,15 @@ describe('tripPhase', () => {
   it('reads the calendar day in the trip timezone, not UTC', () => {
     expect(tripPhase(TRIP, new Date('2026-07-14T14:30:00Z'))).toBe('live');
     expect(tripPhase(TRIP, new Date('2026-07-14T15:30:00Z'))).toBe('past');
+  });
+});
+
+describe("daysSinceEnd — a finished trip's age (ADR-0240 §3)", () => {
+  it('counts calendar days from the last date, and is zero on it and before it', () => {
+    expect(daysSinceEnd(TRIP, TRIP.endDate)).toBe(0);
+    expect(daysSinceEnd(TRIP, '2026-07-18')).toBe(4);
+    expect(daysSinceEnd(TRIP, '2027-07-14')).toBe(365);
+    expect(daysSinceEnd(TRIP, TRIP.startDate)).toBe(0);
   });
 });
 

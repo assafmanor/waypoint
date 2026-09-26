@@ -240,6 +240,7 @@ export function IndexNotesView({ onClose }: { onClose: () => void }) {
           title={t.notes.search.modeTitle}
           contextLabel={trip.name}
           mode={mode}
+          finished={finished}
           query={query}
           onQueryChange={setQuery}
           placeholder={t.notes.search.placeholder}

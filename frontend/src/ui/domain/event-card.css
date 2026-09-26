@@ -433,66 +433,6 @@
   padding: 2px 6px;
   border-radius: 6px;
 }
-.wp-event-tag-done {
-  font-size: 10px;
-  font-weight: 700;
-  color: var(--ok);
-  background: rgba(60, 154, 107, 0.13);
-  padding: 2px 6px;
-  border-radius: 6px;
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-}
-
-/* **AND ON A ROW THAT CAN BE TAKEN BACK, THE CHIP IS THE CONTROL** (ADR-0230 §1). One verb
-   was spelled four ways; the chip is the only one of them carrying a WORD, which is the one
-   thing the ✓ circle it replaces could not do without a hover the phone never sends
-   (ADR-0017). Everything visual is inherited from the rule above — becoming tappable adds
-   exactly a press step and a target. */
-.wp-event-tag-done.btn {
-  position: relative;
-  cursor: pointer;
-}
-
-/* **THE TARGET GROWS, THE LINE DOES NOT** — `ValueToken`'s own idiom (ADR-0177), whose
-   comment records what the obvious `min-height: 44px` costs: a form row from ⁦58px⁩ to
-   ⁦75px⁩. Here it would be the title line, on the app's most glanced-at surface.
-
-   `-14px` in the block axis rather than that rule's `-7px`, and the number is MEASURED for
-   this element instead of copied: the chip renders ⁦17px⁩ where a token is ⁦26px⁩, so
-   ⁦-12px⁩ reached only ⁦41px⁩ and the first render said so. ⁦14 + 17 + 14 = 45⁩, against
-   ADR-0017's ⁦44px⁩ floor.
-
-   **The inline inset is `ValueToken`'s own ⁦-2px⁩ and not the ⁦-8px⁩ the mockup drew**, because
-   the rendered app is where that number could first be paid for: the chip measures ⁦42px⁩
-   wide, so ⁦-2px⁩ already clears the floor on that axis and every pixel past it is taken
-   from the card's own toggle for nothing. What the target does take is stated rather than
-   hoped for — measured at 390 on a settled row, the overlay is ⁦46×45⁩ inside a ⁦356×69⁩
-   face, and it contains that face's geometric CENTRE, which is unavoidable: the title line's
-   centre sits ⁦11px⁩ from the card's, so any title-line control that reaches ⁦44px⁩ covers it.
-   It is a visible, labelled control and the band around it is its own; what it must not do
-   is cover a NEIGHBOURING control (`frontend/CLAUDE.md`), and it covers none — the badge,
-   the `⋯` and the chevron are all at the face's two edges, and the only things under the
-   block reach are the meta line's read-only marks. `e2e/done-chip-undo.spec.ts` holds both
-   halves of that, because jsdom can see neither. */
-.wp-event-tag-done.btn::after {
-  content: '';
-  position: absolute;
-  inset: -14px -2px;
-}
-
-.wp-event-tag-done.btn:active {
-  transform: scale(var(--press-scale));
-}
-
-/* `--ok`, not the app's teal focus ring: this control IS the status, and the ring naming it
-   green is the one place the record's own hue answers for a focus state. */
-.wp-event-tag-done.btn:focus-visible {
-  outline: 2.5px solid var(--ok);
-  outline-offset: 2px;
-}
-
 .wp-event-nest-note {
   font-size: var(--text-caption);
   font-weight: 700;

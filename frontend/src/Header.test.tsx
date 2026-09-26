@@ -14,6 +14,8 @@ import { wrapNav } from './test/nav-harness';
 import { setSimulatedNow } from './lib/useClock';
 import type { TravelModeOverride } from '@waypoint/shared';
 import { t } from './i18n/he';
+import { formatDuration } from './lib/duration';
+import { MINUTES_PER_DAY } from './constants';
 
 // jsdom has no layout engine, so it implements neither of these — `useShrinkToFit`
 // installs a ResizeObserver and the strip centres its selected pill on every change.
@@ -246,15 +248,29 @@ describe('the anchor slot', () => {
     expect(container.querySelector('.hdr-anchor')!.classList.contains('is-back')).toBe(false);
   });
 
-  // ADR-0239 §3: a finished trip has no progress to read. The slot stays, empty, until
-  // Phase 3 gives it words.
-  it('keeps the slot and reads nothing through it on a finished trip', () => {
+  // ADR-0239 §3 withdrew the progress; ADR-0240 §3 gives the slot the trip's age, on the
+  // app's one elapsed ladder (`formatDuration`), never a second vocabulary.
+  it('says how long ago a finished trip was, and is not a control', () => {
     mode = 'plan';
     phase = 'past';
+    setSimulatedNow(Date.parse('2026-07-31T03:00:00Z')); // four days after the 27th
     const { container } = renderHeader();
     const anchor = container.querySelector('.hdr-anchor')!;
-    expect(anchor.childElementCount).toBe(0);
-    expect(anchor.textContent).toBe('');
+    expect(anchor.tagName).not.toBe('BUTTON');
+    expect(anchor.textContent).toContain(t.header.agoCap);
+    expect(anchor.querySelector('.num.is-words')!.textContent).toBe(
+      formatDuration(4 * MINUTES_PER_DAY),
+    );
+    expect(anchor.textContent).not.toContain(t.header.dayCap);
+  });
+
+  it('reads `הסתיים · היום` on the last date itself', () => {
+    mode = 'plan';
+    phase = 'past';
+    setSimulatedNow(Date.parse('2026-07-27T13:00:00Z')); // the 27th, 22:00 Tokyo
+    const { container } = renderHeader();
+    const anchor = container.querySelector('.hdr-anchor')!;
+    expect(anchor.textContent).toBe(t.header.endedCap + t.header.endedToday);
   });
 });
 

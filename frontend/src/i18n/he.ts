@@ -649,6 +649,11 @@ export const t = {
     dayProgress: (day: number, total: number) => `${day}/${total}`,
     todayShort: 'היום',
     backToToday: 'חזרה להיום',
+    // A finished trip's anchor (ADR-0240 §3): `לפני` over the trip's age, phrased by the
+    // one elapsed ladder (`formatDuration`), and `הסתיים · היום` on the last date itself.
+    agoCap: 'לפני',
+    endedCap: 'הסתיים',
+    endedToday: 'היום',
   },
   // Per-entity sync status (U-04, ADR-0080): the per-row SyncBadge, the header
   // failed-summary affordance, and the review/retry (dead-letter) sheet.
@@ -729,6 +734,7 @@ export const t = {
       // A finished trip's: `עדיין` promises bookings still to come.
       noBookings: 'אין הזמנות',
       emptyDocuments: 'אין עדיין מסמכים',
+      noDocuments: 'אין מסמכים',
     },
     filter: {
       all: 'הכל',
@@ -756,6 +762,8 @@ export const t = {
     },
     bookingsTitle: 'הזמנות',
     offlineBadge: 'עובד אופליין',
+    // A finished trip's Index (ADR-0240 §6), on Trip's past-day banner.
+    archiveBanner: 'הטיול הסתיים · לקריאה בלבד',
     unlinked: 'לא משובצת במסלול',
     bookingType: {
       flight: 'טיסה',
@@ -1157,6 +1165,8 @@ export const t = {
     tile: {
       latest: (author: string, text: string) => `${author}: ${text}`,
       empty: 'אין עדיין פתקים',
+      // A finished trip's, as `noBookings` is: notes are frozen after the trip (ADR-0239 §4).
+      none: 'אין פתקים',
     },
     add: 'פתק חדש',
     filter: {

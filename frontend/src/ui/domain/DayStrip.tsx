@@ -112,7 +112,9 @@ function pillClass(
     else c.push(phase === DAY_PHASE.PAST ? 'past' : 'future');
   } else {
     if (isSelected) c.push('on');
-    else if (date < selected) c.push('past');
+    // Not on a finished trip: every day is behind you there, so dimming them is the wash
+    // ADR-0239 §6 retired (ADR-0240 §3).
+    else if (date < selected && !finished) c.push('past');
     if (!hasEvents && !finished) c.push('empty');
   }
   return c.join(' ');
@@ -134,7 +136,7 @@ export function DayStrip({
   const selectedRef = useCenterSelected<HTMLButtonElement>(selected, { active: !unscoped });
 
   return (
-    <div className="wp-daystrip" data-mode={mode}>
+    <div className="wp-daystrip" data-mode={mode} data-phase={finished ? 'past' : undefined}>
       {days.map((d) => (
         <Fragment key={d.date}>
           {d.monthLabel && (
