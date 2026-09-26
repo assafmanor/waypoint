@@ -59,7 +59,7 @@ export function TaskSection({
    *  and two add paths on one screen is one too many (`NoteSection`'s own rule). */
   onAdd?: () => void;
   onTick: (task: Task) => void;
-  onOpen: (task: Task) => void;
+  onOpen?: (task: Task) => void;
 }) {
   return (
     // `.note-sec` for the geometry — one section shape on a host surface, not two — and
@@ -92,6 +92,31 @@ export function TaskSection({
             const due = taskDue(task, clock);
             const settled = isSettled(task);
             const progress = subtaskProgress(subtasks.get(task.id));
+            const title = (
+              <>
+                {task.important && (
+                  <span className="tsk-star" aria-hidden="true">
+                    <Icon name="star" />
+                  </span>
+                )}
+                <span className="tsk-title-txt">{task.title}</span>
+                {/* The face alone, at the end of the title row — the screen's rule
+                        (ADR-0190 §6 as amended), so a task reads the same way wherever it is
+                        rendered. Absent when nobody owns it: the slot says that by being
+                        empty, which is what let the name go. */}
+                {assignee && (
+                  <>
+                    {/* The face is `aria-hidden` (`Avatar`’s non-interactive form), so the name
+                            it replaced would have left the row silent. Said here instead, where a
+                            reader gets it and the line does not grow. */}
+                    <Avatar person={assignee} size="inherit" className="tsk-who-row" />
+                    <span className="visually-hidden">
+                      {t.tasks.sheet.assigneeLabel}: {assignee.displayName}
+                    </span>
+                  </>
+                )}
+              </>
+            );
             return (
               <div
                 key={task.id}
@@ -111,29 +136,15 @@ export function TaskSection({
                   />
                 </span>
                 <span className="note-item-main">
-                  <button type="button" className="note-item-b" onClick={() => onOpen(task)}>
-                    {task.important && (
-                      <span className="tsk-star" aria-hidden="true">
-                        <Icon name="star" />
-                      </span>
-                    )}
-                    <span className="tsk-title-txt">{task.title}</span>
-                    {/* The face alone, at the end of the title row — the screen's rule
-                        (ADR-0190 §6 as amended), so a task reads the same way wherever it is
-                        rendered. Absent when nobody owns it: the slot says that by being
-                        empty, which is what let the name go. */}
-                    {assignee && (
-                      <>
-                        {/* The face is `aria-hidden` (`Avatar`’s non-interactive form), so the name
-                            it replaced would have left the row silent. Said here instead, where a
-                            reader gets it and the line does not grow. */}
-                        <Avatar person={assignee} size="inherit" className="tsk-who-row" />
-                        <span className="visually-hidden">
-                          {t.tasks.sheet.assigneeLabel}: {assignee.displayName}
-                        </span>
-                      </>
-                    )}
-                  </button>
+                  {/* A finished trip opens no editor (ADR-0239 §4), so the title is words, not
+                      a control. */}
+                  {onOpen ? (
+                    <button type="button" className="note-item-b" onClick={() => onOpen(task)}>
+                      {title}
+                    </button>
+                  ) : (
+                    <span className="note-item-b">{title}</span>
+                  )}
                   {/* **THE SECTION SAYS ONLY WHAT THERE IS TO SAY** (owner, 2026-08-16:
                       _"tasks should be more minimal"_, from the Map place card). The SCREEN
                       always reports an owner-state, including `לא משויך`, because that is a

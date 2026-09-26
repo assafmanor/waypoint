@@ -33,11 +33,13 @@ export function TaskManageSheet({
    *  that does something non-obvious needs a named twin, and that is what a menu is for, so
    *  this is the sheet's FIRST action rather than a footnote under the others. */
   derivedAction?: { label: string; onSelect: () => void };
-  onEdit: () => void;
-  onToggleImportant: () => void;
+  /** Edit, flag and delete are absent on a finished trip (ADR-0239 §4), which keeps only the
+   *  settling pair. */
+  onEdit?: () => void;
+  onToggleImportant?: () => void;
   onDismiss: () => void;
   onReopen: () => void;
-  onDelete: () => void;
+  onDelete?: () => void;
   onClose: () => void;
 }) {
   const [confirming, setConfirming] = useState(false);
@@ -58,7 +60,7 @@ export function TaskManageSheet({
         body={t.tasks.manage.deleteBody}
         confirmLabel={t.tasks.manage.confirmDelete}
         cancelLabel={t.tasks.manage.cancel}
-        onConfirm={onDelete}
+        onConfirm={() => onDelete?.()}
         onCancel={() => setConfirming(false)}
       />
     );
@@ -82,12 +84,18 @@ export function TaskManageSheet({
                 },
               ]
             : []
-          : [{ label: t.tasks.manage.edit, icon: CONTROL_ICON.edit, onSelect: onEdit }]),
-        {
-          label: task.important ? t.tasks.manage.unflag : t.tasks.manage.flag,
-          icon: CONTROL_ICON.star,
-          onSelect: onToggleImportant,
-        },
+          : onEdit
+            ? [{ label: t.tasks.manage.edit, icon: CONTROL_ICON.edit, onSelect: onEdit }]
+            : []),
+        ...(onToggleImportant
+          ? [
+              {
+                label: task.important ? t.tasks.manage.unflag : t.tasks.manage.flag,
+                icon: CONTROL_ICON.star,
+                onSelect: onToggleImportant,
+              },
+            ]
+          : []),
         // A settled task offers the way back rather than the way out — dismissing something
         // already done is not a state anyone is trying to reach.
         settled
@@ -95,7 +103,7 @@ export function TaskManageSheet({
           : { label: t.tasks.manage.dismiss, icon: CONTROL_ICON.skip, onSelect: onDismiss },
         // An automatic task has no destructive verb, so it has no danger group either —
         // deleting the row would only make the derivation write a fresh one.
-        ...(derived
+        ...(derived || !onDelete
           ? []
           : [
               {

@@ -65,7 +65,9 @@ vi.mock('../state/trip-state', () => ({
     users: [],
   }),
 }));
-vi.mock('../lib/useClock', () => ({ useClock: () => new Date('2026-07-20T00:00:00Z') }));
+const LIVE_NOW = '2026-07-20T00:00:00Z';
+let clockNow = LIVE_NOW;
+vi.mock('../lib/useClock', () => ({ useClock: () => new Date(clockNow) }));
 vi.mock('../lib/outbox', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../lib/outbox')>();
   return { ...actual, usePendingUploads: () => [], useIsOffline: () => false };
@@ -94,6 +96,25 @@ describe('Index landing (ADR-0098)', () => {
   afterEach(() => {
     cleanup();
     tripDocuments = [];
+    clockNow = LIVE_NOW;
+  });
+
+  const bookingsSub = () =>
+    screen
+      .getByRole('button', { name: new RegExp(t.index.bookingsTitle) })
+      .querySelector('.wp-idx-tile-sub')?.textContent;
+
+  it('names the next booking on the bookings tile of a live trip', () => {
+    render(wrap(<Index />));
+    expect(bookingsSub()).toContain(t.index.tile.nextPrefix);
+  });
+
+  // F7: on a finished trip the tile said `אין עדיין הזמנות` beside its own count. It names
+  // what the trip had instead (ADR-0239 §4). The trip ended 07-25.
+  it('names what a finished trip had on the bookings tile', () => {
+    clockNow = '2026-07-30T03:00:00Z';
+    render(wrap(<Index />));
+    expect(bookingsSub()).toBe(t.index.bookingType.flight);
   });
 
   it('renders a bookings tile and a documents tile with their counts', () => {

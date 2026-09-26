@@ -102,6 +102,7 @@ export function HostTasks({
   quiet,
   staging,
   canAdd = true,
+  frozen = false,
 }: {
   /** `id` is absent on a CREATE, where there is nothing to hang an FK on yet — the section
    *  then reads and writes `staging` instead of trip state. */
@@ -116,6 +117,9 @@ export function HostTasks({
   staging?: TaskStaging;
   /** Whether the header carries a way in at all — `HostNotes`' prop of the same name. */
   canAdd?: boolean;
+  /** **A finished trip** (ADR-0239 §4): the tasks read and still tick, and nothing adds or
+   *  edits one. */
+  frozen?: boolean;
 }) {
   const { tasks, subtasks, users, taskVerbs } = useTrip();
   const now = useClock();
@@ -185,11 +189,13 @@ export function HostTasks({
         clock={clock}
         hostSettled={hostId ? settledHosts.has(`${host.kind}:${hostId}`) : false}
         quiet={quiet}
-        onAdd={canAdd ? () => setSheet('create') : undefined}
+        onAdd={canAdd && !frozen ? () => setSheet('create') : undefined}
         // A staged task has nothing to tick: it does not exist yet, and completing something
         // you have not saved is a state with nowhere to live.
         onTick={(task) => (hostId ? void taskVerbs.tickTask(task) : undefined)}
-        onOpen={(task) => setSheet(hostId ? task : Number(task.id.split(':')[1]))}
+        onOpen={
+          frozen ? undefined : (task) => setSheet(hostId ? task : Number(task.id.split(':')[1]))
+        }
       />
       {sheet !== null && (
         <TaskSheet

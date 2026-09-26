@@ -20,6 +20,7 @@ import { useBackLayer, type BackResult } from '../state/nav-state';
 import { useClock } from '../lib/useClock';
 import {
   CATEGORY_ALL,
+  bookingRows,
   countByCategory,
   scheduleParts,
   splitBookings,
@@ -76,7 +77,9 @@ export function IndexBookingsView({
     zoneEvidence,
     enrichments,
   } = useTrip();
-  const { mode } = useMode();
+  // **A finished trip is a record** (ADR-0239 §4, building ADR-0049 §2): every booking in one
+  // open list, since all of them are past and the fold would hide the trip, and nothing writes.
+  const { mode, isFinished: finished } = useMode();
   // This screen is the Index's topmost overlay (ADR-0098 §5), so it closes before
   // the tab changes — the same ordering `BookingDetail` needs, one level out.
   const showPlaceOnMap = useShowPlaceOnMap();
@@ -95,7 +98,9 @@ export function IndexBookingsView({
     () => attachmentCountsByHost(documentAttachments),
     [documentAttachments],
   );
-  const { upcoming, past } = splitBookings(bookings, events, trip.timezone, now.getTime());
+  const { upcoming, past } = finished
+    ? { upcoming: bookingRows(bookings, events), past: [] }
+    : splitBookings(bookings, events, trip.timezone, now.getTime());
 
   const [category, setCategory] = useState<CategoryFilter>(CATEGORY_ALL);
   const [searchMode, setSearchMode] = useState(false);
@@ -215,7 +220,7 @@ export function IndexBookingsView({
       tripWindow={trip}
       now={now}
       onOpen={openDetail}
-      onManage={setManage}
+      onManage={finished ? undefined : setManage}
       notes={hostCountForContext(
         noteCounts,
         resolveHostContext(hostContexts, { kind: 'booking', id: row.booking.id }),
@@ -253,9 +258,11 @@ export function IndexBookingsView({
           </div>
           <div className="et">{t.index.emptyTitle}</div>
           <div className="es">{t.index.emptyBody}</div>
-          <button type="button" className="ea" onClick={() => setSheet('create')}>
-            <Icon name="plus" /> {t.index.form.add}
-          </button>
+          {!finished && (
+            <button type="button" className="ea" onClick={() => setSheet('create')}>
+              <Icon name="plus" /> {t.index.form.add}
+            </button>
+          )}
         </div>
       ) : (
         // Hidden (not just covered) while search mode is open — SearchOverlay
@@ -282,9 +289,11 @@ export function IndexBookingsView({
               </button>
             </div>
 
-            <button type="button" className="addbtn" onClick={() => setSheet('create')}>
-              <Icon name="plus" /> {t.index.form.add}
-            </button>
+            {!finished && (
+              <button type="button" className="addbtn" onClick={() => setSheet('create')}>
+                <Icon name="plus" /> {t.index.form.add}
+              </button>
+            )}
 
             {upcomingMatchCount > 0 ? (
               <RevealList
@@ -368,6 +377,7 @@ export function IndexBookingsView({
           onClose={() => setDetail(null)}
           onOpen={setDetail}
           onEdit={editFrom}
+          frozen={finished}
         />
       )}
       {manage && (
@@ -419,7 +429,8 @@ function BookingLi({
   tripWindow: DayNaming['trip'];
   now: Date;
   onOpen: (booking: Booking) => void;
-  onManage: (booking: Booking) => void;
+  /** Absent on a finished trip, whose row has nothing to manage. */
+  onManage?: (booking: Booking) => void;
   /** How many notes this booking carries (ADR-0152 §6): a mark on the row, never a body. */
   notes: number;
   /** …and how many documents (ADR-0174 §1). Two marks, not one combined "has content" glyph:
@@ -552,7 +563,7 @@ function BookingLi({
             showPlaceOnMap(placeId);
           }),
       )}
-      onManage={() => onManage(booking)}
+      onManage={onManage && (() => onManage(booking))}
       manageLabel={t.index.detail.actions}
     />
   );

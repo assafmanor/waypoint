@@ -51,10 +51,14 @@ export function BookingDetail({
   onClose,
   onEdit,
   onOpen,
+  frozen = false,
 }: {
   booking: Booking;
   onClose: () => void;
   onEdit: (booking: Booking) => void;
+  /** **A finished trip** (ADR-0239 §4): the booking reads and nothing on this sheet writes —
+   *  no edit, no place errand, no new task or note. */
+  frozen?: boolean;
   /** Show a different booking in this sheet — the round-trip fact's way through
    *  (ADR-0154 §5). Absent where the host has no detail state to swap, in which case
    *  the fact still STATES the pair and simply isn't a link: the same "absent, not
@@ -200,7 +204,8 @@ export function BookingDetail({
         subtitle={typeChipAddsMeaning(booking) ? t.index.bookingType[booking.type] : undefined}
         hard={linkedEvent?.kind === 'hard'}
         host={{ kind: 'booking', id: booking.id, name: booking.title }}
-        onEdit={edit}
+        frozen={frozen}
+        onEdit={frozen ? undefined : edit}
         onClose={onClose}
         knowledge={
           /* `PlaceKnowledge` answers both absences itself — a place with an image and no summary
@@ -228,7 +233,7 @@ export function BookingDetail({
                 // Offered whenever there is no place to focus: none at all, or a
                 // coordless Place-lite the picker can enrich in place.
                 onAddLocation={
-                  mapPlace || !startErrand
+                  mapPlace || !startErrand || frozen
                     ? undefined
                     : () =>
                         startErrand({

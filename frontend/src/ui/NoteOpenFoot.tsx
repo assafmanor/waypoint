@@ -68,7 +68,7 @@ export function NoteOpenFoot({
    *  and the right answer: the host is the screen you are on, so the foot has nothing to say
    *  about where this belongs and says nothing rather than saying something false. */
   onHostSurface?: boolean;
-  onEdit: () => void;
+  onEdit?: () => void;
 }) {
   // `externalHref` (ADR-0153 §5b) owns the scheme-supplying and the allowlist, `prettyUrl`
   // owns what a reader should see of it — the href keeps everything, the label does not.

@@ -8,9 +8,11 @@
 // Content is identical in Plan/Trip mode (ADR-0049) — mode only tints chrome.
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { BOOKING_TYPE } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
+import { useMode } from '../state/mode-state';
 import { useClock } from '../lib/useClock';
-import { splitBookings, scheduleLabel } from '../lib/index-bookings';
+import { countByCategory, splitBookings, scheduleLabel } from '../lib/index-bookings';
 import { groupDocuments } from '../lib/documents';
 import { noteTitleText, sortNotes } from '../lib/notes';
 import { taskDue, taskPreview, type TaskDueClock } from '../lib/tasks';
@@ -30,6 +32,7 @@ import {
   INDEX_FOCUS,
   TASK_PARAM,
 } from '../state/nav-state';
+import { DOT_SEPARATOR } from '../constants';
 import { t } from '../i18n/he';
 
 type IndexView = 'landing' | 'bookings' | 'documents' | 'notes' | 'tasks';
@@ -48,6 +51,7 @@ export function Index() {
     zoneEvidence,
   } = useTrip();
   const now = useClock();
+  const { isFinished } = useMode();
   const { automatic } = useAutomaticTasks();
   const [view, setView] = useState<IndexView>('landing');
   // Set alongside `view` by the ?booking= deep-link below, and handed to a
@@ -160,7 +164,16 @@ export function Index() {
 
   const { upcoming, past } = splitBookings(bookings, events, trip.timezone, now.getTime());
   const next = upcoming[0];
-  const bookingsSubtitle = next ? (
+  // **A finished trip names what it had** (ADR-0239 §4), the documents tile's grammar: once
+  // every booking is past there is no "next", and `none yet` beside a count is false.
+  const bookingCounts = countByCategory(bookings);
+  const bookingTypesHad = Object.values(BOOKING_TYPE)
+    .filter((type) => bookingCounts[type] > 0)
+    .map((type) => t.index.bookingType[type])
+    .join(` ${DOT_SEPARATOR} `);
+  const bookingsSubtitle = isFinished ? (
+    bookingTypesHad || t.index.tile.noBookings
+  ) : next ? (
     <>
       <Icon name="link" /> {t.index.tile.nextPrefix}{' '}
       <BookingTitle booking={next.booking} places={places} />

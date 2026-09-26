@@ -36,6 +36,7 @@ export function DetailSheet({
   knowledge,
   facts,
   host,
+  frozen = false,
   onEdit,
   onClose,
 }: {
@@ -64,6 +65,10 @@ export function DetailSheet({
   /** Whose documents and notes read here. One host, both sections, both through
    *  `lib/host-context.ts` — so a linked pair reads as one context on either surface. */
   host: NoteHostRef;
+  /** **A finished trip** (ADR-0239 §4): the host's tasks and notes read without a way to add
+   *  or edit one. Separate from `onEdit`, which a live trip's past day also withholds while its
+   *  notes stay writable. */
+  frozen?: boolean;
   /** **Absent on a read-only archive** (ADR-0040): a finished trip is browsable, and this
    *  sheet is what makes it browsable — but nothing on it may write. */
   onEdit?: () => void;
@@ -105,8 +110,8 @@ export function DetailSheet({
         <HostDocuments host={{ kind: host.kind, id: host.id }} />
         {/* Documents → TASKS → notes (ADR-0191 §5): ADR-0174 §3's order kept, with a task
             between the two because it is a thing to DO rather than a thing to know. */}
-        <HostTasks host={host} />
-        <HostNotes host={host} />
+        <HostTasks host={host} frozen={frozen} />
+        <HostNotes host={host} frozen={frozen} />
       </div>
     </Sheet>
   );

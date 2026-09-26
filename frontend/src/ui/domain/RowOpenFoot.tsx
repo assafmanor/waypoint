@@ -62,7 +62,8 @@ export function RowOpenFoot({
   viewLabel?: string;
   onView?: () => void;
   editLabel: string;
-  onEdit: () => void;
+  /** Absent on a finished trip (ADR-0239 §4), which leaves the foot its reading verbs. */
+  onEdit?: () => void;
 }) {
   return (
     <div className="row-open-foot">
@@ -78,9 +79,11 @@ export function RowOpenFoot({
           <Icon name="frame" /> {viewLabel}
         </button>
       )}
-      <button type="button" className="row-open-act" onClick={onEdit}>
-        <Icon name="edit" /> {editLabel}
-      </button>
+      {onEdit && (
+        <button type="button" className="row-open-act" onClick={onEdit}>
+          <Icon name="edit" /> {editLabel}
+        </button>
+      )}
     </div>
   );
 }

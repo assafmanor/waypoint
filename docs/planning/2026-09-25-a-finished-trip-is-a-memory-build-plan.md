@@ -93,6 +93,8 @@ Built · PR #871
 
 ### 0.4 · The Index (F7, F9 · §4)
 
+Built · PR #869
+
 - **Files:**
   - `ui/IndexBookingsView.tsx:103,139`: a finished trip shows every booking, open, chronological, with no `הצג מהעבר` fold.
   - `screens/Index.tsx:160-171`: the bookings tile names the count the trip had, not "none yet".

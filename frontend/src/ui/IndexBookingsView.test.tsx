@@ -161,7 +161,9 @@ vi.mock('../state/trip-state', () => ({
     },
   }),
 }));
-vi.mock('../lib/useClock', () => ({ useClock: () => new Date('2026-07-20T00:00:00Z') }));
+const LIVE_NOW = '2026-07-20T00:00:00Z';
+let clockNow = LIVE_NOW;
+vi.mock('../lib/useClock', () => ({ useClock: () => new Date(clockNow) }));
 vi.mock('../lib/outbox', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../lib/outbox')>();
   return {
@@ -197,6 +199,7 @@ describe('IndexBookingsView (ADR-0098/ADR-0101)', () => {
     tripBookings = [flight, hotel];
     tripEvents = [];
     showPlaceOnMap = null;
+    clockNow = LIVE_NOW;
   });
 
   it('renders both booking rows on the shared ListRow, with per-row sync + manage kebab', () => {
@@ -356,6 +359,42 @@ describe('IndexBookingsView (ADR-0098/ADR-0101)', () => {
 
     fireEvent.click(screen.getByRole('radio', { name: t.index.bookingType.flight }));
     expect(screen.getByText(t.index.pastToggle.show(1))).toBeTruthy();
+  });
+
+  it("offers the add button, the row kebab and the detail's writes on a live trip", () => {
+    render(wrap(<IndexBookingsView onClose={() => {}} />));
+    expect(document.querySelector('.addbtn')).not.toBeNull();
+    expect(screen.getAllByRole('button', { name: t.index.detail.actions })).toHaveLength(2);
+    fireEvent.click(screen.getByRole('button', { name: 'טוקיו' }));
+    const sheet = screen.getByRole('dialog');
+    expect(sheet.querySelector('.bk-edit')).not.toBeNull();
+    expect(sheet.querySelectorAll('.note-sec .add')).toHaveLength(2);
+  });
+
+  // A FINISHED TRIP IS A RECORD (ADR-0239 §4). The trip ends 07-25; five days later every
+  // linked booking is past, and the live screen's fold hid the whole trip under it (F7).
+  it('lists every booking open and chronological on a finished trip, with nothing to write', () => {
+    clockNow = '2026-07-30T03:00:00Z';
+    tripBookings = [flight, hotel, pastFlight];
+    tripEvents = [pastFlightEvent];
+    const { container } = render(wrap(<IndexBookingsView onClose={() => {}} />));
+
+    expect(container.querySelector('.addbtn')).toBeNull();
+    expect(screen.queryByText(t.index.pastToggle.show(1))).toBeNull();
+    expect(container.querySelector('.listcard.past')).toBeNull();
+    const titles = [...container.querySelectorAll('.listcard .bk-title-txt')].map(
+      (el) => el.textContent,
+    );
+    // Scheduled first by when, then the unscheduled ones: `bookingRows`' one order.
+    expect(titles).toEqual(['הגעה מטוקיו', 'Shinjuku Granbell', 'טוקיו']);
+    expect(screen.queryByRole('button', { name: t.index.detail.actions })).toBeNull();
+
+    // Its read still opens, and carries no way to write.
+    fireEvent.click(screen.getByRole('button', { name: 'הגעה מטוקיו' }));
+    const sheet = screen.getByRole('dialog');
+    expect(within(sheet).getByText('הגעה מטוקיו')).toBeTruthy();
+    expect(sheet.querySelector('.bk-edit')).toBeNull();
+    expect(sheet.querySelectorAll('.note-sec .add')).toHaveLength(0);
   });
 });
 

@@ -726,6 +726,8 @@ export const t = {
       nextPrefix: 'הבא:',
       pastCount: (n: number) => `${n} מהעבר`,
       emptyBookings: 'אין עדיין הזמנות',
+      // A finished trip's: `עדיין` promises bookings still to come.
+      noBookings: 'אין הזמנות',
       emptyDocuments: 'אין עדיין מסמכים',
     },
     filter: {

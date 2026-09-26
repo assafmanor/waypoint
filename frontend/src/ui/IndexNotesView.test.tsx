@@ -108,6 +108,8 @@ const created: unknown[] = [];
 const updated: unknown[] = [];
 const deleted: string[] = [];
 
+/** Empty: a trip with no dates, which is never finished. */
+let tripWindow: { startDate?: string; endDate?: string } = {};
 vi.mock('../state/trip-state', () => ({
   useTrip: () => ({
     zoneCrossings: [],
@@ -119,7 +121,7 @@ vi.mock('../state/trip-state', () => ({
       deleteTask: async () => {},
       tickTask: async () => {},
     },
-    trip: { id: 't1', name: 'טוקיו', timezone: 'Asia/Tokyo' },
+    trip: { id: 't1', name: 'טוקיו', timezone: 'Asia/Tokyo', ...tripWindow },
     notes: tripNotes,
     events: [dinner],
     bookings: [hotel],
@@ -193,9 +195,44 @@ describe('IndexNotesView (ADR-0153)', () => {
       orphaned,
       withLink,
     ];
+    tripWindow = {};
     created.length = 0;
     updated.length = 0;
     deleted.length = 0;
+  });
+
+  // NOTES STAY FROZEN TOO (ADR-0239 §4, owner). The clock reads 07-19; this trip ended 07-10.
+  describe('a finished trip', () => {
+    const FINISHED = { startDate: '2026-07-01', endDate: '2026-07-10' };
+    const foot = () => document.querySelector('.row-open-foot')!;
+
+    it("offers the add button, the kebab and the foot's edit on a live trip", () => {
+      show();
+      expect(document.querySelector('.addbtn')).not.toBeNull();
+      expect(document.querySelectorAll('.wp-listrow-kebab').length).toBeGreaterThan(0);
+      fireEvent.click(screen.getByRole('button', { name: bodyOnly.body! }));
+      expect(foot().textContent).toContain(t.notes.open.edit);
+    });
+
+    it('lists every note, reads them, and offers no way to add or edit one', () => {
+      tripWindow = FINISHED;
+      show();
+      expect(document.querySelector('.addbtn')).toBeNull();
+      expect(document.querySelectorAll('.wp-listrow-kebab')).toHaveLength(0);
+      expect(visibleRows()).toHaveLength(tripNotes.length);
+
+      fireEvent.click(screen.getByRole('button', { name: bodyOnly.body! }));
+      expect(foot().textContent).toContain(t.notes.open.full);
+      expect(foot().textContent).not.toContain(t.notes.open.edit);
+    });
+
+    it('offers no way in from the empty screen', () => {
+      tripWindow = FINISHED;
+      tripNotes = [];
+      show();
+      expect(screen.getByText(t.notes.empty.title)).toBeTruthy();
+      expect(screen.queryByRole('button', { name: t.notes.empty.action })).toBeNull();
+    });
   });
 
   describe('the row', () => {

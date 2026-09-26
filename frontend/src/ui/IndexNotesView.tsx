@@ -58,7 +58,9 @@ import './notes.css';
 
 export function IndexNotesView({ onClose }: { onClose: () => void }) {
   const { trip, notes, users, noteHosts, noteVerbs } = useTrip();
-  const { mode } = useMode();
+  // A finished trip's notes read and nothing writes one (ADR-0239 §4, owner: no post-trip
+  // notes).
+  const { mode, isFinished: finished } = useMode();
   const now = useClock();
 
   const [category, setCategory] = useState<NoteCategoryFilter>(NOTE_CATEGORY_ALL);
@@ -143,7 +145,7 @@ export function IndexNotesView({ onClose }: { onClose: () => void }) {
       glyph={noteGlyph(note, hosts)}
       now={now}
       open={openId === note.id}
-      onManage={setManage}
+      onManage={finished ? undefined : setManage}
       // **A tap means "read this", and the app decides where** (ADR-0202 §9c). A short note
       // lifts its clamp where it sits; one too long for the list opens on its own screen
       // instead of becoming a wall inside a row. The decision is here rather than in `NoteLi`
@@ -154,7 +156,7 @@ export function IndexNotesView({ onClose }: { onClose: () => void }) {
           : setOpenId((current) => (current === note.id ? null : note.id))
       }
       onView={() => setReading(note)}
-      onEdit={setSheet}
+      onEdit={finished ? undefined : setSheet}
     />
   );
   const noteKey = (note: Note) => note.id;
@@ -178,7 +180,11 @@ export function IndexNotesView({ onClose }: { onClose: () => void }) {
           icon={<Icon name="clipboard" />}
           title={t.notes.empty.title}
           body={t.notes.empty.body}
-          action={{ label: t.notes.empty.action, onClick: () => setSheet('create') }}
+          action={
+            finished
+              ? undefined
+              : { label: t.notes.empty.action, onClick: () => setSheet('create') }
+          }
         />
       ) : (
         // Hidden (not merely covered) while search is open: SearchOverlay renders the same
@@ -209,9 +215,11 @@ export function IndexNotesView({ onClose }: { onClose: () => void }) {
               </button>
             </div>
 
-            <button type="button" className="addbtn" onClick={() => setSheet('create')}>
-              <Icon name="plus" /> {t.notes.add}
-            </button>
+            {!finished && (
+              <button type="button" className="addbtn" onClick={() => setSheet('create')}>
+                <Icon name="plus" /> {t.notes.add}
+              </button>
+            )}
 
             {matchCount > 0 ? (
               <RevealList
@@ -278,11 +286,15 @@ export function IndexNotesView({ onClose }: { onClose: () => void }) {
               ? () => wayIn.goTo(noteHost(reading, hosts)!)
               : undefined
           }
-          onEdit={() => {
-            const note = reading;
-            setReading(null);
-            setSheet(note);
-          }}
+          onEdit={
+            finished
+              ? undefined
+              : () => {
+                  const note = reading;
+                  setReading(null);
+                  setSheet(note);
+                }
+          }
           onClose={() => setReading(null)}
         />
       )}
@@ -336,8 +348,9 @@ function NoteLi({
   onToggle: () => void;
   /** Open this note on its own screen (ADR-0202 §1). */
   onView: () => void;
-  onEdit: (note: Note) => void;
-  onManage: (note: Note) => void;
+  /** Both absent on a finished trip (ADR-0239 §4). */
+  onEdit?: (note: Note) => void;
+  onManage?: (note: Note) => void;
 }) {
   const { users } = useTrip();
   const unsynced = useUnsynced(note.id);
@@ -415,7 +428,7 @@ function NoteLi({
         }
         sync={<EntitySyncBadge id={note.id} />}
         unsynced={unsynced}
-        onManage={() => onManage(note)}
+        onManage={onManage && (() => onManage(note))}
         manageLabel={t.notes.manage.actions}
       />
       {/* The row's SIBLING, not a prop on it: `ListRow` is shared with bookings, documents
@@ -428,7 +441,7 @@ function NoteLi({
           urlIsTheTitle={!note.title && !note.body}
           onGoToHost={reachable ? () => wayIn.goTo(host!) : undefined}
           onView={onView}
-          onEdit={() => onEdit(note)}
+          onEdit={onEdit && (() => onEdit(note))}
         />
       )}
     </>

@@ -24,10 +24,14 @@ type Mode = 'menu' | 'edit' | 'delete';
 export function DocumentManageSheet({
   tripId,
   doc,
+  frozen = false,
   onClose,
 }: {
   tripId: string;
   doc: DocumentSummary;
+  /** **A finished trip** (ADR-0239 §4): the sheet stays, because it is where the document's
+   *  notes and tasks are read, and loses every verb that writes. */
+  frozen?: boolean;
   onClose: () => void;
 }) {
   const toast = useToast();
@@ -71,22 +75,30 @@ export function DocumentManageSheet({
         // was about to destroy (ADR-0138 §3).
         subject={t.docs.type[doc.type]}
         onClose={onClose}
-        actions={[
-          { label: t.docs.manage.edit, icon: CONTROL_ICON.edit, onSelect: () => setMode('edit') },
-          {
-            label: t.docs.manage.delete,
-            icon: CONTROL_ICON.trash,
-            danger: true,
-            onSelect: () => setMode('delete'),
-          },
-        ]}
+        actions={
+          frozen
+            ? []
+            : [
+                {
+                  label: t.docs.manage.edit,
+                  icon: CONTROL_ICON.edit,
+                  onSelect: () => setMode('edit'),
+                },
+                {
+                  label: t.docs.manage.delete,
+                  icon: CONTROL_ICON.trash,
+                  danger: true,
+                  onSelect: () => setMode('delete'),
+                },
+              ]
+        }
       >
         {/* **This sheet is the document's note surface** (ADR-0153 §8). A document's other
             surface is the viewer, whose body is a pinch-zoom image in a card that clips —
             so the notes would compete with the bytes you opened it to read, and the room
             for the section is here, where the document is already described in words. */}
-        <HostTasks host={{ kind: 'document', id: doc.id, name: doc.title }} />
-        <HostNotes host={{ kind: 'document', id: doc.id, name: doc.title }} />
+        <HostTasks host={{ kind: 'document', id: doc.id, name: doc.title }} frozen={frozen} />
+        <HostNotes host={{ kind: 'document', id: doc.id, name: doc.title }} frozen={frozen} />
       </RowManageSheet>
     );
   }

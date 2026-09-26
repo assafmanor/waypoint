@@ -85,7 +85,7 @@ export function NoteSection({
   inheritedFrom?: (note: Note) => string | undefined;
   /** The one verb an open note offers here. Reached by tapping the note and then `עריכה`,
    *  so nobody lands in a form by reaching for a sentence. */
-  onEdit: (note: Note) => void;
+  onEdit?: (note: Note) => void;
   /** **Read this note on its own screen** (ADR-0202 §1). The section is one of the two
    *  surfaces a note opens on, and the foot is the only half of either that can hold a tap
    *  target — so the way in is the same control here as on the notes screen, which is the
@@ -166,7 +166,7 @@ export function NoteSection({
               inheritedFrom={inheritedFrom}
               onOpenFull={onOpenFull}
               onToggle={() => setOpenId((current) => (current === note.id ? null : note.id))}
-              onEdit={() => onEdit(note)}
+              onEdit={onEdit && (() => onEdit(note))}
               hold={hold}
               onHeld={() => (held.current = note)}
             />
@@ -205,7 +205,7 @@ function NoteItem({
   inheritedFrom?: (note: Note) => string | undefined;
   onOpenFull?: (note: Note) => void;
   onToggle: () => void;
-  onEdit: () => void;
+  onEdit?: () => void;
   /** The section's shared hold handlers — see `held` above for why they are not per row. */
   hold: ReturnType<typeof useHoldToOpen>;
   onHeld: () => void;
