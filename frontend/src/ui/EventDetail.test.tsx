@@ -13,6 +13,7 @@ import { setSimulatedNow } from '../lib/useClock';
 let tripPlaces: Place[] = [];
 let tripEnrichments: Record<string, unknown> = {};
 
+vi.mock('../state/mode-state', () => import('../test/mode-from-trip'));
 vi.mock('../state/trip-state', () => ({
   useTrip: () => ({
     zoneCrossings: [],

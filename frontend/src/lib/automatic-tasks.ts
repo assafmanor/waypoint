@@ -23,6 +23,7 @@ import { TASK_STATUS } from '@waypoint/shared';
 import type { ReadinessCheck } from '@waypoint/shared';
 import { t } from '../i18n/he';
 import { tripDayNumber } from './time';
+import type { TripPhase } from './mode';
 
 /** **The one verb that resolves each check** (ADR-0061 §1: the CTA does the thing). An id
  *  rather than a callback, because the two hosts reach the same destination differently —
@@ -59,6 +60,8 @@ export interface AutomaticTaskContext {
   emptyDates: string[];
   tripStartDate: string;
   travelerCount: number;
+  /** `useMode().phase`. A finished trip has no readiness left to check (ADR-0239 §3). */
+  phase: TripPhase;
 }
 
 /** A check's words and its verb. Lifted from `PlanHome.rowFor` unchanged in wording — the
@@ -151,6 +154,7 @@ export function automaticTasks(
   tasks: Task[],
   ctx: AutomaticTaskContext,
 ): AutomaticTask[] {
+  if (ctx.phase === 'past') return [];
   const overlay = new Map<string, Task>();
   for (const task of tasks) if (task.derivedKey) overlay.set(task.derivedKey, task);
   return checks.map((check) => {

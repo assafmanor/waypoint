@@ -13,6 +13,7 @@ const CLOCK: TaskDueClock = {
   crossings: [],
   primaryZone: 'Asia/Jerusalem',
   trip: { startDate: '2026-08-01', endDate: '2026-08-31' },
+  phase: 'live',
 };
 
 const users: User[] = [

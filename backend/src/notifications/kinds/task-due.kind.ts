@@ -41,7 +41,7 @@ export const taskDueKind: NotificationKind = {
     const audience = await tripAudience(prisma, tasks, nowMs);
     const sends: DueSend[] = [];
     for (const task of tasks) {
-      if (!audience.isLive(task.tripId)) continue;
+      if (!audience.isLiveForTask(task)) continue;
       const recipients = audience.recipients(task);
       if (recipients.length === 0) continue;
 

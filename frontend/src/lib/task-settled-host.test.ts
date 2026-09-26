@@ -16,13 +16,15 @@ import {
   taskCountFor,
   taskPreview,
   tasksDueSoon,
-  type TaskClock,
+  type TaskDueClock,
 } from './tasks';
 
-const CLOCK: TaskClock = {
+const CLOCK: TaskDueClock = {
   nowMs: Date.parse('2026-08-15T09:00:00.000Z'),
   crossings: [],
   primaryZone: 'Asia/Jerusalem',
+  trip: { startDate: '2026-08-01', endDate: '2026-08-31' },
+  phase: 'live',
 };
 
 const task = (id: string, over: Partial<Task> = {}): Task => ({

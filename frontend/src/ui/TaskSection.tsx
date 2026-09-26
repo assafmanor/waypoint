@@ -14,7 +14,13 @@
 // vocabulary. This surface is where you see what was done about this booking; the tasks SCREEN
 // is where the settled collapse lives.
 import type { Task, User } from '@waypoint/shared';
-import { subtaskProgress, taskDue, tickedStatus, type TaskDueClock } from '../lib/tasks';
+import {
+  subtaskProgress,
+  taskDue,
+  taskDueClass,
+  tickedStatus,
+  type TaskDueClock,
+} from '../lib/tasks';
 import { isSettled } from '../lib/tasks';
 import { ltrIsolate } from '../lib/bidi';
 import { Avatar } from './primitives/Avatar';
@@ -162,7 +168,7 @@ export function TaskSection({
                   {(due || progress.total > 0) && (
                     <span className="note-item-m">
                       {due && (
-                        <span className={due.late ? 'tsk-due late' : 'tsk-due'}>
+                        <span className={taskDueClass(due)}>
                           <Icon name="clock" /> {due.late ? t.tasks.due.late : t.tasks.due.by}{' '}
                           {/* The numeric run is its own LTR island (ADR-0118). */}
                           {due.time ? `${due.day} ${ltrIsolate(due.time)}` : due.day}
