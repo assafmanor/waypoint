@@ -2016,6 +2016,7 @@ export function PlanDay() {
             event={eventDetail}
             zoneCtx={zoneCtx}
             onClose={() => setEventDetail(null)}
+            frozen={readOnly}
             // A finished trip is browsable and not editable (ADR-0040), so the archive's read
             // carries no way to write — which is also what makes opening it safe there.
             onEdit={
@@ -2038,6 +2039,9 @@ export function PlanDay() {
               setDetailTarget(null);
               setBookingTarget(b);
             }}
+            // A finished trip's read writes nothing (ADR-0239 §4), which the event read below
+            // already honoured and this one did not.
+            frozen={readOnly}
           />
         )}
       </div>

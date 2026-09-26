@@ -127,6 +127,11 @@
 .app[data-mode='plan'] .tsk-tick-sec:focus-visible {
   outline-color: var(--plan);
 }
+/* A finished trip still ticks tasks (ADR-0239 §3) and wears its own hue, not plan's (ADR-0240). */
+.app[data-phase='past'] .tsk-tick:focus-visible,
+.app[data-phase='past'] .tsk-tick-sec:focus-visible {
+  outline-color: var(--memory);
+}
 .tsk-tick[aria-pressed='true'],
 .tsk-tick-sec[aria-pressed='true'] {
   color: var(--on-fill);

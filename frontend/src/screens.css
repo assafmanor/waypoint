@@ -1542,10 +1542,12 @@ body.wp-dragging
   background: radial-gradient(90% 60% at 85% 0%, rgba(255, 255, 255, 0.16), transparent 60%);
   pointer-events: none;
 }
-/* Past-trip retrospective (ADR-0040): the same violet plan hero, toned down —
-   a calm archive card, not the loud prep countdown. */
+/* Past-trip retrospective (ADR-0040): the plan hero's shape, toned down — a calm archive
+   card, not the loud prep countdown — on the archive's own surface rather than plan's violet
+   (ADR-0240 rule 4). The memory Home (ADR-0240 §4, Phase 4) replaces this card. */
 .prep-past {
-  box-shadow: 0 14px 26px -20px rgba(46, 33, 104, 0.5);
+  background: linear-gradient(180deg, var(--memory-surface-2), var(--memory-surface));
+  box-shadow: 0 14px 26px -20px rgba(66, 22, 44, 0.5);
 }
 .prep-k {
   color: var(--on-plan-faint);
@@ -2847,6 +2849,19 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
   outline: 2.5px solid var(--plan);
   outline-offset: 2px;
 }
+/* A finished trip's one `.addbtn` is the Home's way into its days, which is not a plan action. */
+.app[data-phase='past'] .addbtn {
+  color: var(--memory-deep);
+}
+@media (hover: hover) and (pointer: fine) {
+  .app[data-phase='past'] .addbtn:hover {
+    border-color: var(--memory);
+    background: var(--memory-tint);
+  }
+}
+.app[data-phase='past'] .addbtn:focus-visible {
+  outline-color: var(--memory);
+}
 
 /* add-idea row under the shelf */
 .add-idea {
@@ -4022,6 +4037,10 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
 }
 .app[data-mode='plan'] .index {
   --idx-accent: var(--plan);
+}
+/* A finished trip selects in the archive's rose, as its day strip does (ADR-0240 §3). */
+.app[data-phase='past'] .index {
+  --idx-accent: var(--memory);
 }
 
 /* One dense chip+search row (ADR-0100 §2, retargeted by ADR-0101): the search

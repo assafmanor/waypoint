@@ -45,6 +45,7 @@ export function EventDetail({
   zoneCtx,
   onClose,
   onEdit,
+  frozen = false,
 }: {
   event: TripEvent;
   /** The day's zone resolution (ADR-0107) — each end renders in its OWN zone, exactly as the
@@ -53,6 +54,9 @@ export function EventDetail({
   onClose: () => void;
   /** Absent on a read-only archive — see `DetailSheet`. */
   onEdit?: () => void;
+  /** A finished trip (ADR-0239 §4): its tasks and notes read without a way to add one. Passed
+   *  through to `DetailSheet`, as `BookingDetail` already did. */
+  frozen?: boolean;
 }) {
   const { trip, bookings, places, enrichments } = useTrip();
   const showPlaceOnMap = useShowPlaceOnMap();
@@ -109,6 +113,7 @@ export function EventDetail({
         hard={event.kind === EVENT_KIND.HARD}
         host={{ kind: 'event', id: event.id, name: event.title }}
         onEdit={onEdit}
+        frozen={frozen}
         onClose={onClose}
         knowledge={
           /* **The read gets the place's knowledge** (ADR-0219 §6). `PlaceKnowledge` answers both
