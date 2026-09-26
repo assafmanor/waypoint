@@ -339,13 +339,12 @@ Three requests triaged together: a user settings page reachable from inside a tr
 
 ## The finished trip epic (decision: [ADR-0239](decisions/0239-a-finished-trip-is-a-memory-not-a-plan.md); phases and what blocks what: [build plan](planning/2026-09-25-a-finished-trip-is-a-memory-build-plan.md))
 
-A finished trip becomes a memory with a palette of its own, not a read-only Plan. Investigation and spec: [`2026-09-25-what-a-finished-trip-is-for.md`](planning/2026-09-25-what-a-finished-trip-is-for.md). This replaces the _Archive presentation_ line that stood under _Screens not built_. Three lanes can start at once: Phase 0, 1A and 2.
+A finished trip becomes a memory with a palette of its own, not a read-only Plan. Investigation and spec: [`2026-09-25-what-a-finished-trip-is-for.md`](planning/2026-09-25-what-a-finished-trip-is-for.md). This replaces the _Archive presentation_ line that stood under _Screens not built_. Three lanes started at once: Phase 0, 1A and 2. **1A is done** (rose, [ADR-0240](decisions/0240-the-archive-is-rose.md)), so 3, 4 and 6B are unblocked on the design side.
 
 - **Phase 0 · the trip knows it ended:** ten carried-over bugs (F1–F10). 0.1, the phase read everywhere, lands first; 0.2–0.6 then run in parallel; 0.7 (the count-up at `0`) needs nothing. This includes ADR-0049 §2's never-built add-affordance removal, and the server refusing to mint an invite for an ended trip.
-- **Phase 1A · design, the archive's palette and posture:** `mockups/past-trip-v1.html` plus a palette ADR amending ADR-0028, `design-language.md` and root rule 4. Blocks 3, 4 and 6B; it is the critical path.
 - **Phase 1B · design, motion and the outputs:** the map journey, replay, the coming-home beat, the trip book, the group-chat card and the anniversary copy. Blocks 5 and 6A.
 - **Phase 2 · the recap derivation:** `tripRecap` in `packages/shared` with client and server adapters. Owes the enrichment-image TTL decision before a cover ships.
-- **Phase 3 · the archive posture built:** needs 0.1 and 1A.
+- **Phase 3 · the archive posture built** ([ADR-0240](decisions/0240-the-archive-is-rose.md), rose): 3.1 tokens first, then 3.2 chrome, 3.3 the day list as a record (with the `buildTimeTree` skipped-row defect), 3.4 the Index, 3.5 /trips. Needs 0.1.
 - **Phase 4 · the memory Home built:** needs 1A and 2; beside 3.
 - **Phase 5 · the map as a journey, replay, coming home:** needs 0.3, 1B, 2, and 4 for the beat.
 - **Phase 6 · share outputs (6A) and resurface (6B):** 6A needs 1B and 2; 6B needs 1A and 2, and its push (ADR-0239 §8) waits for 1B's copy.

@@ -40,7 +40,7 @@ The share sheet opens on `רק לצפייה`. The join branch says the trip has 
 
 **Owner: "a whole new color palette for past trips."** A finished trip does not wear Plan's violet. Root rule 4 gives violet to plan mode alone, and nothing is being planned. It does not wear ADR-0043's desaturated past-day wash either: a wash says "less", and this is the page people come back to.
 
-The values are the design phase's, drawn in `mockups/past-trip-v1.html`, and they arrive with their own ADR amending ADR-0028, `design-language.md` and root `CLAUDE.md` rule 4. This ADR fixes only the constraints:
+The values are the design phase's, drawn in `mockups/past-trip-v1.html`, and they arrive with their own ADR amending ADR-0028, `design-language.md` and root `CLAUDE.md` rule 4. **Decided 2026-09-26 in [ADR-0240](0240-the-archive-is-rose.md): the archive is rose (`--memory`).** This ADR fixes only the constraints:
 
 - Both themes, contrast floors met.
 - A hue that collides with none of amber, teal or violet.
