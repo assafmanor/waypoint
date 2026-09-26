@@ -343,7 +343,7 @@ A finished trip becomes a memory with a palette of its own, not a read-only Plan
 
 - **Phase 1B · design, motion and the outputs:** the map journey, replay, the coming-home beat, the trip book, the group-chat card and the anniversary copy. Blocks 5 and 6A.
 - **Phase 2 · the recap derivation:** `tripRecap` in `packages/shared` with client and server adapters. Owes the enrichment-image TTL decision before a cover ships.
-- **Phase 3 · the archive posture built** ([ADR-0240](decisions/0240-the-archive-is-rose.md), rose): 3.1 tokens first, then 3.2 chrome, 3.3 the day list as a record (with the `buildTimeTree` skipped-row defect), 3.4 the Index, 3.5 /trips. Needs 0.1.
+- **Phase 3 · the archive posture** ([ADR-0240](decisions/0240-the-archive-is-rose.md), rose): **built 2026-09-26** except /trips' cover in the flag slot (3.5), which waits on Phase 2's cover choice.
 - **Phase 4 · the memory Home built:** needs 1A and 2; beside 3.
 - **Phase 5 · the map as a journey, replay, coming home:** needs 0.3, 1B, 2, and 4 for the beat.
 - **Phase 6 · share outputs (6A) and resurface (6B):** 6A needs 1B and 2; 6B needs 1A and 2, and its push (ADR-0239 §8) waits for 1B's copy.

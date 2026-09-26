@@ -29,7 +29,7 @@ The two modes must be identifiable **at a glance, from any screen**, without rea
 - The status bar and header always follow the mode — the mode is readable from the chrome alone, before any content.
 - Mode is signaled by **at least two channels** (chrome color + mode pill + texture), never color alone.
 
-### A finished trip: the archive posture ([ADR-0240](../decisions/0240-the-archive-is-rose.md), designed, not built)
+### A finished trip: the archive posture ([ADR-0240](../decisions/0240-the-archive-is-rose.md); chrome, day list, Index and /trips built, the memory Home not yet)
 
 A finished trip is neither mode's posture. It wears **archive rose** (`--memory`): a rose chrome band through the same `--chrome-bg` contract (`--chrome-bg-memory`), no texture (the drafting grid is for drafting), the selected day in rose, no day pill dimmed, and the header anchor saying the trip's age (`לפני · 4 ימים`). Its two channels are the band's hue and the anchor's words; on the Home, the cover is a third. Inside it the semantic hues keep their meanings: `--ok` marks a settled record, teal a place, amber a clock. Nothing on it is washed out: a wash says "less", and this is the page people come back to.
 
@@ -49,7 +49,7 @@ A finished trip is neither mode's posture. It wears **archive rose** (`--memory`
 | **`--teal`**           | **`#2C9C90`**         | **Location / map — this color only**                                                                                                             |
 | `--muted`              | `#61687A`             | Secondary text — and **all persistent hint text** (ADR-0158 §7)                                                                                  |
 | **`--plan`**           | **`#6E59D6`**         | **Plan mode — this color only** (`--plan-deep` `#5747B4`, `--plan-tint`)                                                                         |
-| **`--memory`**         | **`#A9507F`**         | **A finished trip — this color only** (`--memory-deep` `#86395F`, `--memory-tint`, band `--chrome-bg-memory` `#EFD9E2`; ADR-0240, not built yet) |
+| **`--memory`**         | **`#A9507F`**         | **A finished trip — this color only** (`--memory-deep` `#86395F`, `--memory-tint`, band `--chrome-bg-memory` `#EFD9E2`; ADR-0240)                |
 | `--cta` / `--cta-text` | `--ink` / `#FFF`      | Neutral primary button (semantic colors are never CTAs)                                                                                          |
 | `--ok` / `--miss`      | `#3C9A6B` / `#C2584E` | Status mini-palette (positive/negative). As **text** use `--miss-deep` `#9B463E` and `--ok-deep` `#2B7050` (ADR-0240) — the fills fail AA as ink |
 
@@ -511,8 +511,8 @@ rendered at L\* 68, the brightest surface in the app, in the calm mode.
 | `--cta` / `--cta-text`       | `#16233D` / `#FFF`    | `#E7EAF2` / `#12203A`                                                                      |
 | `--ok` / `--miss`            | `#3C9A6B` / `#C2584E` | `#4CBF85` / `#E07A6E`                                                                      |
 | `--miss-deep` (miss as ink)  | `#9B463E`             | `#E3877D`                                                                                  |
-| `--ok-deep` (ok as ink)      | `#2B7050`             | `#6FD49F` (ADR-0240, not built yet)                                                        |
-| `--memory` / `--memory-deep` | `#A9507F` / `#86395F` | `#DC8AB5` / `#EBA5C9` (ADR-0240, not built yet)                                            |
+| `--ok-deep` (ok as ink)      | `#2B7050`             | `#6FD49F` (ADR-0240)                                                                       |
+| `--memory` / `--memory-deep` | `#A9507F` / `#86395F` | `#DC8AB5` / `#EBA5C9` (ADR-0240)                                                           |
 | `--chrome-bg-memory`         | `#EFD9E2`             | `#33202B`, a literal: rose mixed off the blue `--card` lands on violet's angle             |
 
 **Status — designed, not built.** ADR-0158 §10 phases it: (1) on-fill ink,

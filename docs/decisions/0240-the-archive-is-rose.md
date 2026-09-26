@@ -1,6 +1,6 @@
 # 0240 — The archive is rose: a finished trip's palette and posture
 
-**Status:** Accepted 2026-09-26 (owner: _"Rose, as per your recommendation"_). **Nothing built.** The build is phased below, inside the epic's Phases 3, 4 and 6B. Mockup: [`mockups/past-trip-v1.html`](../../mockups/past-trip-v1.html). Session note: [`planning/2026-09-26-the-archive-is-rose.md`](../planning/2026-09-26-the-archive-is-rose.md). Epic plan: [`planning/2026-09-25-a-finished-trip-is-a-memory-build-plan.md`](../planning/2026-09-25-a-finished-trip-is-a-memory-build-plan.md) §1A.
+**Status:** Accepted 2026-09-26 (owner: _"Rose, as per your recommendation"_). **Phase 3 (§2, §3, §5, §6, §7's undimming) built 2026-09-26**; §4 (Phase 4), §7's cover, lifetime line and anniversary card (3.5 and 6B) wait on Phase 2's recap derivation. Build note: [`planning/2026-09-26-the-archive-is-rose-build.md`](../planning/2026-09-26-the-archive-is-rose-build.md). The build is phased below, inside the epic's Phases 3, 4 and 6B. Mockup: [`mockups/past-trip-v1.html`](../../mockups/past-trip-v1.html). Session note: [`planning/2026-09-26-the-archive-is-rose.md`](../planning/2026-09-26-the-archive-is-rose.md). Epic plan: [`planning/2026-09-25-a-finished-trip-is-a-memory-build-plan.md`](../planning/2026-09-25-a-finished-trip-is-a-memory-build-plan.md) §1A.
 **Date:** 2026-09-26
 
 **Amends** [0028](0028-plan-violet-color-budget-dark-ready.md) (the semantic budget gains a fourth hue) · [`design-language.md`](../design/design-language.md) (palette, color coding, mode identity, dark remap) · root [`CLAUDE.md`](../../CLAUDE.md) rule 4 · [0044](0044-settling-a-finished-trip.md) (the archive row's done circle leaves, §5) · [0049](0049-index-tab-mode-and-lifecycle.md) §2 (its wash is not built; its banner is §6 here).
@@ -48,7 +48,7 @@ Measured in the mockup (all four renders agree): `--memory-deep` on `--card` 7.6
 - **The six accents Plan writes for itself** switch to rose: the trip pill's tint and edge, the swap chip, the gear and share glyphs (`--memory-deep`), your avatar's ring, the `+N` bubble, and the tab bar (`--nav-accent: --memory-deep`, `--nav-tint: --memory-tint`). Focus rings in the archive's own controls are `--memory`.
 - **No texture.** The drafting grid is the drafting table's; a record is not being drafted. A finished trip is identified by two channels, the band's hue and the anchor's words, plus the cover on the Home.
 - **The day strip:** the selected day is `--memory` on `--on-fill`. **No pill is dimmed:** `.wp-daypill.past` (opacity 0.45) exists for a live trip's days behind you, and after the trip every day is behind you, so it would wash the whole strip. Phase 0.2's rules stand (day 1 selected, no gap marker).
-- **The anchor's words** (Phase 0.2 left it empty): `לפני` over the trip's age, in words, in the chrome's own ink: `4 ימים`, then weeks up to 8, months up to 11, then `שנה` / `שנתיים` / `N שנים`. It is not amber: an age is not a commitment, just as `יום N/M` never was. Measured at 31px inside the 54px anchor. Rejected: the year (static, says nothing the day after), `הסתיים` (the same word forever), the trip's dates (the cover already has them).
+- **The anchor's words** (Phase 0.2 left it empty): `לפני` over the trip's age, in words, in the chrome's own ink: `4 ימים`, then weeks, months, then `שנה` / `שנתיים` / `N שנים`. **Built on the app's one elapsed ladder** (`formatDuration`, ADR-0114) rather than a second one, so its rungs are that ladder's: weeks from 7 days, months from a month, years from a year. On the last date itself it reads `הסתיים · היום`. It is not amber: an age is not a commitment, just as `יום N/M` never was. Measured at 31px inside the 54px anchor. Rejected: the year (static, says nothing the day after), `הסתיים` (the same word forever), the trip's dates (the cover already has them).
 
 ### §4 · The memory Home
 
@@ -69,14 +69,16 @@ On a finished trip, Plan's archive rows:
 
 - **Soft rows lose the dashed border and the hatched badge.** Nothing moves after the trip, so the soft cue has nothing to say. A hard row still has its lock on the when line.
 - **The done circle leaves the slot.** Each settled row carried the `היינו ✓` chip _and_ a 32px filled `--ok` circle with a ring. The chip is the mark and the undo, as it already is on Trip's day card (ADR-0230). The slot keeps only what is still a question (`○`) or an action (`↩` on a skipped row). This amends ADR-0044's 2026-09-15 note, which kept the circle because the slot held three states. It now holds two, and the third is the chip's. The title gains 42px at 360px (183 → 225).
-- **`.tag-done` writes in `--ok-deep`** (§2).
+- **`.tag-done` writes in `--ok-deep`** (§2). **Built as one chip:** Plan's `.tag-done` and Trip's `.wp-event-tag-done` were the same chip styled twice, so both rows now render `ui/domain/DoneChip`, and Trip's card gets the contrast fix too.
+- **Built, found by the build's own render:** a kept skipped row takes no part in nesting or overlap clusters (it did not happen, so it overlapped nothing), and on a finished trip the builder's overlap cluster and seam tags go neutral, since their violet is plan's alone (rule 4).
 - **A skipped row renders.** Today it never does: `PlanDay.tsx` keeps skipped rows when read-only, and `buildTimeTree` (`lib/time.ts:826`) then drops them before layout. This is a shipped defect against ADR-0044, fixed in Phase 3.
 
 ### §6 · The Index
 
 - **No wash.** ADR-0049 §2's desaturated wash is not built.
 - **The banner is Trip's past-day `.archive-banner`**, the same component at the Index: `הטיול הסתיים · לקריאה בלבד` with the archive glyph, on `--memory-tint` instead of `--paper`, and without `חזרה להיום`, since there is no today to go back to. Text on it measures 11.48 · 11.96.
-- **The tiles say what was, not "not yet":** `טיסה · מלון · מסעדה`, `אין משימות פתוחות אחרי הטיול`, `לא צורפו מסמכים`, `לא נכתבו פתקים`. `עדיין` is a word for a future that will not come.
+- **The tiles say what was, not "not yet":** the bookings tile names the types the trip had (Phase 0.4), and the empty documents and notes tiles read `אין מסמכים` / `אין פתקים`, the shape 0.4 chose for `אין הזמנות` (built in place of the mockup's `לא צורפו` / `לא נכתבו`). `עדיין` is a word for a future that will not come. The tasks tile is Phase 0.5's.
+- **Built as one banner:** `ui/domain/ArchiveBanner`, which Trip's past day now renders too.
 
 ### §7 · /trips
 
@@ -91,11 +93,11 @@ Each is its own PR, in the epic's numbering. Every PR ends green on `pnpm typech
 
 | Phase         | What                                                                                                                                                                                           | Needs          | Epic phase |
 | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- | ---------- |
-| **3.1**       | Tokens (§2) in `tokens.css`, both theme blocks; `design-language.md` marked built. No pixel changes.                                                                                           | nothing        | 3          |
-| **3.2**       | The chrome (§3): `data-phase` on `.app`, the header and `DayStrip`; the band, the six accents, the tab bar, the un-dimmed strip; the anchor's words (`lib/time.ts` age ladder + `i18n/he.ts`). | 3.1, 0.1       | 3          |
-| **3.3**       | The day list as a record (§5), including the `buildTimeTree` skipped-row fix with a regression test.                                                                                           | 3.1            | 3          |
-| **3.4**       | The Index (§6): the banner and the tile copy.                                                                                                                                                  | 3.1            | 3          |
-| **3.5**       | /trips (§7): no dimming; the cover in the flag slot once Phase 2 supplies the cover choice (ships without it until then).                                                                      | 3.1 (cover: 2) | 3          |
+| **3.1** ✓     | Tokens (§2) in `tokens.css`, both theme blocks; `design-language.md` marked built. No pixel changes.                                                                                           | nothing        | 3          |
+| **3.2** ✓     | The chrome (§3): `data-phase` on `.app`, the header and `DayStrip`; the band, the six accents, the tab bar, the un-dimmed strip; the anchor's words (`lib/time.ts` age ladder + `i18n/he.ts`). | 3.1, 0.1       | 3          |
+| **3.3** ✓     | The day list as a record (§5), including the `buildTimeTree` skipped-row fix with a regression test.                                                                                           | 3.1            | 3          |
+| **3.4** ✓     | The Index (§6): the banner and the tile copy.                                                                                                                                                  | 3.1            | 3          |
+| **3.5** ◐     | /trips (§7): no dimming (built); the cover in the flag slot once Phase 2 supplies the cover choice (ships without it until then).                                                              | 3.1 (cover: 2) | 3          |
 | **4.1–4.5**   | The memory Home (§4), in the epic's order: the cover card with the stragglers footer and "by the numbers", the contact sheet, firsts and bests, the stragglers sheet, next time.               | 3.1, 2         | 4          |
 | **6B.1–6B.2** | The lifetime line and the anniversary card (§7).                                                                                                                                               | 3.1, 2         | 6B         |
 

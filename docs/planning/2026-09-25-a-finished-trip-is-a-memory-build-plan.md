@@ -200,6 +200,8 @@ Starts today. Needs nothing.
 
 Split by [ADR-0240](../decisions/0240-the-archive-is-rose.md)'s build phases. 3.1 lands first; 3.2–3.5 then run in parallel.
 
+**Built 2026-09-26** ([build note](2026-09-26-the-archive-is-rose-build.md)), all but 3.5's cover, which waits on Phase 2.
+
 - **3.1** The tokens (§2): `--memory`, `--memory-deep`, `--memory-tint`, `--chrome-bg-memory`, `--ok-deep`, both themes. No pixel changes.
 - **3.2** The chrome (§3): `data-phase` on `.app`, the header and `DayStrip`; the rose band and accents; no dimmed pill; the anchor's age (`לפני · 4 ימים`).
 - **3.3** The day list as a record (§5), **including the shipped defect**: `buildTimeTree` (`lib/time.ts:826`) drops skipped rows, so a finished trip never shows what was skipped.
