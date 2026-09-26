@@ -212,19 +212,30 @@ describe('task.due', () => {
     expect(await taskDueKind.due(input(ancient.prisma, now))).toEqual([]);
   });
 
-  it('says nothing about a trip that has ENDED, and everything about one that has not begun', async () => {
+  it('says nothing about a deadline inside a trip that has ENDED, and everything about one that has not begun', async () => {
     // The owner's correction of 2026-08-20: pre-trip is where task deadlines actually live.
+    // The trip's last day is the 21st, so it is over at 00:00 UTC on the 22nd.
+    const afterMidnight = utc('2026-08-22T01:00:00Z');
     const ended = fakePrisma({
-      tasks: [row()],
-      trips: [{ id: 'trip-1', endDate: new Date(utc('2026-08-01T00:00:00Z')), timezone: 'UTC' }],
+      tasks: [row({ dueAt: new Date(utc('2026-08-21T23:00:00Z')) })],
+      trips: [{ id: 'trip-1', endDate: new Date(utc('2026-08-21T00:00:00Z')), timezone: 'UTC' }],
     });
-    expect(await taskDueKind.due(input(ended.prisma, now))).toEqual([]);
+    expect(await taskDueKind.due(input(ended.prisma, afterMidnight))).toEqual([]);
 
     const notYet = fakePrisma({
       tasks: [row()],
       trips: [{ id: 'trip-1', endDate: new Date(utc('2027-01-01T00:00:00Z')), timezone: 'UTC' }],
     });
     expect(await taskDueKind.due(input(notYet.prisma, now))).toHaveLength(2);
+  });
+
+  it('still fires for a deadline that falls AFTER an ended trip (ADR-0239 §3)', async () => {
+    // A VAT refund is owed after the flight home.
+    const ended = fakePrisma({
+      tasks: [row()],
+      trips: [{ id: 'trip-1', endDate: new Date(utc('2026-08-01T00:00:00Z')), timezone: 'UTC' }],
+    });
+    expect(await taskDueKind.due(input(ended.prisma, now))).toHaveLength(2);
   });
 
   it('prints the hour in the zone the deadline MEANS, honouring a pin', async () => {
@@ -284,6 +295,28 @@ describe('task.digest', () => {
     const sends = await taskDigestKind.due(input(prisma, at8));
     expect(sends).toHaveLength(2);
     expect(sends[0].payload.title).toContain('אחד');
+  });
+
+  it('on an ended trip, names only what falls due after it (ADR-0239 §3)', async () => {
+    const trips = [
+      { id: 'trip-1', endDate: new Date(utc('2026-08-15T00:00:00Z')), timezone: 'UTC' },
+    ];
+    const souvenirs = row({
+      id: 'in-trip',
+      title: 'מזכרות',
+      dueAt: new Date(utc('2026-08-12T09:00:00Z')),
+      dueHasTime: false,
+    });
+    const vat = row({ id: 'vat', title: 'החזר מע״מ', dueAt: dueToday, dueHasTime: false });
+
+    const inTripOnly = fakePrisma({ tasks: [souvenirs], trips });
+    expect(await taskDigestKind.due(input(inTripOnly.prisma, at8))).toEqual([]);
+
+    const both = fakePrisma({ tasks: [souvenirs, vat], trips });
+    const sends = await taskDigestKind.due(input(both.prisma, at8));
+    expect(sends).toHaveLength(2);
+    expect(sends[0].payload.body).toContain('החזר מע״מ');
+    expect(sends[0].payload.body).not.toContain('מזכרות');
   });
 
   it('names today AND tomorrow, which is what closes the pre-trip gap', async () => {
@@ -362,6 +395,25 @@ describe('task.assigned', () => {
     const [send] = await taskAssignedKind.due(input(prisma, now));
     expect(send.payload.url).toContain('task=task-1');
     expect(send.payload.url).toContain('trip=');
+  });
+
+  it('on an ended trip, announces only a task due after it (ADR-0239 §3)', async () => {
+    const trips = [
+      { id: 'trip-1', endDate: new Date(utc('2026-08-15T00:00:00Z')), timezone: 'UTC' },
+    ];
+    const assigned = { assigneeUserId: 'u-noam', assignedAt: new Date(now - HOUR) };
+    const undated = fakePrisma({ tasks: [row({ ...assigned, dueAt: null })], trips });
+    expect(await taskAssignedKind.due(input(undated.prisma, now))).toEqual([]);
+    const inTrip = fakePrisma({
+      tasks: [row({ ...assigned, dueAt: new Date(utc('2026-08-12T09:00:00Z')) })],
+      trips,
+    });
+    expect(await taskAssignedKind.due(input(inTrip.prisma, now))).toEqual([]);
+    const afterTrip = fakePrisma({
+      tasks: [row({ ...assigned, dueAt: new Date(utc('2026-08-25T09:00:00Z')) })],
+      trips,
+    });
+    expect(await taskAssignedKind.due(input(afterTrip.prisma, now))).toHaveLength(1);
   });
 
   it('says nothing when nobody was assigned', async () => {
@@ -576,9 +628,10 @@ describe('an edit needs no notification code to know about it', () => {
     expect(await taskDueKind.due(input(prisma, now))).toEqual([]);
   });
 
-  it('stops when the trip’s dates move so that it has ENDED', async () => {
+  it('keeps firing when the trip’s dates move so that it ends BEFORE the deadline', async () => {
     // ADR-0040's archive is DERIVED from the live window rather than stored, so shortening a
-    // trip's `endDate` archives it and this check is the same one.
+    // trip's `endDate` archives it. What that leaves after the new end is still owed
+    // (ADR-0239 §3), so the deadline keeps its send.
     const { prisma } = fakePrisma({
       tasks: [row()],
       trips: [
@@ -589,6 +642,6 @@ describe('an edit needs no notification code to know about it', () => {
         },
       ],
     });
-    expect(await taskDueKind.due(input(prisma, now))).toEqual([]);
+    expect(await taskDueKind.due(input(prisma, now))).toHaveLength(2);
   });
 });

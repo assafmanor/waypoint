@@ -14,6 +14,7 @@
 import { useMemo, useState } from 'react';
 import { TASK_STATUS, type CreateTaskInput, type Task, type TaskHostKey } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
+import { useMode } from '../state/mode-state';
 import { useClock } from '../lib/useClock';
 import { settledHostKeys, tasksForHost, taskHostInput, type TaskDueClock } from '../lib/tasks';
 import type { NoteHostKind } from '../lib/notes';
@@ -46,9 +47,16 @@ export function useHostTaskCount(kind: NoteHostKind, id: string | undefined): nu
  *  derivation is handed `now` rather than reading it). */
 function useTaskClock(now: Date): TaskDueClock {
   const { trip, zoneCrossings } = useTrip();
+  const { phase } = useMode();
   return useMemo(
-    () => ({ nowMs: now.getTime(), crossings: zoneCrossings, primaryZone: trip.timezone, trip }),
-    [now, zoneCrossings, trip],
+    () => ({
+      nowMs: now.getTime(),
+      crossings: zoneCrossings,
+      primaryZone: trip.timezone,
+      trip,
+      phase,
+    }),
+    [now, zoneCrossings, trip, phase],
   );
 }
 

@@ -202,6 +202,12 @@ describe('readiness.nudge', () => {
     expect(sends[0].payload.title).toBe('שבועיים לטיול');
   });
 
+  it('stays silent for a trip that has ended — `isLive`, not the task kinds\u2019 exception', async () => {
+    // ADR-0239 §3 lets a post-trip task deadline through; a readiness check has none.
+    const { prisma } = fakePrisma({ endDate: '2026-07-01' });
+    expect(await readinessNudgeKind.due(input(prisma, AT10))).toEqual([]);
+  });
+
   it('fires at no other hour', async () => {
     for (const offset of [-3, -1, 1, 5]) {
       const { prisma } = fakePrisma();

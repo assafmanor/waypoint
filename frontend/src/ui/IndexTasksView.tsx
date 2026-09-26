@@ -49,6 +49,7 @@ import {
   subtaskProgress,
   TASK_FACET,
   taskDue,
+  taskDueClass,
   taskRowKey,
   taskRowMatchesFacet,
   type TaskDueClock,
@@ -100,7 +101,7 @@ export function IndexTasksView({
   const navigate = useNavigate();
   // A finished trip adds and edits nothing (ADR-0239 §4). What stays is the tick and its
   // dismiss/reopen twins: settling a task is the one write a record keeps.
-  const finished = useMode().isFinished;
+  const { isFinished: finished, phase } = useMode();
 
   const [facet, setFacet] = useState<TaskFacet>(TASK_FACET.ALL);
   // null = closed; 'create' = a new task; a Task = editing that one.
@@ -126,8 +127,14 @@ export function IndexTasksView({
 
   const meId = me?.user.id ?? '';
   const clock: TaskDueClock = useMemo(
-    () => ({ nowMs: now.getTime(), crossings: zoneCrossings, primaryZone: trip.timezone, trip }),
-    [now, zoneCrossings, trip],
+    () => ({
+      nowMs: now.getTime(),
+      crossings: zoneCrossings,
+      primaryZone: trip.timezone,
+      trip,
+      phase,
+    }),
+    [now, zoneCrossings, trip, phase],
   );
 
   const manualTasks = useMemo(() => tasks.filter(isManual), [tasks]);
@@ -541,7 +548,7 @@ function TaskLi({
   const when = (due || progress.total > 0) && (
     <span className="tsk-meta-when">
       {due && (
-        <span className={due.late ? 'tsk-due late' : 'tsk-due'}>
+        <span className={taskDueClass(due)}>
           <Icon name="clock" /> {due.late ? t.tasks.due.late : t.tasks.due.by}{' '}
           {/* The numeric run is its own LTR island inside RTL copy — `ltrIsolate`, never
               `dir="ltr"` on a non-input (ADR-0118). The Hebrew word beside it is exactly

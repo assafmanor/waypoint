@@ -426,16 +426,16 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   // Declared here rather than beside the band below, because the lifted hero reads tasks too
   // (ADR-0160 §U) and both must be the SAME clock and the SAME settled-host set — a hero that
   // still offers a task the band has already dropped is two answers to one question.
+  const { goingLive, skipGoingLive, phase } = useMode();
   const taskClock: TaskDueClock = useMemo(
-    () => ({ nowMs, crossings: zoneCrossings, primaryZone: trip.timezone, trip }),
-    [nowMs, zoneCrossings, trip],
+    () => ({ nowMs, crossings: zoneCrossings, primaryZone: trip.timezone, trip, phase }),
+    [nowMs, zoneCrossings, trip, phase],
   );
   const settledHosts = useSettledHosts();
   // ── THE FIRST MORNING (ADR-0221 §4) ─────────────────────────────────────────
   // On the first open of a live trip the plan face sits over the board and turns into it.
   // Its facts are the prep hero's own derivation, so the face the board grows out of is the
   // card the evening before showed — same tier, same clock, same two numbers.
-  const { goingLive, skipGoingLive } = useMode();
   const { automatic } = useAutomaticTasks();
   const prepFacts = goingLive ? prepHeroFacts({ trip, events, now, zoneEvidence }) : null;
   const prepPreview = goingLive ? taskPreview(tasks, automatic, taskClock, settledHosts) : null;

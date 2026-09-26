@@ -7,7 +7,13 @@
 // no open-in-place, no sync column, no kebab. A band is a window onto the list, so the verbs
 // that need room live where the list does.
 import type { Task, User } from '@waypoint/shared';
-import { isSettled, taskDue, type SubtaskProgress, type TaskDueClock } from '../lib/tasks';
+import {
+  isSettled,
+  taskDue,
+  taskDueClass,
+  type SubtaskProgress,
+  type TaskDueClock,
+} from '../lib/tasks';
 import { ltrIsolate } from '../lib/bidi';
 import { ListRow } from './domain';
 import { Avatar } from './primitives/Avatar';
@@ -95,7 +101,7 @@ export function TaskBandRow({
         (due || (progress?.total ?? 0) > 0) && (
           <span className="tsk-meta-when">
             {due && (
-              <span className={due.late ? 'tsk-due late' : 'tsk-due'}>
+              <span className={taskDueClass(due)}>
                 <Icon name="clock" /> {due.late ? t.tasks.due.late : t.tasks.due.by}{' '}
                 {/* The numeric run is its own LTR island — `ltrIsolate`, never `dir="ltr"` on
                     a non-input (ADR-0118). */}

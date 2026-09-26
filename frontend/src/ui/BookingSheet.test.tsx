@@ -117,6 +117,7 @@ const trip = {
   endDate: '2026-07-30',
 };
 
+vi.mock('../state/mode-state', () => import('../test/mode-from-trip'));
 vi.mock('../state/trip-state', () => ({
   useTrip: () => ({
     zoneCrossings: [],

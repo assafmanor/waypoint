@@ -81,7 +81,7 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
     zoneEvidence,
   } = useTrip();
   const now = useClock();
-  const { isFinished } = useMode();
+  const { isFinished, phase } = useMode();
   const navigate = useNavigate();
   const { readiness, automatic, applyVerb } = useAutomaticTasks();
   // **The percentage reads the same resolution the rows do** — otherwise the hero can say
@@ -210,6 +210,7 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
     crossings: zoneCrossings,
     primaryZone: trip.timezone,
     trip,
+    phase,
   };
   const settledHosts = useSettledHosts();
   /** **Everything open, with no date window** (ADR-0193 §1). `tasksDueSoon` used to be this

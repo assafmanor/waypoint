@@ -104,6 +104,8 @@ Built · PR #869
 
 ### 0.5 · Tasks after the trip (F8 · §3)
 
+Built · PR #870
+
 - **Files:**
   - `lib/automatic-tasks.ts` / `lib/useAutomaticTasks.ts`: no readiness checks when finished.
   - `lib/tasks.ts:310,335`: `late` is false for a task whose `dueAt` is before the trip's end on a finished trip. It reads as never done, in neutral, not `--miss`.
@@ -137,6 +139,8 @@ Built · PR #867
 - **Tests:** a spec that mounts under `<StrictMode>` with motion wanted and asserts the final value is the target. Its sibling `PlanHome.count-up.test.tsx` does not run under StrictMode, which is why it missed this.
 
 **Phase 0 is done when** the investigation's walk-through (seed, pin four days past the end, every tab at 360px) shows none of F1–F10. The `product/modes.md` past-trip section is then rewritten to what the app does.
+
+**Done 2026-09-26** (PR #870, the last of the seven): the walk-through on main shows none of F1–F10, and `product/modes.md` is rewritten.
 
 ---
 
