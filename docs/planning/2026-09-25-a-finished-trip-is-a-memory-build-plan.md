@@ -140,6 +140,8 @@ Built · PR #867
 
 **Phase 0 is done when** the investigation's walk-through (seed, pin four days past the end, every tab at 360px) shows none of F1–F10. The `product/modes.md` past-trip section is then rewritten to what the app does.
 
+**Done 2026-09-26** (PR #870, the last of the seven): the walk-through on main shows none of F1–F10, and `product/modes.md` is rewritten.
+
 ---
 
 ## Phase 1 — design (ADR-0239 §6–§8 · `design-mockups` skill · mockup first)
