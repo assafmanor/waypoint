@@ -54,6 +54,7 @@ let tripEnrichments: Record<string, unknown> = {};
 const updateBooking = vi.fn(() => Promise.resolve());
 
 const tripNotes: unknown[] = [];
+vi.mock('../state/mode-state', () => import('../test/mode-from-trip'));
 vi.mock('../state/trip-state', () => ({
   // `bookings` + `maybeItems` are here for the picker sheet, not the detail: opening
   // it mounts `usePlaceSearch`, which derives `referencedPlaceIds` over all four

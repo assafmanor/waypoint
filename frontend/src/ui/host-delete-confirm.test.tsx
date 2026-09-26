@@ -67,6 +67,7 @@ const doc: DocumentSummary = {
 let tripNotes: Note[] = [];
 let tripEvents: TripEvent[] = [];
 
+vi.mock('../state/mode-state', () => import('../test/mode-from-trip'));
 vi.mock('../state/trip-state', () => ({
   useTrip: () => ({
     zoneCrossings: [],

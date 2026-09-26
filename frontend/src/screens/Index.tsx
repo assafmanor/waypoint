@@ -51,7 +51,7 @@ export function Index() {
     zoneEvidence,
   } = useTrip();
   const now = useClock();
-  const { isFinished } = useMode();
+  const { isFinished, phase } = useMode();
   const { automatic } = useAutomaticTasks();
   const [view, setView] = useState<IndexView>('landing');
   // Set alongside `view` by the ?booking= deep-link below, and handed to a
@@ -216,6 +216,7 @@ export function Index() {
     crossings: zoneCrossings,
     primaryZone: trip.timezone,
     trip,
+    phase,
   };
   // The readiness checks count toward the tile (owner, 2026-08-16, amending ADR-0190 §1):
   // a trip nobody has prepared has five things to do, and the tile is what says so.

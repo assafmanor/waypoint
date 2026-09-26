@@ -10,6 +10,7 @@
 import { useMemo } from 'react';
 import type { Task, UpdateTaskInput } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
+import { useMode } from '../state/mode-state';
 import { computeReadiness, destinationRefOf, type Readiness } from '@waypoint/shared';
 import { automaticTasks, isUnwritten, type AutomaticTask } from './automatic-tasks';
 
@@ -26,6 +27,7 @@ export interface AutomaticTasks {
 
 export function useAutomaticTasks(): AutomaticTasks {
   const { trip, events, bookings, places, documents, users, tasks, taskVerbs } = useTrip();
+  const { phase } = useMode();
 
   const readiness = useMemo(
     () =>
@@ -48,8 +50,9 @@ export function useAutomaticTasks(): AutomaticTasks {
         emptyDates: readiness.emptyDates,
         tripStartDate: trip.startDate,
         travelerCount: users.length,
+        phase,
       }),
-    [readiness, tasks, trip.startDate, users.length],
+    [readiness, tasks, trip.startDate, users.length, phase],
   );
 
   const applyVerb = (task: Task, patch: UpdateTaskInput) => {

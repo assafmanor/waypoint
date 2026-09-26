@@ -54,7 +54,7 @@ export const taskAssignedKind: NotificationKind = {
     const audience = await tripAudience(prisma, tasks, nowMs);
     const sends: DueSend[] = [];
     for (const task of tasks) {
-      if (!audience.isLive(task.tripId)) continue;
+      if (!audience.isLiveForTask(task)) continue;
       // `recipients` narrows to a current member, so an assignee removed from the trip
       // between the assignment and this tick hears nothing — and the group does not inherit
       // their notification, because this send is addressed and there is nobody at the

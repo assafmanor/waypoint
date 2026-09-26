@@ -10,6 +10,7 @@ import {
   resolvedReadinessPct,
   tickedAutomaticStatus,
   AUTOMATIC_TASK_ACTION,
+  type AutomaticTaskContext,
 } from './automatic-tasks';
 import type { ReadinessCheck } from '@waypoint/shared';
 
@@ -17,7 +18,8 @@ const CTX = {
   emptyDates: ['2026-08-18', '2026-08-20'],
   tripStartDate: '2026-08-15',
   travelerCount: 5,
-};
+  phase: 'pre',
+} satisfies AutomaticTaskContext;
 
 const checks: ReadinessCheck[] = [
   { id: 'flights', done: false, hasOutbound: true, hasReturn: false },
@@ -118,6 +120,11 @@ describe('automaticTasks', () => {
     const rows = automaticTasks(checks, [], CTX);
     expect(rows.find(byKey('flights'))!.action).toBe(AUTOMATIC_TASK_ACTION.ADD_FLIGHT);
     expect(rows.find(byKey('group'))!.action).toBe(AUTOMATIC_TASK_ACTION.INVITE);
+  });
+
+  it('retires every check once the trip has finished (ADR-0239 §3)', () => {
+    expect(automaticTasks(checks, [overlay()], { ...CTX, phase: 'past' })).toEqual([]);
+    expect(automaticTasks(checks, [], { ...CTX, phase: 'live' })).toHaveLength(5);
   });
 
   it('numbers empty days from the trip start, matching the day strip', () => {

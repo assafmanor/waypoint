@@ -37,6 +37,7 @@ import {
 
 export { dueZone, isSettled, TASK_BAND, taskBand, type TaskBand, type TaskClock };
 import { addDays, dayLabel, formatTime, todayInTz, type DayNaming } from './time';
+import type { TripPhase } from './mode';
 
 /** The facet axis (brief §13). ONE axis, because `ChoiceGrid` is single-select — ownership
  *  and lifecycle share it, and `important` is carried by the sort rather than by a chip so
@@ -293,6 +294,19 @@ export function countTasksByFacet(
  *  server's reminder sweep reads deadlines without ever naming a day. */
 export interface TaskDueClock extends TaskClock {
   trip: DayNaming['trip'];
+  /** `useMode().phase`, never a `tripPhase(...)` of the caller's own (ADR-0239 §1). */
+  phase: TripPhase;
+}
+
+/** **Overdue, as the reader should feel it** (ADR-0239 §3). On a finished trip a task that fell
+ *  due inside or before the trip is not late, it was never done: the trip it was for is over,
+ *  so it reads in neutral rather than `--miss`. One due AFTER the trip's last day (a VAT refund,
+ *  an insurance claim) is still owed, and stays late when it passes. Compared by the due's own
+ *  calendar day, so a deadline at 23:00 on the last day still belongs to the trip. */
+export function isLate(task: Task, clock: TaskDueClock): boolean {
+  if (taskBand(task, clock) !== TASK_BAND.OVERDUE) return false;
+  if (clock.phase !== 'past') return true;
+  return todayInTz(dueZone(task, clock), new Date(task.dueAt!)) > clock.trip.endDate;
 }
 
 /** The deadline as the row prints it (ADR-0188 §3): the relative day, plus the time when
@@ -308,7 +322,14 @@ export interface TaskDue {
   day: string;
   time?: string;
   late: boolean;
+  /** Passed, but inside a trip that has since finished (ADR-0239 §3): never done, not late,
+   *  so neutral rather than `--miss` or the deadline's amber. */
+  lapsed: boolean;
 }
+
+/** The meta line's class, so the three rows that print a deadline cannot paint it three ways. */
+export const taskDueClass = (due: TaskDue): string =>
+  due.late ? 'tsk-due late' : due.lapsed ? 'tsk-due lapsed' : 'tsk-due';
 
 export function taskDue(task: Task, clock: TaskDueClock): TaskDue | undefined {
   // **A task that is finished owes nothing, so it reports no deadline.** `באיחור` and
@@ -332,7 +353,8 @@ export function taskDue(task: Task, clock: TaskDueClock): TaskDue | undefined {
       today: todayInTz(readerZone, new Date(clock.nowMs)),
     }),
     time: task.dueHasTime ? formatTime(task.dueAt, zone) : undefined,
-    late: Date.parse(task.dueAt) < clock.nowMs,
+    late: isLate(task, clock),
+    lapsed: taskBand(task, clock) === TASK_BAND.OVERDUE && !isLate(task, clock),
   };
 }
 
@@ -424,7 +446,7 @@ export interface TaskPreview {
 export function taskPreview(
   tasks: Task[],
   automatic: AutomaticTask[],
-  clock: TaskClock,
+  clock: TaskDueClock,
   settledHosts: Set<string> = new Set(),
 ): TaskPreview {
   // **The checks count** (owner, 2026-08-16, amending ADR-0190 §1). That ADR excluded them so
@@ -450,7 +472,7 @@ export function taskPreview(
     next: dated[0],
     lead: leadRow && (leadRow.kind === 'task' ? leadRow.task.title : leadRow.auto.title),
     open: openManual.length + live.length,
-    overdue: openManual.filter((task) => taskBand(task, clock) === TASK_BAND.OVERDUE).length,
+    overdue: openManual.filter((task) => isLate(task, clock)).length,
   };
 }
 
