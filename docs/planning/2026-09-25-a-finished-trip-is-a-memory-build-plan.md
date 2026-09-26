@@ -104,6 +104,8 @@ Built · PR #869
 
 ### 0.5 · Tasks after the trip (F8 · §3)
 
+Built · PR #870
+
 - **Files:**
   - `lib/automatic-tasks.ts` / `lib/useAutomaticTasks.ts`: no readiness checks when finished.
   - `lib/tasks.ts:310,335`: `late` is false for a task whose `dueAt` is before the trip's end on a finished trip. It reads as never done, in neutral, not `--miss`.
