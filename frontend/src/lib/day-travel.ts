@@ -16,7 +16,8 @@
 // (`lib/day-joins.ts`) and `JourneyBlock`'s.
 import { useMemo, useRef, useState } from 'react';
 import {
-  carriedLegMeters,
+  carriedBookingMeters,
+  coordOf,
   defaultLegTravelMode,
   derivedTravelMode,
   haversineMeters,
@@ -196,33 +197,9 @@ export interface DayTravelReads {
 
 const NOTHING: DayTravelReads['estimateFor'] = () => null;
 
-/** Exported since ADR-0212: a carried leg needs the same place→coordinate resolution a routed
- *  leg does, and a second copy of `places.find(...)` beside this one is how two surfaces start
- *  disagreeing about whether a place is placed (root rule 8). */
-export const coordOf = (
-  places: readonly Place[],
-  placeId: string | undefined,
-): LatLng | undefined => {
-  const place = placeId ? places.find((p) => p.id === placeId) : undefined;
-  return place?.lat != null && place.lng != null ? { lat: place.lat, lng: place.lng } : undefined;
-};
-
-/**
- * **HOW FAR THIS BOOKING CARRIES YOU** (ADR-0212), in metres, or `null` when it is not a carried
- * type or either endpoint has no coordinates.
- *
- * The rule about WHICH types answer lives in `carriedLegMeters` (`@waypoint/shared`) with the
- * routing gate it is the counterpart to; this resolves the two places and nothing else, so the
- * two halves stay where they belong and a backend surface can ask the same question.
- */
-export function carriedBookingMeters(
-  booking: Pick<Booking, 'type' | 'fromPlaceId' | 'toPlaceId'>,
-  places: readonly Place[],
-): number | null {
-  const from = coordOf(places, booking.fromPlaceId ?? undefined);
-  const to = coordOf(places, booking.toPlaceId ?? undefined);
-  return from && to ? carriedLegMeters(booking.type, from, to) : null;
-}
+/** Moved to `@waypoint/shared` for the trip recap (ADR-0239 §9); re-exported so no call site
+ *  changed. */
+export { carriedBookingMeters, coordOf };
 
 /**
  * **HOW FAR THE DAY GOES IN THE AIR** (ADR-0212 §3) — the carried half of the day's total, or

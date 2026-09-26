@@ -10,8 +10,10 @@ import { z } from 'zod';
 import { BOOKING_TYPE, TRAVEL_MODE, TRAVEL_MODES } from './constants';
 import {
   travelModeSchema,
+  type Booking,
   type BookingType,
   type LegTravelMode,
+  type Place,
   type TravelMode,
 } from './entities';
 import { haversineMeters, latLngSchema, type LatLng } from './geo';
@@ -263,6 +265,30 @@ export function carriedLegMeters(type: BookingType, from: LatLng, to: LatLng): n
   // Two endpoints that resolve to one place are the same absence `ROUTE_MIN_CROW_M` names for a
   // routed pair, and are read the same way rather than as `0 ק״מ` (ADR-0206 §D4).
   return Number.isFinite(metres) && metres >= ROUTE_MIN_CROW_M ? metres : null;
+}
+
+/** **A place's coordinates, or `undefined` for a place-lite row** (ADR-0147). Moved here from the
+ *  app's `lib/day-travel.ts` so the trip recap (ADR-0239 §9) resolves a place the way every day
+ *  surface does, on both ends — a second `places.find(...)` is how two surfaces start
+ *  disagreeing about whether a place is placed (root rule 8). */
+export const coordOf = (
+  places: readonly Pick<Place, 'id' | 'lat' | 'lng'>[],
+  placeId: string | null | undefined,
+): LatLng | undefined => {
+  const place = placeId ? places.find((p) => p.id === placeId) : undefined;
+  return place?.lat != null && place.lng != null ? { lat: place.lat, lng: place.lng } : undefined;
+};
+
+/** **How far this booking carries you** (ADR-0212), in metres, or `null` when it is not a carried
+ *  type or either end has no coordinates. `carriedLegMeters` owns which types answer; this only
+ *  resolves the two places. */
+export function carriedBookingMeters(
+  booking: Pick<Booking, 'type' | 'fromPlaceId' | 'toPlaceId'>,
+  places: readonly Pick<Place, 'id' | 'lat' | 'lng'>[],
+): number | null {
+  const from = coordOf(places, booking.fromPlaceId);
+  const to = coordOf(places, booking.toPlaceId);
+  return from && to ? carriedLegMeters(booking.type, from, to) : null;
 }
 
 /**

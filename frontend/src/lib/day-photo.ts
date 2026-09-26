@@ -16,6 +16,7 @@ import {
   type DeliveredImageValue,
   type DayPhotoPlace,
   type Place,
+  type SharedPhoto,
   type TripEnrichments,
   type TripEvent,
 } from '@waypoint/shared';
@@ -73,7 +74,13 @@ export function dayShot(
     enrichments,
     (place) => placeLabelOf(placeLabels, place.id, byId.get(place.id)?.name),
   );
-  if (!photo) return undefined;
+  return photo && shotOf(photo, enrichments);
+}
+
+/** **A shared photo as the app shows it**: the asset URL resolved, and the delivered image behind
+ *  it for the viewer. Also the trip recap's cover (ADR-0239 §9), which is `dayPhoto` over the
+ *  whole trip rather than one day. */
+export function shotOf(photo: SharedPhoto, enrichments: TripEnrichments): DayShot | undefined {
   const image = Object.values(enrichments).find((fields) => fields.image?.url === photo.url)?.image;
   return image && { ...photo, url: apiAssetUrl(photo.url), image };
 }
