@@ -60,7 +60,7 @@ pnpm dev                                               # backend :3000, frontend
 1. **Hard vs. soft events (ADR-0011)** is the core primitive. Hard = real commitment (flight, reservation code): guarded on edit, never auto-moved, excluded from ripple. Soft = free to move/skip/swap. Respect this everywhere it touches.
 2. **Integrations are pipes, not screens (ADR-0004).** Any integration feeds the Now/Next timeline or the index — it never gets its own tab.
 3. **Types/validation in `packages/shared`.** Keep it in sync with `backend/prisma/schema.prisma`.
-4. **Amber = time & commitment only; teal = location only; plan violet (`--plan`) = plan mode only** (design-language.md, ADR-0028). Don't reuse them decoratively — generic CTAs use the neutral `--cta`, statuses use `--ok`/`--miss`.
+4. **Amber = time & commitment only; teal = location only; plan violet (`--plan`) = plan mode only; archive rose (`--memory`) = a finished trip only** (design-language.md, ADR-0028, ADR-0240). Don't reuse them decoratively — generic CTAs use the neutral `--cta`, statuses use `--ok`/`--miss`.
 5. **Everything works offline for reads** (index/documents/today). Never assume the network.
 6. **Mobile-first, phone-primary (ADR-0017).** Design/build for the phone first (~360–430px), touch-first, no hover-only affordances. Tablet is secondary (matters most for Plan mode); desktop is a graceful minimum. Responsive by breakpoints, one codebase.
 7. **Never commit `.env`, secrets, or anything the `.gitignore` excludes.**

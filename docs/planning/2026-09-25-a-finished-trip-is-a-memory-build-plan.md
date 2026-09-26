@@ -1,6 +1,6 @@
 # A finished trip is a memory — the build plan (epic)
 
-**Date:** 2026-09-25 · **Decision:** [ADR-0239](../decisions/0239-a-finished-trip-is-a-memory-not-a-plan.md) · **Investigation and spec:** [`2026-09-25-what-a-finished-trip-is-for.md`](2026-09-25-what-a-finished-trip-is-for.md) (the F-numbers and feature numbers below are that note's) · **Mockup:** `mockups/past-trip-v1.html` (owed, Phase 1)
+**Date:** 2026-09-25 · **Decision:** [ADR-0239](../decisions/0239-a-finished-trip-is-a-memory-not-a-plan.md) · **Investigation and spec:** [`2026-09-25-what-a-finished-trip-is-for.md`](2026-09-25-what-a-finished-trip-is-for.md) (the F-numbers and feature numbers below are that note's) · **Mockup:** [`mockups/past-trip-v1.html`](../../mockups/past-trip-v1.html) (Phase 1A, done) · **Palette:** [ADR-0240](../decisions/0240-the-archive-is-rose.md)
 
 Eight phases, numbered 0 to 7, of four kinds: **bug fixes** (0), **design** (1A, 1B), **shared logic** (2) and **build** (3–7). Each numbered item (`0.3`, `4.2`) is its own PR, reviewable alone. Numbers in brackets like _(spec 1a)_ point at the investigation's feature list. Every PR ends green on `pnpm typecheck`, `pnpm test`, `pnpm build` and `pnpm format` (after `pnpm install`). Every PR that touches a surface ends with a look at 360px in both themes on a finished trip: seed, then pin `waypoint:dev-now` past the trip's end, as the investigation did.
 
@@ -144,6 +144,8 @@ Built · PR #867
 
 ### 1A · The archive's palette and posture
 
+**Done 2026-09-26:** rose, in [ADR-0240](../decisions/0240-the-archive-is-rose.md) with [`mockups/past-trip-v1.html`](../../mockups/past-trip-v1.html); its build phases are 3.1–3.5 below, plus its sections for 4 and 6B.
+
 Blocks 3, 4 and 6B. Starts today.
 
 - **The palette** (owner: a whole new one), in both themes, validated for contrast. It must answer:
@@ -192,6 +194,14 @@ Starts today. Needs nothing.
 
 ## Phase 3 — the archive posture (build · needs 0.1 and 1A)
 
+Split by [ADR-0240](../decisions/0240-the-archive-is-rose.md)'s build phases. 3.1 lands first; 3.2–3.5 then run in parallel.
+
+- **3.1** The tokens (§2): `--memory`, `--memory-deep`, `--memory-tint`, `--chrome-bg-memory`, `--ok-deep`, both themes. No pixel changes.
+- **3.2** The chrome (§3): `data-phase` on `.app`, the header and `DayStrip`; the rose band and accents; no dimmed pill; the anchor's age (`לפני · 4 ימים`).
+- **3.3** The day list as a record (§5), **including the shipped defect**: `buildTimeTree` (`lib/time.ts:826`) drops skipped rows, so a finished trip never shows what was skipped.
+- **3.4** The Index (§6): Trip's `.archive-banner` in rose, no wash, tile copy that says what was.
+- **3.5** /trips (§7): no `.is-past` dimming; the cover in the flag slot once Phase 2 picks it.
+
 The palette and chrome across every tab of a finished trip:
 
 - the header anchor's words;
@@ -199,11 +209,11 @@ The palette and chrome across every tab of a finished trip:
 - Plan's archive rows as a record;
 - `/trips` past cards with their cover (the cover comes from 2; until 2 lands the card ships without one).
 
-Updates `design-language.md` and marks the palette ADR built.
+Updates `design-language.md` (drop its "not built yet" marks) and marks ADR-0240 built.
 
 ## Phase 4 — the memory Home (build · needs 1A and 2 · beside 3)
 
-Replaces `PlanHome`'s past branch entirely. One PR per item; 4.1 lands first because every other item sits inside its frame.
+Replaces `PlanHome`'s past branch entirely, as drawn in ADR-0240 §4 (the stragglers live in the cover card's footer band, so 4.4 is the sheet it opens). One PR per item; 4.1 lands first because every other item sits inside its frame.
 
 - **4.1** The frame: cover, dates, faces, route strip and "by the numbers" _(spec 1a)_.
 - **4.2** The days as a contact sheet _(spec 1b)_, on `DayHead` / `dayShot` / `fallbackDayTitle`.

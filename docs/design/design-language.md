@@ -29,24 +29,29 @@ The two modes must be identifiable **at a glance, from any screen**, without rea
 - The status bar and header always follow the mode — the mode is readable from the chrome alone, before any content.
 - Mode is signaled by **at least two channels** (chrome color + mode pill + texture), never color alone.
 
+### A finished trip: the archive posture ([ADR-0240](../decisions/0240-the-archive-is-rose.md), designed, not built)
+
+A finished trip is neither mode's posture. It wears **archive rose** (`--memory`): a rose chrome band through the same `--chrome-bg` contract (`--chrome-bg-memory`), no texture (the drafting grid is for drafting), the selected day in rose, no day pill dimmed, and the header anchor saying the trip's age (`לפני · 4 ימים`). Its two channels are the band's hue and the anchor's words; on the Home, the cover is a third. Inside it the semantic hues keep their meanings: `--ok` marks a settled record, teal a place, amber a clock. Nothing on it is washed out: a wash says "less", and this is the page people come back to.
+
 ## Color palette
 
-| Token                  | Hex                   | Role                                                                                                        |
-| ---------------------- | --------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `--ink`                | `#16233D`             | Primary text                                                                                                |
-| `--indigo`             | `#1B2A4A`             | Base / chrome (header, status bar)                                                                          |
-| `--board`              | `#0E1729`             | Departure-board background                                                                                  |
-| `--board-2`            | `#152137`             | Board gradient top                                                                                          |
-| `--screen`             | `#E7EAEF`             | App background ("cool paper")                                                                               |
-| `--card`               | `#FFFFFF`             | Card surface                                                                                                |
-| `--paper`              | `#F3EFE6`             | Badge / warm paper accents                                                                                  |
-| **`--amber`**          | **`#E9A63C`**         | **Time & commitment — this color only**                                                                     |
-| `--amber-deep`         | `#915E1E`             | Amber's **paper** variant — mono times and labels on a card (ADR-0158 §6)                                   |
-| **`--teal`**           | **`#2C9C90`**         | **Location / map — this color only**                                                                        |
-| `--muted`              | `#61687A`             | Secondary text — and **all persistent hint text** (ADR-0158 §7)                                             |
-| **`--plan`**           | **`#6E59D6`**         | **Plan mode — this color only** (`--plan-deep` `#5747B4`, `--plan-tint`)                                    |
-| `--cta` / `--cta-text` | `--ink` / `#FFF`      | Neutral primary button (semantic colors are never CTAs)                                                     |
-| `--ok` / `--miss`      | `#3C9A6B` / `#C2584E` | Status mini-palette (positive/negative). As **text** use `--miss-deep` `#9B463E` — the fill fails AA as ink |
+| Token                  | Hex                   | Role                                                                                                                                             |
+| ---------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `--ink`                | `#16233D`             | Primary text                                                                                                                                     |
+| `--indigo`             | `#1B2A4A`             | Base / chrome (header, status bar)                                                                                                               |
+| `--board`              | `#0E1729`             | Departure-board background                                                                                                                       |
+| `--board-2`            | `#152137`             | Board gradient top                                                                                                                               |
+| `--screen`             | `#E7EAEF`             | App background ("cool paper")                                                                                                                    |
+| `--card`               | `#FFFFFF`             | Card surface                                                                                                                                     |
+| `--paper`              | `#F3EFE6`             | Badge / warm paper accents                                                                                                                       |
+| **`--amber`**          | **`#E9A63C`**         | **Time & commitment — this color only**                                                                                                          |
+| `--amber-deep`         | `#915E1E`             | Amber's **paper** variant — mono times and labels on a card (ADR-0158 §6)                                                                        |
+| **`--teal`**           | **`#2C9C90`**         | **Location / map — this color only**                                                                                                             |
+| `--muted`              | `#61687A`             | Secondary text — and **all persistent hint text** (ADR-0158 §7)                                                                                  |
+| **`--plan`**           | **`#6E59D6`**         | **Plan mode — this color only** (`--plan-deep` `#5747B4`, `--plan-tint`)                                                                         |
+| **`--memory`**         | **`#A9507F`**         | **A finished trip — this color only** (`--memory-deep` `#86395F`, `--memory-tint`, band `--chrome-bg-memory` `#EFD9E2`; ADR-0240, not built yet) |
+| `--cta` / `--cta-text` | `--ink` / `#FFF`      | Neutral primary button (semantic colors are never CTAs)                                                                                          |
+| `--ok` / `--miss`      | `#3C9A6B` / `#C2584E` | Status mini-palette (positive/negative). As **text** use `--miss-deep` `#9B463E` and `--ok-deep` `#2B7050` (ADR-0240) — the fills fail AA as ink |
 
 **The ink ramp has three steps and the third one is narrow** (ADR-0158 §7).
 `--ink` for content, `--muted` for secondary **and every persistent hint**, and
@@ -64,6 +69,7 @@ Color carries meaning so the eye can parse a screen **without reading**. Each se
 - **Amber = the clock & the commitment.** Now, countdowns, the live blip, the `🔒 קשיח` lock, ripple suggestions, the selected "today". One coherent family: _things bound to time._ Nothing else uses amber.
 - **Teal = the place.** Map, navigation, location affordances, "near me". Nothing else.
 - **Violet (`--plan`) = the plan.** Plan-mode chrome, readiness, builder and scheduling affordances. Nothing else.
+- **Rose (`--memory`) = the finished trip** ([ADR-0240](../decisions/0240-the-archive-is-rose.md)). The archive's chrome band, its selected day and tab, its banner, the memory Home's accents and the anniversary card. Never a CTA, a status or decoration outside a finished trip. It is the last wide gap on the hue wheel: its nearest meaning is `--miss` at 19.5 ΔE00, where the tightest pair the app already ships is teal against `--ok` at 11.6.
 - **`--ok` / `--miss` = status.** Positive/negative states (FX ▲/▼, budget health, checklist ✓/✗) are _statuses_, not places — they never borrow teal.
   - **A refused field is `--miss`** (ADR-0150): outline + a 20% halo on the control, the label with it, and a caption below — plus one 240ms nudge, because a mark already on screen says nothing new when you press save a second time. One attribute, `data-invalid`, carries all of it, and it out-ranks the teal focus border, since a refusal focuses the field it names.
 - **Per-entity sync = the `--sync-*` tokens.** The `SyncBadge` is a **cloud glyph** — `cloud-check` (saved) / `cloud-up` (pending) / `cloud-bang` (failed) — on a booking, document, event, or any syncable, wired via `EntitySyncBadge`. It's an **exception indicator: silent when synced**, shown only for pending/failed, the same on lists and the timeline. Shape carries the state (legible without color); color comes only from `--sync-synced`/`--sync-pending`/`--sync-failed` (which track `--ok`/`--muted`/`--miss`), never amber. A **pending** item also reads as _provisional_ — the whole row/card **dims (~0.6 opacity)** until the write lands, so "not saved yet" is felt, not only badged; a **failed** item stays full-opacity so it keeps calling for action (ADR-0092). Distinct from the day-view **done ✓** (a green circle, a completion record). See ADR-0080 / ADR-0091 / ADR-0092.
@@ -487,24 +493,27 @@ rendered at L\* 68, the brightest surface in the app, in the calm mode.
 
 **Dark remap table** (as wired in `tokens.css`):
 
-| Token                       | Light                 | Dark                                                                                       |
-| --------------------------- | --------------------- | ------------------------------------------------------------------------------------------ |
-| `--ink`                     | `#16233D`             | `#E7EAF2`                                                                                  |
-| `--screen`                  | `#E7EAEF`             | `#0F1726`                                                                                  |
-| `--card`                    | `#FFFFFF`             | `#1A2740`                                                                                  |
-| `--paper`                   | `#F3EFE6`             | `#2E2A20`                                                                                  |
-| `--indigo`                  | `#1B2A4A`             | `#131F38`                                                                                  |
-| `--board` / `--board-2`     | `#0E1729` / `#152137` | `#0A1120` / `#101B30`                                                                      |
-| `--amber` / `--amber-deep`  | `#E9A63C` / `#C9822A` | `#F0B254` / `#D89440`                                                                      |
-| `--amber-ink`               | `#7A5A1E`             | `#F0B254` (dark-amber text on a light amber _tint_; the tint darkens, so the ink lightens) |
-| `--teal`                    | `#2C9C90`             | `#3FB3A5`                                                                                  |
-| `--plan` / `--plan-deep`    | `#6E59D6` / `#5747B4` | `#8B79E8` / `#A99AF2` (deep is used as _text_, so lighter)                                 |
-| `--muted`                   | `#6C7488`             | `#93A0B8`                                                                                  |
-| `--faint`                   | `#98A0B0`             | `#8592AB` (faint hint/placeholder text, one step past `--muted`)                           |
-| `--line` / `--soft-line`    | ink @ .10/.28         | light @ .10/.30                                                                            |
-| `--cta` / `--cta-text`      | `#16233D` / `#FFF`    | `#E7EAF2` / `#12203A`                                                                      |
-| `--ok` / `--miss`           | `#3C9A6B` / `#C2584E` | `#4CBF85` / `#E07A6E`                                                                      |
-| `--miss-deep` (miss as ink) | `#9B463E`             | `#E3877D`                                                                                  |
+| Token                        | Light                 | Dark                                                                                       |
+| ---------------------------- | --------------------- | ------------------------------------------------------------------------------------------ |
+| `--ink`                      | `#16233D`             | `#E7EAF2`                                                                                  |
+| `--screen`                   | `#E7EAEF`             | `#0F1726`                                                                                  |
+| `--card`                     | `#FFFFFF`             | `#1A2740`                                                                                  |
+| `--paper`                    | `#F3EFE6`             | `#2E2A20`                                                                                  |
+| `--indigo`                   | `#1B2A4A`             | `#131F38`                                                                                  |
+| `--board` / `--board-2`      | `#0E1729` / `#152137` | `#0A1120` / `#101B30`                                                                      |
+| `--amber` / `--amber-deep`   | `#E9A63C` / `#C9822A` | `#F0B254` / `#D89440`                                                                      |
+| `--amber-ink`                | `#7A5A1E`             | `#F0B254` (dark-amber text on a light amber _tint_; the tint darkens, so the ink lightens) |
+| `--teal`                     | `#2C9C90`             | `#3FB3A5`                                                                                  |
+| `--plan` / `--plan-deep`     | `#6E59D6` / `#5747B4` | `#8B79E8` / `#A99AF2` (deep is used as _text_, so lighter)                                 |
+| `--muted`                    | `#6C7488`             | `#93A0B8`                                                                                  |
+| `--faint`                    | `#98A0B0`             | `#8592AB` (faint hint/placeholder text, one step past `--muted`)                           |
+| `--line` / `--soft-line`     | ink @ .10/.28         | light @ .10/.30                                                                            |
+| `--cta` / `--cta-text`       | `#16233D` / `#FFF`    | `#E7EAF2` / `#12203A`                                                                      |
+| `--ok` / `--miss`            | `#3C9A6B` / `#C2584E` | `#4CBF85` / `#E07A6E`                                                                      |
+| `--miss-deep` (miss as ink)  | `#9B463E`             | `#E3877D`                                                                                  |
+| `--ok-deep` (ok as ink)      | `#2B7050`             | `#6FD49F` (ADR-0240, not built yet)                                                        |
+| `--memory` / `--memory-deep` | `#A9507F` / `#86395F` | `#DC8AB5` / `#EBA5C9` (ADR-0240, not built yet)                                            |
+| `--chrome-bg-memory`         | `#EFD9E2`             | `#33202B`, a literal: rose mixed off the blue `--card` lands on violet's angle             |
 
 **Status — designed, not built.** ADR-0158 §10 phases it: (1) on-fill ink,
 (2) the `--on-dark-*` ramp, (3) surface + chrome tokens, (4) the theme itself —
