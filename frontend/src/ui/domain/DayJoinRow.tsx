@@ -332,7 +332,7 @@ export function JourneyBlock({
         <div className="day-trv-face">{face}</div>
       )}
       {modes && (
-        // `Collapsible` rather than a hand-rolled height animation (rule 8): max-height + opacity,
+        // `Collapsible` rather than a hand-rolled height animation (rule 8): a grid track + opacity,
         // children always rendered, reduced motion handled globally by `App.css`'s wildcard. NOT a
         // `Modal` — this is a pane OF the row, not a layer over it, so it registers no back layer
         // (`frontend/CLAUDE.md`'s `SnapSheet` distinction: back navigates, it does not close a

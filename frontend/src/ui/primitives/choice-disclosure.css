@@ -70,9 +70,7 @@
 }
 
 /* `.wp-collapsible` carries no chrome by design ("callers own all visual chrome"), so this
-   is the caller's half and it is one property. Its `max-height: 2000px` cap is safe here
-   for the reason ADR-0152 §6's trap was not: nine pills and eight cards cannot outgrow it,
-   where a note composer can. */
+   is the caller's half and it is one property. */
 .wp-disclose-panel {
   padding-block-start: var(--space-3);
 }
