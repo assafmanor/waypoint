@@ -266,6 +266,50 @@ test('the journal files a note under the day of its stop, and a tap reads it in 
   await expect(day.locator('.note-row.is-open')).toHaveCount(1);
 });
 
+test('a long journal opens whole: the continuation reveals every note, none clipped', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 360, height: 640 });
+  // Forty long notes are well past the 2000px the open `Collapsible` used to be capped at, which
+  // cut the owner's journal off mid-note (2026-09-27).
+  const notes = Array.from({ length: 40 }, (_, i) => ({
+    id: `nt-${i}`,
+    title: `Note ${i}`,
+    body: 'The road on the east side is gravel and much more weather-dependent than it looks. '.repeat(
+      2,
+    ),
+    eventId: 'ev-1',
+    source: 'member',
+    createdBy: 'u1',
+    ...stamp,
+    createdAt: '2026-05-02T00:00:00.000Z',
+  }));
+  await bootIntoTrip(page, {
+    now: NOW,
+    dates: { startDate: START, endDate: END },
+    places: [place('pl-1', 'Bar', 139.7)],
+    events: [event('ev-1', 'pl-1', '01:00', '04:00', 'done')],
+    notes,
+  });
+  await page.goto('/?trip=t1&tab=home');
+
+  await page.getByRole('button', { name: t.planHome.past.journal.more(37) }).click();
+  const rest = page.locator('.mem-journal-rest');
+  await expect(rest).toHaveClass(/\bon\b/);
+  await expect(rest.locator('.note-row')).toHaveCount(37);
+  // A clip changes no rect of what it hides, so the proof is the last note against the box that
+  // would clip it: it has to end inside it.
+  await expect
+    .poll(() =>
+      rest.evaluate((el) => {
+        const rows = el.querySelectorAll('.note-row');
+        const last = rows[rows.length - 1]!.getBoundingClientRect().bottom;
+        return last - el.getBoundingClientRect().bottom;
+      }),
+    )
+    .toBeLessThanOrEqual(1);
+});
+
 test('the record: a kind chip opens the search on its kind, and the search finds a row by its place', async ({
   page,
 }) => {

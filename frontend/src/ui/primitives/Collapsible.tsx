@@ -2,7 +2,7 @@
 // PlanHome's showCompleted/.chk-toggle pattern so the Index's past-bookings
 // collapse doesn't grow a second one-off copy. `CollapseToggle` is the
 // count-in-label button (`t.x.showY(n)` / `t.x.hideY`); `Collapsible` is the
-// animated container — max-height + opacity, never a `display:none` snap, so
+// animated container — a 0fr → 1fr grid track + opacity, never a `display:none` snap, so
 // PlanHome's checklist gains the same open/shut motion as a side effect.
 // prefers-reduced-motion turns the transition off via the existing global
 // wildcard (App.css), so no extra handling is needed here.
@@ -42,7 +42,7 @@ export function Collapsible({
   className,
 }: {
   expanded: boolean;
-  /** Always rendered (never unmounted) so the max-height transition has content
+  /** Always rendered (never unmounted) so the height transition has content
    *  to animate against instead of popping in after the fact. */
   children: ReactNode;
   className?: string;
@@ -51,7 +51,7 @@ export function Collapsible({
     <div
       className={'wp-collapsible' + (expanded ? ' on' : '') + (className ? ` ${className}` : '')}
     >
-      {children}
+      <div className="wp-collapsible-inner">{children}</div>
     </div>
   );
 }
