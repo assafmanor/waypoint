@@ -25,6 +25,9 @@ export const BAND_DENSITY = {
   /** Inside an opened event card, mid-list. Shorter, because rows follow it and ⁦116px⁩ here
    *  pushes them below the fold — measured in `the-read-in-trip-mode-v2.html` §2. */
   CARD: 'card',
+  /** **A finished trip's cover** (ADR-0240 §4): the head of the memory Home, taller than a day's
+   *  because it is the whole trip's picture and the page's first thing. */
+  COVER: 'cover',
 } as const;
 
 export type BandDensity = (typeof BAND_DENSITY)[keyof typeof BAND_DENSITY];
@@ -75,7 +78,7 @@ export function PhotoBand({
   );
   return (
     <figure
-      className={`wp-photoband${density === BAND_DENSITY.CARD ? ' is-card' : ''}${
+      className={`wp-photoband${density === BAND_DENSITY.DAY ? '' : ` is-${density}`}${
         className ? ` ${className}` : ''
       }`}
     >

@@ -1,7 +1,7 @@
 // **A FINISHED TRIP WEARS NO PLAN VIOLET** (ADR-0240, root rule 4: violet is plan mode's alone).
 // A finished trip still reads `data-mode='plan'` for its light-band layout, so every rule that
 // paints violet under that attribute reaches it unless something says otherwise — and the misses
-// are invisible to jsdom. The build found five by probing the rendered app (the Home hero, the
+// are invisible to jsdom. The build found five by probing the rendered app (the Home's interim hero, the
 // Map's scope chip, the Index filter pills, the overlap cluster, two focus rings), so this walks
 // the same surfaces in both themes and fails on any painted colour in violet's hue range.
 //
@@ -120,7 +120,7 @@ for (const theme of ['light', 'dark'] as const) {
     });
 
     const surfaces: [string, string, string][] = [
-      ['home', '/?trip=t1&tab=home', '.prep-past'],
+      ['home', '/?trip=t1&tab=home', '.mem-cover'],
       ['days', '/?trip=t1&tab=days&day=2026-05-02', '.bld'],
       ['map', '/?trip=t1&tab=map', '.map-screen'],
       ['index', '/?trip=t1&tab=index', '.archive-banner'],

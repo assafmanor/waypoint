@@ -45,7 +45,8 @@ import {
   type TravelEstimate,
 } from './routing';
 import { dayPhoto, type DayPhotoPlace, type SharedPhoto } from './sharing';
-import { MS_PER_MINUTE, tripDates } from './trip-dates';
+import { dedupeConsecutive, dominantValue } from './day-title';
+import { MS_PER_MINUTE, tripDates, zoneOffsetMinutes } from './trip-dates';
 import { tripZoneCrossings } from './zones';
 
 /** A figure, or the honest absence of one. `unresolved` is how many unsettled rows could still
@@ -110,11 +111,17 @@ export interface TripRecap {
     kinds: RecapFigure<LabelCount[]>;
     /** Where the trip went (`REGION`, else an airport's `SERVED_CITY`), in visit order. */
     regions: RecapFigure<string[]>;
+    /** **Where the trip went, day by day**: each day's dominant region, consecutive repeats
+     *  folded. Absent below two entries, so a one-city trip draws no strip (ADR-0240 §4). */
+    route: RecapFigure<string[]>;
     groundMeters: RecapFigure;
     footMeters: RecapFigure;
     airMeters: RecapFigure;
     airMinutes: RecapFigure;
     zonesCrossed: RecapFigure;
+    /** **The furthest the clock moved from home**, in minutes, signed (`+360` is six hours
+     *  ahead). Home is the first crossing's origin; `0` when every crossing came back. */
+    zoneShiftMinutes: RecapFigure;
   };
   superlatives: {
     busiestDay: RecapFigure<{ date: string; places: number }>;
@@ -318,6 +325,7 @@ export function tripRecap(input: TripRecapInput): TripRecap {
     }),
   );
   const regions: string[] = [];
+  const regionsByDate = new Map<string, string[]>();
   for (const event of ctx.happened) {
     const booking = event.bookingId ? ctx.bookingById.get(event.bookingId) : undefined;
     const ends =
@@ -328,9 +336,19 @@ export function tripRecap(input: TripRecapInput): TripRecap {
       if (!id) continue;
       const fields = enrichmentOf(id);
       const region = variantText(fields?.region) ?? variantText(fields?.servedCity);
-      if (region && !regions.includes(region)) regions.push(region);
+      if (!region) continue;
+      if (!regions.includes(region)) regions.push(region);
+      const onDay = regionsByDate.get(event.date) ?? [];
+      onDay.push(region);
+      regionsByDate.set(event.date, onDay);
     }
   }
+  // A day with one known region is that region; with several, only a clear majority names it.
+  const route = dedupeConsecutive(
+    [...regionsByDate.values()].map(
+      (values) => dominantValue(values) ?? (new Set(values).size === 1 ? values[0] : undefined),
+    ),
+  );
 
   // ── Ground and foot, per leg ──
   const tripMode = derivedTravelMode(input.bookings);
@@ -407,6 +425,14 @@ export function tripRecap(input: TripRecapInput): TripRecap {
       placeById.get(booking.toPlaceId ?? '')?.timezone,
   );
 
+  let zoneShift = 0;
+  const home = crossings[0]?.fromZone;
+  for (const crossing of crossings) {
+    const at = new Date(crossing.at);
+    const shift = zoneOffsetMinutes(at, crossing.toZone) - zoneOffsetMinutes(at, home!);
+    if (Math.abs(shift) > Math.abs(zoneShift)) zoneShift = shift;
+  }
+
   // ── Superlatives ──
   let busiestDay: { date: string; places: number } | undefined;
   for (const [date, set] of placesByDate) {
@@ -468,6 +494,7 @@ export function tripRecap(input: TripRecapInput): TripRecap {
           )
         : RECAP_ABSENT,
       regions: regions.length ? present(regions, unresolvedOpts) : RECAP_ABSENT,
+      route: route.length >= 2 ? present(route, unresolvedOpts) : RECAP_ABSENT,
       groundMeters:
         ground === null ? RECAP_ABSENT : present(ground, { estimate: groundEstimate, ...mapped }),
       footMeters:
@@ -475,6 +502,7 @@ export function tripRecap(input: TripRecapInput): TripRecap {
       airMeters: air === null ? RECAP_ABSENT : present(air),
       airMinutes: airMinutes === null ? RECAP_ABSENT : present(airMinutes),
       zonesCrossed: zoneKnown ? present(crossings.length) : RECAP_ABSENT,
+      zoneShiftMinutes: zoneKnown ? present(zoneShift) : RECAP_ABSENT,
     },
     superlatives: {
       busiestDay: busiestDay ? present(busiestDay) : RECAP_ABSENT,

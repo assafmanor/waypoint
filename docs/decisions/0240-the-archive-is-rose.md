@@ -1,6 +1,6 @@
 # 0240 — The archive is rose: a finished trip's palette and posture
 
-**Status:** Accepted 2026-09-26 (owner: _"Rose, as per your recommendation"_). **Phase 3 (§2, §3, §5, §6, §7's undimming) built 2026-09-26**; §4 (Phase 4), §7's cover, lifetime line and anniversary card (3.5 and 6B) wait on Phase 2's recap derivation. Build note: [`planning/2026-09-26-the-archive-is-rose-build.md`](../planning/2026-09-26-the-archive-is-rose-build.md). The build is phased below, inside the epic's Phases 3, 4 and 6B. Mockup: [`mockups/past-trip-v1.html`](../../mockups/past-trip-v1.html). Session note: [`planning/2026-09-26-the-archive-is-rose.md`](../planning/2026-09-26-the-archive-is-rose.md). Epic plan: [`planning/2026-09-25-a-finished-trip-is-a-memory-build-plan.md`](../planning/2026-09-25-a-finished-trip-is-a-memory-build-plan.md) §1A.
+**Status:** Accepted 2026-09-26 (owner: _"Rose, as per your recommendation"_). **Phase 3 (§2, §3, §5, §6, §7's undimming) built 2026-09-26**; §4 (Phase 4, 4.1 built 2026-09-27), §7's cover, lifetime line and anniversary card (3.5 and 6B) wait on Phase 2's recap derivation. Build note: [`planning/2026-09-26-the-archive-is-rose-build.md`](../planning/2026-09-26-the-archive-is-rose-build.md). The build is phased below, inside the epic's Phases 3, 4 and 6B. Mockup: [`mockups/past-trip-v1.html`](../../mockups/past-trip-v1.html). Session note: [`planning/2026-09-26-the-archive-is-rose.md`](../planning/2026-09-26-the-archive-is-rose.md). Epic plan: [`planning/2026-09-25-a-finished-trip-is-a-memory-build-plan.md`](../planning/2026-09-25-a-finished-trip-is-a-memory-build-plan.md) §1A.
 **Date:** 2026-09-26
 
 **Amends** [0028](0028-plan-violet-color-budget-dark-ready.md) (the semantic budget gains a fourth hue) · [`design-language.md`](../design/design-language.md) (palette, color coding, mode identity, dark remap) · root [`CLAUDE.md`](../../CLAUDE.md) rule 4 · [0044](0044-settling-a-finished-trip.md) (the archive row's done circle leaves, §5) · [0049](0049-index-tab-mode-and-lifecycle.md) §2 (its wash is not built; its banner is §6 here).
@@ -61,6 +61,15 @@ Replaces `PlanHome`'s past branch (Phase 4). Top to bottom, from primitives that
 5. **ראשונים וטובים:** `ListRow`s without a manage menu. Times inside them are `--amber-deep` mono, because amber still marks a clock. A row that names a day, not a place, carries no teal pin.
 6. **בפעם הבאה:** skipped rows (with `.tag-skip`) and ideas never used, as read-only `ListRow`s. "Take them to another trip" is Phase 7.
 
+**4.1 built 2026-09-27** (the cover and `במספרים`: `screens/MemoryHome.tsx`, `ui/domain/MemoryCover`), with four departures from the drawing:
+
+- **Only the places tile carries `2 לא סומנו`.** On every figure it read three times over a footer already saying it, and a distance already admits it is soft with its `~`.
+- **Air distance prints exact** (`9,203`, not `~9,200`). A great circle is the path a plane flies (ADR-0212), so ADR-0239 §9 gives it no `~`.
+- **The ground tile reads `ק״מ בדרכים`**, not the drawn `ברחובות`, because it counts trains and drives too.
+- **The footer's `לסמן` waits for 4.4**, the sheet it opens. Until then the footer states the count and the first two titles.
+
+The route strip and the zone shift (`+6 שעות הפרש`) are `tripRecap`'s `route` and `zoneShiftMinutes`, added for this. A trip with one or two figures splits the row between them rather than leaving an empty column. `e2e/memory-home.spec.ts` holds the fold: at 360×640 with the 168px cover, the figures end at 569px.
+
 **The route strip is cities, wraps rather than truncates, and is absent on a one-city trip.** The reader's route strip was deleted from the phone for ellipsising eight stops to their initials (`SharedItinerary.tsx`), and the seeded Japan trip is Tokyo throughout. It is drawn in the mockup on the Iceland seed's places, for shape.
 
 ### §5 · The day list is a record, not a builder
@@ -70,7 +79,7 @@ On a finished trip, Plan's archive rows:
 - **Soft rows lose the dashed border and the hatched badge.** Nothing moves after the trip, so the soft cue has nothing to say. A hard row still has its lock on the when line.
 - **The done circle leaves the slot.** Each settled row carried the `היינו ✓` chip _and_ a 32px filled `--ok` circle with a ring. The chip is the mark and the undo, as it already is on Trip's day card (ADR-0230). The slot keeps only what is still a question (`○`) or an action (`↩` on a skipped row). This amends ADR-0044's 2026-09-15 note, which kept the circle because the slot held three states. It now holds two, and the third is the chip's. The title gains 42px at 360px (183 → 225).
 - **`.tag-done` writes in `--ok-deep`** (§2). **Built as one chip:** Plan's `.tag-done` and Trip's `.wp-event-tag-done` were the same chip styled twice, so both rows now render `ui/domain/DoneChip`, and Trip's card gets the contrast fix too.
-- **Built, found by a probe of every finished-trip surface for plan violet** (the owner's ask): the Home's interim hero now uses a rose surface (`--memory-surface` `#86395F`/`#3A2433`, `--memory-surface-2` `#6E2C4C`/`#2A1A25`); the Map's and the Index's selection (`--idx-accent`) is rose; the task-tick and settle focus rings are rose. The same probe found write paths ADR-0239 §4 forbids (a booking read's `עריכה`, a Map place's rename and delete, and `EventDetail` without `frozen`), which are now withheld. `e2e/finished-trip-palette.spec.ts` keeps it.
+- **Built, found by a probe of every finished-trip surface for plan violet** (the owner's ask): the Home's interim hero took a rose surface pair (`--memory-surface`/`-2`, retired with that hero when Phase 4.1's memory Home replaced it); the Map's and the Index's selection (`--idx-accent`) is rose; the task-tick and settle focus rings are rose. The same probe found write paths ADR-0239 §4 forbids (a booking read's `עריכה`, a Map place's rename and delete, and `EventDetail` without `frozen`), which are now withheld. `e2e/finished-trip-palette.spec.ts` keeps it.
 - **Built, found by the build's own render:** a kept skipped row takes no part in nesting or overlap clusters (it did not happen, so it overlapped nothing), and on a finished trip the builder's overlap cluster and seam tags go neutral, since their violet is plan's alone (rule 4).
 - **A skipped row renders.** Today it never does: `PlanDay.tsx` keeps skipped rows when read-only, and `buildTimeTree` (`lib/time.ts:826`) then drops them before layout. This is a shipped defect against ADR-0044, fixed in Phase 3.
 

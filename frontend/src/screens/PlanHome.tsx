@@ -16,8 +16,6 @@ import { useMode } from '../state/mode-state';
 import { BEAT, playBeat } from '../lib/one-shot';
 import { useClock } from '../lib/useClock';
 import { useCountUp } from '../lib/useCountUp';
-import { dayPhrase } from '../lib/hebrew';
-import { formatTripDates, tripDayNumber } from '../lib/time';
 import { prepHeroFacts } from '../lib/prep-hero-facts';
 import { PrepDates, PrepHero } from '../ui/domain/PrepHero';
 import { useAutomaticTasks } from '../lib/useAutomaticTasks';
@@ -60,10 +58,11 @@ import {
 import type { Task } from '@waypoint/shared';
 import { DocumentUploadSheet } from '../ui/DocumentUploadSheet';
 import { StatTile } from '../ui/domain';
+import { MemoryHome } from './MemoryHome';
 import { EmptyState } from '../ui/feedback';
 import { Icon } from '../ui/Icon';
 import { Collapsible } from '../ui/primitives/Collapsible';
-import { DOT_SEPARATOR, PLAN_TASK_CAP, type TabId } from '../constants';
+import { PLAN_TASK_CAP, type TabId } from '../constants';
 import { t } from '../i18n/he';
 import { useSettledHosts } from '../ui/HostTasks';
 
@@ -151,42 +150,13 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
     wasLifted.current = lifted;
   }, [lifted]);
 
-  const total = tripDayNumber(trip.endDate, trip.startDate);
-  // Called unconditionally, above the past/upcoming branch below, because both
-  // branches' StatTiles share these same three counts (ADR-0143: "a value that
-  // changes should be seen to change" — day/event/booking counts were named but
-  // never claimed). Hooks can't be called only from inside one branch.
-  const countedTotal = useCountUp(total);
+  // Called unconditionally, above the past branch below, because hooks can't be called only
+  // from inside one branch (ADR-0143: "a value that changes should be seen to change").
   const countedEvents = useCountUp(events.length);
   const countedBookings = useCountUp(bookings.length);
 
-  // A finished trip is a calm read-only archive (ADR-0040): no prep dashboard,
-  // no countdown, no board — a quiet retrospective and a way back into the days.
-  if (isFinished) {
-    return (
-      <>
-        <div className="prep prep-past">
-          <div className="prep-k">{t.planHome.past.complete}</div>
-          <div className="prep-count">{trip.destination}</div>
-          <div className="prep-dates">
-            {formatTripDates(trip.startDate, trip.endDate, { style: 'prose' })}{' '}
-            <span className="dot">{DOT_SEPARATOR}</span> {dayPhrase(total)}
-          </div>
-        </div>
-
-        <div className="sec-title">{t.planHome.past.summary}</div>
-        <div className="prep-stats">
-          <StatTile value={countedTotal} label={t.planHome.past.days} />
-          <StatTile value={countedEvents} label={t.planHome.stats.events} />
-          <StatTile value={countedBookings} label={t.planHome.stats.bookings} />
-        </div>
-
-        <button className="addbtn" onClick={() => onNavigate('days')}>
-          {t.planHome.past.viewDays}
-        </button>
-      </>
-    );
-  }
+  // A finished trip is a memory, not a plan (ADR-0239, ADR-0240 §4).
+  if (isFinished) return <MemoryHome onNavigate={onNavigate} />;
 
   /** The hero's tier, countdown, runway and eve clock — one derivation for both of its hosts
    *  (`lib/prep-hero-facts.ts`, ADR-0221). */

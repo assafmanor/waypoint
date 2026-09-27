@@ -1,0 +1,80 @@
+/* **A finished trip's cover** — `ui/domain/MemoryCover` (ADR-0240 §4, `past-trip-v1.html` §3).
+   The card, the bleed and the footer band are `day-head.css`'s; what is here is the head's copy,
+   which a day does not have: a trip name, its faces and its route. */
+
+.mem-head {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px 14px;
+}
+
+.mem-head h2 {
+  margin: 0;
+  font-family: var(--font-head);
+  font-size: 24px;
+  line-height: 1.15;
+  color: var(--ink);
+}
+
+.mem-when {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* Cities, and it WRAPS: the reader's strip was deleted from the phone for ellipsising eight
+   stops to their initials (ADR-0240 §4). */
+.mem-route {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 6px;
+  margin-top: 2px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.mem-route-arrow {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.mem-faces {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin-top: 6px;
+}
+
+.mem-faces-row {
+  display: flex;
+  flex: 0 0 auto;
+}
+
+/* 28px and overlapping: faces, not controls, so they are under the 44px floor on purpose — none
+   of them is a tap target. The ring is the card's ground, which is what separates the overlap. */
+.mem-faces-row > .wp-av {
+  width: 28px;
+  height: 28px;
+  font-size: 13px;
+  box-shadow: 0 0 0 2px var(--card);
+}
+
+.mem-faces-row > .wp-av + .wp-av {
+  margin-inline-start: -7px;
+}
+
+.mem-faces-names {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.mem-open {
+  font-weight: 400;
+  margin-inline-end: 4px;
+}

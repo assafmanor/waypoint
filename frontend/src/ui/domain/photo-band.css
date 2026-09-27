@@ -100,3 +100,10 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* ── `cover` — a finished trip's cover (ADR-0240 §4) ─────────────────────────────────────────
+   ⁦168px⁩, the ADR's number: at 360×640 it is the tallest cover that keeps `במספרים` above the
+   fold. 200 and 232 are the device pass's to try. */
+.wp-photoband.is-cover img {
+  height: 168px;
+}
