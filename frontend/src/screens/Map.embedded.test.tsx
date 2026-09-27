@@ -2875,6 +2875,9 @@ describe('the embedded map’s shell (ADR-0121)', () => {
         render(wrap(<MapView />));
         fireEvent.click(row('רמן נאגי')!);
         fireEvent.click(pencil());
+        // The place already exists, so its form carries the notes SECTION, whose `＋ פתק`
+        // reveals the box — the host forms' shape, not the add sources' always-open box.
+        fireEvent.click(within(draftForm()!).getByRole('button', { name: t.notes.section.add }));
         fireEvent.change(draftForm()!.querySelector('.note-compose-in')!, {
           target: { value: 'סוגרים ב-17:00' },
         });
@@ -2882,6 +2885,17 @@ describe('the embedded map’s shell (ADR-0121)', () => {
 
         await vi.waitFor(() => expect(createNote).toHaveBeenCalledTimes(1));
         expect(createNote).toHaveBeenCalledWith({ body: 'סוגרים ב-17:00', placeId: 'museum' });
+      });
+
+      // Owner's report: the rename form opened on an empty box, as if nothing had ever been
+      // written about the place.
+      it('shows the notes the place already carries in the rename form', () => {
+        seedNamed();
+        tripNotes = [note('n1', 'museum', 'כרטיסים רק באתר')];
+        render(wrap(<MapView />));
+        fireEvent.click(row('רמן נאגי')!);
+        fireEvent.click(pencil());
+        expect(within(draftForm()!).getByText('כרטיסים רק באתר')).toBeTruthy();
       });
 
       // ── ONE COMPOSITION, THREE DESTINATIONS (ADR-0131 §11) ──────────────────────

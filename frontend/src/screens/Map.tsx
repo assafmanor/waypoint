@@ -3810,6 +3810,17 @@ export function MapView() {
         onConfirm={(value) => commitDraft.current(value)}
         onCancel={cancelDraft}
         onValueChange={(value) => setDraftLook({ icon: value.icon, category: value.category })}
+        renderNotes={
+          draft.kind === 'rename'
+            ? (slot) => (
+                <HostNotes
+                  host={{ kind: 'place', id: draft.place.id, name: draft.place.name }}
+                  canAdd={!finished}
+                  {...slot}
+                />
+              )
+            : undefined
+        }
       />
     </div>
   );

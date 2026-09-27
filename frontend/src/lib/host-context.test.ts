@@ -118,25 +118,74 @@ describe('a place inherits its ONE relevant context', () => {
     const reused = index([], [bk('b1', { placeId: 'p1' }), bk('b2', { placeId: 'p1' })]);
     const after = resolve(reused, { kind: 'place', id: 'p1' });
     expect(after.members).toEqual([{ kind: 'place', id: 'p1' }]);
-    // b1 still holds the note; the place simply no longer reads it, and b2 never can.
-    expect(keys(resolve(reused, { kind: 'booking', id: 'b1' }).members)).toEqual(['booking:b1']);
-    expect(keys(resolve(reused, { kind: 'booking', id: 'b2' }).members)).toEqual(['booking:b2']);
+    // b1 still holds the note; the place simply no longer reads it, and b2 never can — b2
+    // reads only the place's OWN rows, never b1's.
+    expect(keys(resolve(reused, { kind: 'booking', id: 'b1' }).members)).toEqual([
+      'booking:b1',
+      'place:p1',
+    ]);
+    expect(keys(resolve(reused, { kind: 'booking', id: 'b2' }).members)).toEqual([
+      'booking:b2',
+      'place:p1',
+    ]);
   });
 });
 
-describe('a place is a one-way inheritor, never a member', () => {
-  // §3's asymmetry. A place-hosted note (written when the place had no single context) must
-  // never travel to the Booking/Event, or it would leak back to both uses once the place is
-  // reused — the reverse of the rule it is there to keep.
-  it('never puts a place in a booking or event context', () => {
-    const i = index([ev('e1', { bookingId: 'b1' })], [bk('b1', { placeId: 'p1' })]);
+describe("a place's own notes read on every use of it", () => {
+  // ADR-0172 §3's 2026-09-27 amendment (owner's report): notes written on a place from the Map
+  // did not show on the event later made there. The place is a display member of each use,
+  // never its anchor.
+  it('puts the place in an unlinked event context, anchored on the event', () => {
+    const i = index([ev('e1', { placeId: 'p1' })], []);
+    const context = resolve(i, { kind: 'event', id: 'e1' });
+    expect(keys(context.members)).toEqual(['event:e1', 'place:p1']);
+    expect(context.anchor).toEqual({ kind: 'event', id: 'e1' });
+  });
+
+  it('reads a linked pair through the booking place, never the event column', () => {
+    const i = index(
+      [ev('e1', { bookingId: 'b1', placeId: 'p-stale' })],
+      [bk('b1', { placeId: 'p1' })],
+    );
+    for (const host of [
+      { kind: 'booking', id: 'b1' },
+      { kind: 'event', id: 'e1' },
+    ] as HostRef[]) {
+      const context = resolve(i, host);
+      expect(keys(context.members)).toEqual(['booking:b1', 'event:e1', 'place:p1']);
+      expect(context.anchor).toEqual({ kind: 'booking', id: 'b1' });
+    }
+  });
+
+  it('reads the place on every use, however many there are', () => {
+    const i = index([ev('e1', { placeId: 'p1' }), ev('e2', { placeId: 'p1' })], []);
+    expect(keys(resolve(i, { kind: 'event', id: 'e1' }).members)).toEqual(['event:e1', 'place:p1']);
+    expect(keys(resolve(i, { kind: 'event', id: 'e2' }).members)).toEqual(['event:e2', 'place:p1']);
+  });
+
+  it('puts the place in an idea context without counting the idea as a use', () => {
+    const i = buildHostContextIndex(
+      [],
+      [bk('b1', { placeId: 'p1' })],
+      [{ id: 'm1', placeId: 'p1' }],
+    );
+    expect(keys(resolve(i, { kind: 'maybeItem', id: 'm1' }).members)).toEqual([
+      'maybeItem:m1',
+      'place:p1',
+    ]);
+    expect(resolve(i, { kind: 'place', id: 'p1' }).anchor).toEqual({ kind: 'booking', id: 'b1' });
+  });
+
+  it('never lists the place twice, nor another place through an inherited transport leg', () => {
+    const i = index([], [bk('b1', { fromPlaceId: 'p1', toPlaceId: 'p2' })]);
     expect(keys(resolve(i, { kind: 'booking', id: 'b1' }).members)).toEqual([
       'booking:b1',
-      'event:e1',
+      'place:p1',
+      'place:p2',
     ]);
-    expect(keys(resolve(i, { kind: 'event', id: 'e1' }).members)).toEqual([
+    expect(keys(resolve(i, { kind: 'place', id: 'p1' }).members)).toEqual([
       'booking:b1',
-      'event:e1',
+      'place:p1',
     ]);
   });
 });

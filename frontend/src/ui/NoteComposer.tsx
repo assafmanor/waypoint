@@ -56,7 +56,7 @@ export interface NoteComposerState {
 }
 
 /** **`standalone` names the one condition both its effects follow from: nothing else on this
- *  surface offers a way in.** `DocumentUploadSheet` and `MapPlaceForm` caption the box with
+ *  surface offers a way in.** `DocumentUploadSheet` and `MapPlaceForm`'s add sources caption the box with
  *  their own `Field` and have no notes SECTION, so there is no `＋ פתק` to reveal it and none
  *  to start a second note — the box therefore shows from the start and keeps its own `＋`.
  *  The host forms are the other case: their section header owns both jobs (ADR-0192 §2's

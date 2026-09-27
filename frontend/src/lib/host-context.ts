@@ -11,7 +11,7 @@
 //
 // Pure over the snapshot: no React, no Dexie, and deliberately no clock (§3's relevance
 // test is not date-scoped, so a place's sharing cannot change while nobody is writing).
-import type { Booking, TripEvent } from '@waypoint/shared';
+import type { Booking, MaybeItem, TripEvent } from '@waypoint/shared';
 import { ENTITY_TYPE } from '@waypoint/shared';
 import type { NoteHostKind } from './notes';
 
@@ -48,11 +48,15 @@ export interface HostContextIndex {
    *  one. A place with none, or with two, is absent — which is the safe fallback in both
    *  directions (ADR-0172 §3). */
   soleContextOfPlace: Map<string, HostRef>;
+  /** `kind:id` → the places this event/booking/idea is AT, authority rule applied. What makes
+   *  a place's own notes read on every use of it (§3's 2026-09-27 amendment). */
+  placesOfHost: Map<string, string[]>;
 }
 
 export function buildHostContextIndex(
   events: Pick<TripEvent, 'id' | 'bookingId' | 'placeId'>[],
   bookings: Pick<Booking, 'id' | 'placeId' | 'fromPlaceId' | 'toPlaceId'>[],
+  maybeItems: Pick<MaybeItem, 'id' | 'placeId'>[] = [],
 ): HostContextIndex {
   const bookingOfEvent = new Map<string, string>();
   const eventOfBooking = new Map<string, string>();
@@ -66,7 +70,15 @@ export function buildHostContextIndex(
   // destination are the same place still counts ONCE: the unit of "a context" is the
   // referencing entity, not the FK (ADR-0172 §3).
   const contextsByPlace = new Map<string, Map<string, HostRef>>();
+  const placesOfHost = new Map<string, string[]>();
+  const locate = (placeId: string | null | undefined, ref: HostRef) => {
+    if (!placeId) return;
+    const places = placesOfHost.get(keyOf(ref));
+    if (!places) placesOfHost.set(keyOf(ref), [placeId]);
+    else if (!places.includes(placeId)) places.push(placeId);
+  };
   const link = (placeId: string | undefined, ref: HostRef) => {
+    locate(placeId, ref);
     if (!placeId) return;
     let refs = contextsByPlace.get(placeId);
     if (!refs) contextsByPlace.set(placeId, (refs = new Map()));
@@ -89,24 +101,52 @@ export function buildHostContextIndex(
   }
   // An idea pointing at the place is deliberately NOT counted (owner's call, ADR-0172 §3):
   // a stray "maybe we eat here" would otherwise hide a restaurant's notes with no visible
-  // cause on the surface the reader is on.
+  // cause on the surface the reader is on. It still READS the place's own notes.
+  for (const item of maybeItems)
+    locate(item.placeId, { kind: ENTITY_TYPE.MAYBE_ITEM, id: item.id });
 
   const soleContextOfPlace = new Map<string, HostRef>();
   for (const [placeId, refs] of contextsByPlace) {
     if (refs.size !== 1) continue;
     soleContextOfPlace.set(placeId, refs.values().next().value!);
   }
-  return { bookingOfEvent, eventOfBooking, soleContextOfPlace };
+  return { bookingOfEvent, eventOfBooking, soleContextOfPlace, placesOfHost };
 }
 
 /** The context a surface reads and writes through.
  *
- *  A **place** is a one-way inheritor, never a member of the Booking/Event context: it
- *  DISPLAYS that context's rows, and its own rows never travel the other way (ADR-0172 §3).
- *  That asymmetry is what makes the owner's non-leak rule cost nothing — a row written here
- *  goes straight to the anchor, so when the place later gains a second reference there is
- *  nothing to detach and nothing to leak; the place simply stops resolving. */
+ *  **A place's OWN rows read on every use of it** (ADR-0172 §3, amended 2026-09-27 on the
+ *  owner's report): a note written on a place from the Map is about the place, so the event
+ *  or idea later made there shows it. A place is still never an anchor from that side — a
+ *  row written on the event stays the event's — and a place never reads ANOTHER place's rows
+ *  through a transport booking it inherits. */
 export function resolveHostContext(index: HostContextIndex, host: HostRef): HostContext {
+  if (host.kind === ENTITY_TYPE.PLACE) {
+    const sole = index.soleContextOfPlace.get(host.id);
+    if (!sole) return { anchor: host, members: [host] };
+    const inherited = resolveHostContext(index, sole);
+    // The place leads its own list, and writes go to the inherited anchor.
+    return {
+      anchor: inherited.anchor,
+      members: [host, ...inherited.members.filter((m) => m.kind !== ENTITY_TYPE.PLACE)],
+    };
+  }
+
+  const pair = resolvePair(index, host);
+  const seen = new Set(pair.members.map(keyOf));
+  const members = [...pair.members];
+  for (const member of pair.members)
+    for (const placeId of index.placesOfHost.get(keyOf(member)) ?? []) {
+      const place: HostRef = { kind: ENTITY_TYPE.PLACE, id: placeId };
+      if (seen.has(keyOf(place))) continue;
+      seen.add(keyOf(place));
+      members.push(place);
+    }
+  return { anchor: pair.anchor, members };
+}
+
+/** The Booking/Event pair (ADR-0172 §1/§2), or a context of one. */
+function resolvePair(index: HostContextIndex, host: HostRef): HostContext {
   const self = { anchor: host, members: [host] };
 
   if (host.kind === ENTITY_TYPE.EVENT) {
@@ -120,14 +160,6 @@ export function resolveHostContext(index: HostContextIndex, host: HostRef): Host
     const eventId = index.eventOfBooking.get(host.id);
     if (!eventId) return self;
     return { anchor: host, members: [host, { kind: ENTITY_TYPE.EVENT, id: eventId }] };
-  }
-
-  if (host.kind === ENTITY_TYPE.PLACE) {
-    const sole = index.soleContextOfPlace.get(host.id);
-    if (!sole) return self;
-    const inherited = resolveHostContext(index, sole);
-    // The place leads its own list, and writes go to the inherited anchor.
-    return { anchor: inherited.anchor, members: [host, ...inherited.members] };
   }
 
   return self;
