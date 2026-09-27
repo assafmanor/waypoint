@@ -3,28 +3,30 @@
 // It replaces `PlanHome`'s past branch, which was three counts and a button. Every number on it
 // is `tripRecap`'s (ADR-0239 §9, through `useTripRecap`), so this page and every share print
 // the same figure for the same trip. Built in the epic's order, one item per change: 4.1 is the
-// frame — the cover and `במספרים`; 4.2 the days as a contact sheet; 4.3 firsts and bests; the
-// stragglers sheet and next time follow inside it.
-import { useMemo, useState } from 'react';
+// frame — the cover and `במספרים`; 4.2 the days as a contact sheet; 4.3 firsts and bests; 4.4 the
+// stragglers sheet the cover opens; next time follows inside it.
+import { useCallback, useMemo, useState } from 'react';
 import { t } from '../i18n/he';
 import { DOT_SEPARATOR, type TabId } from '../constants';
 import { autoIsolate } from '../lib/bidi';
 import type { DayShot } from '../lib/day-photo';
 import { dayPhrase } from '../lib/hebrew';
-import { memoryBests, memoryDays, memoryFigures } from '../lib/memory-home';
+import { memoryBests, memoryDays, memoryFigures, memoryStragglers } from '../lib/memory-home';
 import { formatTripDates, tripDayNumber } from '../lib/time';
 import { useTripRecap } from '../lib/trip-recap';
 import { useShowPlaceOnMap } from '../state/map-scope-state';
 import { usePlaceLabels } from '../state/place-labels';
 import { useTrip } from '../state/trip-state';
+import { useVerbs } from '../state/verbs';
 import { ContactSheet } from '../ui/domain/ContactSheet';
 import { ListRow } from '../ui/domain/ListRow';
 import { MemoryCover } from '../ui/domain/MemoryCover';
 import { StatTile } from '../ui/domain/StatTile';
+import { StragglersSheet } from '../ui/domain/StragglersSheet';
 import { MediaViewer } from '../ui/MediaViewer';
 import './memory-home.css';
 
-/** How many straggler titles the cover's footer names before the sheet (4.4) takes over. */
+/** How many straggler titles the cover's footer names; the sheet it opens walks the rest. */
 const STRAGGLER_TITLES = 2;
 
 export function MemoryHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
@@ -33,7 +35,10 @@ export function MemoryHome({ onNavigate }: { onNavigate: (tab: TabId) => void })
   const showOnMap = useShowPlaceOnMap();
   const placeLabels = usePlaceLabels();
   const recap = useTripRecap();
+  const verbs = useVerbs();
   const [fullShot, setFullShot] = useState<DayShot | null>(null);
+  const [settling, setSettling] = useState(false);
+  const closeSettling = useCallback(() => setSettling(false), []);
 
   const when = [
     formatTripDates(trip.startDate, trip.endDate, { style: 'prose' }),
@@ -59,7 +64,10 @@ export function MemoryHome({ onNavigate }: { onNavigate: (tab: TabId) => void })
       ? placeId
       : undefined;
 
-  const titleOf = new Map(events.map((event) => [event.id, event.title]));
+  const stragglers = useMemo(
+    () => (recap ? memoryStragglers({ recap, events, evidence: zoneEvidence }) : []),
+    [recap, events, zoneEvidence],
+  );
   const figures = recap ? memoryFigures(recap) : [];
   const cover = recap?.cover;
   const route = recap?.figures.route.state === 'present' ? recap.figures.route.value : undefined;
@@ -75,12 +83,10 @@ export function MemoryHome({ onNavigate }: { onNavigate: (tab: TabId) => void })
         stragglers={
           recap && {
             count: recap.stragglers.length,
-            titles: recap.stragglers
-              .slice(0, STRAGGLER_TITLES)
-              .map((id) => titleOf.get(id))
-              .filter((title): title is string => Boolean(title)),
+            titles: stragglers.slice(0, STRAGGLER_TITLES).map((row) => row.event.title),
           }
         }
+        onSettle={stragglers.length > 0 ? () => setSettling(true) : undefined}
       />
 
       {figures.length > 0 && (
@@ -155,6 +161,15 @@ export function MemoryHome({ onNavigate }: { onNavigate: (tab: TabId) => void })
       <button className="addbtn mem-all-days" onClick={() => onNavigate('days')}>
         {t.planHome.past.viewDays}
       </button>
+
+      {settling && (
+        <StragglersSheet
+          rows={stragglers}
+          onDone={(row) => verbs.done(row.event)}
+          onSkip={(row) => verbs.skip(row.event)}
+          onClose={closeSettling}
+        />
+      )}
 
       {fullShot && (
         <MediaViewer

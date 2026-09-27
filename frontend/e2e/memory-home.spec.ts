@@ -6,6 +6,7 @@
 // reason for putting the stragglers in the cover's footer rather than a card of their own.
 // Then the contact sheet (4.2): only the day where something happened gets a frame, its
 // picture is the 84px thumb, and a tap on it opens that day rather than the Days tab's default.
+// And the stragglers (4.4): the footer's `לסמן` asks about each unmarked row until none is left.
 import { test, expect } from '@playwright/test';
 import { t } from '../src/i18n/he';
 import { dayPhrase } from '../src/lib/hebrew';
@@ -166,4 +167,29 @@ test('firsts and bests: a place row carries its pin and an amber clock, a day ro
   const day = rows.filter({ hasText: t.planHome.past.bests.busiestDay });
   await expect(day).toHaveCount(1);
   await expect(day.locator('.wp-placebadge-mark')).toHaveCount(0);
+});
+
+test('the stragglers sheet asks about the unmarked row, and the answer clears the footer', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 360, height: 640 });
+  await bootIntoTrip(page, {
+    now: NOW,
+    dates: { startDate: START, endDate: END },
+    places: [place('pl-1', 'Bar', 139.7), place('pl-3', 'Park', 139.8)],
+    events: [
+      event('ev-1', 'pl-1', '01:00', '04:00', 'done'),
+      event('ev-3', 'pl-3', '07:00', '08:00', 'planned'),
+    ],
+  });
+  await page.goto('/?trip=t1&tab=home');
+
+  const foot = page.locator('.mem-cover .wp-dayhead-foot');
+  await foot.getByRole('button', { name: t.planHome.past.settle.action }).click();
+  const sheet = page.getByRole('dialog');
+  await expect(sheet).toContainText('ev-3 plan');
+  await sheet.getByRole('button', { name: t.actions.wasThere }).click();
+
+  await expect(sheet).toHaveCount(0);
+  await expect(foot).toHaveCount(0);
 });

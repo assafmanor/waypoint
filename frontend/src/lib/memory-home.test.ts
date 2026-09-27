@@ -3,7 +3,14 @@ import { RECAP_ABSENT, type RecapFigure, type TripRecap } from '@waypoint/shared
 import { MEMORY_FIGURES_MAX } from '../constants';
 import { t } from '../i18n/he';
 import type { Booking, Place, TripEvent, ZoneEvidence } from '@waypoint/shared';
-import { memoryBests, memoryDays, memoryFigures, recapHours, recapKm } from './memory-home';
+import {
+  memoryBests,
+  memoryDays,
+  memoryFigures,
+  memoryStragglers,
+  recapHours,
+  recapKm,
+} from './memory-home';
 
 const present = (
   value: number,
@@ -268,5 +275,39 @@ describe('memoryBests: firsts and bests (ADR-0240 §4)', () => {
     expect(rows.filter((row) => row.date === '2026-05-02' && !row.placeId)).toHaveLength(1);
     expect(rows.find((row) => row.key === 'busiestDay')!.detail).toContain('0.6');
     expect(rows.some((row) => row.key === 'walkDay')).toBe(false);
+  });
+});
+
+describe('memoryStragglers: the rows the sheet walks (ADR-0240 §4)', () => {
+  const stamp = { tripId: 't1', createdAt: '', updatedAt: '', updatedBy: 'u1' };
+  const ev = (id: string, startsAt?: string): TripEvent => ({
+    id,
+    date: '2026-05-02',
+    title: id,
+    kind: 'soft',
+    status: 'planned',
+    ...(startsAt ? { startsAt } : {}),
+    sortOrder: 0,
+    source: 'manual',
+    ...stamp,
+  });
+  const evidence = {
+    primaryZone: 'UTC',
+    crossings: [],
+    events: [],
+    places: [],
+  } as unknown as ZoneEvidence;
+
+  it("asks in the recap's order, each row with its day and, when it has one, its clock", () => {
+    const rows = memoryStragglers({
+      recap: { ...recap({}), stragglers: ['timed', 'untimed', 'gone'] },
+      events: [ev('untimed'), ev('timed', '2026-05-02T21:30:00.000Z')],
+      evidence,
+    });
+    // A straggler the events no longer carry is not asked about.
+    expect(rows.map((row) => row.event.id)).toEqual(['timed', 'untimed']);
+    expect(rows[0]!.subject).toContain('02.05');
+    expect(rows[0]!.subject).toContain('21:30');
+    expect(rows[1]!.subject).not.toContain(':');
   });
 });

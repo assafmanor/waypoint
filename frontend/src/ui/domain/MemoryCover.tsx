@@ -29,9 +29,19 @@ export interface MemoryCoverProps {
   route?: readonly string[];
   /** Rows nobody marked, and what they were called. Absent when there are none. */
   stragglers?: { count: number; titles: readonly string[] };
+  /** Opens the stragglers sheet: the footer's one action, as a day head's footer has one. */
+  onSettle?: () => void;
 }
 
-export function MemoryCover({ shot, name, when, people, route, stragglers }: MemoryCoverProps) {
+export function MemoryCover({
+  shot,
+  name,
+  when,
+  people,
+  route,
+  stragglers,
+  onSettle,
+}: MemoryCoverProps) {
   return (
     <section className="wp-dayhead is-card mem-cover">
       {shot && <PhotoBand shot={{ ...shot, eager: true }} density={BAND_DENSITY.COVER} />}
@@ -77,6 +87,11 @@ export function MemoryCover({ shot, name, when, people, route, stragglers }: Mem
                 ` ${DOT_SEPARATOR} ${stragglers.titles.map(autoIsolate).join(', ')}`}
             </span>
           </div>
+          {onSettle && (
+            <button type="button" className="new-event-btn" onClick={onSettle}>
+              {t.planHome.past.settle.action}
+            </button>
+          )}
         </div>
       )}
     </section>

@@ -97,6 +97,15 @@ export function memoryFigures(recap: TripRecap): MemoryFigure[] {
     .slice(0, MEMORY_FIGURES_MAX);
 }
 
+/** `ו׳ 25.09`: how every row on the memory Home names its day. */
+const dayWhen = (date: string) => `${weekdayLetter(date)} ${formatDayMonth(date)}`;
+
+/** A row's start as its own zone's clock, isolated for the RTL line it sits in. */
+const clockOf = (event: TripEvent, evidence: ZoneEvidence) =>
+  event.startsAt
+    ? ltrIsolate(formatTime(event.startsAt, eventDisplayZones(event, evidence).start))
+    : undefined;
+
 /** One frame on the contact sheet, composed. */
 export interface ContactSheetDay {
   date: string;
@@ -138,7 +147,7 @@ export function memoryDays(
     const shot = dayShot(happened, bookings, places, placeLabels, enrichments);
     days.push({
       date,
-      when: `${weekdayLetter(date)} ${formatDayMonth(date)}`,
+      when: dayWhen(date),
       numeral: dayOfMonth(date),
       name: dayHeadTitle({ ...input, date, dayEvents: happened }),
       glyphs,
@@ -191,10 +200,6 @@ export function memoryBests(input: {
   const dayOf = (date: string) => days.find((day) => day.date === date);
   const iconOf = (event: TripEvent) =>
     event.icon ?? iconForCategory(event.category ?? EVENT_CATEGORY.OTHER);
-  const clockOf = (event: TripEvent) =>
-    event.startsAt
-      ? ltrIsolate(formatTime(event.startsAt, eventDisplayZones(event, evidence).start))
-      : undefined;
 
   // A stop is a place the trip was AT: not a leg (its ends are airports) and not a bed.
   const stops = events
@@ -215,7 +220,7 @@ export function memoryBests(input: {
       title: event.title,
       label,
       when: dayOf(event.date)?.when,
-      clock: clockOf(event),
+      clock: clockOf(event, evidence),
       detail,
       date: event.date,
     };
@@ -286,4 +291,31 @@ export function memoryBests(input: {
   }
   if (last && !seen.has(last.id)) rows.push(placeRow('last', copy.last, last));
   return rows;
+}
+
+/** One row the trip never marked, as the stragglers sheet asks about it. */
+export interface Straggler {
+  event: TripEvent;
+  /** Its day and clock, `ו׳ 25.09 · 21:30`. */
+  subject: string;
+}
+
+/**
+ * **The stragglers, in the order they happened** (ADR-0240 §4, epic 4.4): `tripRecap`'s own
+ * list, so the sheet asks about exactly the rows every figure admits to.
+ */
+export function memoryStragglers(input: {
+  recap: TripRecap;
+  events: readonly TripEvent[];
+  evidence: ZoneEvidence;
+}): Straggler[] {
+  const byId = new Map(input.events.map((event) => [event.id, event]));
+  return input.recap.stragglers.flatMap((id) => {
+    const event = byId.get(id);
+    if (!event) return [];
+    const subject = [dayWhen(event.date), clockOf(event, input.evidence)]
+      .filter(Boolean)
+      .join(` ${DOT_SEPARATOR} `);
+    return [{ event, subject }];
+  });
 }
