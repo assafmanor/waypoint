@@ -127,3 +127,43 @@ test('the contact sheet frames only the days that happened, and a frame opens it
   // Day 2, not the Days tab's own default of day 1 on a finished trip.
   await expect(page.locator('.wp-daypill.on')).toContainText('02');
 });
+
+test('firsts and bests: a place row carries its pin and an amber clock, a day row neither', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 360, height: 640 });
+  await bootIntoTrip(page, {
+    now: NOW,
+    dates: { startDate: START, endDate: END },
+    places: [place('pl-1', 'Bar', 139.7), place('pl-2', 'Club', 139.75)],
+    events: [
+      event('ev-1', 'pl-1', '01:00', '04:00', 'done'),
+      event('ev-2', 'pl-2', '05:00', '06:00', 'done'),
+    ],
+  });
+  await page.goto('/?trip=t1&tab=home');
+
+  const rows = page.locator('.mem-bests .wp-listrow');
+  await expect(rows.first()).toBeVisible();
+  const first = rows.first();
+  await expect(first).toContainText(t.planHome.past.bests.first);
+  await expect(first.locator('.wp-placebadge-mark')).toHaveCount(1);
+  // Amber still marks a clock on a finished trip (ADR-0240 §4).
+  const clock = first.locator('.mem-clock');
+  const [clockColor, amber] = await clock.evaluate((el) => [
+    getComputedStyle(el).color,
+    (() => {
+      const probe = document.createElement('span');
+      probe.style.color = 'var(--amber-deep)';
+      document.body.append(probe);
+      const colour = getComputedStyle(probe).color;
+      probe.remove();
+      return colour;
+    })(),
+  ]);
+  expect(clockColor).toBe(amber);
+
+  const day = rows.filter({ hasText: t.planHome.past.bests.busiestDay });
+  await expect(day).toHaveCount(1);
+  await expect(day.locator('.wp-placebadge-mark')).toHaveCount(0);
+});

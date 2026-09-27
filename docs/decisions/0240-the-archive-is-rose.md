@@ -1,6 +1,6 @@
 # 0240 — The archive is rose: a finished trip's palette and posture
 
-**Status:** Accepted 2026-09-26 (owner: _"Rose, as per your recommendation"_). **Phase 3 (§2, §3, §5, §6, §7's undimming) built 2026-09-26**; §4 (Phase 4, 4.1 and 4.2 built 2026-09-27), §7's cover, lifetime line and anniversary card (3.5 and 6B) wait on Phase 2's recap derivation. Build note: [`planning/2026-09-26-the-archive-is-rose-build.md`](../planning/2026-09-26-the-archive-is-rose-build.md). The build is phased below, inside the epic's Phases 3, 4 and 6B. Mockup: [`mockups/past-trip-v1.html`](../../mockups/past-trip-v1.html). Session note: [`planning/2026-09-26-the-archive-is-rose.md`](../planning/2026-09-26-the-archive-is-rose.md). Epic plan: [`planning/2026-09-25-a-finished-trip-is-a-memory-build-plan.md`](../planning/2026-09-25-a-finished-trip-is-a-memory-build-plan.md) §1A.
+**Status:** Accepted 2026-09-26 (owner: _"Rose, as per your recommendation"_). **Phase 3 (§2, §3, §5, §6, §7's undimming) built 2026-09-26**; §4 (Phase 4, 4.1–4.3 built 2026-09-27), §7's cover, lifetime line and anniversary card (3.5 and 6B) wait on Phase 2's recap derivation. Build note: [`planning/2026-09-26-the-archive-is-rose-build.md`](../planning/2026-09-26-the-archive-is-rose-build.md). The build is phased below, inside the epic's Phases 3, 4 and 6B. Mockup: [`mockups/past-trip-v1.html`](../../mockups/past-trip-v1.html). Session note: [`planning/2026-09-26-the-archive-is-rose.md`](../planning/2026-09-26-the-archive-is-rose.md). Epic plan: [`planning/2026-09-25-a-finished-trip-is-a-memory-build-plan.md`](../planning/2026-09-25-a-finished-trip-is-a-memory-build-plan.md) §1A.
 **Date:** 2026-09-26
 
 **Amends** [0028](0028-plan-violet-color-budget-dark-ready.md) (the semantic budget gains a fourth hue) · [`design-language.md`](../design/design-language.md) (palette, color coding, mode identity, dark remap) · root [`CLAUDE.md`](../../CLAUDE.md) rule 4 · [0044](0044-settling-a-finished-trip.md) (the archive row's done circle leaves, §5) · [0049](0049-index-tab-mode-and-lifecycle.md) §2 (its wash is not built; its banner is §6 here).
@@ -69,6 +69,20 @@ Replaces `PlanHome`'s past branch (Phase 4). Top to bottom, from primitives that
 - **The footer's `לסמן` waits for 4.4**, the sheet it opens. Until then the footer states the count and the first two titles.
 
 **4.2 built 2026-09-27** (the days as a contact sheet: `ui/domain/ContactSheet`, `memoryDays` in `lib/memory-home.ts`). A day earns a frame when something on it happened (ADR-0239 §9's rule), and its name, picture and glyphs come from those rows alone, so a frame never pictures a place nobody went. `PhotoBand` gains a `thumb` density (84px) whose caption keeps the credit and drops the name, since the frame names its day and the licence is not ours to drop. The Home's `עיון בימי הטיול` stays, below the sheet, as the way into every day. It got its own spacing, because `.addbtn`'s 2px left it touching the tiles on a phone (owner report).
+
+**4.3 built 2026-09-27** (firsts and bests: `memoryBests` in `lib/memory-home.ts`, rendered as `ListRow`s with no manage menu). The rows are:
+
+- the first and the last thing the trip did, each with its clock in the event's own zone, in `--amber-deep` mono;
+- the longest stop;
+- the fullest day;
+- the day walked furthest.
+
+The three superlatives are `tripRecap`'s, so the shares will name the same ones. A stop is a place the trip was at, never a leg or a bed. Two departures from the drawing:
+
+- **`הערב האחרון בחוץ` became `הדבר האחרון`.** "Evening out" would need a rule for what an evening is, and the last thing that happened needs none.
+- **A row that repeats another's subject is dropped.** The longest stop is often also the first thing. When the fullest day is also the one walked furthest, the walk joins that day's row instead of printing the same title twice.
+
+A place row's badge carries the teal pin and opens the Map. A day row carries none. Every row opens its day.
 
 The route strip and the zone shift (`+6 שעות הפרש`) are `tripRecap`'s `route` and `zoneShiftMinutes`, added for this. A trip with one or two figures splits the row between them rather than leaving an empty column. `e2e/memory-home.spec.ts` holds the fold: at 360×640 with the 168px cover, the figures end at 569px.
 

@@ -2733,6 +2733,18 @@ export const t = {
       days: 'הימים',
       /** The days the sheet does not draw, counted (`ועוד 7 ימים בלי רשומות`). */
       quietDays: (days: string) => `ועוד ${days} בלי רשומות`,
+      // **Firsts and bests** (ADR-0240 §4). Each label says what makes the row a best; the
+      // facts behind it follow on the same line.
+      bests: {
+        title: 'ראשונים וטובים',
+        first: 'הדבר הראשון',
+        last: 'הדבר האחרון',
+        longestStop: 'העצירה הארוכה',
+        busiestDay: 'היום המלא',
+        walkDay: 'הכי הרבה ברגל',
+        places: (n: number) => `${n} מקומות`,
+        walked: (distance: string) => `${distance} ברגל`,
+      },
       unresolved: (n: number) => `${n} לא סומנו`,
       fig: {
         places: 'מקומות',

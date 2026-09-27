@@ -5,19 +5,28 @@
 // the trip has no source for is not a tile at all, and one that rows still unmarked could move
 // says how many on its second line.
 import {
+  BOOKING_TYPE,
   EVENT_CATEGORY,
+  eventDisplayZones,
+  eventStopPlaceId,
   iconForCategory,
+  isTransportEvent,
+  ltrIsolate,
   recapHappened,
   tripDates,
+  type Booking,
   type RecapFigure,
+  type TripEvent,
   type TripRecap,
+  type ZoneEvidence,
 } from '@waypoint/shared';
-import { DISTANCE_STEP, MEMORY_DAY_GLYPHS, MEMORY_FIGURES_MAX } from '../constants';
+import { DISTANCE_STEP, DOT_SEPARATOR, MEMORY_DAY_GLYPHS, MEMORY_FIGURES_MAX } from '../constants';
 import { t } from '../i18n/he';
 import { dayListEvents } from './day-entries';
 import { dayShot } from './day-photo';
 import { dayHeadTitle, type DayFactsInput } from './day-title';
-import { dayOfMonth, formatDayMonth, weekdayLetter } from './time';
+import { formatDuration } from './duration';
+import { dayOfMonth, formatDayMonth, formatTime, weekdayLetter } from './time';
 
 export interface MemoryFigure {
   key: 'places' | 'air' | 'shift' | 'ground' | 'foot';
@@ -137,4 +146,144 @@ export function memoryDays(
     });
   }
   return { days, quiet: all.length - days.length };
+}
+
+/** One row of `ראשונים וטובים`, composed. */
+export interface MemoryBest {
+  key: 'first' | 'longestStop' | 'busiestDay' | 'walkDay' | 'last';
+  icon: string;
+  title: string;
+  /** What makes this row a best (`הדבר הראשון`), then the facts behind it. */
+  label: string;
+  when?: string;
+  /** A clock, bidi-isolated. Amber on the page: it still marks a time (ADR-0240 §4). */
+  clock?: string;
+  detail?: string;
+  /** The day the row opens. */
+  date: string;
+  /** Present on a row about a PLACE, which is what earns the badge its teal pin; a row about a
+   *  day has none (ADR-0240 §4). */
+  placeId?: string;
+}
+
+/** The glyph a day row carries in place of a place's. */
+const DAY_GLYPH = '📅';
+const WALK_GLYPH = '🚶';
+
+/**
+ * **Firsts and bests** (ADR-0240 §4, epic 4.3): the first and last thing the trip did, the
+ * longest stop, the fullest day and the day walked furthest. Every one is ADR-0239 §9's —
+ * counted from what happened — and the three superlatives are `tripRecap`'s own, so the
+ * narrative and the book will name the same ones. A row that would repeat another's subject
+ * is dropped rather than printed twice.
+ */
+export function memoryBests(input: {
+  recap: TripRecap;
+  events: readonly TripEvent[];
+  bookings: readonly Booking[];
+  days: readonly ContactSheetDay[];
+  evidence: ZoneEvidence;
+}): MemoryBest[] {
+  const { recap, events, bookings, days, evidence } = input;
+  const copy = t.planHome.past.bests;
+  const bookingOf = (event: TripEvent) =>
+    event.bookingId ? bookings.find((b) => b.id === event.bookingId) : undefined;
+  const dayOf = (date: string) => days.find((day) => day.date === date);
+  const iconOf = (event: TripEvent) =>
+    event.icon ?? iconForCategory(event.category ?? EVENT_CATEGORY.OTHER);
+  const clockOf = (event: TripEvent) =>
+    event.startsAt
+      ? ltrIsolate(formatTime(event.startsAt, eventDisplayZones(event, evidence).start))
+      : undefined;
+
+  // A stop is a place the trip was AT: not a leg (its ends are airports) and not a bed.
+  const stops = events
+    .filter((event) => recapHappened(event) && event.startsAt)
+    .filter((event) => {
+      const booking = bookingOf(event);
+      if (isTransportEvent(event, booking)) return false;
+      return booking
+        ? booking.type !== BOOKING_TYPE.HOTEL
+        : event.category !== EVENT_CATEGORY.LODGING;
+    })
+    .sort((a, b) => Date.parse(a.startsAt!) - Date.parse(b.startsAt!));
+
+  const placeRow = (key: MemoryBest['key'], label: string, event: TripEvent, detail?: string) => {
+    const row: MemoryBest = {
+      key,
+      icon: iconOf(event),
+      title: event.title,
+      label,
+      when: dayOf(event.date)?.when,
+      clock: clockOf(event),
+      detail,
+      date: event.date,
+    };
+    const placeId = eventStopPlaceId(event, bookingOf(event));
+    return placeId ? { ...row, placeId } : row;
+  };
+
+  const rows: MemoryBest[] = [];
+  const seen = new Set<string>();
+  const first = stops[0];
+  const last = stops.at(-1);
+  if (first) {
+    rows.push(placeRow('first', copy.first, first));
+    seen.add(first.id);
+  }
+  const { longestStop, busiestDay, longestWalkDay } = recap.superlatives;
+  if (longestStop.state === 'present' && !seen.has(longestStop.value.eventId)) {
+    const event = events.find((e) => e.id === longestStop.value.eventId);
+    if (event) {
+      rows.push(
+        placeRow(
+          'longestStop',
+          copy.longestStop,
+          event,
+          formatDuration(longestStop.value.minutes) ?? undefined,
+        ),
+      );
+      seen.add(event.id);
+    }
+  }
+  const dayTitle = (date: string) => {
+    const day = dayOf(date);
+    return day ? `${day.when} ${DOT_SEPARATOR} ${day.name}` : date;
+  };
+  const walked =
+    longestWalkDay.state === 'present'
+      ? t.map.near.km(
+          `${longestWalkDay.estimate ? ESTIMATE_MARK : ''}${recapKm(longestWalkDay.value.meters)}`,
+        )
+      : undefined;
+  // One day that is both the fullest and the one walked furthest is one row, not the same
+  // title twice: the walk joins the day's facts.
+  const sameDay =
+    busiestDay.state === 'present' &&
+    longestWalkDay.state === 'present' &&
+    busiestDay.value.date === longestWalkDay.value.date;
+  if (busiestDay.state === 'present') {
+    rows.push({
+      key: 'busiestDay',
+      icon: DAY_GLYPH,
+      title: dayTitle(busiestDay.value.date),
+      label: copy.busiestDay,
+      detail: [copy.places(busiestDay.value.places), sameDay && walked && copy.walked(walked)]
+        .filter(Boolean)
+        .join(` ${DOT_SEPARATOR} `),
+      date: busiestDay.value.date,
+    });
+  }
+  if (longestWalkDay.state === 'present' && !sameDay) {
+    rows.push({
+      key: 'walkDay',
+      icon: WALK_GLYPH,
+      title: dayTitle(longestWalkDay.value.date),
+      label: copy.walkDay,
+      detail: walked,
+      date: longestWalkDay.value.date,
+    });
+  }
+  if (last && !seen.has(last.id)) rows.push(placeRow('last', copy.last, last));
+  return rows;
 }

@@ -49,3 +49,17 @@
 .mem-all-days {
   margin-top: 18px;
 }
+
+/* Firsts and bests: rows with no manage menu, a hairline apart. */
+.mem-bests {
+  display: grid;
+  gap: 8px;
+}
+
+/* **A time is still amber** on a finished trip (ADR-0240 §4): amber marks the clock, and a
+   memory's `21:30` is a clock. Mono, as every time in the app. */
+.mem-clock {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--amber-deep);
+}
