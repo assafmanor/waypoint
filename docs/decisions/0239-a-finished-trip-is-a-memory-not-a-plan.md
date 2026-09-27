@@ -1,6 +1,6 @@
 # 0239 — A finished trip is a memory, not a plan
 
-**Status:** Accepted 2026-09-25, on the owner's answers to the investigation's six questions. **§1–§5 built 2026-09-26** (Phase 0: PRs #867, #868, #869, #870, #871, #872); §9's derivation built 2026-09-26 (Phase 2, `tripRecap` and its two adapters), with no surface reading it yet; §6–§8 not built. The build is an epic: [`planning/2026-09-25-a-finished-trip-is-a-memory-build-plan.md`](../planning/2026-09-25-a-finished-trip-is-a-memory-build-plan.md). The investigation and spec it answers: [`planning/2026-09-25-what-a-finished-trip-is-for.md`](../planning/2026-09-25-what-a-finished-trip-is-for.md).
+**Status:** Accepted 2026-09-25, on the owner's answers to the investigation's six questions. **§1–§5 built 2026-09-26** (Phase 0: PRs #867, #868, #869, #870, #871, #872); §9's derivation built 2026-09-26 (Phase 2, `tripRecap` and its two adapters), with no surface reading it yet; §6–§8 not built; §7's beat and §8's copy were designed 2026-09-27 in [ADR-0241](0241-a-finished-trip-plays-back-and-leaves-the-app.md) (Phase 1B). The build is an epic: [`planning/2026-09-25-a-finished-trip-is-a-memory-build-plan.md`](../planning/2026-09-25-a-finished-trip-is-a-memory-build-plan.md). The investigation and spec it answers: [`planning/2026-09-25-what-a-finished-trip-is-for.md`](../planning/2026-09-25-what-a-finished-trip-is-for.md).
 **Date:** 2026-09-25
 
 **Amends** [0040](0040-trip-mode-access-window-and-past-trip-archive.md) (its _Deferred_ retrospective becomes this, and "reuse the past-day visual for the whole finished trip" gives way to a palette of its own) · [0049](0049-index-tab-mode-and-lifecycle.md) §2 (the archive state it decided is built here, notes included; its wash gives way to the same palette) · [0190](0190-a-readiness-check-is-a-task-row-and-the-checks-sit-inside-the-urgency-ladder.md) (§3: what a task is after the trip) · [0198](0198-we-notify-what-you-can-still-miss.md) (§3 and §8: two exceptions to "a past trip sends nothing").
@@ -50,6 +50,8 @@ The values are the design phase's, drawn in `mockups/past-trip-v1.html`, and the
 
 **Coming home** (owner: yes). The first open after the trip ends plays a short tap-through of the trip's figures, then settles into the memory Home. It never plays again on that device for that trip, remembered per trip the way ADR-0221's first morning is. Under reduced motion it is skipped, not shortened.
 
+**Designed in [ADR-0241](0241-a-finished-trip-plays-back-and-leaves-the-app.md) §3** (2026-09-27): the Home's own `memoryFigures`, one card at a time, settling into the cover over `--t-cinematic`, which becomes one cinematic moment at each end of a trip. It is remembered as `waypoint:came-home:<tripId>` beside `mode-seen`, not inside its value.
+
 ### §8 · A year later, the trip comes back, once, by name
 
 On the anniversary of the trip's first day, `/trips` shows it as its cover with `לפני שנה בדיוק · <a place we went>`. **It is also one push.** This is a deliberate exception to ADR-0198, which notifies only what you can still miss, and it is fenced accordingly:
@@ -61,6 +63,8 @@ On the anniversary of the trip's first day, `/trips` shows it as its cover with 
 - **Members at send time** (ADR-0197 §2.4). It opens the finished trip's Home through `?trip=`.
 
 The owner asked for an opinion here, not a ruling. The opinion is yes, because once a year per trip is the smallest spend of attention the catalogue could make, and it is the only send that brings someone back to the app for joy rather than duty. Retracting it means deleting this section; nothing else in this ADR leans on it.
+
+**Its copy and its place, [ADR-0241](0241-a-finished-trip-plays-back-and-leaves-the-app.md) §7** (2026-09-27): the title is the trip's name, and the body is `לפני שנה בדיוק · <place>`, the /trips card's own line. The place is the cover's place. "Marked `היינו`" here reads with §9's `recapHappened`, so a hard row nobody skipped counts.
 
 ### §9 · A figure counts what happened
 
