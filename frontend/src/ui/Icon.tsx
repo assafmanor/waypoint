@@ -19,6 +19,9 @@ export type IconName =
   | 'locate'
   | 'frame'
   | 'compass'
+  // Replay's two states (ADR-0241 §2). Media glyphs are never mirrored, in any locale.
+  | 'play'
+  | 'pause'
   | 'pin'
   | 'external'
   | 'eye'
@@ -135,6 +138,8 @@ const PATHS: Record<IconName, string> = {
   // than as a play triangle, and it is the only asymmetry telling the reader which end is
   // north when the whole glyph is rotated to an arbitrary angle.
   compass: 'M12 2.6 18 21.4 12 17.2 6 21.4Z',
+  play: 'M8 5.4v13.2L18.6 12Z',
+  pause: 'M8.4 5.4v13.2 M15.6 5.4v13.2',
   // `מפה` — show a place on OUR map (ADR-0121 §8). Deliberately the Waypoint
   // marker's own silhouette (ADR-0087: a teardrop, tip down, with a centre dot), so
   // the control wears the shape of the thing it takes you to. A real SVG, never the

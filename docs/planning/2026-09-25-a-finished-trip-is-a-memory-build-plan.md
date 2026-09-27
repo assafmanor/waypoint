@@ -239,7 +239,7 @@ Replaces `PlanHome`'s past branch entirely, as drawn in ADR-0240 §4 (the stragg
 
 Drawn and decided in [ADR-0241](../decisions/0241-a-finished-trip-plays-back-and-leaves-the-app.md) §1–§3; its "Build notes" list the files.
 
-- **5.1** The journey on `כל הימים` _(spec 1d, ADR-0241 §1)_. **Built 2026-09-27.**
+- **5.1** The journey on `כל הימים` _(spec 1d, ADR-0241 §1)_. **Built 2026-09-27 · PR #884.**
   - `PinContext` gains `finished` in place of `planning`. Today `planning` silences every outcome on a finished trip.
   - `pinOutcome` reads `recapHappened` and answers `open` for an unmarked place (`.pin-n.outcome.open`, an empty ring).
   - The `behind` grey is off.
@@ -247,7 +247,7 @@ Drawn and decided in [ADR-0241](../decisions/0241-a-finished-trip-plays-back-and
   - A stay's nights ride `.pin-tag.plain`.
   - The row's trailing slot is `.map-addmaybe` `יום N`, opening the first day the place happened on.
   - **Tests:** a hard row reads happened, and a skipped or unmarked stop is off the line.
-- **5.2** Replay _(spec 1e, ADR-0241 §2)_.
+- **5.2** Replay _(spec 1e, ADR-0241 §2)_. **Built 2026-09-27.**
   - `.map-replay` joins `.map-camctl` in the locate button's seat, with new `play` and `pause` icons.
   - Pacing: `REPLAY` = 220ms a stop, capped at 1320ms a day, and a 1000ms hold (the owner's call), on top of `easeTo`'s 480ms.
   - The day's name sits at the canvas foot (`.map-replay-caption`).

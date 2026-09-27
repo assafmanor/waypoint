@@ -445,6 +445,12 @@ export const t = {
     openDay: (n: number) => `יום ${n}`,
     // The empty ring's words, for the pin's accessible name (ADR-0241 §1).
     pinOpen: 'לא סומן',
+    // Replay on a finished trip (ADR-0241 §2): the control's two states, and the day it shows.
+    replay: {
+      play: 'הילוך חוזר של הטיול',
+      stop: 'עצירה',
+      caption: (day: number, name: string) => `יום ${day} · ${name}`,
+    },
     // The list is three blocks (ADR-0109 session-110 + session-127), keyed by
     // `PlaceBlock` so the header and the order read one vocabulary. The behind header
     // is deliberately NEUTRAL (ADR-0117 §3): it holds three outcomes — visited,

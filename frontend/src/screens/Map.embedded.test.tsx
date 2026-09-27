@@ -141,6 +141,7 @@ vi.mock('../state/trip-state', () => ({
     trip: {
       id: 't1',
       name: 'טיול',
+      destination: 'טוקיו',
       timezone: 'Asia/Tokyo',
       startDate: '2026-07-19',
       endDate: '2026-07-25',
@@ -2910,6 +2911,32 @@ describe('the embedded map’s shell (ADR-0121)', () => {
         confirm();
         await vi.waitFor(() => expect(errandAnswer()).toBe('p-drop-2'));
         expect(addMaybe).not.toHaveBeenCalled();
+      });
+
+      // ── REPLAY (ADR-0241 §2) ───────────────────────────────────────────────────
+      it('a finished trip hands the pane its days with a record, and none under reduced motion', () => {
+        currentPhase = 'past';
+        seed();
+        tripEvents = tripEvents.map((e) =>
+          e.id === 'e1' ? { ...e, status: EVENT_STATUS.DONE } : e,
+        );
+        const { unmount } = render(wrap(<MapView />));
+        const days = paneProps.current.replay as {
+          caption: string;
+          stops: { placeId: string }[];
+        }[];
+        expect(days).toHaveLength(1);
+        expect(days[0]!.stops.map((stop) => stop.placeId)).toContain('museum');
+        unmount();
+        vi.stubGlobal('matchMedia', (q: string) => ({
+          matches: q.includes('prefers-reduced-motion'),
+          media: q,
+          addEventListener: () => {},
+          removeEventListener: () => {},
+        }));
+        render(wrap(<MapView />));
+        expect(paneProps.current.replay).toBeUndefined();
+        vi.unstubAllGlobals();
       });
 
       // ── 6b: THE FREE GESTURE ────────────────────────────────────────────────────

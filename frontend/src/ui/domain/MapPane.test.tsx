@@ -317,9 +317,11 @@ import { mapReading } from '../../lib/dev-tuning';
 import {
   DRAG_CLICK_SWALLOW_MS,
   DRAG_HOLD_MS,
+  MAP_CAMERA_EASE,
   MAP_CONNECTOR,
   MAP_LOAD_TIMEOUT_MS,
   MAP_ZOOM,
+  REPLAY,
 } from '../../constants';
 import { RELOAD_GUARD_KEY, stampReload } from '../../lib/guarded-reload';
 import { setAccessToken } from '../../lib/api';
@@ -364,6 +366,8 @@ function paint(props: Partial<Parameters<typeof MapPane>[0]> = {}) {
       results={props.results}
       onSelectResult={props.onSelectResult}
       draftMarker={props.draftMarker}
+      replay={props.replay}
+      onReplayChange={props.onReplayChange}
     />,
   );
 }
@@ -1382,6 +1386,63 @@ describe('MapPane — our markup, not PinElement (ADR-0121 §6)', () => {
     paint();
     expect(document.querySelectorAll('.map-camctl')).toHaveLength(1);
     expect(document.querySelectorAll('.map-camctl > button')).toHaveLength(3);
+  });
+
+  // ── REPLAY (ADR-0241 §2) ─────────────────────────────────────────────────────
+  describe('replay on a finished trip', () => {
+    const stop = (placeId: string, date: string) => ({
+      placeId,
+      reach: `${date}|${placeId}`,
+      lat: 35.6,
+      lng: 139.7,
+    });
+    const DAYS = [
+      { caption: 'יום 1 · טוקיו', stops: [stop('a', 'd1'), stop('b', 'd1')] },
+      { caption: 'יום 2 · ניקו', stops: [stop('c', 'd2')] },
+    ];
+    const replayPins = () => ['a', 'b', 'c'].map((placeId) => pin({ placeId }));
+    const pinOf = (id: string) => document.querySelector(`.map-pin[data-pin="${id}"]`)!;
+    afterEach(() => vi.useRealTimers());
+
+    it('has no control without days to play', () => {
+      paint();
+      expect(screen.queryByRole('button', { name: t.map.replay.play })).toBeNull();
+    });
+
+    it('plays each day: its name at the foot, its stops lighting in order, then ends', () => {
+      vi.useFakeTimers();
+      const onReplayChange = vi.fn();
+      paint({ pins: replayPins(), replay: DAYS, onReplayChange });
+      fireEvent.click(screen.getByRole('button', { name: t.map.replay.play }));
+      expect(onReplayChange).toHaveBeenLastCalledWith(true);
+      expect(
+        screen.getByRole('button', { name: t.map.replay.stop }).getAttribute('aria-pressed'),
+      ).toBe('true');
+      expect(document.querySelector('.map-replay-caption')?.textContent).toBe('יום 1 · טוקיו');
+      expect(document.querySelector('.map-areacount')).toBeNull();
+      expect(pinOf('a').classList.contains('is-ahead')).toBe(true);
+      act(() => void vi.advanceTimersByTime(MAP_CAMERA_EASE.DURATION_MS));
+      expect(pinOf('a').classList.contains('is-lit')).toBe(true);
+      expect(pinOf('b').classList.contains('is-ahead')).toBe(true);
+      act(() => void vi.advanceTimersByTime(2 * 220 + REPLAY.DAY_HOLD_MS));
+      expect(pinOf('b').classList.contains('is-lit')).toBe(true);
+      expect(document.querySelector('.map-replay-caption')?.textContent).toBe('יום 2 · ניקו');
+      act(() => void vi.advanceTimersByTime(10_000));
+      expect(onReplayChange).toHaveBeenLastCalledWith(false);
+      expect(document.querySelector('.map-pane')?.hasAttribute('data-replay')).toBe(false);
+      expect(document.querySelector('.map-areacount')).toBeTruthy();
+    });
+
+    it('a finger on the canvas stops it where it is', () => {
+      vi.useFakeTimers();
+      const onReplayChange = vi.fn();
+      paint({ pins: replayPins(), replay: DAYS, onReplayChange });
+      fireEvent.click(screen.getByRole('button', { name: t.map.replay.play }));
+      fireEvent.pointerDown(document.querySelector('.map-pane')!);
+      expect(onReplayChange).toHaveBeenLastCalledWith(false);
+      expect(screen.getByRole('button', { name: t.map.replay.play })).toBeTruthy();
+      expect(document.querySelector('.map-replay-caption')).toBeNull();
+    });
   });
 
   // ── THE COMPASS (ADR-0234) ───────────────────────────────────────────────────

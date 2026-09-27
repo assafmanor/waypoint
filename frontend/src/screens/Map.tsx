@@ -101,6 +101,10 @@ import { attachmentCountForContext, attachmentCountsByHost } from '../lib/attach
 import { resolveHostContext } from '../lib/host-context';
 import { useCenterSelected } from '../lib/useCenterSelected';
 import { nightPhrase } from '../lib/hebrew';
+import { memoryDays } from '../lib/memory-home';
+import { replayReach, type ReplayDay } from '../lib/map-replay';
+import { prefersReducedMotion } from '../lib/motion';
+import { usePlaceLabels } from '../state/place-labels';
 import {
   amberLegIndex,
   buildDayStopSequence,
@@ -1502,6 +1506,73 @@ export function MapView() {
   // line can claim you went — and so are the aside pins, which is what `ghostsInArea` below
   // relies on.
   const pinByPlace = useMemo(() => new Map(pins.map((pin) => [pin.placeId, pin])), [pins]);
+  const placeLabels = usePlaceLabels();
+
+  // ── Replay (ADR-0241 §2) ──────────────────────────────────────────────────
+  // The days with a record, by the contact sheet's own rule and name (`memoryDays`), each its
+  // `buildDayStopSequence` in order — skipped and unmarked stops included, since they light with
+  // their marks. Under reduced motion there is no replay at all: the static journey is the answer.
+  const replayNow = useMemo((): ReplayDay[] | undefined => {
+    if (!journey || !hasMap || prefersReducedMotion() || !trip.startDate || !trip.endDate)
+      return undefined;
+    const startDate = trip.startDate;
+    const { days } = memoryDays({
+      trip: { ...trip, startDate, endDate: trip.endDate },
+      events,
+      bookings,
+      places,
+      placeLabels,
+      enrichments,
+    });
+    return days
+      .map((day) => ({
+        caption: t.map.replay.caption(tripDayNumber(day.date, startDate), day.name),
+        stops: buildDayStopSequence(dayScoped, {
+          ...dayStopCtx,
+          onDate: day.date,
+          dawnMs: dayWindowMs(day.date, dayZoneContext(day.date, zoneEvidence).ambientZone).startMs,
+        })
+          .filter((stop) => !stop.tail)
+          .map((stop) => pinByPlace.get(stop.usage.placeId))
+          .filter((pin): pin is MapPin => pin != null && !isAsidePin(pin.tier))
+          .filter((pin, i, all) => i === 0 || pin.placeId !== all[i - 1]!.placeId)
+          .map(({ placeId, lat, lng }) => ({
+            placeId,
+            reach: replayReach(day.date, placeId),
+            lat,
+            lng,
+          })),
+      }))
+      .filter((day) => day.stops.length > 0);
+  }, [
+    journey,
+    hasMap,
+    trip,
+    events,
+    bookings,
+    places,
+    placeLabels,
+    enrichments,
+    dayScoped,
+    pinByPlace,
+    zoneEvidence,
+  ]);
+  const replayKey = JSON.stringify(replayNow ?? null);
+  const replayDays = useMemo(() => replayNow, [replayKey]);
+  /** The sheet drops to the map while a replay plays, and returns to where it was after. */
+  const sheetBeforeReplay = useRef<MapSheetView | null>(null);
+  const onReplayChange = useCallback((playing: boolean) => {
+    if (playing) {
+      setSheetView((view) => {
+        sheetBeforeReplay.current = view;
+        return MAP_SHEET_VIEW.map;
+      });
+      return;
+    }
+    const before = sheetBeforeReplay.current;
+    sheetBeforeReplay.current = null;
+    if (before) setSheetView(before);
+  }, []);
   // **The route keeps its STOPS beside its pins, and that is what fixes a reported defect.** A
   // place visited twice is two stops and one pin — since M7c's bookends, routinely: a middle
   // night's stay is the day's first stop and its last. Mapping straight to pins threw away which
@@ -1665,8 +1736,14 @@ export function MapView() {
     for (let i = 0; i + 1 < orderedStops.length; i++) {
       const from = orderedStops[i]!;
       const to = orderedStops[i + 1]!;
+      // The stop this leg reaches, as replay keys it (ADR-0241 §2).
+      const reached = orderedRoute[i + 1];
+      const reach =
+        journey && reached
+          ? { reach: replayReach(reached.stop.day.date, reached.pin.placeId) }
+          : {};
       if (isTether(i)) {
-        legs.push({ path: [from, to], from, to, tether: true });
+        legs.push({ path: [from, to], from, to, tether: true, ...reach });
         continue;
       }
       const emphasis =
@@ -1703,6 +1780,7 @@ export function MapView() {
         emphasis,
         // The journey spends no amber (ADR-0241 §1): a leg with no shape is the plain dash.
         ...((!isRoutableMode(legMode) || refused) && !journey ? { unrouted: true } : {}),
+        ...reach,
       });
     }
     return legs;
@@ -4179,6 +4257,8 @@ export function MapView() {
           areaSorted={areaSorted}
           onAreaSort={toggleAreaSort}
           onLocate={finished ? undefined : locateFromCanvas}
+          replay={replayDays}
+          onReplayChange={onReplayChange}
           arrival={arrival}
           // The MEASURED reserve, not "a card is open": the constant it replaced was sized
           // for a selected row and the form is nearly twice that, which put a freshly
