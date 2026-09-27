@@ -100,9 +100,13 @@ import { useSettledHosts } from '../ui/HostTasks';
 import { attachmentCountForContext, attachmentCountsByHost } from '../lib/attachments';
 import { resolveHostContext } from '../lib/host-context';
 import { useCenterSelected } from '../lib/useCenterSelected';
+import { nightPhrase } from '../lib/hebrew';
 import {
   amberLegIndex,
   buildDayStopSequence,
+  buildJourney,
+  firstHappenedDate,
+  stayNights,
   buildPinOrderIndex,
   isAsidePin,
   type DayStop,
@@ -140,7 +144,7 @@ import { countVisible, revealRows, visibleItems, type Revealed } from '../lib/fi
 import { daySelectTarget, useBackLayer, withBookingFormReturn } from '../state/nav-state';
 import { useNoteHostWayIn } from '../state/note-host-nav';
 import { useNavigate } from 'react-router-dom';
-import { dayLabel, dayWindowMs, formatTime } from '../lib/time';
+import { dayLabel, dayWindowMs, formatTime, tripDates, tripDayNumber } from '../lib/time';
 import { edgeSettleProps, eventEdgeTransition, relativeDayWord } from '../lib/transitions';
 import { connectionStopKey, connectionStops } from '../lib/day-joins';
 import { bookingWhen } from '../lib/booking-journey';
@@ -241,7 +245,7 @@ interface RefEntry {
     words?: SettleWords;
     /** What a human already said **about this edge**, if they did (ADR-0224 §1). Drives
      *  tag-plus-undo instead of the pair. */
-    outcome?: PinOutcome;
+    outcome?: Exclude<PinOutcome, 'open'>;
     /** The clock has passed it and nobody answered — ADR-0117 §1's third state, and the one
      *  the emphasis is for. Not a gate on the controls: **every** event is settleable here
      *  (ADR-0117 §2 already lets a human close tonight's dinner at 11:00), and gating on the
@@ -1270,11 +1274,12 @@ export function MapView() {
   // the pin is read as, and the mark reports on THAT day (`pinOutcome`'s rule 2). Built in
   // the render body, not memoized — `nowMs` ticks every second, so a memo would rebuild it
   // anyway, and it is only ever read here.
-  const pinCtx: PinContext = { onDate: scopedDate, nowMs, today, planning: mode === 'plan' };
-  // `planning` withdraws the behind-you tier in Plan mode (ADR-0130 §2): the clock still
-  // resolves which day a place is read as, but a day you are arranging has no past — and
-  // the pins you can least afford to fade are the ones you came to rearrange. It sits
-  // beside `nextStopId`/`nowStopId`, which are Trip-only for the mirror-image reason.
+  //
+  // **A finished trip passes `finished` instead** (ADR-0241 §1): its mode is `plan`, and
+  // `planning` silenced every outcome mark on the one trip whose outcomes are the point.
+  const pinCtx: PinContext = finished
+    ? { onDate: scopedDate, nowMs, today, finished: { eventById: eventLookup } }
+    : { onDate: scopedDate, nowMs, today, planning: mode === 'plan' };
   const pinTier = (usage: PlaceUsage): PinTier => placePinTier(usage, pinCtx);
 
   // Built every render (it is cheap), then memoized on its own CONTENT below: the
@@ -1370,10 +1375,15 @@ export function MapView() {
         //
         // An ASIDE pin is excluded for the reason it carries no amber either: it is not
         // what you are looking at.
-        transition:
-          (scopedDate || isNext || isNow) && !isAsidePin(tier)
-            ? pinTransition(usage, pinCtx, eventLookup, connectionWordAt)
-            : undefined,
+        // **On a finished trip a stay says how long we slept there** (ADR-0241 §1), in the same
+        // neutral tag: there is no next transition left for the slot to name.
+        transition: isAsidePin(tier)
+          ? undefined
+          : finished && stayNights(usage, eventLookup) > 0
+            ? nightPhrase(stayNights(usage, eventLookup))
+            : scopedDate || isNext || isNow
+              ? pinTransition(usage, pinCtx, eventLookup, connectionWordAt)
+              : undefined,
         selected: selectedId === usage.placeId,
         label: place.name,
       });
@@ -1475,7 +1485,11 @@ export function MapView() {
   // on the pins, the line's one remaining job is revealing the day's SHAPE, which
   // is a planning question; in Trip mode you are living the day and need "where is
   // next", so its canvas stays quieter.
-  const dayShapeVisible = !allDays && mode === 'plan';
+  //
+  // **A finished trip's all days draws the JOURNEY** (ADR-0241 §1, amending ADR-0182 §11): what
+  // happened, every day's sequence by date, in the connector's neutral ink.
+  const journey = finished && allDays;
+  const dayShapeVisible = journey || (!allDays && mode === 'plan');
   // **THE ROUTE IS THE DAY'S SEQUENCE, NOT THE DAY'S NUMBERS** (ADR-0054's 2026-08-25
   // amendment). This filtered on `pin.order != null`, which quietly made the visible NUMBER
   // the gate on the line — so the two stops you can be surest of, the hotel you woke in and
@@ -1493,9 +1507,31 @@ export function MapView() {
   // night's stay is the day's first stop and its last. Mapping straight to pins threw away which
   // occurrence each entry was, so `findIndex` on a place id answered the FIRST one and the amber
   // leg was drawn into the morning visit when the evening one was selected.
+  const journeyStops = useMemo(
+    () =>
+      journey && trip.startDate && trip.endDate
+        ? buildJourney(dayScoped, tripDates(trip.startDate, trip.endDate), {
+            nameOf,
+            eventById: eventLookup,
+            isConnectionStop: dayStopCtx.isConnectionStop,
+            dawnMsOf: (date) =>
+              dayWindowMs(date, dayZoneContext(date, zoneEvidence).ambientZone).startMs,
+          })
+        : undefined,
+    [
+      journey,
+      dayScoped,
+      trip.startDate,
+      trip.endDate,
+      placeById,
+      zoneEvidence,
+      eventLookup,
+      connectionWordAt,
+    ],
+  );
   const orderedRoute = useMemo(
     () =>
-      dayStops
+      (journeyStops ?? dayStops)
         .filter((stop) => !stop.tail)
         .map((stop) => ({ stop, pin: pinByPlace.get(stop.usage.placeId) }))
         .filter((entry): entry is { stop: DayStop; pin: MapPin } => {
@@ -1504,7 +1540,7 @@ export function MapView() {
         // A stay that bookends both ends of a day with nothing else on it would otherwise
         // ask for a leg from a place to itself.
         .filter((entry, i, all) => i === 0 || entry.pin.placeId !== all[i - 1]!.pin.placeId),
-    [dayStops, pinByPlace],
+    [journeyStops, dayStops, pinByPlace],
   );
   const orderedPins = useMemo(() => orderedRoute.map(({ pin }) => pin), [orderedRoute]);
   const orderedStops = useMemo(
@@ -1665,11 +1701,12 @@ export function MapView() {
         from,
         to,
         emphasis,
-        ...(!isRoutableMode(legMode) || refused ? { unrouted: true } : {}),
+        // The journey spends no amber (ADR-0241 §1): a leg with no shape is the plain dash.
+        ...((!isRoutableMode(legMode) || refused) && !journey ? { unrouted: true } : {}),
       });
     }
     return legs;
-  }, [orderedStops, orderedRoute, dayShapes, amberLeg, legModes, travelMode]);
+  }, [orderedStops, orderedRoute, dayShapes, amberLeg, legModes, travelMode, journey]);
 
   // The dashed ORDER is Plan mode + day scope only (ADR-0121 §10); the one amber leg draws in
   // either mode, because it answers "where is next" rather than "what shape is this day"
@@ -2915,6 +2952,19 @@ export function MapView() {
     [documentAttachments],
   );
 
+  /** The finished trip's row button (ADR-0241 §1): the first day this place happened on. */
+  const openDayOf = (usage: PlaceUsage) => {
+    const date = finished && trip.startDate ? firstHappenedDate(usage, eventLookup) : undefined;
+    if (!date || !trip.startDate) return undefined;
+    return {
+      day: tripDayNumber(date, trip.startDate),
+      onOpen: () => {
+        const target = daySelectTarget(date, today, 'days');
+        navigate(target.to, { replace: target.replace });
+      },
+    };
+  };
+
   const renderRow =
     (opts: {
       onSelect?: (placeId: string) => void;
@@ -3068,6 +3118,7 @@ export function MapView() {
                   })
           }
           navigable={!finished}
+          openDay={openDayOf(usage)}
           onFrame={opts.onFrame}
           onChoose={opts.onChoose && (() => opts.onChoose!(usage.placeId))}
           // Selected only, and never under an errand: the tab is then answering one question,
@@ -4265,6 +4316,7 @@ function PlaceRow({
   onDeselect,
   onEnrich,
   navigable,
+  openDay,
   onFrame,
   onChoose,
   onRename,
@@ -4396,6 +4448,10 @@ function PlaceRow({
   /** Whether the row offers `נווט`. Not on a finished trip: directions are the live trip's
    *  help (ADR-0239 §3). */
   navigable: boolean;
+  /** **The day this place happened on, as the trailing slot's way in** (ADR-0241 §1). A
+   *  finished trip's only: it takes the slot `נווט` leaves, and opens the first day we were
+   *  there. `--cta`, never teal: a day is not a location. */
+  openDay?: { day: number; onOpen: () => void };
   /** **Give this place your own name** (ADR-0147 §3). Present only while selected, which is
    *  what makes it free: every other slot on this row is measured-spent, and a selected row is
    *  already the object that reveals its verbs. */
@@ -4675,6 +4731,17 @@ function PlaceRow({
           >
             <Icon name="navigate" /> {t.actions.navigate}
           </a>
+        ) : openDay ? (
+          <button
+            type="button"
+            className="map-addmaybe"
+            onClick={(e) => {
+              e.stopPropagation();
+              openDay.onOpen();
+            }}
+          >
+            <Icon name="calendar" /> {t.map.openDay(openDay.day)}
+          </button>
         ) : (
           onEnrich && (
             <AddLocationButton

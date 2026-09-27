@@ -8,7 +8,14 @@
 // `PlaceUsage` the list rows read, the same `comparePlacesBySchedule` order the
 // Day view renders. That is the property the list-first investment was for — a
 // chip that changes the list changes the pins in the same pass (ADR-0110 §2).
-import { iconForCategory, isAmbient, type EventCategory, type TripEvent } from '@waypoint/shared';
+import {
+  iconForCategory,
+  isAmbient,
+  recapHappened,
+  EVENT_STATUS,
+  type EventCategory,
+  type TripEvent,
+} from '@waypoint/shared';
 import { buildTimeTree, byPeer, peerEntry, peerExit, type TimeGroup } from './time';
 import { chosenIcon, DEFAULT_PLACE_ICON, MAP_PIN } from '../constants';
 import {
@@ -27,7 +34,7 @@ import { eventEdgeTransition } from './transitions';
 // The one derivation that says whether an ambient span is a STAY (ADR-0163 §4) — a hotel
 // brackets your day, a car hire does not. Read, not re-asked: its docblock already exports it
 // for a second shape.
-import { countsNights } from './glance';
+import { ambientSpanPosition, countsNights, isStayRow } from './glance';
 import { t } from '../i18n/he';
 
 /**
@@ -79,6 +86,10 @@ export type PinContext = Pick<PlaceOrderContext, 'onDate' | 'nowMs' | 'today'> &
    *  faded stop is one you are least able to see while doing it. The screen decides
    *  this, exactly as it decides the amber cues — the lib takes the answer. */
   planning?: boolean;
+  /** **A finished trip** (ADR-0241 §1), in place of `planning`: after the trip everything is
+   *  behind you, so the clock's grey would wash the whole map, and the pin says instead what
+   *  the RECORD says (`recapHappened`, ADR-0239 §9) — which needs the rows, hence the lookup. */
+  finished?: { eventById: (id: string) => TripEvent | undefined };
 };
 
 /**
@@ -116,7 +127,10 @@ export function placePinTier(usage: PlaceUsage, ctx: PinContext): PinTier {
     if (!ctx.onDate) return ideaOrUpcoming(usage);
     return usage.days.length === 0 && isOnShelf(usage) ? PIN_TIER.shelf : PIN_TIER.ghost;
   }
-  if (!ctx.planning && ctx.nowMs != null && isDayUsagePast(day, ctx.nowMs, ctx.today)) {
+  if (ctx.finished) {
+    // The grey keeps one meaning after the trip: somewhere we did not go.
+    if (placeRecord(usage, ctx) === 'skipped') return PIN_TIER.behind;
+  } else if (!ctx.planning && ctx.nowMs != null && isDayUsagePast(day, ctx.nowMs, ctx.today)) {
     return PIN_TIER.behind;
   }
   if (day.prominence === 'ambient') return PIN_TIER.ambient;
@@ -129,7 +143,7 @@ const ideaOrUpcoming = (usage: PlaceUsage): PinTier =>
 /** What a human said happened at a place, as the canvas draws it. The stored vocabulary
  *  (`DayUsage['outcome']`, ADR-0117 §1), never a second one — the row and the pin have to
  *  be answering with the same word. */
-export type PinOutcome = NonNullable<DayUsage['outcome']>;
+export type PinOutcome = NonNullable<DayUsage['outcome']> | 'open';
 
 /**
  * The outcome mark a pin carries, or `undefined` for none (ADR-0137, keeping the promise
@@ -177,6 +191,13 @@ export type PinOutcome = NonNullable<DayUsage['outcome']>;
  */
 export function pinOutcome(usage: PlaceUsage, ctx: PinContext): PinOutcome | undefined {
   const tier = placePinTier(usage, ctx);
+  // **A finished trip's pin reads the record, not the day** (ADR-0241 §1): happened needs no
+  // mark, skipped is the ✕, and a place nobody answered for is the empty ring. A ghost is still
+  // about another day, so it keeps the day's reading below.
+  if (ctx.finished && tier !== PIN_TIER.ghost) {
+    const record = placeRecord(usage, ctx);
+    return record === 'happened' ? undefined : record;
+  }
   if (tier !== PIN_TIER.behind && tier !== PIN_TIER.ghost) return undefined;
   // A ghost is out of the scope by definition, so asking about `onDate` returns nothing;
   // dropping it asks the question the ghost is actually answering ("which day is this
@@ -186,6 +207,90 @@ export function pinOutcome(usage: PlaceUsage, ctx: PinContext): PinOutcome | und
       ? placeDay(usage, { nowMs: ctx.nowMs, today: ctx.today })
       : placeDay(usage, ctx);
   return day?.prominence === 'ambient' ? undefined : day?.outcome;
+}
+
+/** The rows a place carries, in date order: every day's pointer and every moment's, once each.
+ *  `onDate` narrows it to one day, which is what a day scope asks. */
+function placeEvents(
+  usage: PlaceUsage,
+  eventById: (id: string) => TripEvent | undefined,
+  onDate?: string,
+): TripEvent[] {
+  const ids = new Set<string>();
+  for (const day of usage.days) {
+    if (onDate && day.date !== onDate) continue;
+    if (day.eventId) ids.add(day.eventId);
+    for (const moment of day.moments ?? []) if (moment.eventId) ids.add(moment.eventId);
+  }
+  return [...ids].map(eventById).filter((event): event is TripEvent => event != null);
+}
+
+/**
+ * **What the record says about a place on a finished trip** (ADR-0241 §1): `happened` if any
+ * of its rows happened (`recapHappened`, so a booked dinner nobody skipped counts), `skipped`
+ * if every one was skipped, else `open` — somebody still has to say. `undefined` for a place
+ * with no row at all (a shelf idea), which has no outcome to report.
+ */
+export function placeRecord(
+  usage: PlaceUsage,
+  ctx: PinContext,
+): 'happened' | 'skipped' | 'open' | undefined {
+  if (!ctx.finished) return undefined;
+  const events = placeEvents(usage, ctx.finished.eventById, ctx.onDate);
+  if (events.length === 0) return undefined;
+  if (events.some(recapHappened)) return 'happened';
+  return events.every((event) => event.status === EVENT_STATUS.SKIPPED) ? 'skipped' : 'open';
+}
+
+/** **The first day a place happened on**, for the finished trip's row button (ADR-0241 §1). */
+export function firstHappenedDate(
+  usage: PlaceUsage,
+  eventById: (id: string) => TripEvent | undefined,
+): string | undefined {
+  const days = [...usage.days].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  return days.find((day) => placeEvents(usage, eventById, day.date).some(recapHappened))?.date;
+}
+
+/** **The nights we slept at a place**, over its stays that happened, for the pin's neutral tag
+ *  on a finished trip (ADR-0241 §1). 0 for anything that is not a bed. */
+export function stayNights(
+  usage: PlaceUsage,
+  eventById: (id: string) => TripEvent | undefined,
+): number {
+  return placeEvents(usage, eventById)
+    .filter((event) => isStayRow(event) && recapHappened(event))
+    .reduce((sum, event) => sum + ambientSpanPosition(event, event.date).total, 0);
+}
+
+/**
+ * **The journey** (ADR-0241 §1, amending ADR-0182 §11): a finished trip's all-days route, which
+ * is each day's {@link buildDayStopSequence} concatenated by date — one derivation, asked once
+ * per day, rather than a second ordering of the whole trip.
+ *
+ * Only stops that happened: a line through a place nobody went is the plan counted as the trip.
+ * The tail is out for the day route's own reason (no position to claim), and consecutive repeats
+ * fold, so the bed that ends one day and starts the next is one point.
+ */
+export function buildJourney(
+  usages: readonly PlaceUsage[],
+  dates: readonly string[],
+  ctx: Omit<DayStopContext, 'onDate' | 'dawnMs' | 'eventById'> & {
+    eventById: (id: string) => TripEvent | undefined;
+    dawnMsOf?: (date: string) => number | undefined;
+  },
+): DayStop[] {
+  const { dawnMsOf, ...dayCtx } = ctx;
+  const happened = (stop: DayStop) => {
+    const id = stop.moment.eventId ?? stop.day.eventId;
+    const event = id ? ctx.eventById(id) : undefined;
+    return event != null && recapHappened(event);
+  };
+  return dates
+    .flatMap((onDate) =>
+      buildDayStopSequence(usages, { ...dayCtx, onDate, dawnMs: dawnMsOf?.(onDate) }),
+    )
+    .filter((stop) => !stop.tail && happened(stop))
+    .filter((stop, i, all) => i === 0 || stop.usage.placeId !== all[i - 1]!.usage.placeId);
 }
 
 /**

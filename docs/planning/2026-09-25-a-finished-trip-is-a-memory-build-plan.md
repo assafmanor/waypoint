@@ -239,7 +239,7 @@ Replaces `PlanHome`'s past branch entirely, as drawn in ADR-0240 §4 (the stragg
 
 Drawn and decided in [ADR-0241](../decisions/0241-a-finished-trip-plays-back-and-leaves-the-app.md) §1–§3; its "Build notes" list the files.
 
-- **5.1** The journey on `כל הימים` _(spec 1d, ADR-0241 §1)_.
+- **5.1** The journey on `כל הימים` _(spec 1d, ADR-0241 §1)_. **Built 2026-09-27.**
   - `PinContext` gains `finished` in place of `planning`. Today `planning` silences every outcome on a finished trip.
   - `pinOutcome` reads `recapHappened` and answers `open` for an unmarked place (`.pin-n.outcome.open`, an empty ring).
   - The `behind` grey is off.

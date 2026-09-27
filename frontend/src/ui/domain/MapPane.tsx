@@ -247,7 +247,13 @@ const PIN_TIER_PAINT: Record<PinTier, string> = {
  *  Colour is **additive, never the carrier**: ✓ and ✕ differ in shape for anyone who
  *  cannot separate the hues, and `PIN_OUTCOME_LABEL` puts it in words for anyone who
  *  cannot see the pin. */
-const PIN_OUTCOME_ICON: Record<PinOutcome, IconName> = { done: 'check', skipped: 'skip' };
+//  `open` (ADR-0241 §1, a finished trip's place nobody answered for) has no glyph: the
+//  card ground inside the ring IS the ○.
+const PIN_OUTCOME_ICON: Record<PinOutcome, IconName | undefined> = {
+  done: 'check',
+  skipped: 'skip',
+  open: undefined,
+};
 
 /** …and the same fact in words, for the pin's accessible name. A mark is invisible to a
  *  screen reader, so the one surface that answers in shapes has to answer in the app's own
@@ -255,6 +261,7 @@ const PIN_OUTCOME_ICON: Record<PinOutcome, IconName> = { done: 'check', skipped:
 const PIN_OUTCOME_LABEL: Record<PinOutcome, string> = {
   done: t.event.didThis,
   skipped: t.event.skipped,
+  open: t.map.pinOpen,
 };
 
 /** One pin, entirely in primitives. No `PlaceUsage`, no `Place`, no state — which
@@ -1302,7 +1309,7 @@ const PinMarker = memo(function PinMarker({
           )}
           {centreMark && (
             <span className={`pin-g outcome ${centreMark}`} aria-hidden="true">
-              <Icon name={PIN_OUTCOME_ICON[centreMark]} />
+              {PIN_OUTCOME_ICON[centreMark] && <Icon name={PIN_OUTCOME_ICON[centreMark]} />}
             </span>
           )}
         </span>
@@ -1321,7 +1328,7 @@ const PinMarker = memo(function PinMarker({
             number either. */}
         {badgeMark ? (
           <span className={`pin-n outcome ${badgeMark}`} aria-hidden="true">
-            <Icon name={PIN_OUTCOME_ICON[badgeMark]} />
+            {PIN_OUTCOME_ICON[badgeMark] && <Icon name={PIN_OUTCOME_ICON[badgeMark]} />}
           </span>
         ) : (
           pin.order != null && (

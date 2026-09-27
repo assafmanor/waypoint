@@ -2,6 +2,7 @@
 
 **Status:** Accepted (2026-08-10) — **built 2026-08-11**, §9's prerequisite discharged first in the same change. The real-device pass (peek width, and whether a horizontal snap over a pannable canvas feels right) is still owed.
 **Date:** 2026-08-10
+**Amended 2026-09-27 by [0241](0241-a-finished-trip-plays-back-and-leaves-the-app.md) §1 (built in the epic's 5.1):** §11 holds for a live trip only. A finished trip's all days draws the journey: each day's `buildDayStopSequence`, by date, through what happened (`buildJourney`). It is a line, not a traversal; the card still steps through a day.
 **Session note:** [`planning/2026-08-10-session-240-stepping-through-a-day-of-stops.md`](../planning/2026-08-10-session-240-stepping-through-a-day-of-stops.md)
 **Mockups:** [`map-stop-traversal-v1.html`](../../mockups/map-stop-traversal-v1.html) (§1–§7, the rail) · [`map-stop-traversal-v2.html`](../../mockups/map-stop-traversal-v2.html) (§1–§5, **the peek that replaced it — see the 2026-08-10 amendment**)
 **Backlog:** **J**, from field report **#25 / ADD-04** ([`planning/2026-08-08-…-addendum`](../planning/2026-08-08-session-224-incremental-field-reports-addendum.md) §5). The addendum's **#22–#26** is its own numbering and is unrelated to the Map epic's internal **#1–#23**; this is addendum #25.
