@@ -7,9 +7,11 @@
 // Then the contact sheet (4.2): only the day where something happened gets a frame, its
 // picture is the 84px thumb, and a tap on it opens that day rather than the Days tab's default.
 // And the stragglers (4.4): the footer's `לסמן` asks about each unmarked row until none is left.
-// Next time (4.5): a skipped row wears `דילגנו` and opens its day; a someday idea has none to open.
+// Next time (4.5): a skipped row wears `דילגנו` and opens its day; a someday idea has none to open,
+// and waits behind the section's continuation row (owner, 2026-09-27).
 // The journal (4.6): a note sits under the day its stop was on, and a tap reads it in place.
-// The record (4.7): chips by kind filter one list, and the cover's search finds a row by its place.
+// The record (4.7): a kind chip opens the search on that kind, and the search finds a row by its
+// place.
 import { test, expect } from '@playwright/test';
 import { t } from '../src/i18n/he';
 import { dayPhrase } from '../src/lib/hebrew';
@@ -213,13 +215,20 @@ test('next time: a skipped row carries its tag and opens its day, a someday idea
   });
   await page.goto('/?trip=t1&tab=home');
 
-  const rows = page.locator('.mem-next .wp-listrow');
-  await expect(rows).toHaveCount(2);
-  await expect(rows.first().locator('.tag-skip')).toHaveText(t.event.skipped);
-  await expect(rows.last()).toContainText(t.planHome.past.nextTime.idea);
-  await expect(rows.last().locator('.wp-listrow-open')).toBeDisabled();
+  const skipped = page.locator('.mem-next:not(.mem-next-rest) .wp-listrow');
+  await expect(skipped).toHaveCount(1);
+  await expect(skipped.first().locator('.tag-skip')).toHaveText(t.event.skipped);
 
-  await rows.first().locator('.wp-listrow-open').click();
+  // The idea is folded behind one row, and the row opens in place.
+  const more = page.getByRole('button', { name: t.planHome.past.nextTime.more(1, 1, true) });
+  await expect(more).toHaveAttribute('aria-expanded', 'false');
+  await more.click();
+  const idea = page.locator('.mem-next-rest .wp-listrow');
+  await expect(idea).toBeVisible();
+  await expect(idea).toContainText(t.planHome.past.nextTime.idea);
+  await expect(idea.locator('.wp-listrow-open')).toBeDisabled();
+
+  await skipped.first().locator('.wp-listrow-open').click();
   await expect(page).toHaveURL(/tab=days/);
   await expect(page.locator('.wp-daypill.on')).toContainText('02');
 });
@@ -257,7 +266,7 @@ test('the journal files a note under the day of its stop, and a tap reads it in 
   await expect(day.locator('.note-row.is-open')).toHaveCount(1);
 });
 
-test('the record: a chip filters by kind, and the search finds a row by its place', async ({
+test('the record: a kind chip opens the search on its kind, and the search finds a row by its place', async ({
   page,
 }) => {
   await page.setViewportSize({ width: 360, height: 640 });
@@ -273,20 +282,28 @@ test('the record: a chip filters by kind, and the search finds a row by its plac
   });
   await page.goto('/?trip=t1&tab=home');
 
-  const kinds = page.locator('.mem-kinds');
-  const shown = kinds.locator('.wp-reveal:not(.hidden) .wp-listrow');
-  // The fullest kind first.
-  await expect(shown).toHaveCount(2);
+  // The Home keeps the counts, fullest first, and no list under them.
+  const kinds = page.locator('.mem-kinds-entry');
+  await expect(kinds.locator('.choice-pill').first()).toContainText(t.iconPicker.categories.food);
+  await expect(kinds.locator('.wp-listrow')).toHaveCount(0);
+
   await kinds.locator('.choice-pill', { hasText: t.iconPicker.categories.sightseeing }).click();
-  await expect(shown).toHaveCount(1);
-  await expect(shown.first().locator('.tag-skip')).toHaveText(t.event.skipped);
+  const results = page.locator('.search-overlay .wp-reveal:not(.hidden) .wp-listrow');
+  await expect(results).toHaveCount(1);
+  await expect(results.first().locator('.tag-skip')).toHaveText(t.event.skipped);
+  // Its own chips widen it back to every row.
+  await page
+    .locator('.search-overlay .choice-pill', { hasText: t.planHome.past.record.kindsAll })
+    .click();
+  await expect(results).toHaveCount(3);
+  await page.getByRole('button', { name: t.planHome.past.record.search.backAria }).click();
+  await expect(page.locator('.search-overlay')).toHaveCount(0);
 
   await page
     .locator('.mem-cover')
     .getByRole('button', { name: t.planHome.past.record.search.button })
     .click();
   await page.keyboard.type('Senso');
-  const results = page.locator('.search-overlay .wp-reveal:not(.hidden) .wp-listrow');
   await expect(results).toHaveCount(1);
   await results.first().locator('.wp-listrow-open').click();
   await expect(page).toHaveURL(/tab=days/);

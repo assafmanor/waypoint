@@ -1981,3 +1981,8 @@ export const MEMORY_FIGURES_MAX = 5;
 /** **How many glyphs a contact-sheet frame carries** (ADR-0240 §4): enough to say what kind of
  *  day it was, few enough to stay on one line in a half-width frame at 360. */
 export const MEMORY_DAY_GLYPHS = 4;
+
+/** **How many rows a long memory Home section prints before its continuation row** (owner,
+ *  2026-09-27: the sections were "reallyyyyyy long and not that interesting";
+ *  `mockups/memory-home-shorter-sections-v1.html`). The rest is one tap away, never deleted. */
+export const MEMORY_SECTION_CAP = 3;

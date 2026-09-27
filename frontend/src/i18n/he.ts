@@ -2766,6 +2766,7 @@ export const t = {
       record: {
         title: 'לפי סוג',
         kindsLabel: 'סוג',
+        kindsAll: 'הכל',
         open: 'לא סומן',
         search: {
           button: 'חיפוש בטיול',
@@ -2782,11 +2783,26 @@ export const t = {
         title: 'מה כתבנו',
         outside: (n: number) =>
           n === 1 ? 'ועוד פתק אחד מחוץ לימי הטיול' : `ועוד ${n} פתקים מחוץ לימי הטיול`,
+        // The continuation row under the notes the journal leads with (`journalLead`).
+        more: (n: number) => (n === 1 ? 'עוד פתק אחד' : `עוד ${n} פתקים`),
+        hide: 'הסתר',
       },
       // **Next time** (ADR-0240 §4): what the trip skipped, then ideas it never reached.
       nextTime: {
         title: 'בפעם הבאה',
         idea: 'רעיון שלא הגענו אליו',
+        // One row for everything past the skipped rows shown (`foldNextTime`). `ועוד` only when
+        // rows sit above it: with nothing skipped, the row is the section's first line.
+        more: (n: number, ideas: number, lead: boolean) => {
+          const and = lead ? 'ועוד ' : '';
+          if (ideas === n)
+            return n === 1
+              ? `${and}רעיון אחד שלא הגענו אליו`
+              : `${and}${n} רעיונות שלא הגענו אליהם`;
+          if (ideas === 0) return `ועוד ${n}`;
+          return `ועוד ${n} · ${ideas === 1 ? 'אחד מהם רעיון' : `${ideas} מהם רעיונות`}`;
+        },
+        hide: 'הסתר',
       },
       settle: {
         action: 'לסמן',

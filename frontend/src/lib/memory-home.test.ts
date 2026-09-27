@@ -10,6 +10,8 @@ import {
   memoryFigures,
   memoryJournal,
   memoryNextTime,
+  foldNextTime,
+  journalLead,
   memoryRecord,
   matchesRecordQuery,
   recordKinds,
@@ -474,5 +476,53 @@ describe('memoryRecord: the rows the lists by kind and the search read (ADR-0240
     expect(matchesRecordQuery(dinner, 'ichiran')).toBe(true);
     expect(matchesRecordQuery(dinner, t.iconPicker.categories.food)).toBe(true);
     expect(matchesRecordQuery(dinner, 'museum')).toBe(false);
+  });
+});
+
+describe('foldNextTime: what was skipped leads, the rest is one row (owner, 2026-09-27)', () => {
+  const row = (id: string, skipped: boolean) => ({ id, icon: '', title: id, skipped });
+
+  it('shows skipped rows up to the cap and folds the rest with every idea', () => {
+    const rows = [row('s1', true), row('s2', true), row('s3', true), row('s4', true)];
+    const folded = foldNextTime([...rows, row('i1', false), row('i2', false)], 3);
+    expect(folded.shown.map((r) => r.id)).toEqual(['s1', 's2', 's3']);
+    expect(folded.rest.map((r) => r.id)).toEqual(['s4', 'i1', 'i2']);
+    expect(folded.ideas).toBe(2);
+  });
+
+  it('never leads with an idea: a trip that skipped nothing shows only the fold', () => {
+    const folded = foldNextTime([row('i1', false), row('i2', false)], 3);
+    expect(folded.shown).toEqual([]);
+    expect(folded.ideas).toBe(2);
+  });
+});
+
+describe('journalLead: the notes the journal leads with (owner, 2026-09-27)', () => {
+  const note = (id: string, body: string): Note => ({
+    id,
+    body,
+    source: 'member',
+    tripId: 't1',
+    createdAt: '',
+    updatedAt: '',
+    updatedBy: 'u1',
+    createdBy: 'u1',
+  });
+  const day = (date: string, ...notes: Note[]) => ({ date, heading: date, notes });
+  const days = [
+    day('d1', note('milk', 'milk'), note('beach', 'the waves came without warning, all of us')),
+    day('d2', note('lagoon', 'an hour on the rocks watching one seal come back')),
+    day('d3', note('long', 'a very long note that outranks everything else on every day here')),
+  ];
+
+  it('picks the richest note of different days, in journal order, and files the rest by day', () => {
+    const { lead, rest } = journalLead(days, 3);
+    expect(lead.flatMap((d) => d.notes.map((n) => n.id))).toEqual(['beach', 'lagoon', 'long']);
+    expect(rest.map((d) => [d.date, d.notes.map((n) => n.id)])).toEqual([['d1', ['milk']]]);
+  });
+
+  it('fills from a day already picked once every day has one', () => {
+    const { lead } = journalLead([day('d1', note('a', 'aaaa'), note('b', 'bbb'))], 2);
+    expect(lead.flatMap((d) => d.notes.map((n) => n.id))).toEqual(['a', 'b']);
   });
 });

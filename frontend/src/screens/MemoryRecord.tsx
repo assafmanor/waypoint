@@ -1,10 +1,11 @@
 // **The record, by kind and by search** — the memory Home's reading surfaces over every row
 // (ADR-0240 §4, epic 4.7, specs 2a and 2c).
 //
-// One row list (`memoryRecord`) read two ways. By kind: where we ate, where we slept, what we
-// saw, as the Map's facets filter but as a list to read, each row with its day and what became
-// of it. By search: "the ramen place" one query away, from the cover's first control. Both go
-// through the app's one reveal (ADR-0120), so a chip tap or a keystroke collapses rows in place.
+// One row list (`memoryRecord`) read in one place, the search: "the ramen place" one query away
+// from the cover's first control, and where we ate, slept or what we saw one chip away. The Home
+// keeps only the kinds' counts, each a way into the search on its kind (owner, 2026-09-27: the
+// list of the fullest kind was most of the page). The rows go through the app's one reveal
+// (ADR-0120), so a chip tap or a keystroke collapses rows in place.
 import { useMemo, useState } from 'react';
 import type { EventCategory } from '@waypoint/shared';
 import { DOT_SEPARATOR } from '../constants';
@@ -53,38 +54,47 @@ function RecordListRow({ row, onOpenDay, toMap }: { row: RecordRow } & RecordRow
 
 const rowKey = (row: RecordRow) => row.event.id;
 
-/** Lists by kind (spec 2c): one chip per kind the trip has, the fullest first. */
-export function RecordKinds({ rows, ...actions }: { rows: RecordRow[] } & RecordRowActions) {
-  const kinds = useMemo(() => recordKinds(rows), [rows]);
-  const [picked, setPicked] = useState<EventCategory | undefined>();
-  // A kind whose last row went (a settle cannot remove a row, but a peer's delete can) falls back
-  // to the fullest, derived rather than reset (ADR-0101).
-  const active = kinds.some((k) => k.kind === picked) ? picked! : kinds[0]?.kind;
-  if (!active) return null;
+/** The search's `הכל` chip, prefixed so it can never collide with an `EventCategory` (the same
+ *  sentinel shape as `NO_CATEGORY`). */
+const RECORD_KIND_ALL = '@all' as const;
+type RecordKind = EventCategory | typeof RECORD_KIND_ALL;
 
+/** The kind chips, as `ChoiceGrid` pills (the Index's notes filter is the model): `הכל` first when
+ *  `all` is given, then one per kind the trip has, the fullest first. */
+function kindOptions(rows: readonly RecordRow[], all?: string): Choice<RecordKind>[] {
   const labelOf = new Map(EVENT_CATEGORY_OPTIONS.map((option) => [option.value, option]));
-  const options: Choice<EventCategory>[] = kinds.map(({ kind, count }) => ({
-    value: kind,
-    icon: labelOf.get(kind)!.icon,
-    label: labelOf.get(kind)!.label,
-    count,
-  }));
-  const visible = revealRows(rows, (row) => row.category === active);
+  return [
+    ...(all ? [{ value: RECORD_KIND_ALL, icon: '', label: all, count: rows.length }] : []),
+    ...recordKinds(rows).map(({ kind, count }) => ({
+      value: kind,
+      icon: labelOf.get(kind)!.icon,
+      label: labelOf.get(kind)!.label,
+      count,
+    })),
+  ];
+}
 
+/**
+ * **By kind, as a way in** (spec 2c; owner, 2026-09-27). The counts are what the section says
+ * about the trip; the rows are the search's, so a chip opens it filtered to that kind rather than
+ * printing every waterfall on the Home. No chip is `on`: nothing here is filtered.
+ */
+export function RecordKinds({
+  rows,
+  onPick,
+}: {
+  rows: RecordRow[];
+  onPick: (kind: EventCategory) => void;
+}) {
+  const options = useMemo(() => kindOptions(rows), [rows]);
+  if (options.length === 0) return null;
   return (
-    <div className="mem-kinds">
+    <div className="mem-kinds mem-kinds-entry">
       <ChoiceGrid
         options={options}
-        value={active}
-        onChange={setPicked}
+        onChange={(kind) => onPick(kind as EventCategory)}
         layout="pills"
         ariaLabel={t.planHome.past.record.kindsLabel}
-      />
-      <RevealList
-        className="checklist listcard"
-        rows={visible.rows}
-        getKey={rowKey}
-        renderRow={(row) => <RecordListRow row={row} {...actions} />}
       />
     </div>
   );
@@ -94,12 +104,26 @@ export function RecordKinds({ rows, ...actions }: { rows: RecordRow[] } & Record
 export function RecordSearch({
   rows,
   tripName,
+  kind: initialKind = RECORD_KIND_ALL,
   onClose,
   ...actions
-}: { rows: RecordRow[]; tripName: string; onClose: () => void } & RecordRowActions) {
+}: {
+  rows: RecordRow[];
+  tripName: string;
+  /** The kind a Home chip opened the search on; the chips above the results can widen it. */
+  kind?: RecordKind;
+  onClose: () => void;
+} & RecordRowActions) {
   const { mode } = useMode();
   const [query, setQuery] = useState('');
-  const visible = revealRows(rows, (row) => matchesRecordQuery(row, query));
+  const [picked, setPicked] = useState<RecordKind>(initialKind);
+  const options = useMemo(() => kindOptions(rows, t.planHome.past.record.kindsAll), [rows]);
+  // A kind whose last row went (a peer's delete) falls back to all, derived rather than reset.
+  const kind = options.some((option) => option.value === picked) ? picked : RECORD_KIND_ALL;
+  const visible = revealRows(
+    rows,
+    (row) => (kind === RECORD_KIND_ALL || row.category === kind) && matchesRecordQuery(row, query),
+  );
   const copy = t.planHome.past.record.search;
   return (
     <SearchOverlay
@@ -114,6 +138,15 @@ export function RecordSearch({
       backAria={copy.backAria}
       onClose={onClose}
     >
+      <div className="mem-kinds">
+        <ChoiceGrid
+          options={options}
+          value={kind}
+          onChange={setPicked}
+          layout="pills"
+          ariaLabel={t.planHome.past.record.kindsLabel}
+        />
+      </div>
       {countVisible(visible.rows) > 0 ? (
         <RevealList
           className="checklist listcard"
