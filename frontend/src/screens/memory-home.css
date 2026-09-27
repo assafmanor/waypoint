@@ -64,3 +64,15 @@
   font-weight: 700;
   color: var(--amber-deep);
 }
+
+/* The journal: a day's heading, then its notes in the Home's card. */
+.mem-journal-day + .mem-journal-day {
+  margin-top: 12px;
+}
+
+.mem-journal-head {
+  margin: 0 2px 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+}
