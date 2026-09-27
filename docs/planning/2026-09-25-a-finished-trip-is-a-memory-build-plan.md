@@ -228,7 +228,7 @@ Replaces `PlanHome`'s past branch entirely, as drawn in ADR-0240 §4 (the stragg
 - **4.3** Firsts and bests _(spec 1c)_. **Built 2026-09-27.**
 - **4.4** The stragglers, one at a time _(spec 4a)_, on `SettleControl`'s `sheet` density walking the list. **Built 2026-09-27.**
 - **4.5** The next-time list, read-only _(spec 5a, display half)_. Its "take to another trip" is Phase 7. **Built 2026-09-27.**
-- **4.6** The notes as a journal _(spec 2b)_, read-only (§4).
+- **4.6** The notes as a journal _(spec 2b)_, read-only (§4). **Built 2026-09-27.**
 - **4.7** Lists by kind _(spec 2c)_ and search as the page's first control _(spec 2a)_.
 
 ## Phase 5 — the map as a journey, and the beat (build · needs 0.3, 1B, 2; the beat also needs 4)

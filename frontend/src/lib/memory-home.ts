@@ -16,6 +16,7 @@ import {
   tripDates,
   type Booking,
   type MaybeItem,
+  type Note,
   type RecapFigure,
   type TripEvent,
   type TripRecap,
@@ -27,6 +28,8 @@ import { dayListEvents } from './day-entries';
 import { dayShot } from './day-photo';
 import { dayHeadTitle, type DayFactsInput } from './day-title';
 import { formatDuration } from './duration';
+import { noteHost, type NoteHostRef } from './notes';
+import { liveToday } from './places';
 import { dayOfMonth, formatDayMonth, formatTime, weekdayLetter } from './time';
 
 export interface MemoryFigure {
@@ -385,4 +388,51 @@ export function memoryNextTime(input: {
     ];
   });
   return [...skipped, ...ideas];
+}
+
+/** One day of the journal: its heading and the notes written about it, in the order written. */
+export interface JournalDay {
+  date: string;
+  /** `ו׳ 25.09 · אסקוסה` where the contact sheet named the day, else the date alone. */
+  heading: string;
+  notes: Note[];
+}
+
+/**
+ * **The notes as a journal** (ADR-0240 §4, epic 4.6): every note in day order, under the day it
+ * is about. A note ON something dated (a stop, an idea pencilled in for a day) belongs to that
+ * day, since it is the day the note describes; any other note belongs to the day it was written,
+ * in the zone the trip was in when it was written (`liveToday`, never the trip's home zone).
+ *
+ * A note whose day falls outside the trip (the packing list written a month before) is planning,
+ * not a diary: it is counted, not drawn, and the Index still holds it.
+ */
+export function memoryJournal(input: {
+  trip: { startDate: string; endDate: string };
+  notes: readonly Note[];
+  hosts: Map<string, NoteHostRef>;
+  evidence: ZoneEvidence;
+  days: readonly ContactSheetDay[];
+}): { days: JournalDay[]; outside: number } {
+  const { trip, notes, hosts, evidence, days } = input;
+  const byDate = new Map<string, Note[]>();
+  let outside = 0;
+  const written = [...notes].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  for (const note of written) {
+    const date = noteHost(note, hosts)?.date ?? liveToday(Date.parse(note.createdAt), evidence);
+    if (date < trip.startDate || date > trip.endDate) {
+      outside += 1;
+      continue;
+    }
+    byDate.set(date, [...(byDate.get(date) ?? []), note]);
+  }
+  const nameOf = new Map(days.map((day) => [day.date, day.name]));
+  return {
+    days: [...byDate.keys()].sort().map((date) => ({
+      date,
+      heading: [dayWhen(date), nameOf.get(date)].filter(Boolean).join(` ${DOT_SEPARATOR} `),
+      notes: byDate.get(date)!,
+    })),
+    outside,
+  };
 }

@@ -8,6 +8,7 @@
 // picture is the 84px thumb, and a tap on it opens that day rather than the Days tab's default.
 // And the stragglers (4.4): the footer's `לסמן` asks about each unmarked row until none is left.
 // Next time (4.5): a skipped row wears `דילגנו` and opens its day; a someday idea has none to open.
+// The journal (4.6): a note sits under the day its stop was on, and a tap reads it in place.
 import { test, expect } from '@playwright/test';
 import { t } from '../src/i18n/he';
 import { dayPhrase } from '../src/lib/hebrew';
@@ -220,4 +221,37 @@ test('next time: a skipped row carries its tag and opens its day, a someday idea
   await rows.first().locator('.wp-listrow-open').click();
   await expect(page).toHaveURL(/tab=days/);
   await expect(page.locator('.wp-daypill.on')).toContainText('02');
+});
+
+test('the journal files a note under the day of its stop, and a tap reads it in place', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 360, height: 640 });
+  await bootIntoTrip(page, {
+    now: NOW,
+    dates: { startDate: START, endDate: END },
+    places: [place('pl-1', 'Bar', 139.7)],
+    events: [event('ev-1', 'pl-1', '01:00', '04:00', 'done')],
+    notes: [
+      {
+        id: 'nt-1',
+        title: 'Jazz upstairs',
+        body: 'Six seats only',
+        eventId: 'ev-1',
+        source: 'member',
+        createdBy: 'u1',
+        ...stamp,
+        createdAt: '2026-04-20T00:00:00.000Z',
+      },
+    ],
+  });
+  await page.goto('/?trip=t1&tab=home');
+
+  const day = page.locator('.mem-journal-day');
+  await expect(day).toHaveCount(1);
+  // Written before the trip, about day 2: it is day 2's.
+  await expect(day.locator('.mem-journal-head')).toContainText('02.05');
+  await expect(day.locator('.wp-listrow-kebab')).toHaveCount(0);
+  await day.locator('.wp-listrow-open').click();
+  await expect(day.locator('.note-row.is-open')).toHaveCount(1);
 });

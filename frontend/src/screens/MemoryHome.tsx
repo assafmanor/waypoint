@@ -4,7 +4,7 @@
 // is `tripRecap`'s (ADR-0239 §9, through `useTripRecap`), so this page and every share print
 // the same figure for the same trip. Built in the epic's order, one item per change: 4.1 is the
 // frame — the cover and `במספרים`; 4.2 the days as a contact sheet; 4.3 firsts and bests; 4.4 the
-// stragglers sheet the cover opens; 4.5 next time.
+// stragglers sheet the cover opens; 4.5 next time; 4.6 the notes as a journal.
 import { useCallback, useMemo, useState } from 'react';
 import { t } from '../i18n/he';
 import { DOT_SEPARATOR, type TabId } from '../constants';
@@ -15,6 +15,7 @@ import {
   memoryBests,
   memoryDays,
   memoryFigures,
+  memoryJournal,
   memoryNextTime,
   memoryStragglers,
 } from '../lib/memory-home';
@@ -30,6 +31,7 @@ import { MemoryCover } from '../ui/domain/MemoryCover';
 import { StatTile } from '../ui/domain/StatTile';
 import { StragglersSheet } from '../ui/domain/StragglersSheet';
 import { MediaViewer } from '../ui/MediaViewer';
+import { NoteJournal } from '../ui/NoteJournal';
 import './memory-home.css';
 
 /** How many straggler titles the cover's footer names; the sheet it opens walks the rest. */
@@ -43,6 +45,8 @@ export function MemoryHome({ onNavigate }: { onNavigate: (tab: TabId) => void })
     bookings,
     places,
     maybeItems,
+    notes,
+    noteHosts,
     enrichments,
     zoneEvidence,
     setActiveDate,
@@ -86,6 +90,11 @@ export function MemoryHome({ onNavigate }: { onNavigate: (tab: TabId) => void })
   const nextTime = useMemo(
     () => (recap ? memoryNextTime({ recap, events, bookings, maybes: maybeItems }) : []),
     [recap, events, bookings, maybeItems],
+  );
+  const journal = useMemo(
+    () =>
+      memoryJournal({ trip, notes, hosts: noteHosts, evidence: zoneEvidence, days: sheet.days }),
+    [trip, notes, noteHosts, zoneEvidence, sheet.days],
   );
   const figures = recap ? memoryFigures(recap) : [];
   const cover = recap?.cover;
@@ -174,6 +183,16 @@ export function MemoryHome({ onNavigate }: { onNavigate: (tab: TabId) => void })
               );
             })}
           </div>
+        </>
+      )}
+
+      {journal.days.length > 0 && (
+        <>
+          <div className="sec-title">{t.planHome.past.journal.title}</div>
+          <NoteJournal days={journal.days} />
+          {journal.outside > 0 && (
+            <p className="mem-foot">{t.planHome.past.journal.outside(journal.outside)}</p>
+          )}
         </>
       )}
 

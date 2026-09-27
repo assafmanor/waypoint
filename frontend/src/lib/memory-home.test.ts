@@ -2,11 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { RECAP_ABSENT, type RecapFigure, type TripRecap } from '@waypoint/shared';
 import { MEMORY_FIGURES_MAX } from '../constants';
 import { t } from '../i18n/he';
-import type { Booking, MaybeItem, Place, TripEvent, ZoneEvidence } from '@waypoint/shared';
+import type { Booking, MaybeItem, Note, Place, TripEvent, ZoneEvidence } from '@waypoint/shared';
+import { buildNoteHosts } from './notes';
 import {
   memoryBests,
   memoryDays,
   memoryFigures,
+  memoryJournal,
   memoryNextTime,
   memoryStragglers,
   recapHours,
@@ -351,5 +353,56 @@ describe('memoryNextTime: skipped rows, then ideas never used (ADR-0240 §4)', (
     expect(rows[0]!.when).toContain('02.05');
     expect(rows[1]!.when).toBeUndefined();
     expect(rows[2]!.placeId).toBe('p-f');
+  });
+});
+
+describe('memoryJournal: the notes in day order (ADR-0240 §4)', () => {
+  const stamp = { tripId: 't1', updatedAt: '', updatedBy: 'u1', createdBy: 'u1' };
+  const stop = { id: 'e1', title: 'Golden Gai', date: '2026-05-03' };
+  const note = (id: string, createdAt: string, extra: Partial<Note> = {}): Note => ({
+    id,
+    source: 'member',
+    createdAt,
+    ...stamp,
+    ...extra,
+  });
+  const evidence = {
+    primaryZone: 'Asia/Tokyo',
+    crossings: [],
+    events: [],
+    bookings: [],
+    places: [],
+  } as unknown as ZoneEvidence;
+  const hosts = buildNoteHosts({
+    events: [stop],
+    bookings: [],
+    places: [],
+    maybeItems: [],
+    documents: [],
+  });
+
+  it('files a note under the day it is about, else the day it was written, in written order', () => {
+    const journal = memoryJournal({
+      trip: { startDate: '2026-05-01', endDate: '2026-05-03' },
+      notes: [
+        // Written on the 1st about the 3rd's stop: it belongs to the 3rd.
+        note('about', '2026-05-01T01:00:00Z', { eventId: 'e1' }),
+        // 23:30 UTC on the 1st is the 2nd in Tokyo, where the trip was.
+        note('late', '2026-05-01T23:30:00Z'),
+        note('later', '2026-05-03T05:00:00Z'),
+        // A packing list from before the trip is counted, not filed.
+        note('packing', '2026-04-01T10:00:00Z'),
+      ],
+      hosts,
+      evidence,
+      days: [{ date: '2026-05-03', when: '', numeral: '03', name: 'Shinjuku', glyphs: [] }],
+    });
+    expect(journal.days.map((day) => [day.date, day.notes.map((n) => n.id)])).toEqual([
+      ['2026-05-02', ['late']],
+      ['2026-05-03', ['about', 'later']],
+    ]);
+    expect(journal.days[1]!.heading).toContain('Shinjuku');
+    expect(journal.days[0]!.heading).toContain('02.05');
+    expect(journal.outside).toBe(1);
   });
 });

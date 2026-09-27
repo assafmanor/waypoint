@@ -2747,6 +2747,13 @@ export const t = {
       },
       unresolved: (n: number) => `${n} לא סומנו`,
       // **The stragglers sheet** (ADR-0240 §4): the cover's footer action, and where the walk is.
+      // **The journal** (ADR-0240 §4): every note in day order. A note about a day outside the
+      // trip is planning, counted under the section rather than drawn.
+      journal: {
+        title: 'מה כתבנו',
+        outside: (n: number) =>
+          n === 1 ? 'ועוד פתק אחד מחוץ לימי הטיול' : `ועוד ${n} פתקים מחוץ לימי הטיול`,
+      },
       // **Next time** (ADR-0240 §4): what the trip skipped, then ideas it never reached.
       nextTime: {
         title: 'בפעם הבאה',
