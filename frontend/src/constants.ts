@@ -1955,3 +1955,7 @@ export const DAY_TRAVEL_WARM_ATTEMPTS = 6;
 /** How long a shared file's `ירד` / `לא הצליח` stays on the row before it goes back to being
  *  a plain link. Long enough to be read after the eye returns from the download shelf. */
 export const DOWNLOAD_SETTLE_MS = 4000;
+
+/** **How many figures the memory Home prints** (ADR-0240 §4): three sit in a row, four go 2×2,
+ *  five go 3 + 2. A sixth would be a second screen of numbers above the days. */
+export const MEMORY_FIGURES_MAX = 5;

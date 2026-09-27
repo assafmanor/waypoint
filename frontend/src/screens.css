@@ -1542,13 +1542,6 @@ body.wp-dragging
   background: radial-gradient(90% 60% at 85% 0%, rgba(255, 255, 255, 0.16), transparent 60%);
   pointer-events: none;
 }
-/* Past-trip retrospective (ADR-0040): the plan hero's shape, toned down — a calm archive
-   card, not the loud prep countdown — on the archive's own surface rather than plan's violet
-   (ADR-0240 rule 4). The memory Home (ADR-0240 §4, Phase 4) replaces this card. */
-.prep-past {
-  background: linear-gradient(180deg, var(--memory-surface-2), var(--memory-surface));
-  box-shadow: 0 14px 26px -20px rgba(66, 22, 44, 0.5);
-}
 .prep-k {
   color: var(--on-plan-faint);
   font-size: 11px;

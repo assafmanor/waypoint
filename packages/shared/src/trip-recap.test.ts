@@ -327,6 +327,69 @@ describe('tripRecap figures', () => {
         RECAP_ABSENT,
       );
     });
+
+    it('zone shift: how far the clock moved from home, signed; 0 once the trip came back', () => {
+      // May: Jerusalem is +03:00 and Tokyo +09:00.
+      expect(
+        tripRecap(input({ events: rows, bookings: [flight] })).figures.zoneShiftMinutes,
+      ).toEqual({ state: 'present', value: 360 });
+      const back = booking('bk-b', { type: 'flight', fromPlaceId: 'nrt', toPlaceId: 'tlv' });
+      const both = [
+        ...rows,
+        ev('ret', {
+          kind: 'hard',
+          status: 'planned',
+          bookingId: 'bk-b',
+          date: DAY2,
+          startsAt: at(DAY2, '03:00'),
+        }),
+      ];
+      expect(
+        tripRecap(input({ events: both, bookings: [flight, back] })).figures.zoneShiftMinutes,
+      ).toEqual({ state: 'present', value: 360 });
+      expect(tripRecap(input()).figures.zoneShiftMinutes).toEqual(RECAP_ABSENT);
+    });
+  });
+});
+
+describe('tripRecap route', () => {
+  const variants = (text: string) => ({
+    he: {
+      value: text,
+      lang: 'he' as const,
+      source: 'wikidata' as const,
+      license: 'CC0',
+      fetchedAt: '',
+      confidence: 1,
+    },
+  });
+  const enrichments = {
+    a: { region: variants('טאיטו') },
+    b: { region: variants('צ׳וּאוֹ') },
+    c: { region: variants('שינג׳וקו') },
+  } as unknown as TripEnrichments;
+
+  it("is each day's region, consecutive repeats folded", () => {
+    const events = [
+      ev('1', { placeId: 'a' }),
+      ev('2', { placeId: 'a', date: DAY2 }),
+      ev('3', { placeId: 'c', date: '2026-05-03' }),
+    ];
+    expect(value(tripRecap(input({ events, enrichments })).figures.route)).toEqual([
+      'טאיטו',
+      'שינג׳וקו',
+    ]);
+  });
+
+  it('a split day names nothing, and one region is no route at all', () => {
+    const split = [
+      ev('1', { placeId: 'a' }),
+      ev('2', { placeId: 'b' }),
+      ev('3', { placeId: 'c', date: DAY2 }),
+    ];
+    expect(tripRecap(input({ events: split, enrichments })).figures.route).toEqual(RECAP_ABSENT);
+    const oneCity = [ev('1', { placeId: 'a' }), ev('2', { placeId: 'a', date: DAY2 })];
+    expect(tripRecap(input({ events: oneCity, enrichments })).figures.route).toEqual(RECAP_ABSENT);
   });
 });
 

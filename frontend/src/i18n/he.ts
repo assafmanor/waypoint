@@ -2724,11 +2724,21 @@ export const t = {
     // Past-trip retrospective — the calm read-only archive (ADR-0040). No prep
     // dashboard, no countdown, no board; a quiet summary and a way back into the
     // days.
+    // **The memory Home** (ADR-0240 §4). A figure counts what happened and says what is still
+    // unmarked (ADR-0239 §9), which is why `unresolved` sits under a figure as well as in the
+    // cover's footer.
     past: {
-      complete: 'הטיול הסתיים',
-      summary: 'לזיכרון',
-      days: 'ימים',
       viewDays: 'עיון בימי הטיול',
+      figures: 'במספרים',
+      unresolved: (n: number) => `${n} לא סומנו`,
+      fig: {
+        places: 'מקומות',
+        air: 'ק״מ בטיסה',
+        shift: 'שעות הפרש',
+        // Not `ברחובות`, the mockup's word: the figure carries trains and drives too.
+        ground: 'ק״מ בדרכים',
+        foot: 'ק״מ ברגל',
+      },
     },
   },
   day: {

@@ -69,6 +69,13 @@ describe('PhotoBand', () => {
     expect(container.querySelector('.wp-photoband')!.classList.contains('is-card')).toBe(true);
   });
 
+  it("carries a finished trip's cover density as its own class (ADR-0240 §4)", () => {
+    const { container } = render(<PhotoBand shot={shot} density={BAND_DENSITY.COVER} />);
+    const band = container.querySelector('.wp-photoband')!;
+    expect(band.classList.contains('is-cover')).toBe(true);
+    expect(band.classList.contains('is-card')).toBe(false);
+  });
+
   // The day's shot is the first thing on the page; every other host's is below a fold or inside
   // a card nobody has opened (ADR-0219 §3).
   it('loads lazily unless the host says the picture is the first thing on the page', () => {

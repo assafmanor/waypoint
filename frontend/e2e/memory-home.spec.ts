@@ -1,0 +1,95 @@
+// **THE MEMORY HOME, MEASURED WHERE THE ADR MEASURED IT** (ADR-0240 §4).
+//
+// Two claims jsdom cannot see. The cover's picture bleeds to the day strip the way a day head's
+// does, which is `day-head.css`'s `:first-child:has()` rule applied to a card that is not a day.
+// And at 360×640 with a 168px cover, `במספרים` and its figures are above the fold: the ADR's
+// reason for putting the stragglers in the cover's footer rather than a card of their own.
+import { test, expect } from '@playwright/test';
+import { t } from '../src/i18n/he';
+import { bootIntoTrip } from './boot';
+
+const START = '2026-05-01';
+const END = '2026-05-03';
+const NOW = Date.parse('2026-05-07T03:00:00.000Z');
+
+const stamp = {
+  tripId: 't1',
+  createdAt: '2024-01-01T00:00:00.000Z',
+  updatedAt: '2024-01-01T00:00:00.000Z',
+  updatedBy: 'u1',
+};
+const place = (id: string, name: string, lng: number) => ({ id, name, lat: 35.66, lng, ...stamp });
+const event = (id: string, placeId: string, time: string, end: string, status: string) => ({
+  id,
+  date: '2026-05-02',
+  startsAt: `2026-05-02T${time}:00.000Z`,
+  endsAt: `2026-05-02T${end}:00.000Z`,
+  title: `${id} plan`,
+  kind: 'soft',
+  status,
+  placeId,
+  sortOrder: 0,
+  source: 'manual',
+  ...stamp,
+});
+
+/** Clears `dayPhoto`'s gate, served from the app's own `public/` — `day-swipe.spec.ts`'s image. */
+const IMAGE = {
+  url: '/pwa-512.png',
+  mimeType: 'image/png',
+  width: 512,
+  height: 512,
+  sizeBytes: 40_000,
+  source: 'commons',
+  license: 'CC BY-SA 4.0',
+  attribution: 'A. Photographer',
+  fetchedAt: '2026-08-01T00:00:00.000Z',
+  method: 'name_proximity',
+  ref: 'Q38519',
+  confidence: 1,
+};
+
+test('the memory Home: a bled cover, and its figures above the fold at 360×640', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 360, height: 640 });
+  await bootIntoTrip(page, {
+    now: NOW,
+    dates: { startDate: START, endDate: END },
+    places: [
+      place('pl-1', 'Bar', 139.7),
+      place('pl-2', 'Club', 139.75),
+      place('pl-3', 'Park', 139.8),
+    ],
+    events: [
+      event('ev-1', 'pl-1', '01:00', '04:00', 'done'),
+      event('ev-2', 'pl-2', '05:00', '06:00', 'done'),
+      event('ev-3', 'pl-3', '07:00', '08:00', 'planned'),
+    ],
+    enrichments: { 'pl-1': { image: IMAGE } },
+  });
+  await page.goto('/?trip=t1&tab=home');
+
+  const cover = page.locator('.mem-cover');
+  await expect(cover.locator('.wp-photoband.is-cover img')).toBeVisible();
+  await expect(cover.locator('.wp-dayhead-foot')).toContainText(t.planHome.past.unresolved(1));
+
+  const figures = page.locator('.mem-figs');
+  await expect(figures).toBeVisible();
+
+  const geometry = await page.evaluate(() => {
+    const box = (selector: string) => document.querySelector(selector)!.getBoundingClientRect();
+    const chrome = document.querySelector('.mode-chrome')!.getBoundingClientRect();
+    return {
+      chromeBottom: chrome.bottom,
+      coverTop: box('.mem-cover').top,
+      pictureHeight: box('.mem-cover .wp-photoband img').height,
+      figuresBottom: box('.mem-figs').bottom,
+      viewport: window.innerHeight,
+    };
+  });
+  // Flush to the strip, as a day head's picture is.
+  expect(Math.abs(geometry.coverTop - geometry.chromeBottom)).toBeLessThanOrEqual(1);
+  expect(geometry.pictureHeight).toBe(168);
+  expect(geometry.figuresBottom).toBeLessThanOrEqual(geometry.viewport);
+});

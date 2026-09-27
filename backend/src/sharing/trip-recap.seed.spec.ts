@@ -49,6 +49,8 @@ describe('the trip recap over the seeded trip', () => {
     expect(figures.airMeters).not.toHaveProperty('estimate');
     expect(figures.airMinutes).toEqual({ state: 'present', value: 595 });
     expect(figures.zonesCrossed).toEqual({ state: 'present', value: 1 });
+    // Tel Aviv is +03:00 in September and Tokyo +09:00.
+    expect(figures.zoneShiftMinutes).toEqual({ state: 'present', value: 360 });
     expect(superlatives.longestFlight).toMatchObject({ value: { bookingId: 'bk-flight' } });
   });
 
