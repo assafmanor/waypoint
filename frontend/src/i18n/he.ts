@@ -2746,6 +2746,11 @@ export const t = {
         walked: (distance: string) => `${distance} ברגל`,
       },
       unresolved: (n: number) => `${n} לא סומנו`,
+      // **The stragglers sheet** (ADR-0240 §4): the cover's footer action, and where the walk is.
+      settle: {
+        action: 'לסמן',
+        progress: (n: number, total: number) => `${n} מתוך ${total}`,
+      },
       fig: {
         places: 'מקומות',
         air: 'ק״מ בטיסה',

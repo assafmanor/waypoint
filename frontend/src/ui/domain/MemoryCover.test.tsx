@@ -3,8 +3,8 @@
 // **A finished trip's cover** (ADR-0240 §4). The parts that are conditional are the ones worth a
 // test: no picture means no band (never a placeholder, ADR-0219 §3), a one-city trip draws no
 // route, and the footer exists only while something is still unmarked.
-import { afterEach, describe, expect, it } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { t } from '../../i18n/he';
 import { MemoryCover, type MemoryCoverProps } from './MemoryCover';
 
@@ -53,5 +53,14 @@ describe('MemoryCover', () => {
     const foot = container.querySelector('.wp-dayhead-foot')!;
     expect(foot.textContent).toContain(t.planHome.past.unresolved(2));
     expect(foot.textContent).toContain('Ginza');
+  });
+
+  it('gives the footer its one action, which opens the sheet', () => {
+    const onSettle = vi.fn();
+    render(
+      <MemoryCover {...base} stragglers={{ count: 1, titles: ['Ginza'] }} onSettle={onSettle} />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: t.planHome.past.settle.action }));
+    expect(onSettle).toHaveBeenCalledTimes(1);
   });
 });

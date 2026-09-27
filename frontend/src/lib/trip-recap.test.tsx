@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { haversineMeters, routeLegKey, type Place, type TripEvent } from '@waypoint/shared';
 
@@ -62,5 +62,25 @@ describe('useTripRecap: the client adapter (ADR-0239 §9)', () => {
       estimate: true,
     });
     expect(result.current!.cover).toBeUndefined();
+  });
+
+  it('keeps answering while a changed trip re-reads its legs', async () => {
+    let answer: (legs: Map<string, unknown>) => void = () => {};
+    readCachedTravelEstimates.mockResolvedValue(new Map());
+    const { result, rerender } = renderHook(() => useTripRecap());
+    await waitFor(() => expect(result.current).toBeDefined());
+
+    readCachedTravelEstimates.mockReturnValueOnce(new Promise((resolve) => (answer = resolve)));
+    const before = trip.events;
+    trip.events = [...before, row('3', 'a', '03:00')];
+    try {
+      act(() => rerender());
+      // The read for the new leg is still out, and the recap already counts the new row.
+      expect(result.current?.figures.places).toMatchObject({ state: 'present' });
+      expect(readCachedTravelEstimates).toHaveBeenCalledTimes(2);
+      await act(async () => answer(new Map()));
+    } finally {
+      trip.events = before;
+    }
   });
 });

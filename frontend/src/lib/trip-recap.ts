@@ -21,6 +21,12 @@ export type AppTripRecap = Omit<TripRecap, 'cover'> & { cover: DayShot | undefin
  * The recap for the trip in context, or `undefined` until the local leg read answers — one
  * IndexedDB read, and waiting for it is what keeps a distance from appearing as an estimate and
  * then changing under the reader a frame later.
+ *
+ * **Only the first read is waited for.** A row marked on the memory Home changes which legs the
+ * recap names, and answering `undefined` again while the new read is out blanked every figure and
+ * emptied the stragglers list under the sheet walking it, closing it after one answer (epic
+ * 4.4). A re-read recaps against the legs already held; one the recap newly names is an estimate
+ * for that moment, as it would be on a device that never held it.
  */
 export function useTripRecap(): AppTripRecap | undefined {
   const { trip, events, bookings, places, maybeItems, enrichments, travelModeOverrides } =
@@ -59,7 +65,7 @@ export function useTripRecap(): AppTripRecap | undefined {
   }, [keyId]);
 
   return useMemo(() => {
-    if (read?.keyId !== keyId) return undefined;
+    if (!read) return undefined;
     const recap = tripRecap({ ...input, legs: read.legs });
     return { ...recap, cover: recap.cover && shotOf(recap.cover, enrichments) };
   }, [input, read, keyId, enrichments]);
