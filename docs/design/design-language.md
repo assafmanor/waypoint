@@ -320,7 +320,7 @@ The three original easings are all monotone, which is why `--ease-arrive` was ad
 
 **Timing an animation from JS reads the token, never a literal** — `lib/motion.ts`'s `motionDurationMs`, which answers **0** both under reduced motion and when the token is unreadable. Any state that exists only _during_ an animation has to resolve when there is no animation, or it outlives its reason (ADR-0140 §5).
 
-**Budget rule:** one `--t-cinematic` moment at each end of a trip, and nowhere else: the Plan→Trip switch (going live) and the coming-home beat's settle into the memory Home ([ADR-0241](../decisions/0241-a-finished-trip-plays-back-and-leaves-the-app.md) §3, not built yet). Both play once per trip per install, which is what the rule protects. Spending "cinematic" elsewhere devalues it, same discipline as amber / teal / violet. Motion mirrors "one loud element": everything else stays quick and quiet.
+**Budget rule:** one `--t-cinematic` moment at each end of a trip, and nowhere else: the Plan→Trip switch (going live) and the coming-home beat's settle into the memory Home ([ADR-0241](../decisions/0241-a-finished-trip-plays-back-and-leaves-the-app.md) §3). Both play once per trip per install, which is what the rule protects. Spending "cinematic" elsewhere devalues it, same discipline as amber / teal / violet. Motion mirrors "one loud element": everything else stays quick and quiet.
 
 ### The mode switch — temperature & energy, not luminance
 

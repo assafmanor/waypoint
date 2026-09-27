@@ -2756,6 +2756,11 @@ export const t = {
         walked: (distance: string) => `${distance} ברגל`,
       },
       unresolved: (n: number) => `${n} לא סומנו`,
+      // **Coming home** (ADR-0241 §3): the beat the first open of a finished trip plays.
+      comingHome: {
+        kicker: 'חזרנו הביתה',
+        skip: 'דילוג',
+      },
       // **The stragglers sheet** (ADR-0240 §4): the cover's footer action, and where the walk is.
       // **The record by kind, and the search over it** (ADR-0240 §4, epic 4.7).
       record: {

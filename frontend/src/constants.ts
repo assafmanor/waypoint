@@ -1650,6 +1650,13 @@ export const GOING_LIVE = {
   TAIL_MS: 80,
 } as const;
 
+/** **Coming home** (ADR-0241 §3): the opener's hold, then each figure's card. The settle into the
+ *  cover is `--t-cinematic`, read through `motionDurationMs`, not a number here. */
+export const COMING_HOME = {
+  OPEN_HOLD_MS: 1600,
+  CARD_MS: 1800,
+} as const;
+
 /** **A finished trip replays** (ADR-0241 §2): per day, the camera eases in (`MAP_CAMERA_EASE`),
  *  the day's stops light one step apart, and the day holds. The step shrinks on a crowded day so
  *  its lighting never runs past `STOPS_MAX_MS`. The hold is the owner's call (drawn at 700). */

@@ -247,12 +247,12 @@ Drawn and decided in [ADR-0241](../decisions/0241-a-finished-trip-plays-back-and
   - A stay's nights ride `.pin-tag.plain`.
   - The row's trailing slot is `.map-addmaybe` `יום N`, opening the first day the place happened on.
   - **Tests:** a hard row reads happened, and a skipped or unmarked stop is off the line.
-- **5.2** Replay _(spec 1e, ADR-0241 §2)_. **Built 2026-09-27.**
+- **5.2** Replay _(spec 1e, ADR-0241 §2)_. **Built 2026-09-27 · PR #885.**
   - `.map-replay` joins `.map-camctl` in the locate button's seat, with new `play` and `pause` icons.
   - Pacing: `REPLAY` = 220ms a stop, capped at 1320ms a day, and a 1000ms hold (the owner's call), on top of `easeTo`'s 480ms.
   - The day's name sits at the canvas foot (`.map-replay-caption`).
   - A finger stops it. Under reduced motion there is no control.
-- **5.3** Coming home _(spec 1f, §7, ADR-0241 §3)_.
+- **5.3** Coming home _(spec 1f, §7, ADR-0241 §3)_. **Built 2026-09-27.**
   - A `full` Modal on `--chrome-bg-memory`: an opener, then `memoryFigures` one card at a time with `useCountUp`, then a FLIP into `.mem-cover` over `--t-cinematic`.
   - The budget line in `design-language.md` (done) and the `tokens.css` comment go to one per end of a trip.
   - `COMING_HOME` = 1600ms for the opener and 1800ms a card.

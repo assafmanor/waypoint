@@ -41,3 +41,27 @@ export function markModeSeen(tripId: string, mode: Mode): void {
 export function shouldGoLive(tripId: string, mode: Mode): boolean {
   return mode === 'trip' && modeSeen(tripId) !== 'trip';
 }
+
+// **Coming home** (ADR-0241 §3), in the same shape but its own key: the provider writes
+// `mode-seen` on every mount, which would mark the beat before the memory Home was on screen.
+const CAME_HOME_PREFIX = 'waypoint:came-home:';
+
+/** Has this install shown this finished trip's coming-home beat? Never throws; a private window
+ *  reads as never, and simply plays it again. */
+export function cameHome(tripId: string): boolean {
+  try {
+    return localStorage.getItem(`${CAME_HOME_PREFIX}${tripId}`) != null;
+  } catch {
+    return false;
+  }
+}
+
+/** Marked by the memory Home when the beat ends, is skipped, or is withheld under reduced
+ *  motion — never by the provider. */
+export function markCameHome(tripId: string): void {
+  try {
+    localStorage.setItem(`${CAME_HOME_PREFIX}${tripId}`, '1');
+  } catch {
+    /* a private window; the beat plays again next time */
+  }
+}

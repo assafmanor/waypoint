@@ -216,6 +216,10 @@ export async function bootIntoTrip(
      *  this spec's own clock, so this is for a spec that needs a SPECIFIC window — a single
      *  day (`{ startDate: DAY, endDate: DAY }`), or a range whose day numbers it asserts. */
     dates?: { startDate: string; endDate: string };
+    /** **Play the coming-home beat** (ADR-0241 §3). Off by default: a finished trip's first Home
+     *  would otherwise open under a full-screen beat, and every spec but the beat's own is about
+     *  the Home beneath it. */
+    comingHome?: boolean;
   } = {},
 ): Promise<void> {
   // **The window and `now` come out of the same number**, which is `shortLiveTripDates`'s own
@@ -405,14 +409,15 @@ export async function bootIntoTrip(
   // Seed the cached identity + active-trip id the app reads on boot, so auth
   // resolves as "authed" and the landing picks our trip without a race.
   await page.addInitScript(
-    ([me, tripId, now]) => {
+    ([me, tripId, now, cameHome]) => {
       localStorage.setItem('wp_me', me as string);
       localStorage.setItem('wp_active_trip_id', tripId as string);
+      if (cameHome) localStorage.setItem(`waypoint:came-home:${tripId}`, '1');
       // `waypoint:dev-now` — `lib/useClock.ts` reads it at module load, so it has to be set
       // before the app's first script, which is exactly what `addInitScript` guarantees.
       if (now) localStorage.setItem('waypoint:dev-now', now as string);
     },
-    [JSON.stringify(ME), 't1', opts.now ? String(opts.now) : ''],
+    [JSON.stringify(ME), 't1', opts.now ? String(opts.now) : '', opts.comingHome ? '' : '1'],
   );
   // The half that survives a production build (see `now` above). `setFixedTime` rather than
   // `install()`: it fixes what the clock READS and leaves timers alone, which is what the

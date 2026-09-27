@@ -6,12 +6,14 @@
 // frame — the cover and `במספרים`; 4.2 the days as a contact sheet; 4.3 firsts and bests; 4.4 the
 // stragglers sheet the cover opens; 4.5 next time; 4.6 the notes as a journal; 4.7 the
 // record by kind, and the search over it from the cover.
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { t } from '../i18n/he';
 import { DOT_SEPARATOR, type TabId } from '../constants';
 import { autoIsolate } from '../lib/bidi';
 import type { DayShot } from '../lib/day-photo';
 import { dayPhrase } from '../lib/hebrew';
+import { cameHome, markCameHome } from '../lib/mode-seen';
+import { prefersReducedMotion } from '../lib/motion';
 import { placeLabelOf } from '../lib/place-label';
 import {
   memoryBests,
@@ -30,6 +32,7 @@ import { useTrip } from '../state/trip-state';
 import { useVerbs } from '../state/verbs';
 import { ContactSheet } from '../ui/domain/ContactSheet';
 import { ListRow } from '../ui/domain/ListRow';
+import { ComingHome } from '../ui/domain/ComingHome';
 import { MemoryCover } from '../ui/domain/MemoryCover';
 import { StatTile } from '../ui/domain/StatTile';
 import { StragglersSheet } from '../ui/domain/StragglersSheet';
@@ -63,6 +66,17 @@ export function MemoryHome({ onNavigate }: { onNavigate: (tab: TabId) => void })
   const [settling, setSettling] = useState(false);
   const [searching, setSearching] = useState(false);
   const closeSettling = useCallback(() => setSettling(false), []);
+  // **Coming home** (ADR-0241 §3): the first time this install shows this finished trip's Home.
+  // Remembered here and never in the provider, which runs on every tab (a deep link elsewhere
+  // must not consume it). Under reduced motion it is withheld, not shortened, and remembered.
+  const [comingHome, setComingHome] = useState(() => !cameHome(trip.id));
+  const endComingHome = useCallback(() => {
+    markCameHome(trip.id);
+    setComingHome(false);
+  }, [trip.id]);
+  useEffect(() => {
+    if (comingHome && prefersReducedMotion()) endComingHome();
+  }, [comingHome, endComingHome]);
 
   const when = [
     formatTripDates(trip.startDate, trip.endDate, { style: 'prose' }),
@@ -125,6 +139,16 @@ export function MemoryHome({ onNavigate }: { onNavigate: (tab: TabId) => void })
 
   return (
     <>
+      {/* No beat when there is nothing to count; it waits for the recap rather than being spent. */}
+      {comingHome && figures.length > 0 && !prefersReducedMotion() && (
+        <ComingHome
+          name={trip.name}
+          when={when}
+          people={users}
+          figures={figures}
+          onDone={endComingHome}
+        />
+      )}
       <MemoryCover
         shot={cover && { ...cover, onOpen: () => setFullShot(cover) }}
         name={trip.name}

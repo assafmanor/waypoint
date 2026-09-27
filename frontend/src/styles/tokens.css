@@ -268,13 +268,13 @@
 
   /* Motion — duration ramp + easings (design-language "Motion & designed
      transitions"). New motion picks from this ramp, the same discipline the
-     type ramp and color budget enforce. Budget rule: exactly one --t-cinematic
-     moment exists — the Plan→Trip switch. Everything under prefers-reduced-motion
+     type ramp and color budget enforce. Budget rule: one --t-cinematic moment at
+     each end of a trip — the Plan→Trip switch and coming home (ADR-0241 §3). Everything under prefers-reduced-motion
      collapses to instant (App.css). */
   --t-quick: 140ms; /* nav settle, toggles, hovers, focus */
   --t-base: 240ms; /* tab cross-fade, toast, ripple bar, sheets */
   --t-deliberate: 400ms; /* return-gesture slide; Trip→Plan stand-down */
-  --t-cinematic: 600ms; /* Plan→Trip going-live — the only cinematic moment */
+  --t-cinematic: 600ms; /* going live, and coming home — one per end of a trip */
   --ease-standard: cubic-bezier(0.2, 0, 0, 1); /* default / entrances / hue melts */
   --ease-exit: cubic-bezier(0.4, 0, 1, 1); /* exits — toast out, glow extinguishing */
   --ease-emphasized: cubic-bezier(0.16, 1, 0.3, 1); /* the glow ignite */
