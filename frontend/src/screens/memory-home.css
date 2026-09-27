@@ -76,3 +76,15 @@
   font-weight: 700;
   color: var(--muted);
 }
+
+/* Lists by kind: the chips over one card of rows. A finished trip selects in the archive's rose,
+   as the Index's chips do there (ADR-0240 §3). */
+.mem-kinds .choice-grid.pills {
+  margin-bottom: 10px;
+}
+
+.mem-kinds .choice-pill.on {
+  background: var(--memory);
+  border-color: var(--memory);
+  color: var(--on-fill);
+}

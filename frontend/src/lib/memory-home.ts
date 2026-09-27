@@ -6,14 +6,18 @@
 // says how many on its second line.
 import {
   BOOKING_TYPE,
+  categoryForBookingType,
   EVENT_CATEGORY,
+  EVENT_STATUS,
   eventDisplayZones,
   eventStopPlaceId,
   iconForCategory,
   isTransportEvent,
+  matchesAnyTerm,
   ltrIsolate,
   recapHappened,
   tripDates,
+  type EventCategory,
   type Booking,
   type MaybeItem,
   type Note,
@@ -435,4 +439,79 @@ export function memoryJournal(input: {
     })),
     outside,
   };
+}
+
+/** What became of a row: it happened, it was skipped, or nobody marked it. */
+export type RecordOutcome = 'done' | 'skipped' | 'open';
+
+/** One row of the trip's record, as the lists by kind and the search read it. */
+export interface RecordRow {
+  event: TripEvent;
+  icon: string;
+  category: EventCategory;
+  /** Its day and clock, `ו׳ 25.09 · 21:30`. */
+  subject: string;
+  outcome: RecordOutcome;
+  placeId?: string;
+  placeName?: string;
+}
+
+/**
+ * **The trip's record, row by row** (ADR-0240 §4, epic 4.7): every row in the order it came,
+ * each with its kind and what became of it (ADR-0239 §9's rule, so `done` is exactly what the
+ * figures count). The lists by kind filter it and the search matches it; neither recounts.
+ */
+export function memoryRecord(input: {
+  events: readonly TripEvent[];
+  bookings: readonly Booking[];
+  placeName: (placeId: string) => string | undefined;
+  evidence: ZoneEvidence;
+}): RecordRow[] {
+  const { events, bookings, placeName, evidence } = input;
+  const bookingById = new Map(bookings.map((booking) => [booking.id, booking]));
+  const at = (event: TripEvent) => (event.startsAt ? Date.parse(event.startsAt) : Infinity);
+  return [...events]
+    .sort((a, b) => (a.date !== b.date ? (a.date < b.date ? -1 : 1) : at(a) - at(b)))
+    .map((event) => {
+      const booking = event.bookingId ? bookingById.get(event.bookingId) : undefined;
+      const category =
+        event.category ?? (booking ? categoryForBookingType(booking.type) : EVENT_CATEGORY.OTHER);
+      const placeId = eventStopPlaceId(event, booking);
+      const name = placeId ? placeName(placeId) : undefined;
+      return {
+        event,
+        icon: event.icon ?? iconForCategory(category),
+        category,
+        subject: [dayWhen(event.date), clockOf(event, evidence)]
+          .filter(Boolean)
+          .join(` ${DOT_SEPARATOR} `),
+        outcome: recapHappened(event)
+          ? 'done'
+          : event.status === EVENT_STATUS.SKIPPED
+            ? 'skipped'
+            : 'open',
+        ...(placeId ? { placeId } : {}),
+        ...(name ? { placeName: name } : {}),
+      };
+    });
+}
+
+/** The kinds the record holds, most rows first (the order a chip row reads in), each with its
+ *  count. A kind with no row has no chip. */
+export function recordKinds(rows: readonly RecordRow[]): { kind: EventCategory; count: number }[] {
+  const counts = new Map<EventCategory, number>();
+  for (const row of rows) counts.set(row.category, (counts.get(row.category) ?? 0) + 1);
+  const order = Object.values(EVENT_CATEGORY) as EventCategory[];
+  return [...counts]
+    .sort(([a, x], [b, y]) => y - x || order.indexOf(a) - order.indexOf(b))
+    .map(([kind, count]) => ({ kind, count }));
+}
+
+/** "The ramen place" (spec 2a): a row matches on its title, its place, or its kind's name. */
+export function matchesRecordQuery(row: RecordRow, query: string): boolean {
+  return matchesAnyTerm(query, [
+    row.event.title,
+    row.placeName,
+    t.iconPicker.categories[row.category],
+  ]);
 }

@@ -9,6 +9,7 @@
 // And the stragglers (4.4): the footer's `לסמן` asks about each unmarked row until none is left.
 // Next time (4.5): a skipped row wears `דילגנו` and opens its day; a someday idea has none to open.
 // The journal (4.6): a note sits under the day its stop was on, and a tap reads it in place.
+// The record (4.7): chips by kind filter one list, and the cover's search finds a row by its place.
 import { test, expect } from '@playwright/test';
 import { t } from '../src/i18n/he';
 import { dayPhrase } from '../src/lib/hebrew';
@@ -254,4 +255,40 @@ test('the journal files a note under the day of its stop, and a tap reads it in 
   await expect(day.locator('.wp-listrow-kebab')).toHaveCount(0);
   await day.locator('.wp-listrow-open').click();
   await expect(day.locator('.note-row.is-open')).toHaveCount(1);
+});
+
+test('the record: a chip filters by kind, and the search finds a row by its place', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 360, height: 640 });
+  await bootIntoTrip(page, {
+    now: NOW,
+    dates: { startDate: START, endDate: END },
+    places: [place('pl-1', 'Ichiran', 139.7), place('pl-2', 'Senso-ji', 139.75)],
+    events: [
+      { ...event('ev-1', 'pl-1', '01:00', '02:00', 'done'), category: 'food' },
+      { ...event('ev-2', 'pl-1', '03:00', '04:00', 'done'), category: 'food' },
+      { ...event('ev-3', 'pl-2', '05:00', '06:00', 'skipped'), category: 'sightseeing' },
+    ],
+  });
+  await page.goto('/?trip=t1&tab=home');
+
+  const kinds = page.locator('.mem-kinds');
+  const shown = kinds.locator('.wp-reveal:not(.hidden) .wp-listrow');
+  // The fullest kind first.
+  await expect(shown).toHaveCount(2);
+  await kinds.locator('.choice-pill', { hasText: t.iconPicker.categories.sightseeing }).click();
+  await expect(shown).toHaveCount(1);
+  await expect(shown.first().locator('.tag-skip')).toHaveText(t.event.skipped);
+
+  await page
+    .locator('.mem-cover')
+    .getByRole('button', { name: t.planHome.past.record.search.button })
+    .click();
+  await page.keyboard.type('Senso');
+  const results = page.locator('.search-overlay .wp-reveal:not(.hidden) .wp-listrow');
+  await expect(results).toHaveCount(1);
+  await results.first().locator('.wp-listrow-open').click();
+  await expect(page).toHaveURL(/tab=days/);
+  await expect(page.locator('.wp-daypill.on')).toContainText('02');
 });
