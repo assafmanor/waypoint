@@ -2,11 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { RECAP_ABSENT, type RecapFigure, type TripRecap } from '@waypoint/shared';
 import { MEMORY_FIGURES_MAX } from '../constants';
 import { t } from '../i18n/he';
-import type { Booking, Place, TripEvent, ZoneEvidence } from '@waypoint/shared';
+import type { Booking, MaybeItem, Place, TripEvent, ZoneEvidence } from '@waypoint/shared';
 import {
   memoryBests,
   memoryDays,
   memoryFigures,
+  memoryNextTime,
   memoryStragglers,
   recapHours,
   recapKm,
@@ -309,5 +310,46 @@ describe('memoryStragglers: the rows the sheet walks (ADR-0240 §4)', () => {
     expect(rows[0]!.subject).toContain('02.05');
     expect(rows[0]!.subject).toContain('21:30');
     expect(rows[1]!.subject).not.toContain(':');
+  });
+});
+
+describe('memoryNextTime: skipped rows, then ideas never used (ADR-0240 §4)', () => {
+  const stamp = { tripId: 't1', createdAt: '', updatedAt: '', updatedBy: 'u1' };
+  const skippedRow: TripEvent = {
+    id: 'bar',
+    date: '2026-05-02',
+    title: 'Cocktail bar',
+    kind: 'soft',
+    status: 'skipped',
+    placeId: 'p-bar',
+    sortOrder: 0,
+    source: 'manual',
+    ...stamp,
+  };
+  const idea = (id: string, extra: Partial<MaybeItem> = {}): MaybeItem => ({
+    id,
+    title: id,
+    createdBy: 'u1',
+    consumed: false,
+    ...stamp,
+    ...extra,
+  });
+
+  it("keeps the recap's order and says which day each row can open", () => {
+    const rows = memoryNextTime({
+      recap: { ...recap({}), nextTime: { skipped: ['bar'], ideas: ['someday', 'friday', 'gone'] } },
+      events: [skippedRow],
+      bookings: [],
+      maybes: [idea('friday', { targetDate: '2026-05-03', placeId: 'p-f' }), idea('someday')],
+    });
+    expect(rows.map((row) => [row.id, row.skipped, row.date])).toEqual([
+      ['bar', true, '2026-05-02'],
+      ['someday', false, undefined],
+      ['friday', false, '2026-05-03'],
+    ]);
+    expect(rows[0]!.placeId).toBe('p-bar');
+    expect(rows[0]!.when).toContain('02.05');
+    expect(rows[1]!.when).toBeUndefined();
+    expect(rows[2]!.placeId).toBe('p-f');
   });
 });

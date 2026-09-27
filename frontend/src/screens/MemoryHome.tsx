@@ -4,14 +4,20 @@
 // is `tripRecap`'s (ADR-0239 §9, through `useTripRecap`), so this page and every share print
 // the same figure for the same trip. Built in the epic's order, one item per change: 4.1 is the
 // frame — the cover and `במספרים`; 4.2 the days as a contact sheet; 4.3 firsts and bests; 4.4 the
-// stragglers sheet the cover opens; next time follows inside it.
+// stragglers sheet the cover opens; 4.5 next time.
 import { useCallback, useMemo, useState } from 'react';
 import { t } from '../i18n/he';
 import { DOT_SEPARATOR, type TabId } from '../constants';
 import { autoIsolate } from '../lib/bidi';
 import type { DayShot } from '../lib/day-photo';
 import { dayPhrase } from '../lib/hebrew';
-import { memoryBests, memoryDays, memoryFigures, memoryStragglers } from '../lib/memory-home';
+import {
+  memoryBests,
+  memoryDays,
+  memoryFigures,
+  memoryNextTime,
+  memoryStragglers,
+} from '../lib/memory-home';
 import { formatTripDates, tripDayNumber } from '../lib/time';
 import { useTripRecap } from '../lib/trip-recap';
 import { useShowPlaceOnMap } from '../state/map-scope-state';
@@ -30,8 +36,17 @@ import './memory-home.css';
 const STRAGGLER_TITLES = 2;
 
 export function MemoryHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
-  const { trip, users, events, bookings, places, enrichments, zoneEvidence, setActiveDate } =
-    useTrip();
+  const {
+    trip,
+    users,
+    events,
+    bookings,
+    places,
+    maybeItems,
+    enrichments,
+    zoneEvidence,
+    setActiveDate,
+  } = useTrip();
   const showOnMap = useShowPlaceOnMap();
   const placeLabels = usePlaceLabels();
   const recap = useTripRecap();
@@ -67,6 +82,10 @@ export function MemoryHome({ onNavigate }: { onNavigate: (tab: TabId) => void })
   const stragglers = useMemo(
     () => (recap ? memoryStragglers({ recap, events, evidence: zoneEvidence }) : []),
     [recap, events, zoneEvidence],
+  );
+  const nextTime = useMemo(
+    () => (recap ? memoryNextTime({ recap, events, bookings, maybes: maybeItems }) : []),
+    [recap, events, bookings, maybeItems],
   );
   const figures = recap ? memoryFigures(recap) : [];
   const cover = recap?.cover;
@@ -151,6 +170,44 @@ export function MemoryHome({ onNavigate }: { onNavigate: (tab: TabId) => void })
                   }
                   onOpen={() => setActiveDate(row.date)}
                   onShowOnMap={placeId && showOnMap ? () => showOnMap(placeId) : undefined}
+                />
+              );
+            })}
+          </div>
+        </>
+      )}
+
+      {nextTime.length > 0 && (
+        <>
+          <div className="sec-title">{t.planHome.past.nextTime.title}</div>
+          <div className="mem-next">
+            {nextTime.map((row) => {
+              const placeId = mappable(row.placeId);
+              const toMap = placeId && showOnMap ? () => showOnMap(placeId) : undefined;
+              const { date } = row;
+              // A row opens its day. An idea for "someday" has none, so it opens its place, and
+              // one with neither is a quiet row: the badge's pin sits INSIDE the open button, so
+              // a disabled button would take the pin with it.
+              const open = date ? () => setActiveDate(date) : toMap;
+              return (
+                <ListRow
+                  key={row.id}
+                  icon={row.icon}
+                  title={autoIsolate(row.title)}
+                  openLabel={row.title}
+                  meta={
+                    <>
+                      {row.skipped ? (
+                        <span className="tag-skip">{t.event.skipped}</span>
+                      ) : (
+                        t.planHome.past.nextTime.idea
+                      )}
+                      {row.when && ` ${DOT_SEPARATOR} ${row.when}`}
+                    </>
+                  }
+                  disabled={!open}
+                  onOpen={() => open?.()}
+                  onShowOnMap={toMap}
                 />
               );
             })}

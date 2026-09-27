@@ -2747,6 +2747,11 @@ export const t = {
       },
       unresolved: (n: number) => `${n} לא סומנו`,
       // **The stragglers sheet** (ADR-0240 §4): the cover's footer action, and where the walk is.
+      // **Next time** (ADR-0240 §4): what the trip skipped, then ideas it never reached.
+      nextTime: {
+        title: 'בפעם הבאה',
+        idea: 'רעיון שלא הגענו אליו',
+      },
       settle: {
         action: 'לסמן',
         progress: (n: number, total: number) => `${n} מתוך ${total}`,

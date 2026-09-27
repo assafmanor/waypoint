@@ -15,6 +15,7 @@ import {
   recapHappened,
   tripDates,
   type Booking,
+  type MaybeItem,
   type RecapFigure,
   type TripEvent,
   type TripRecap,
@@ -318,4 +319,70 @@ export function memoryStragglers(input: {
       .join(` ${DOT_SEPARATOR} `);
     return [{ event, subject }];
   });
+}
+
+/** One row of `בפעם הבאה`, composed: a row the trip skipped, or an idea it never used. */
+export interface NextTimeRow {
+  id: string;
+  icon: string;
+  title: string;
+  /** A skipped row carries `.tag-skip`; an idea says it was never reached. */
+  skipped: boolean;
+  when?: string;
+  /** The day the row opens: a skipped row's own, an idea's pencilled-in one. Absent → the row
+   *  has nowhere to open, since an idea for "someday" has no day. */
+  date?: string;
+  placeId?: string;
+}
+
+/**
+ * **Next time** (ADR-0240 §4, epic 4.5): what the trip meant to do and did not, read-only.
+ * `tripRecap`'s own list and order (skipped rows, then ideas never used), so the section and the
+ * shares agree on it. Taking them to another trip is Phase 7's.
+ */
+export function memoryNextTime(input: {
+  recap: TripRecap;
+  events: readonly TripEvent[];
+  bookings: readonly Booking[];
+  maybes: readonly MaybeItem[];
+}): NextTimeRow[] {
+  const { recap, events, bookings, maybes } = input;
+  const eventById = new Map(events.map((event) => [event.id, event]));
+  const maybeById = new Map(maybes.map((maybe) => [maybe.id, maybe]));
+  const glyph = (item: Pick<TripEvent, 'icon' | 'category'>) =>
+    item.icon ?? iconForCategory(item.category ?? EVENT_CATEGORY.OTHER);
+
+  const skipped = recap.nextTime.skipped.flatMap((id): NextTimeRow[] => {
+    const event = eventById.get(id);
+    if (!event) return [];
+    const booking = event.bookingId ? bookings.find((b) => b.id === event.bookingId) : undefined;
+    const placeId = eventStopPlaceId(event, booking);
+    return [
+      {
+        id,
+        icon: glyph(event),
+        title: event.title,
+        skipped: true,
+        when: dayWhen(event.date),
+        date: event.date,
+        ...(placeId ? { placeId } : {}),
+      },
+    ];
+  });
+  const ideas = recap.nextTime.ideas.flatMap((id): NextTimeRow[] => {
+    const maybe = maybeById.get(id);
+    if (!maybe) return [];
+    const date = maybe.targetDate ?? undefined;
+    return [
+      {
+        id,
+        icon: glyph(maybe),
+        title: maybe.title,
+        skipped: false,
+        ...(date ? { when: dayWhen(date), date } : {}),
+        ...(maybe.placeId ? { placeId: maybe.placeId } : {}),
+      },
+    ];
+  });
+  return [...skipped, ...ideas];
 }

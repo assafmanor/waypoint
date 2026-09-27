@@ -7,6 +7,7 @@
 // Then the contact sheet (4.2): only the day where something happened gets a frame, its
 // picture is the 84px thumb, and a tap on it opens that day rather than the Days tab's default.
 // And the stragglers (4.4): the footer's `לסמן` asks about each unmarked row until none is left.
+// Next time (4.5): a skipped row wears `דילגנו` and opens its day; a someday idea has none to open.
 import { test, expect } from '@playwright/test';
 import { t } from '../src/i18n/he';
 import { dayPhrase } from '../src/lib/hebrew';
@@ -192,4 +193,31 @@ test('the stragglers sheet asks about the unmarked row, and the answer clears th
 
   await expect(sheet).toHaveCount(0);
   await expect(foot).toHaveCount(0);
+});
+
+test('next time: a skipped row carries its tag and opens its day, a someday idea stays put', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 360, height: 640 });
+  await bootIntoTrip(page, {
+    now: NOW,
+    dates: { startDate: START, endDate: END },
+    places: [place('pl-1', 'Bar', 139.7), place('pl-2', 'Club', 139.75)],
+    events: [
+      event('ev-1', 'pl-1', '01:00', '04:00', 'done'),
+      event('ev-2', 'pl-2', '05:00', '06:00', 'skipped'),
+    ],
+    maybeItems: [{ id: 'mb-1', title: 'Skytree', createdBy: 'u1', consumed: false, ...stamp }],
+  });
+  await page.goto('/?trip=t1&tab=home');
+
+  const rows = page.locator('.mem-next .wp-listrow');
+  await expect(rows).toHaveCount(2);
+  await expect(rows.first().locator('.tag-skip')).toHaveText(t.event.skipped);
+  await expect(rows.last()).toContainText(t.planHome.past.nextTime.idea);
+  await expect(rows.last().locator('.wp-listrow-open')).toBeDisabled();
+
+  await rows.first().locator('.wp-listrow-open').click();
+  await expect(page).toHaveURL(/tab=days/);
+  await expect(page.locator('.wp-daypill.on')).toContainText('02');
 });
