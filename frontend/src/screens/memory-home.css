@@ -88,3 +88,25 @@
   border-color: var(--memory);
   color: var(--on-fill);
 }
+
+/* The kinds on the Home are a way into the search, so they close the section themselves. */
+.mem-kinds-entry .choice-grid.pills {
+  margin-bottom: 0;
+}
+
+/* **The continuation row of a long section** (owner, 2026-09-27): Plan Home's `.tsk-more`, the
+   last row of a card there. Next time's rows are separate cards, so here it wears one of its own. */
+.mem-more {
+  margin-top: 8px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--card);
+}
+
+.mem-next-rest {
+  margin-top: 8px;
+}
+
+.mem-journal-rest .mem-journal-day:first-child {
+  margin-top: 12px;
+}

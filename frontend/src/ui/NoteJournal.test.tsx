@@ -94,4 +94,29 @@ describe('NoteJournal', () => {
     // Read-only: the open foot offers no edit.
     expect(screen.queryByText(t.notes.open.edit)).toBeNull();
   });
+
+  it('with a cap, leads with that many notes and keeps the rest behind one row', () => {
+    const notes = ['a', 'b', 'c', 'd', 'e'].map((id, i) => note(id, { body: id.repeat(10 - i) }));
+    const { container } = render(
+      wrapNav(<NoteJournal days={[{ date: '2026-05-02', heading: 'day', notes }]} cap={3} />),
+    );
+    const more = screen.getByRole('button', { name: t.planHome.past.journal.more(2) });
+    expect(more.getAttribute('aria-expanded')).toBe('false');
+    expect(container.querySelectorAll('.wp-collapsible:not(.on) .note-row')).toHaveLength(2);
+    fireEvent.click(more);
+    expect(container.querySelector('.wp-collapsible.on')).toBeTruthy();
+    expect(screen.getByRole('button', { name: t.planHome.past.journal.hide })).toBeTruthy();
+  });
+
+  it('prints the whole journal when it fits under the cap', () => {
+    const { container } = render(
+      wrapNav(
+        <NoteJournal
+          days={[{ date: '2026-05-02', heading: 'day', notes: [note('a', { body: 'a' })] }]}
+          cap={3}
+        />,
+      ),
+    );
+    expect(container.querySelector('.chk-more-row')).toBeNull();
+  });
 });

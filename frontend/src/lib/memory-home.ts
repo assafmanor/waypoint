@@ -394,6 +394,18 @@ export function memoryNextTime(input: {
   return [...skipped, ...ideas];
 }
 
+/** **Next time, folded** (owner, 2026-09-27): what we skipped is the decision worth keeping, so
+ *  up to `cap` skipped rows show; the rest of them and every idea never reached sit behind one
+ *  continuation row. `ideas` is how many of `rest` are ideas, which is what the row says. */
+export function foldNextTime(
+  rows: readonly NextTimeRow[],
+  cap: number,
+): { shown: NextTimeRow[]; rest: NextTimeRow[]; ideas: number } {
+  const shown = rows.filter((row) => row.skipped).slice(0, cap);
+  const rest = rows.filter((row) => !shown.includes(row));
+  return { shown, rest, ideas: rest.filter((row) => !row.skipped).length };
+}
+
 /** One day of the journal: its heading and the notes written about it, in the order written. */
 export interface JournalDay {
   date: string;
@@ -439,6 +451,38 @@ export function memoryJournal(input: {
     })),
     outside,
   };
+}
+
+/**
+ * **The notes the journal leads with** (owner, 2026-09-27): the `cap` with the most words, on
+ * different days while any are left, back in the journal's order — "לקנות חלב" is a note and not
+ * a memory, and three from one evening read as one day. The journal's other notes are what the
+ * continuation row opens, by day, so no note is printed twice.
+ */
+export function journalLead(
+  days: readonly JournalDay[],
+  cap: number,
+): { lead: JournalDay[]; rest: JournalDay[] } {
+  const all = days.flatMap((day) => day.notes.map((note) => ({ day, note })));
+  const words = (note: Note) => (note.title?.trim().length ?? 0) + (note.body?.trim().length ?? 0);
+  const ranked = [...all].sort((a, b) => words(b.note) - words(a.note));
+  const picked = new Set<Note>();
+  const pickedDays = new Set<string>();
+  for (const { day, note } of ranked) {
+    if (picked.size >= cap) break;
+    if (pickedDays.has(day.date)) continue;
+    picked.add(note);
+    pickedDays.add(day.date);
+  }
+  for (const { note } of ranked) {
+    if (picked.size >= cap) break;
+    picked.add(note);
+  }
+  const split = (keep: boolean) =>
+    days
+      .map((day) => ({ ...day, notes: day.notes.filter((note) => picked.has(note) === keep) }))
+      .filter((day) => day.notes.length > 0);
+  return { lead: split(true), rest: split(false) };
 }
 
 /** What became of a row: it happened, it was skipped, or nobody marked it. */
