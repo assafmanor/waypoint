@@ -1,0 +1,74 @@
+/* **The days as a contact sheet** — `ui/domain/ContactSheet` (ADR-0240 §4, `past-trip-v1.html` §3). */
+
+.mem-sheet {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.mem-day {
+  display: grid;
+  align-content: start;
+  min-width: 0;
+  padding: 0;
+  text-align: start;
+  font: inherit;
+  color: inherit;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  overflow: hidden;
+  cursor: pointer;
+  /* A whole card under the finger, so it takes the large press step (ADR-0140). */
+  --press-scale: var(--press-scale-lg);
+}
+
+.mem-day:focus-visible {
+  outline: 2.5px solid var(--memory);
+  outline-offset: 2px;
+}
+
+/* The frame's picture is mid-card: square corners, the card clips its own. */
+.mem-day > .wp-photoband {
+  border-radius: 0;
+}
+
+/* A day with no shot keeps the frame: its date, on the archive's wash, where the picture would
+   be — so the frames line up. */
+.mem-day-stamp {
+  height: 84px;
+  display: grid;
+  place-items: center;
+  font-family: var(--font-head);
+  font-size: 34px;
+  color: var(--memory-deep);
+  background: var(--memory-tint);
+}
+
+.mem-day-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 8px 10px 10px;
+}
+
+.mem-day-when {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.mem-day-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.mem-day-marks {
+  margin-top: 2px;
+  font-size: 13px;
+  letter-spacing: 2px;
+}

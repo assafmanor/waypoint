@@ -4,8 +4,11 @@
 // does, which is `day-head.css`'s `:first-child:has()` rule applied to a card that is not a day.
 // And at 360×640 with a 168px cover, `במספרים` and its figures are above the fold: the ADR's
 // reason for putting the stragglers in the cover's footer rather than a card of their own.
+// Then the contact sheet (4.2): only the day where something happened gets a frame, its
+// picture is the 84px thumb, and a tap on it opens that day rather than the Days tab's default.
 import { test, expect } from '@playwright/test';
 import { t } from '../src/i18n/he';
+import { dayPhrase } from '../src/lib/hebrew';
 import { bootIntoTrip } from './boot';
 
 const START = '2026-05-01';
@@ -92,4 +95,35 @@ test('the memory Home: a bled cover, and its figures above the fold at 360×640'
   expect(Math.abs(geometry.coverTop - geometry.chromeBottom)).toBeLessThanOrEqual(1);
   expect(geometry.pictureHeight).toBe(168);
   expect(geometry.figuresBottom).toBeLessThanOrEqual(geometry.viewport);
+});
+
+test('the contact sheet frames only the days that happened, and a frame opens its day', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 360, height: 640 });
+  await bootIntoTrip(page, {
+    now: NOW,
+    dates: { startDate: START, endDate: END },
+    places: [place('pl-1', 'Bar', 139.7), place('pl-2', 'Club', 139.75)],
+    events: [
+      event('ev-1', 'pl-1', '01:00', '04:00', 'done'),
+      event('ev-2', 'pl-2', '05:00', '06:00', 'done'),
+    ],
+    enrichments: { 'pl-1': { image: IMAGE } },
+  });
+  await page.goto('/?trip=t1&tab=home');
+
+  const frames = page.locator('.mem-sheet .mem-day');
+  await expect(frames).toHaveCount(1);
+  const thumb = frames.first().locator('.wp-photoband.is-thumb img');
+  await expect(thumb).toBeVisible();
+  expect((await thumb.boundingBox())?.height).toBe(84);
+  // The licence rides on the thumb even where the name does not.
+  await expect(frames.first().locator('figcaption')).toContainText('A. Photographer');
+  await expect(page.locator('.mem-foot')).toHaveText(t.planHome.past.quietDays(dayPhrase(2)));
+
+  await frames.first().click();
+  await expect(page).toHaveURL(/tab=days/);
+  // Day 2, not the Days tab's own default of day 1 on a finished trip.
+  await expect(page.locator('.wp-daypill.on')).toContainText('02');
 });

@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { RECAP_ABSENT, type RecapFigure, type TripRecap } from '@waypoint/shared';
 import { MEMORY_FIGURES_MAX } from '../constants';
 import { t } from '../i18n/he';
-import { memoryFigures, recapHours, recapKm } from './memory-home';
+import type { Place, TripEvent } from '@waypoint/shared';
+import { memoryDays, memoryFigures, recapHours, recapKm } from './memory-home';
 
 const present = (
   value: number,
@@ -111,5 +112,62 @@ describe('memoryFigures: which tiles, in what order (ADR-0240 §4)', () => {
       }),
     );
     expect(figures).toHaveLength(MEMORY_FIGURES_MAX);
+  });
+});
+
+describe('memoryDays: the contact sheet (ADR-0240 §4)', () => {
+  const stamp = { tripId: 't1', createdAt: '', updatedAt: '', updatedBy: 'u1' };
+  const places: Place[] = [{ id: 'p1', name: 'Senso-ji', lat: 35.7, lng: 139.8, ...stamp }];
+  const ev = (id: string, date: string, extra: Partial<TripEvent> = {}): TripEvent => ({
+    id,
+    date,
+    title: id,
+    kind: 'soft',
+    status: 'done',
+    sortOrder: 0,
+    source: 'manual',
+    ...stamp,
+    ...extra,
+  });
+  const base = {
+    trip: { destination: 'טוקיו', startDate: '2026-05-01', endDate: '2026-05-04' },
+    bookings: [],
+    places,
+    placeLabels: {},
+    enrichments: {},
+  };
+
+  it('frames only days where something happened, and counts the rest', () => {
+    const { days, quiet } = memoryDays({
+      ...base,
+      events: [
+        ev('a', '2026-05-02', { placeId: 'p1', icon: '⛩️' }),
+        ev('b', '2026-05-03', { status: 'skipped', icon: '🍸' }),
+        ev('c', '2026-05-04', { status: 'planned' }),
+      ],
+    });
+    expect(days.map((day) => day.date)).toEqual(['2026-05-02']);
+    expect(quiet).toBe(3);
+    expect(days[0]).toMatchObject({ numeral: '02', glyphs: ['⛩️'] });
+    expect(days[0]!.when).toContain('02.05');
+  });
+
+  it('marks a day with what happened on it, at most four distinct glyphs', () => {
+    const icons = ['🗺️', '🐟', '🐟', '⛩️', '🍶', '🌳'];
+    const { days } = memoryDays({
+      ...base,
+      events: icons.map((icon, i) => ev(`e${i}`, '2026-05-02', { icon, sortOrder: i })),
+    });
+    expect(days[0]!.glyphs).toEqual(['🗺️', '🐟', '⛩️', '🍶']);
+  });
+
+  it('counts a hard row nobody skipped as having happened', () => {
+    const { days } = memoryDays({
+      ...base,
+      events: [
+        ev('flight', '2026-05-01', { kind: 'hard', status: 'planned', category: 'transport' }),
+      ],
+    });
+    expect(days.map((day) => day.date)).toEqual(['2026-05-01']);
   });
 });

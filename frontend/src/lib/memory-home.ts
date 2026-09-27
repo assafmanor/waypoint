@@ -4,9 +4,20 @@
 // is only which figures earn a tile and how each one reads: an estimate carries `~`, a figure
 // the trip has no source for is not a tile at all, and one that rows still unmarked could move
 // says how many on its second line.
-import type { RecapFigure, TripRecap } from '@waypoint/shared';
-import { DISTANCE_STEP, MEMORY_FIGURES_MAX } from '../constants';
+import {
+  EVENT_CATEGORY,
+  iconForCategory,
+  recapHappened,
+  tripDates,
+  type RecapFigure,
+  type TripRecap,
+} from '@waypoint/shared';
+import { DISTANCE_STEP, MEMORY_DAY_GLYPHS, MEMORY_FIGURES_MAX } from '../constants';
 import { t } from '../i18n/he';
+import { dayListEvents } from './day-entries';
+import { dayShot } from './day-photo';
+import { dayHeadTitle, type DayFactsInput } from './day-title';
+import { dayOfMonth, formatDayMonth, weekdayLetter } from './time';
 
 export interface MemoryFigure {
   key: 'places' | 'air' | 'shift' | 'ground' | 'foot';
@@ -75,4 +86,55 @@ export function memoryFigures(recap: TripRecap): MemoryFigure[] {
   ]
     .filter((figure): figure is MemoryFigure => figure !== undefined)
     .slice(0, MEMORY_FIGURES_MAX);
+}
+
+/** One frame on the contact sheet, composed. */
+export interface ContactSheetDay {
+  date: string;
+  /** Weekday and date, `ו׳ 25.09`. */
+  when: string;
+  /** The day's numeral, stamped where a picture would be. */
+  numeral: string;
+  name: string;
+  glyphs: readonly string[];
+  shot?: { url: string; of: string; credit: string };
+}
+
+/**
+ * **The days worth a frame** (ADR-0240 §4): only days where something happened, each named,
+ * pictured and marked from what happened on it — never from the plan — so a day whose every
+ * row was skipped is not a memory, and a picture is never of a place nobody went.
+ *
+ * The rest are counted, not drawn: `quiet` is what the sheet's foot says, and the Days tab
+ * still opens every day.
+ */
+export function memoryDays(
+  input: Omit<DayFactsInput, 'date' | 'dayEvents'> & {
+    trip: DayFactsInput['trip'] & { endDate: string };
+  },
+): { days: ContactSheetDay[]; quiet: number } {
+  const { trip, bookings, places, placeLabels, enrichments } = input;
+  const all = tripDates(trip.startDate, trip.endDate);
+  const days: ContactSheetDay[] = [];
+  for (const date of all) {
+    const happened = dayListEvents(input.events, date, trip).filter(recapHappened);
+    if (happened.length === 0) continue;
+    const glyphs = [
+      ...new Set(
+        happened.map(
+          (event) => event.icon ?? iconForCategory(event.category ?? EVENT_CATEGORY.OTHER),
+        ),
+      ),
+    ].slice(0, MEMORY_DAY_GLYPHS);
+    const shot = dayShot(happened, bookings, places, placeLabels, enrichments);
+    days.push({
+      date,
+      when: `${weekdayLetter(date)} ${formatDayMonth(date)}`,
+      numeral: dayOfMonth(date),
+      name: dayHeadTitle({ ...input, date, dayEvents: happened }),
+      glyphs,
+      ...(shot ? { shot: { url: shot.url, of: shot.of, credit: shot.credit } } : {}),
+    });
+  }
+  return { days, quiet: all.length - days.length };
 }

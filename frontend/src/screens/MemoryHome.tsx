@@ -3,18 +3,20 @@
 // It replaces `PlanHome`'s past branch, which was three counts and a button. Every number on it
 // is `tripRecap`'s (ADR-0239 §9, through `useTripRecap`), so this page and every share print
 // the same figure for the same trip. Built in the epic's order, one item per change: 4.1 is the
-// frame — the cover and `במספרים`; the days as a contact sheet, firsts and bests, the stragglers
-// sheet and next time follow inside it.
-import { useState } from 'react';
+// frame — the cover and `במספרים`; 4.2 the days as a contact sheet; firsts and bests, the
+// stragglers sheet and next time follow inside it.
+import { useMemo, useState } from 'react';
 import { t } from '../i18n/he';
 import { DOT_SEPARATOR, type TabId } from '../constants';
 import { autoIsolate } from '../lib/bidi';
 import type { DayShot } from '../lib/day-photo';
 import { dayPhrase } from '../lib/hebrew';
-import { memoryFigures } from '../lib/memory-home';
+import { memoryDays, memoryFigures } from '../lib/memory-home';
 import { formatTripDates, tripDayNumber } from '../lib/time';
 import { useTripRecap } from '../lib/trip-recap';
+import { usePlaceLabels } from '../state/place-labels';
 import { useTrip } from '../state/trip-state';
+import { ContactSheet } from '../ui/domain/ContactSheet';
 import { MemoryCover } from '../ui/domain/MemoryCover';
 import { StatTile } from '../ui/domain/StatTile';
 import { MediaViewer } from '../ui/MediaViewer';
@@ -24,7 +26,8 @@ import './memory-home.css';
 const STRAGGLER_TITLES = 2;
 
 export function MemoryHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
-  const { trip, users, events } = useTrip();
+  const { trip, users, events, bookings, places, enrichments, setActiveDate } = useTrip();
+  const placeLabels = usePlaceLabels();
   const recap = useTripRecap();
   const [fullShot, setFullShot] = useState<DayShot | null>(null);
 
@@ -33,6 +36,11 @@ export function MemoryHome({ onNavigate }: { onNavigate: (tab: TabId) => void })
     dayPhrase(tripDayNumber(trip.endDate, trip.startDate)),
     autoIsolate(trip.destination),
   ].join(` ${DOT_SEPARATOR} `);
+
+  const sheet = useMemo(
+    () => memoryDays({ trip, events, bookings, places, placeLabels, enrichments }),
+    [trip, events, bookings, places, placeLabels, enrichments],
+  );
 
   const titleOf = new Map(events.map((event) => [event.id, event.title]));
   const figures = recap ? memoryFigures(recap) : [];
@@ -82,7 +90,19 @@ export function MemoryHome({ onNavigate }: { onNavigate: (tab: TabId) => void })
         </>
       )}
 
-      <button className="addbtn" onClick={() => onNavigate('days')}>
+      {sheet.days.length > 0 && (
+        <>
+          <div className="sec-title">{t.planHome.past.days}</div>
+          {/* `setActiveDate` routes to the Day view itself; a second navigation after it would
+              replace its `?day=` and land on the Days tab's default instead. */}
+          <ContactSheet days={sheet.days} onOpen={setActiveDate} />
+          {sheet.quiet > 0 && (
+            <p className="mem-foot">{t.planHome.past.quietDays(dayPhrase(sheet.quiet))}</p>
+          )}
+        </>
+      )}
+
+      <button className="addbtn mem-all-days" onClick={() => onNavigate('days')}>
         {t.planHome.past.viewDays}
       </button>
 

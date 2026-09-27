@@ -76,6 +76,12 @@ describe('PhotoBand', () => {
     expect(band.classList.contains('is-card')).toBe(false);
   });
 
+  it("keeps a thumb's credit, the licence, even where it drops the name", () => {
+    const { container } = render(<PhotoBand shot={shot} density={BAND_DENSITY.THUMB} />);
+    expect(container.querySelector('.wp-photoband')!.classList.contains('is-thumb')).toBe(true);
+    expect(container.querySelector('figcaption')?.textContent).toContain(shot.credit);
+  });
+
   // The day's shot is the first thing on the page; every other host's is below a fold or inside
   // a card nobody has opened (ADR-0219 §3).
   it('loads lazily unless the host says the picture is the first thing on the page', () => {
