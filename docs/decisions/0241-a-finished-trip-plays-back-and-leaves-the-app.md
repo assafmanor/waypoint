@@ -47,9 +47,9 @@ On a finished trip, the Map at all days (where it already opens, Phase 0.3):
   | -------------- | ------ | --------------------------------------------------------------------- |
   | `STOP_STEP_MS` | 220ms  | Between two stops lighting                                            |
   | `STOPS_MAX_MS` | 1320ms | A day's lighting never runs longer: the step shrinks on a crowded day |
-  | `DAY_HOLD_MS`  | 700ms  | The pause on a finished day                                           |
+  | `DAY_HOLD_MS`  | 1000ms | The pause on a finished day (owner, 2026-09-27; drawn at 700)         |
 
-  The seeded road trip plays in 9.7s, 1.84s a day, against the spec's "about two seconds". The mockup offers 160/300 and 500/1000 as controls, and the device pass owns the final pair.
+  The seeded road trip plays in 11.2s, 2.14s a day, against the spec's "about two seconds". The hold was drawn at 700ms and the owner set it to 1000ms on review. The mockup still offers 160/300 for the step and 500/700 for the hold as controls, and the device pass confirms them.
 
 - **What lights:** a stop not reached yet stays where it is at opacity 0.22 and scale 0.82, so the map never jumps. It arrives over `--t-base` on `--ease-arrive`: an object settling, which is that easing's stated use. A skipped stop lights with its `✕`. A segment appears with the stop it reaches. It is not drawn on: MapLibre has no cheap per-layer line trim, and re-setting GeoJSON per frame on a screen that re-renders every second is what ADR-0121 §4 warns against.
 - **The day's name:** `יום 3 · <fallbackDayTitle>` in a status pill at the canvas foot (`.map-replay-caption`, the area count's paint, one line, ellipsised). The area count steps aside while a replay runs, since it has nothing to count. Its seat up top was drawn first and rejected: beside the camera band it leaves a name 186px at 360, and a day's name is free text of any length. At the foot it gets 342px.
@@ -70,11 +70,17 @@ With three figures it runs 7.6s, and with five 11.2s. Any tap advances; `דיל�
 - **The motion budget is re-cut, not broken:** `--t-cinematic` goes from "exactly one moment" to **one at each end of a trip**, going live and coming home. Both play once per trip per install, so they are equally rare, and they are the two ends of the same thing. `design-language.md` and the `tokens.css` comment change with 5.3.
 - **No new CSS motion tokens.** Every duration and easing is the ramp's; the holds are `COMING_HOME` in `constants.ts` beside `GOING_LIVE`, the precedent for a beat's holds.
 
-### §4 · The share sheet after the trip (6A)
+### §4 · The share sheet's preview, and the sheet after the trip (6A)
 
-On a finished trip, which Phase 0.6 already opens on `רק לצפייה`:
+**A preview heads the share sheet in every phase** (owner, 2026-09-27: _"the sharing thumbnail preview should be available for all trip phases"_). It is a raised box in `.share-send`'s paint (`.share-preview`) holding a thumbnail of what the recipient's chat will show:
 
-- **The card unit heads the sheet:** a raised box in `.share-send`'s paint (`.share-memory`) with the card's thumbnail at 76px, `כרטיס לקבוצה`, and one outcome, `שליחה לקבוצה`, which is **the sheet's one primary** (140px tall). The link below it gives up `.primary`. The card does not depend on the level: everything on it is safe at Summary. The unit is absent when there is neither a cover nor a figure.
+- **Before and during the trip**, the chosen audience's own link cover: the invitation (`og-invite`) for `להצטרף`, the live itinerary (`og-live`) for `רק לצפייה`. These are the covers `og-cover.template.ts` already draws per trip, at 120px wide (1200×630). The thumbnail follows the audience choice. It has no button of its own: the link's own outcome sends it and stays the sheet's primary. The unit is 89px tall.
+- **After the trip**, the card (§5), at 76px (4:5), titled `כרטיס לקבוצה`, with one outcome, `שליחה לקבוצה`. That outcome is **the sheet's one primary**, and the link below gives up `.primary`. The card does not depend on the level: everything on it is safe at Summary. The unit is 140px tall, and absent when there is neither a cover nor a figure.
+
+The client needs the cover's URL, not a render of its own. It is the same image a crawler fetches for that link.
+
+Also on a finished trip, which Phase 0.6 already opens on `רק לצפייה`:
+
 - **`שיתוף PDF` becomes `ספר הטיול`** in the outcomes row. After the trip there is nothing to plan, and the book prints at the same link's level. Showing both would put three buttons in a 360px row, two of them the same trip on paper; the itinerary is still one tap away through the link.
 
 ### §5 · The group-chat card (6A.3)
@@ -135,7 +141,7 @@ The rest of §8 stands as written: one send per trip per year, quiet hours and a
 - **6A.3:**
   - `scripts/og-covers/og-memory.html`, filled by `og-cover.template.ts` and screenshotted by `og-image.service.ts` at 1080×1350.
   - A member route beside the itinerary PDF's.
-  - `.share-memory` in `screens.css`.
+  - `.share-preview` in `screens.css`, in every phase (§4).
 
 ## Consequences
 

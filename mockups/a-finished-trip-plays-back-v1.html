@@ -47,6 +47,8 @@
         into the Map would consume the beat. So it is the same module and the same shape
         (`waypoint:*`, per trip, never throws), with its own key, marked by the Home.
      ─────────────────────────────────────────────────────────────────────────
+     REVISED THE SAME DAY: the day's hold defaults to 1000ms, the owner's call (was 700).
+     ─────────────────────────────────────────────────────────────────────────
      THIS FILE'S SECTIONS AGAINST ADR-0241:
        §1 the journey on כל הימים → ADR §1      §3 coming home, storyboard → ADR §3
        §2 replay, pacing           → ADR §2      §4 the reduced-motion answers → ADR §2, §3
@@ -15354,8 +15356,8 @@ button.wp-av:focus-visible {
         <span class="sep"></span>
         <span class="lbl">עצירה על יום</span>
         <button type="button" data-hold="500">⁦500⁩</button>
-        <button type="button" data-hold="700" aria-pressed="true">⁦700⁩</button>
-        <button type="button" data-hold="1000">⁦1000⁩</button>
+        <button type="button" data-hold="700">⁦700⁩</button>
+        <button type="button" data-hold="1000" aria-pressed="true">⁦1000⁩</button>
         <span class="lbl">צעד לתחנה</span>
         <button type="button" data-step="160">⁦160⁩</button>
         <button type="button" data-step="220" aria-pressed="true">⁦220⁩</button>
@@ -15773,7 +15775,7 @@ button.wp-av:focus-visible {
 
       /* ══ Pacing. The build's `REPLAY` and `COMING_HOME` in constants.ts, beside
             `GOING_LIVE`; the camera's ease is `MAP_CAMERA_EASE.DURATION_MS`, reused. */
-      const PACE = { CAMERA_MS: 480, STOP_STEP_MS: 220, STOPS_MAX_MS: 1320, DAY_HOLD_MS: 700, FIT_MS: 480 };
+      const PACE = { CAMERA_MS: 480, STOP_STEP_MS: 220, STOPS_MAX_MS: 1320, DAY_HOLD_MS: 1000, FIT_MS: 480 };
       const BEAT = { OPEN_HOLD_MS: 1600, CARD_MS: 1800, CINEMATIC_MS: 600, COUNT_MS: 14 * 26 };
       /** A day's stops as replay lights them: the day's sequence, happened or not (a skipped
        *  stop still lights, carrying its ✕), with the bed that opened the day already lit. */

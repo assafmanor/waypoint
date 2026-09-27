@@ -38,3 +38,8 @@ Both are in the files as the default. Changing either is a copy edit in `i18n/he
 - Replay's stop step and day hold.
 - The beat card's dwell.
 - Whether the empty ring reads over park-green tiles.
+
+## The owner's review (same day)
+
+- **The day's hold in replay defaults to 1000ms,** not 700. The seed plays in 11.2s, 2.14s a day.
+- **The sharing thumbnail preview is in every trip phase.** Before and during the trip it shows the chosen audience's own link cover, the one `og-cover.template.ts` already draws. After the trip it is the card. Only then does it carry a send of its own and take the sheet's primary.

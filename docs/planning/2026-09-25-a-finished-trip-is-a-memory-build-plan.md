@@ -249,7 +249,7 @@ Drawn and decided in [ADR-0241](../decisions/0241-a-finished-trip-plays-back-and
   - **Tests:** a hard row reads happened, and a skipped or unmarked stop is off the line.
 - **5.2** Replay _(spec 1e, ADR-0241 §2)_.
   - `.map-replay` joins `.map-camctl` in the locate button's seat, with new `play` and `pause` icons.
-  - Pacing: `REPLAY` = 220ms a stop, capped at 1320ms a day, and a 700ms hold, on top of `easeTo`'s 480ms.
+  - Pacing: `REPLAY` = 220ms a stop, capped at 1320ms a day, and a 1000ms hold (the owner's call), on top of `easeTo`'s 480ms.
   - The day's name sits at the canvas foot (`.map-replay-caption`).
   - A finger stops it. Under reduced motion there is no control.
 - **5.3** Coming home _(spec 1f, §7, ADR-0241 §3)_.
@@ -278,7 +278,8 @@ Drawn and decided in [ADR-0241](../decisions/0241-a-finished-trip-plays-back-and
   - `scripts/og-covers/og-memory.html` at 1080×1350, filled by `og-cover.template.ts` and screenshotted by `og-image.service.ts`, on an authenticated member route.
   - It carries the cover with its credit, the name, the dates and the first three figures. No faces and no names.
   - Sent as a file (`shareFileOrDownload`), never as the link preview.
-  - It heads the finished trip's share sheet (`.share-memory`) as the sheet's one primary.
+  - It heads the finished trip's share sheet as the sheet's one primary.
+  - The sheet's preview unit (`.share-preview`, ADR-0241 §4) ships in **every phase**: the audience's link cover before and during the trip, the card after it. It can land before the card, showing only link covers.
 - **6A.4** A list share _(spec 3e)_, scoped to a category.
 
 ### 6B · Resurface (needs 1A and 2)
