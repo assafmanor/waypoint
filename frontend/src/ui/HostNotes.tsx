@@ -11,12 +11,13 @@
 // The host is passed as a fact, never picked (ADR-0153 §5). Which FK the note is written to
 // comes from `NOTE_HOST_FIELD` through `noteHostInput`, so a sixth hostable entity adds a
 // line in `@waypoint/shared` and nothing here.
-import { useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { ENTITY_TYPE, type Note } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
 import { useClock } from '../lib/useClock';
 import {
   isHostedBy,
+  noteHost,
   noteHostInput,
   notesForContext,
   notesForHost,
@@ -118,7 +119,7 @@ export function HostNotes({
   composeActive?: boolean;
   composeHint?: string;
 }) {
-  const { notes, users, noteVerbs } = useTrip();
+  const { notes, users, noteVerbs, noteHosts } = useTrip();
   const now = useClock();
   const [editing, setEditing] = useState<Note | 'create' | null>(null);
   // **The full screen, opened from a host** (ADR-0202 §1/§2). Here rather than in
@@ -138,17 +139,17 @@ export function HostNotes({
     () => (hostId ? notesForContext(notes, context) : []),
     [notes, context, hostId],
   );
-  // **A place says where an inherited note came from** (ADR-0172 §9's amendment). Only a
-  // place can be showing rows it does not host — §3's inheritance is one-way — so the whole
-  // question is "is this note hosted by the surface I am on", and everywhere else the answer
-  // is always yes and nothing is marked.
+  // **A note says where it came from when that is not the surface you are on** (ADR-0172 §9's
+  // amendment): a place names the context it inherits from, and an event or idea names the
+  // place whose own note it is showing (§3's 2026-09-27 amendment).
   const anchorName = useAnchorName(context, { kind: host.kind, id: hostId ?? '' });
-  const inheritedFrom = useMemo(
-    () =>
-      anchorName
-        ? (note: Note) => (isHostedBy(note, host.kind, hostId ?? '') ? undefined : anchorName)
-        : undefined,
-    [anchorName, host.kind, hostId],
+  const inheritedFrom = useCallback(
+    (note: Note) => {
+      if (isHostedBy(note, host.kind, hostId ?? '')) return undefined;
+      const source = noteHost(note, noteHosts);
+      return source?.kind === ENTITY_TYPE.PLACE ? source.name : anchorName;
+    },
+    [anchorName, host.kind, hostId, noteHosts],
   );
 
   return (

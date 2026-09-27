@@ -30,6 +30,7 @@ let tripNotes: Note[] = [];
 // the same two lists the app reads, so a test case states the world once.
 let tripEvents: TripEvent[] = [];
 let tripBookings: Booking[] = [];
+let tripPlaces: { id: string; name: string }[] = [];
 const createNote = vi.fn(() => Promise.resolve(undefined));
 const updateNote = vi.fn(() => Promise.resolve());
 
@@ -60,7 +61,7 @@ vi.mock('../state/trip-state', () => ({
     noteHosts: buildNoteHosts({
       events: tripEvents,
       bookings: tripBookings,
-      places: [],
+      places: tripPlaces,
       maybeItems: [],
       documents: [],
     }),
@@ -449,6 +450,7 @@ describe('an inherited note says where it came from', () => {
     tripNotes = [];
     tripEvents = [];
     tripBookings = [];
+    tripPlaces = [];
   });
   afterEach(() => cleanup());
 
@@ -464,6 +466,23 @@ describe('an inherited note says where it came from', () => {
     const own = screen.getByText('שייך למקום').closest('.note-item');
     const inherited = screen.getByText('הכניסה מהחצר').closest('.note-item');
     expect(inherited?.querySelector('.note-from')?.textContent).toBe('מלון סאקורה');
+    expect(own?.querySelector('.note-from')).toBeNull();
+  });
+
+  // §3's 2026-09-27 amendment (owner's report): a note written on a place from the Map shows
+  // on the event later made there, named for the place, and a new one stays the event's.
+  it('shows the place’s own notes on an event there, named for the place', () => {
+    tripEvents = [{ id: 'ev-1', title: 'מזרקת טרווי', placeId: 'p1' } as TripEvent];
+    tripPlaces = [{ id: 'p1', name: 'Fontana di Trevi' }];
+    tripNotes = [
+      note({ id: 'n-place', placeId: 'p1', body: 'רילס מאינסטגרם' }),
+      note({ id: 'n-own', eventId: 'ev-1', body: 'להגיע מוקדם' }),
+    ];
+    render(wrapNav(<HostNotes host={{ kind: 'event', id: 'ev-1', name: 'מזרקת טרווי' }} />));
+
+    const fromPlace = screen.getByText('רילס מאינסטגרם').closest('.note-item');
+    const own = screen.getByText('להגיע מוקדם').closest('.note-item');
+    expect(fromPlace?.querySelector('.note-from')?.textContent).toBe('Fontana di Trevi');
     expect(own?.querySelector('.note-from')).toBeNull();
   });
 

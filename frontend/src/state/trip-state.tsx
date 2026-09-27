@@ -1022,8 +1022,8 @@ function TripReady({
   // question twelve times, and a per-surface derivation is how the mark on a row ends up
   // disagreeing with the section inside it (which it did, `hero-horizon.ts` vs `EventCard`).
   const hostContexts = useMemo<HostContextIndex>(
-    () => buildHostContextIndex(state.events, bookings),
-    [state.events, bookings],
+    () => buildHostContextIndex(state.events, bookings, state.maybeItems),
+    [state.events, bookings, state.maybeItems],
   );
 
   // **Every hostable entity's name and lent category** (ADR-0152 §5's amendment), for the

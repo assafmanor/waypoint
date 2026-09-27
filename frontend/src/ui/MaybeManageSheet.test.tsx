@@ -9,6 +9,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type { MaybeItem, Note } from '@waypoint/shared';
 import { wrapNav } from '../test/nav-harness';
 import { setSimulatedNow } from '../lib/useClock';
+import { buildHostContextIndex } from '../lib/host-context';
 
 const NOW = '2026-07-20T09:00:00Z';
 
@@ -42,6 +43,7 @@ vi.mock('../state/trip-state', () => ({
     },
     notes: tripNotes,
     noteHosts: new Map(),
+    hostContexts: buildHostContextIndex([], []),
     users: [
       { id: 'u1', displayName: 'דנה' },
       { id: 'u2', displayName: 'מיכל' },
