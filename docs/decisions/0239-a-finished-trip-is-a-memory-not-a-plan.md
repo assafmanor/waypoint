@@ -1,6 +1,6 @@
 # 0239 — A finished trip is a memory, not a plan
 
-**Status:** Accepted 2026-09-25, on the owner's answers to the investigation's six questions. **§1–§5 built 2026-09-26** (Phase 0: PRs #867, #868, #869, #870, #871, #872); §6–§9 not built. The build is an epic: [`planning/2026-09-25-a-finished-trip-is-a-memory-build-plan.md`](../planning/2026-09-25-a-finished-trip-is-a-memory-build-plan.md). The investigation and spec it answers: [`planning/2026-09-25-what-a-finished-trip-is-for.md`](../planning/2026-09-25-what-a-finished-trip-is-for.md).
+**Status:** Accepted 2026-09-25, on the owner's answers to the investigation's six questions. **§1–§5 built 2026-09-26** (Phase 0: PRs #867, #868, #869, #870, #871, #872); §9's derivation built 2026-09-26 (Phase 2, `tripRecap` and its two adapters), with no surface reading it yet; §6–§8 not built. The build is an epic: [`planning/2026-09-25-a-finished-trip-is-a-memory-build-plan.md`](../planning/2026-09-25-a-finished-trip-is-a-memory-build-plan.md). The investigation and spec it answers: [`planning/2026-09-25-what-a-finished-trip-is-for.md`](../planning/2026-09-25-what-a-finished-trip-is-for.md).
 **Date:** 2026-09-25
 
 **Amends** [0040](0040-trip-mode-access-window-and-past-trip-archive.md) (its _Deferred_ retrospective becomes this, and "reuse the past-day visual for the whole finished trip" gives way to a palette of its own) · [0049](0049-index-tab-mode-and-lifecycle.md) §2 (the archive state it decided is built here, notes included; its wash gives way to the same palette) · [0190](0190-a-readiness-check-is-a-task-row-and-the-checks-sit-inside-the-urgency-ladder.md) (§3: what a task is after the trip) · [0198](0198-we-notify-what-you-can-still-miss.md) (§3 and §8: two exceptions to "a past trip sends nothing").
@@ -72,10 +72,17 @@ Every retrospective number follows three rules:
 
 The derivation is one pure function in `packages/shared`, so the app, the past-tense narrative, the trip book and the group-chat card cannot print different numbers for the same trip.
 
+**As built (Phase 2):** `tripRecap` in `packages/shared/src/trip-recap.ts`. Every figure is `{ state: 'absent' } | { state: 'present', value, estimate?, unresolved? }`, which is the enrichment store's own two states. "Happened" is a soft row marked `היינו` or a hard row nobody skipped: hard rows are never settled (ADR-0044), so counting only `היינו` would drop every booked restaurant and the flight. `unresolved` counts rows, not places. Ground and foot distances read the leg cache per pair and fall back to the great circle, marked `estimate`. Air distance is the great circle and exact, per ADR-0212. A train's great circle counts as ground distance and is an estimate. The two adapters are `useTripRecap` (the app: snapshot plus the device's leg cache) and `TripRecapService` (the server: Prisma through `trips.mapper`, plus `RouteLeg`). Both fetch exactly the keys `tripRecapLegKeys` names.
+
 ## Consequences
 
 - **The build is an epic of eight phases, 0 to 7** (the plan note): bug fixes, design, the recap derivation, the archive posture, the memory Home, motion and the map, share and resurface, then new data behind their own ADRs.
-- **One decision is owed before a cover photograph ships:** enrichment images carry a 180-day TTL, and a finished trip is reopened a year later. The recap phase decides what a memory shows when its picture has lapsed.
+- **What a memory shows when its picture has lapsed** (owed here, decided in Phase 2, 2026-09-26): **the cover is re-ranked on every read, and a lapsed shot falls to the next-ranked one.** Nothing is pinned. The reason is what a lapse actually does: the 180-day TTL never blanks an image. A read past it serves the stale value and schedules a refresh (ADR-0166 §6.1), and the refresh either keeps the same file, replaces it with the file the source now calls the place's picture, or finds none. Only the last two change a cover, and both are the world changing rather than our cache expiring. The two rejected candidates:
+  - _A per-trip pin of the chosen image._ It needs a copy of a licensed file per trip, with its own lifecycle and deletion, to protect against a rare change to a picture that is still of the right place.
+  - _No refresh for places only finished trips reference._ The store is global and keyed by Google id, not by trip (ADR-0166 §1), so a live trip holding the same place refreshes it anyway. It would also keep serving a file its source has withdrawn.
+
+  The cost, accepted: a memory's cover can change between two visits. `tripRecap` computes the cover over the current enrichment, so the fallback is the rank itself, not a second mechanism. A file the source withdrew leaves the next-ranked shot, or no cover at all (ADR-0219 §3's honest absence).
+
 - **`product/modes.md`'s past-trip section is rewritten as each phase ships**, not before: it describes the current state.
 - **Not decided here:** anything needing new stored data, such as favourites, our own photos, the weather we had, who did what, the cross-trip "next time" copy, or "go again". Each gets its own ADR when its phase starts.
 

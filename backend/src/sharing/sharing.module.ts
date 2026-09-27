@@ -13,6 +13,7 @@ import { RenderBrowserService } from './render-browser.service';
 import { SharingProjectionService } from './sharing-projection.service';
 import { SharingService } from './sharing.service';
 import { TripSharingController } from './trip-sharing.controller';
+import { TripRecapService } from './trip-recap.service';
 
 @Module({
   // `DocumentsModule` for `getContent` — the at-rest decryption path, reused rather than
@@ -26,6 +27,7 @@ import { TripSharingController } from './trip-sharing.controller';
   providers: [
     SharingService,
     SharingProjectionService,
+    TripRecapService,
     ItineraryNarrativeService,
     PdfBrowserService,
     RenderBrowserService,

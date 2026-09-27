@@ -119,7 +119,7 @@ const DEFAULT_LOCALE = 'he';
 type LabelledPlace = { id: string; name: string; nickname: string | null };
 type PlaceLabeller = (place: LabelledPlace | null) => string | undefined;
 
-const labelWith =
+export const labelWith =
   (enrichments: TripEnrichments): PlaceLabeller =>
   (place) => {
     if (!place) return undefined;

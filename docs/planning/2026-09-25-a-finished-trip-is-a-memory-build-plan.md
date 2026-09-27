@@ -178,6 +178,8 @@ Blocks 5 and 6A. Runs while 3 and 4 build.
 
 Starts today. Needs nothing.
 
+**Built 2026-09-26.** It is described in ADR-0239 §9's "As built" paragraph, and the TTL decision is in its Consequences. No surface reads it yet. Phase 4.1, 3.5's cover and 6A are its first consumers.
+
 - **One pure function, `tripRecap(input)`,** in `packages/shared`. It computes:
   - the figures: days, nights and beds; places by category; kinds (`KIND`) and regions (`REGION`, `SERVED_CITY`); ground, foot and air distance; hours in the air; zones crossed;
   - the superlatives;
