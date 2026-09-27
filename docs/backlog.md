@@ -339,12 +339,11 @@ Three requests triaged together: a user settings page reachable from inside a tr
 
 ## The finished trip epic (decision: [ADR-0239](decisions/0239-a-finished-trip-is-a-memory-not-a-plan.md); phases and what blocks what: [build plan](planning/2026-09-25-a-finished-trip-is-a-memory-build-plan.md))
 
-A finished trip becomes a memory with a palette of its own, not a read-only Plan. Investigation and spec: [`2026-09-25-what-a-finished-trip-is-for.md`](planning/2026-09-25-what-a-finished-trip-is-for.md). This replaces the _Archive presentation_ line that stood under _Screens not built_. Three lanes started at once: Phase 0, 1A and 2. **Phase 0 is built** (ADR-0239 §1–§5). **1A is done** (rose, [ADR-0240](decisions/0240-the-archive-is-rose.md)), so 3, 4 and 6B are unblocked on the design side.
+A finished trip becomes a memory with a palette of its own, not a read-only Plan. Investigation and spec: [`2026-09-25-what-a-finished-trip-is-for.md`](planning/2026-09-25-what-a-finished-trip-is-for.md). This replaces the _Archive presentation_ line that stood under _Screens not built_. Three lanes started at once: Phase 0, 1A and 2. **Phase 0 is built** (ADR-0239 §1–§5). **1A is done** (rose, [ADR-0240](decisions/0240-the-archive-is-rose.md)), so 3, 4 and 6B are unblocked on the design side. **1B is done** ([ADR-0241](decisions/0241-a-finished-trip-plays-back-and-leaves-the-app.md)), so 5 and 6A are too.
 
-- **Phase 1B · design, motion and the outputs:** the map journey, replay, the coming-home beat, the trip book, the group-chat card and the anniversary copy. Blocks 5 and 6A.
 - **Phase 3 · the archive posture** ([ADR-0240](decisions/0240-the-archive-is-rose.md), rose): **built 2026-09-26** except /trips' cover in the flag slot (3.5), now unblocked by Phase 2's cover choice.
-- **Phase 5 · the map as a journey, replay, coming home:** needs 0.3, 1B and 2 (4, which the beat also needs, is built).
-- **Phase 6 · share outputs (6A) and resurface (6B):** 6A needs 1B and 2; 6B needs 1A and 2, and its push (ADR-0239 §8) waits for 1B's copy.
+- **Phase 5 · the map as a journey, replay, coming home:** unblocked. 0.3, 1B ([ADR-0241](decisions/0241-a-finished-trip-plays-back-and-leaves-the-app.md)), 2 and 4 are all done.
+- **Phase 6 · share outputs (6A) and resurface (6B):** unblocked on design ([ADR-0241](decisions/0241-a-finished-trip-plays-back-and-leaves-the-app.md) §4–§7, the push's copy included). 6A starts with 6A.0, which moves the figure selection and formatters to `packages/shared`.
 - **Phase 7 · new data, each behind its own ADR:** album link, cross-trip "next time", favourites, the weather we had, who did what, go again.
 
 ## Documents: performance & caching

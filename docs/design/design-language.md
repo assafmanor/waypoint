@@ -305,7 +305,7 @@ New motion picks from a small ramp instead of inventing values — the same disc
 | `--t-quick`         | 140ms                          | Nav settle, toggles, hovers, focus                                                  |
 | `--t-base`          | 240ms                          | Tab cross-fade, toast, ripple bar, sheets                                           |
 | `--t-deliberate`    | 400ms                          | Return-gesture slide (ADR-0035); Trip→Plan stand-down                               |
-| `--t-cinematic`     | 600ms                          | Plan→Trip going-live — **the only cinematic moment**                                |
+| `--t-cinematic`     | 600ms                          | Plan→Trip going-live, and coming home (ADR-0241 §3): **one per end of a trip**      |
 | `--ease-standard`   | `cubic-bezier(.2,0,0,1)`       | Default / entrances / hue melts                                                     |
 | `--ease-exit`       | `cubic-bezier(.4,0,1,1)`       | Exits — toast out, glow extinguishing                                               |
 | `--ease-emphasized` | `cubic-bezier(.16,1,.3,1)`     | The glow ignite                                                                     |
@@ -320,7 +320,7 @@ The three original easings are all monotone, which is why `--ease-arrive` was ad
 
 **Timing an animation from JS reads the token, never a literal** — `lib/motion.ts`'s `motionDurationMs`, which answers **0** both under reduced motion and when the token is unreadable. Any state that exists only _during_ an animation has to resolve when there is no animation, or it outlives its reason (ADR-0140 §5).
 
-**Budget rule:** exactly one `--t-cinematic` moment exists in the product — the Plan→Trip switch. Spending "cinematic" elsewhere devalues it, same discipline as amber / teal / violet. Motion mirrors "one loud element": everything else stays quick and quiet.
+**Budget rule:** one `--t-cinematic` moment at each end of a trip, and nowhere else: the Plan→Trip switch (going live) and the coming-home beat's settle into the memory Home ([ADR-0241](../decisions/0241-a-finished-trip-plays-back-and-leaves-the-app.md) §3, not built yet). Both play once per trip per install, which is what the rule protects. Spending "cinematic" elsewhere devalues it, same discipline as amber / teal / violet. Motion mirrors "one loud element": everything else stays quick and quiet.
 
 ### The mode switch — temperature & energy, not luminance
 

@@ -150,7 +150,7 @@ Each is its own PR, in the epic's numbering. Every PR ends green on `pnpm typech
 - Root `CLAUDE.md` rule 4, ADR-0028 and `design-language.md` carry the fourth hue from today. Nothing uses it until 3.1.
 - The device pass owns two feel numbers: the cover's height (168 decided; 200 and 232 drawn) and whether rose reads as rose on real glass in dark. ADR-0125 is the precedent for a palette that measured fine and read as one hue on a device.
 - `.new-event-btn` in the cover's footer inherits the 26px height ADR-0219 already records as a standing debt against the 44px floor, and the `○` settle slot is 32px. Neither is new; both are the device pass's.
-- **Not decided here:** the map journey, replay, the coming-home beat, the trip book, the group-chat card and the anniversary push copy (Phase 1B).
+- **Not decided here:** the map journey, replay, the coming-home beat, the trip book, the group-chat card and the anniversary push copy. They are Phase 1B's, decided in [ADR-0241](0241-a-finished-trip-plays-back-and-leaves-the-app.md).
 
 ## Alternatives considered
 

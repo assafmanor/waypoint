@@ -26,18 +26,18 @@ graph LR
   D1A --> P7[7 new data, each its own ADR]
 ```
 
-| Phase                    | Kind   | Needs                        | Can run beside    |
-| ------------------------ | ------ | ---------------------------- | ----------------- |
-| **0** the trip knows     | fixes  | nothing                      | 1A, 2             |
-| **1A** palette + posture | design | nothing                      | 0, 2              |
-| **1B** motion + outputs  | design | 1A                           | 3, 4              |
-| **2** recap derivation   | logic  | nothing                      | 0, 1A             |
-| **3** archive posture    | build  | 0.1, 1A                      | 4, 1B, 6B         |
-| **4** memory Home        | build  | 1A, 2                        | 3, 1B, 6B         |
-| **5** map journey + beat | build  | 0.3, 1B, 2, 4 (the beat)     | 6A                |
-| **6A** share outputs     | build  | 1B, 2                        | 5, 6B             |
-| **6B** resurface         | build  | 1A, 2                        | 3, 4, 5, 6A       |
-| **7** new data           | build  | 1A, plus each item's own ADR | anything after 1A |
+| Phase                     | Kind   | Needs                        | Can run beside    |
+| ------------------------- | ------ | ---------------------------- | ----------------- |
+| **0** the trip knows      | fixes  | nothing                      | 1A, 2             |
+| **1A** palette + posture  | design | nothing                      | 0, 2              |
+| **1B** motion + outputs ✓ | design | 1A                           | 3, 4              |
+| **2** recap derivation    | logic  | nothing                      | 0, 1A             |
+| **3** archive posture     | build  | 0.1, 1A                      | 4, 1B, 6B         |
+| **4** memory Home         | build  | 1A, 2                        | 3, 1B, 6B         |
+| **5** map journey + beat  | build  | 0.3, 1B, 2, 4 (the beat)     | 6A                |
+| **6A** share outputs      | build  | 1B, 2                        | 5, 6B             |
+| **6B** resurface          | build  | 1A, 2                        | 3, 4, 5, 6A       |
+| **7** new data            | build  | 1A, plus each item's own ADR | anything after 1A |
 
 **The critical path is 1A → 4 → 5.** Design is the long pole, so it starts today alongside the fixes and the derivation, and nothing in Phase 0 or 2 waits on it. Three lanes open immediately:
 
@@ -166,6 +166,8 @@ Blocks 3, 4 and 6B. Starts today.
 
 ### 1B · Motion and the outputs
 
+**Done 2026-09-27:** [ADR-0241](../decisions/0241-a-finished-trip-plays-back-and-leaves-the-app.md), with [`a-finished-trip-plays-back-v1.html`](../../mockups/a-finished-trip-plays-back-v1.html) (the journey, replay, coming home) and [`a-finished-trip-leaves-the-app-v1.html`](../../mockups/a-finished-trip-leaves-the-app-v1.html) (the sheet, the card, the book, the push). Phases 5 and 6A below are tightened to it.
+
 Blocks 5 and 6A. Runs while 3 and 4 build.
 
 - The map as a journey (the whole route in order, where we slept, pin outcomes) and the replay's pacing.
@@ -235,9 +237,27 @@ Replaces `PlanHome`'s past branch entirely, as drawn in ADR-0240 §4 (the stragg
 
 ## Phase 5 — the map as a journey, and the beat (build · needs 0.3, 1B, 2; the beat also needs 4)
 
-- **5.1** The journey drawing on `כל הימים` _(spec 1d)_. The row's trailing slot opens the day.
-- **5.2** Replay _(spec 1e)_, on the camera's eased moves and `buildDayStopSequence`.
-- **5.3** Coming home _(spec 1f, §7)_, remembered per device per trip the way `mode-seen` is.
+Drawn and decided in [ADR-0241](../decisions/0241-a-finished-trip-plays-back-and-leaves-the-app.md) §1–§3; its "Build notes" list the files.
+
+- **5.1** The journey on `כל הימים` _(spec 1d, ADR-0241 §1)_.
+  - `PinContext` gains `finished` in place of `planning`. Today `planning` silences every outcome on a finished trip.
+  - `pinOutcome` reads `recapHappened` and answers `open` for an unmarked place (`.pin-n.outcome.open`, an empty ring).
+  - The `behind` grey is off.
+  - One neutral connector line through what happened: each day's `buildDayStopSequence`, by date.
+  - A stay's nights ride `.pin-tag.plain`.
+  - The row's trailing slot is `.map-addmaybe` `יום N`, opening the first day the place happened on.
+  - **Tests:** a hard row reads happened, and a skipped or unmarked stop is off the line.
+- **5.2** Replay _(spec 1e, ADR-0241 §2)_.
+  - `.map-replay` joins `.map-camctl` in the locate button's seat, with new `play` and `pause` icons.
+  - Pacing: `REPLAY` = 220ms a stop, capped at 1320ms a day, and a 700ms hold, on top of `easeTo`'s 480ms.
+  - The day's name sits at the canvas foot (`.map-replay-caption`).
+  - A finger stops it. Under reduced motion there is no control.
+- **5.3** Coming home _(spec 1f, §7, ADR-0241 §3)_.
+  - A `full` Modal on `--chrome-bg-memory`: an opener, then `memoryFigures` one card at a time with `useCountUp`, then a FLIP into `.mem-cover` over `--t-cinematic`.
+  - The budget line in `design-language.md` (done) and the `tokens.css` comment go to one per end of a trip.
+  - `COMING_HOME` = 1600ms for the opener and 1800ms a card.
+  - Remembered as `waypoint:came-home:<tripId>` in `lib/mode-seen.ts`, marked by the Home, never by the provider.
+  - Skipped under reduced motion. No beat when there are no figures.
 
 ## Phase 6 — share and resurface
 
@@ -245,9 +265,20 @@ Two sub-phases that can run in parallel with each other.
 
 ### 6A · Share outputs (needs 1B and 2's server adapter)
 
-- **6A.1** The past-tense narrative _(spec 3b)_: a retrospective skill variant on the existing generator, over rows marked `היינו`, with the same allowlist and fallback.
-- **6A.2** The trip book _(spec 3c)_: a second template on the PDF renderer.
-- **6A.3** The group-chat card _(spec 3d)_: new work on the PDF's server-side browser, since ADR-0220's covers are static.
+Drawn and decided in [ADR-0241](../decisions/0241-a-finished-trip-plays-back-and-leaves-the-app.md) §4–§6.
+
+- **6A.0** _(new, lands first)_ `memoryFigures`' selection and `recapKm` / `recapHours` move from `frontend/src/lib/memory-home.ts` to `packages/shared`, so the Home, the beat, the card and the book print one string per figure. A small extraction.
+- **6A.1** The past-tense narrative _(spec 3b)_: a retrospective skill variant on the existing generator, over rows that happened (`recapHappened`), with the same allowlist and fallback.
+- **6A.2** The trip book _(spec 3c, ADR-0241 §6)_: `sharing/trip-book.template.ts` beside the itinerary's, on the same projection plus `TripRecapService`, at the link's policy.
+  - Summary has no clocks. Full adds them. With notes in the policy, `מה כתבנו`.
+  - A cover page, then the days with a record, two to a page and never split, then `במספרים`, `ראשונים וטובים` and `בפעם הבאה`.
+  - The itinerary's footer.
+  - On a finished trip's share sheet it replaces `שיתוף PDF` as `ספר הטיול`.
+- **6A.3** The group-chat card _(spec 3d, ADR-0241 §4–§5)_: **a third og-cover source, not new renderer work** (ADR-0220's covers stopped being static on 2026-09-06).
+  - `scripts/og-covers/og-memory.html` at 1080×1350, filled by `og-cover.template.ts` and screenshotted by `og-image.service.ts`, on an authenticated member route.
+  - It carries the cover with its credit, the name, the dates and the first three figures. No faces and no names.
+  - Sent as a file (`shareFileOrDownload`), never as the link preview.
+  - It heads the finished trip's share sheet (`.share-memory`) as the sheet's one primary.
 - **6A.4** A list share _(spec 3e)_, scoped to a category.
 
 ### 6B · Resurface (needs 1A and 2)
@@ -258,7 +289,11 @@ Two sub-phases that can run in parallel with each other.
   - a new kind in `notifications/kinds/`;
   - `notifyMemories` beside `NOTIFY_PREF.TASKS` / `OBLIGATIONS` (a column and its settings toggle);
   - the ledger fire key carries the year.
-    The copy comes from 1B; until then 6B.3 waits, and 6B.1 and 6B.2 do not.
+    The copy is [ADR-0241](../decisions/0241-a-finished-trip-plays-back-and-leaves-the-app.md) §7: the title is the trip's name, and the body is `לפני שנה בדיוק · <place>`.
+    - The place is the cover's place. Failing that, the first counted place by time. Failing that, no send.
+    - "היינו" means `recapHappened`.
+    - Later years climb `formatDuration`'s ladder.
+    - February 29 fires on February 28 in a common year.
 
 ## Phase 7 — new data, each behind its own ADR (needs 1A for somewhere to land)
 
