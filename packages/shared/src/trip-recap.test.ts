@@ -266,6 +266,63 @@ describe('tripRecap figures', () => {
       );
     });
 
+    describe('a road trip is not driven twice (the Iceland report)', () => {
+      // Reykjavík, Seljalandsfoss, Skógafoss and Vík along the south coast; Akureyri up north.
+      const RVK = place('rvk', 64.1466, -21.9426);
+      const SELJA = place('selja', 63.6156, -19.9886);
+      const SKOGA = place('skoga', 63.5321, -19.5114);
+      const VIK = place('vik', 63.4186, -19.006, { category: 'lodging' });
+      const AKU = place('aku', 65.6835, -18.0878);
+      const KEF = place('kef', 63.985, -22.6056);
+      const ROAD = [RVK, SELJA, SKOGA, VIK, AKU, KEF, TLV];
+      const crow = (...stops: Place[]) =>
+        stops.slice(1).reduce((sum, to, i) => sum + haversineMeters(stops[i]!, to), 0);
+
+      it("sleeps at the evening's hotel, not at its check-in floor", () => {
+        const events = [
+          ev('1', { placeId: 'selja', startsAt: at(DAY1, '12:00') }),
+          ev('h', {
+            placeId: 'vik',
+            category: 'lodging',
+            kind: 'hard',
+            startsAt: at(DAY1, '15:00'),
+            endDate: DAY2,
+          }),
+          ev('2', { placeId: 'skoga', startsAt: at(DAY1, '16:00') }),
+          ev('3', { placeId: 'rvk', date: DAY2, startsAt: at(DAY2, '12:00') }),
+        ];
+        const { figures } = tripRecap(input({ events, places: ROAD }));
+        expect(value(figures.groundMeters)).toBeCloseTo(crow(SELJA, SKOGA, VIK, RVK));
+      });
+
+      it("a one-way hire drops off on its last day, not on the pickup day's route", () => {
+        const hire = booking('bk-c', { type: 'car', fromPlaceId: 'rvk', toPlaceId: 'aku' });
+        const events = [
+          ev('c', {
+            kind: 'hard',
+            bookingId: 'bk-c',
+            startsAt: at(DAY1, '10:00'),
+            endDate: DAY2,
+            endsAt: at(DAY2, '18:00'),
+          }),
+          ev('1', { placeId: 'selja', startsAt: at(DAY1, '12:00') }),
+        ];
+        const { figures } = tripRecap(input({ events, bookings: [hire], places: ROAD }));
+        expect(value(figures.groundMeters)).toBeCloseTo(crow(RVK, SELJA));
+      });
+
+      it('an untimed row after the flight home is not a drive from home back to it', () => {
+        const home = booking('bk-f', { type: 'flight', fromPlaceId: 'kef', toPlaceId: 'tlv' });
+        const events = [
+          ev('1', { placeId: 'rvk', startsAt: at(DAY1, '09:00') }),
+          ev('f', { kind: 'hard', bookingId: 'bk-f', startsAt: at(DAY1, '14:00') }),
+          ev('2', { placeId: 'skoga' }),
+        ];
+        const { figures } = tripRecap(input({ events, bookings: [home], places: ROAD }));
+        expect(value(figures.groundMeters)).toBeCloseTo(crow(RVK, KEF));
+      });
+    });
+
     it('names every mode of every pair it will read, and nothing else', () => {
       const keys = tripRecapLegKeys(input({ events: walkDay }));
       expect(keys.sort()).toEqual(

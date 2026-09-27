@@ -32,13 +32,14 @@ import {
   type TripEnrichments,
 } from './enrichment';
 import { haversineMeters, type LatLng } from './geo';
-import { carriesRoute } from './icons';
+import { carriesRoute, spendsSpanInMotion } from './icons';
 import {
   ROUTE_MIN_CROW_M,
   carriedBookingMeters,
   coordOf,
   defaultLegTravelMode,
   derivedTravelMode,
+  exceedsTravelCeiling,
   legTravelMode,
   routeLegKey,
   type LegModeOverrideRow,
@@ -162,8 +163,14 @@ function scheduleOrder(a: TripEvent, b: TripEvent): number {
   return a.sortOrder - b.sortOrder;
 }
 
+/** Where a stop sits in its day: the bed you woke in, the day's rows, the bed you sleep in. */
+const STOP_SLOT = { WOKE: 0, DAY: 1, BED: 2 } as const;
+
 interface Stop {
   placeId: string | undefined;
+  slot: (typeof STOP_SLOT)[keyof typeof STOP_SLOT];
+  /** The instant it sorts by within its slot; untimed rows go after the timed ones. */
+  at?: number;
   /** The pair from here to the next stop is inside one booked transport row (carried, not walked
    *  or driven), so it is not a ground leg. */
   carriedToNext?: boolean;
@@ -207,23 +214,77 @@ function isLodging(ctx: Context, event: TripEvent, place: Place | undefined): bo
   return (event.category ?? place?.category) === EVENT_CATEGORY.LODGING;
 }
 
-/** Consecutive placed stops of each day's happened rows. A transport row contributes both ends
- *  with the pair between them marked carried. */
+/**
+ * Consecutive placed stops of each day's happened rows, ordered the way the map's journey runs a
+ * day (`buildDayStopSequence`): the stay you woke in, the rows by clock with the untimed after,
+ * the stay you sleep in. Three rows used to be placed where they are not, and each invented a
+ * drive (owner's Iceland trip read 8,000+ km for a ~2,500 km ring road):
+ *   - **a stay sat at its check-in floor** (`15:00`), so a road-trip day ran to the evening's
+ *     hotel mid-afternoon and back out to the stops it had not reached yet;
+ *   - **a car hire put both counters on the pickup day**, so a one-way hire drove to the drop-off
+ *     and back on day one;
+ *   - **an untimed row sorted after the flight home**, and the great circle from the home airport
+ *     back to it counted as ground. A pair past driving's ceiling (`TRAVEL_GATE`) is no ground leg
+ *     for that reason: nothing drives it, and the gate already refuses to route it.
+ */
 function groundPairs(ctx: Context): GroundPair[] {
   const byDate = new Map<string, Stop[]>();
+  const add = (date: string, stop: Stop) => {
+    const stops = byDate.get(date) ?? [];
+    stops.push(stop);
+    byDate.set(date, stops);
+  };
+  const ms = (iso: string | undefined) => (iso ? Date.parse(iso) : undefined);
   for (const event of ctx.happened) {
-    const stops = byDate.get(event.date) ?? [];
-    byDate.set(event.date, stops);
     const booking = event.bookingId ? ctx.bookingById.get(event.bookingId) : undefined;
+    const at = ms(event.startsAt);
     if (booking && carriesRoute(booking.type)) {
-      stops.push({ placeId: booking.fromPlaceId, carriedToNext: true });
-      stops.push({ placeId: booking.toPlaceId });
-    } else {
-      stops.push({ placeId: stopPlaceOf(ctx, event) });
+      if (spendsSpanInMotion(booking.type)) {
+        add(event.date, {
+          placeId: booking.fromPlaceId,
+          slot: STOP_SLOT.DAY,
+          at,
+          carriedToNext: true,
+        });
+        add(event.date, { placeId: booking.toPlaceId, slot: STOP_SLOT.DAY, at });
+      } else {
+        // A hire is two visits to two counters, on the days you were at them.
+        add(event.date, { placeId: booking.fromPlaceId, slot: STOP_SLOT.DAY, at });
+        add(event.endDate ?? event.date, {
+          placeId: booking.toPlaceId,
+          slot: STOP_SLOT.DAY,
+          at: ms(event.endsAt),
+        });
+      }
+      continue;
     }
+    const placeId = stopPlaceOf(ctx, event);
+    if (
+      !placeId ||
+      !isLodging(
+        ctx,
+        event,
+        ctx.input.places.find((p) => p.id === placeId),
+      )
+    ) {
+      add(event.date, { placeId, slot: STOP_SLOT.DAY, at });
+      continue;
+    }
+    const nights = tripDates(event.date, event.endDate ?? event.date);
+    nights.forEach((date, i) => {
+      if (i > 0) add(date, { placeId, slot: STOP_SLOT.WOKE });
+      if (i < nights.length - 1 || nights.length === 1) add(date, { placeId, slot: STOP_SLOT.BED });
+    });
   }
   const pairs: GroundPair[] = [];
-  for (const [date, stops] of byDate) {
+  for (const [date, unordered] of byDate) {
+    // Stable, so a transport row's two ends and same-clock rows keep schedule order.
+    const stops = [...unordered].sort(
+      (a, b) =>
+        a.slot - b.slot ||
+        (a.at === undefined ? 1 : 0) - (b.at === undefined ? 1 : 0) ||
+        (a.at ?? 0) - (b.at ?? 0),
+    );
     // A placeless stop is crossed rather than breaking the chain (ADR-0232).
     const placed = stops.filter((stop) => coordOf(ctx.input.places, stop.placeId));
     for (let i = 0; i + 1 < placed.length; i++) {
@@ -233,6 +294,7 @@ function groundPairs(ctx: Context): GroundPair[] {
       const from = coordOf(ctx.input.places, a.placeId)!;
       const to = coordOf(ctx.input.places, b.placeId)!;
       if (haversineMeters(from, to) < ROUTE_MIN_CROW_M) continue;
+      if (exceedsTravelCeiling(TRAVEL_MODE.DRIVING, from, to)) continue;
       pairs.push({ date, fromPlaceId: a.placeId!, toPlaceId: b.placeId!, from, to });
     }
   }
