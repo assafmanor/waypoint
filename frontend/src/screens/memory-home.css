@@ -50,8 +50,9 @@
   margin-top: 18px;
 }
 
-/* Firsts and bests: rows with no manage menu, a hairline apart. */
-.mem-bests {
+/* Firsts and bests, and next time: rows with no manage menu, a hairline apart. */
+.mem-bests,
+.mem-next {
   display: grid;
   gap: 8px;
 }
