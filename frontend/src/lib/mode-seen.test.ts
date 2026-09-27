@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from 'vitest';
-import { markModeSeen, modeSeen, shouldGoLive } from './mode-seen';
+import { cameHome, markCameHome, markModeSeen, modeSeen, shouldGoLive } from './mode-seen';
 
 afterEach(() => localStorage.clear());
 
@@ -38,5 +38,16 @@ describe('shouldGoLive', () => {
     markModeSeen('t1', 'trip');
     markModeSeen('t1', 'plan');
     expect(shouldGoLive('t1', 'trip')).toBe(true);
+  });
+});
+
+// ADR-0241 §3: its own key, so the provider's `mode-seen` write on every mount cannot spend it.
+describe('came-home', () => {
+  it('is unseen until the Home marks it, per trip, and mode-seen does not mark it', () => {
+    markModeSeen('t1', 'plan');
+    expect(cameHome('t1')).toBe(false);
+    markCameHome('t1');
+    expect(cameHome('t1')).toBe(true);
+    expect(cameHome('t2')).toBe(false);
   });
 });
