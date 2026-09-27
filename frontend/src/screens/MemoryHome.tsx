@@ -4,19 +4,22 @@
 // is `tripRecap`'s (ADR-0239 §9, through `useTripRecap`), so this page and every share print
 // the same figure for the same trip. Built in the epic's order, one item per change: 4.1 is the
 // frame — the cover and `במספרים`; 4.2 the days as a contact sheet; 4.3 firsts and bests; 4.4 the
-// stragglers sheet the cover opens; 4.5 next time; 4.6 the notes as a journal.
+// stragglers sheet the cover opens; 4.5 next time; 4.6 the notes as a journal; 4.7 the
+// record by kind, and the search over it from the cover.
 import { useCallback, useMemo, useState } from 'react';
 import { t } from '../i18n/he';
 import { DOT_SEPARATOR, type TabId } from '../constants';
 import { autoIsolate } from '../lib/bidi';
 import type { DayShot } from '../lib/day-photo';
 import { dayPhrase } from '../lib/hebrew';
+import { placeLabelOf } from '../lib/place-label';
 import {
   memoryBests,
   memoryDays,
   memoryFigures,
   memoryJournal,
   memoryNextTime,
+  memoryRecord,
   memoryStragglers,
 } from '../lib/memory-home';
 import { formatTripDates, tripDayNumber } from '../lib/time';
@@ -32,6 +35,7 @@ import { StatTile } from '../ui/domain/StatTile';
 import { StragglersSheet } from '../ui/domain/StragglersSheet';
 import { MediaViewer } from '../ui/MediaViewer';
 import { NoteJournal } from '../ui/NoteJournal';
+import { RecordKinds, RecordSearch, type RecordRowActions } from './MemoryRecord';
 import './memory-home.css';
 
 /** How many straggler titles the cover's footer names; the sheet it opens walks the rest. */
@@ -57,6 +61,7 @@ export function MemoryHome({ onNavigate }: { onNavigate: (tab: TabId) => void })
   const verbs = useVerbs();
   const [fullShot, setFullShot] = useState<DayShot | null>(null);
   const [settling, setSettling] = useState(false);
+  const [searching, setSearching] = useState(false);
   const closeSettling = useCallback(() => setSettling(false), []);
 
   const when = [
@@ -96,6 +101,24 @@ export function MemoryHome({ onNavigate }: { onNavigate: (tab: TabId) => void })
       memoryJournal({ trip, notes, hosts: noteHosts, evidence: zoneEvidence, days: sheet.days }),
     [trip, notes, noteHosts, zoneEvidence, sheet.days],
   );
+  const record = useMemo(
+    () =>
+      memoryRecord({
+        events,
+        bookings,
+        evidence: zoneEvidence,
+        placeName: (id) =>
+          placeLabelOf(placeLabels, id, places.find((place) => place.id === id)?.name),
+      }),
+    [events, bookings, zoneEvidence, placeLabels, places],
+  );
+  const recordActions: RecordRowActions = {
+    onOpenDay: setActiveDate,
+    toMap: (row) => {
+      const placeId = mappable(row.placeId);
+      return placeId && showOnMap ? () => showOnMap(placeId) : undefined;
+    },
+  };
   const figures = recap ? memoryFigures(recap) : [];
   const cover = recap?.cover;
   const route = recap?.figures.route.state === 'present' ? recap.figures.route.value : undefined;
@@ -115,6 +138,7 @@ export function MemoryHome({ onNavigate }: { onNavigate: (tab: TabId) => void })
           }
         }
         onSettle={stragglers.length > 0 ? () => setSettling(true) : undefined}
+        onSearch={record.length > 0 ? () => setSearching(true) : undefined}
       />
 
       {figures.length > 0 && (
@@ -186,6 +210,13 @@ export function MemoryHome({ onNavigate }: { onNavigate: (tab: TabId) => void })
         </>
       )}
 
+      {record.length > 0 && (
+        <>
+          <div className="sec-title">{t.planHome.past.record.title}</div>
+          <RecordKinds rows={record} {...recordActions} />
+        </>
+      )}
+
       {journal.days.length > 0 && (
         <>
           <div className="sec-title">{t.planHome.past.journal.title}</div>
@@ -237,6 +268,15 @@ export function MemoryHome({ onNavigate }: { onNavigate: (tab: TabId) => void })
       <button className="addbtn mem-all-days" onClick={() => onNavigate('days')}>
         {t.planHome.past.viewDays}
       </button>
+
+      {searching && (
+        <RecordSearch
+          rows={record}
+          tripName={trip.name}
+          onClose={() => setSearching(false)}
+          {...recordActions}
+        />
+      )}
 
       {settling && (
         <StragglersSheet

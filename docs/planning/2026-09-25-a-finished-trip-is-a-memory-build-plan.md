@@ -221,6 +221,8 @@ Updates `design-language.md` (drop its "not built yet" marks) and marks ADR-0240
 
 ## Phase 4 — the memory Home (build · needs 1A and 2 · beside 3)
 
+**Built 2026-09-27**, one PR per item.
+
 Replaces `PlanHome`'s past branch entirely, as drawn in ADR-0240 §4 (the stragglers live in the cover card's footer band, so 4.4 is the sheet it opens). One PR per item; 4.1 lands first because every other item sits inside its frame.
 
 - **4.1** The frame: cover, dates, faces, route strip and "by the numbers" _(spec 1a)_. **Built 2026-09-27** (ADR-0240 §4's build notes).
@@ -229,7 +231,7 @@ Replaces `PlanHome`'s past branch entirely, as drawn in ADR-0240 §4 (the stragg
 - **4.4** The stragglers, one at a time _(spec 4a)_, on `SettleControl`'s `sheet` density walking the list. **Built 2026-09-27.**
 - **4.5** The next-time list, read-only _(spec 5a, display half)_. Its "take to another trip" is Phase 7. **Built 2026-09-27.**
 - **4.6** The notes as a journal _(spec 2b)_, read-only (§4). **Built 2026-09-27.**
-- **4.7** Lists by kind _(spec 2c)_ and search as the page's first control _(spec 2a)_.
+- **4.7** Lists by kind _(spec 2c)_ and search as the page's first control _(spec 2a)_. **Built 2026-09-27.**
 
 ## Phase 5 — the map as a journey, and the beat (build · needs 0.3, 1B, 2; the beat also needs 4)
 

@@ -4060,8 +4060,9 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
   color: var(--idx-accent-text);
 }
 /* A minimal real-SVG control (ADR-0100 §4) in the same rounded-SQUARE shape
-   as `.back-icon-btn` — not a circle. */
-.index .search-icon-btn {
+   as `.back-icon-btn` — not a circle. Unscoped since the memory cover carries one too
+   (ADR-0240 §4). */
+.search-icon-btn {
   flex: 0 0 auto;
   width: 32px;
   height: 32px;
@@ -4078,11 +4079,11 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
     border-color 0.18s ease,
     color 0.18s ease;
 }
-.index .search-icon-btn .icon {
+.search-icon-btn .icon {
   width: 15px;
   height: 15px;
 }
-.index .search-icon-btn:active {
+.search-icon-btn:active {
   transform: scale(var(--press-scale));
 }
 

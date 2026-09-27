@@ -10,6 +10,9 @@ import {
   memoryFigures,
   memoryJournal,
   memoryNextTime,
+  memoryRecord,
+  matchesRecordQuery,
+  recordKinds,
   memoryStragglers,
   recapHours,
   recapKm,
@@ -404,5 +407,72 @@ describe('memoryJournal: the notes in day order (ADR-0240 §4)', () => {
     expect(journal.days[1]!.heading).toContain('Shinjuku');
     expect(journal.days[0]!.heading).toContain('02.05');
     expect(journal.outside).toBe(1);
+  });
+});
+
+describe('memoryRecord: the rows the lists by kind and the search read (ADR-0240 §4)', () => {
+  const stamp = { tripId: 't1', createdAt: '', updatedAt: '', updatedBy: 'u1' };
+  const ev = (id: string, date: string, extra: Partial<TripEvent> = {}): TripEvent => ({
+    id,
+    date,
+    title: id,
+    kind: 'soft',
+    status: 'done',
+    sortOrder: 0,
+    source: 'manual',
+    ...stamp,
+    ...extra,
+  });
+  const evidence = {
+    primaryZone: 'UTC',
+    crossings: [],
+    events: [],
+    bookings: [],
+    places: [],
+  } as unknown as ZoneEvidence;
+
+  const rows = memoryRecord({
+    events: [
+      ev('dinner', '2026-05-02', {
+        category: 'food',
+        placeId: 'p-ramen',
+        startsAt: '2026-05-02T19:30:00.000Z',
+      }),
+      ev('lunch', '2026-05-02', { category: 'food', startsAt: '2026-05-02T12:00:00.000Z' }),
+      ev('bar', '2026-05-01', { category: 'food', status: 'skipped' }),
+      ev('museum', '2026-05-03', { category: 'sightseeing', status: 'planned' }),
+      ev('walk', '2026-05-03'),
+    ],
+    bookings: [],
+    placeName: (id) => (id === 'p-ramen' ? 'Ichiran' : undefined),
+    evidence,
+  });
+
+  it('orders by day then clock, and says what became of each row', () => {
+    expect(rows.map((row) => [row.event.id, row.outcome])).toEqual([
+      ['bar', 'skipped'],
+      ['lunch', 'done'],
+      ['dinner', 'done'],
+      ['museum', 'open'],
+      ['walk', 'done'],
+    ]);
+    expect(rows[2]!.subject).toContain('19:30');
+    // A row with no category of its own reads as the general kind.
+    expect(rows[4]!.category).toBe('other');
+  });
+
+  it('offers the kinds fullest first', () => {
+    expect(recordKinds(rows)).toEqual([
+      { kind: 'food', count: 3 },
+      { kind: 'sightseeing', count: 1 },
+      { kind: 'other', count: 1 },
+    ]);
+  });
+
+  it('finds a row by its place and by its kind, not only its title', () => {
+    const dinner = rows.find((row) => row.event.id === 'dinner')!;
+    expect(matchesRecordQuery(dinner, 'ichiran')).toBe(true);
+    expect(matchesRecordQuery(dinner, t.iconPicker.categories.food)).toBe(true);
+    expect(matchesRecordQuery(dinner, 'museum')).toBe(false);
   });
 });

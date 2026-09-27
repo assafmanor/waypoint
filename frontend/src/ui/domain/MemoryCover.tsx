@@ -14,6 +14,7 @@ import { ROUTE_ARROW } from '@waypoint/shared';
 import { DOT_SEPARATOR } from '../../constants';
 import { autoIsolate } from '../../lib/bidi';
 import { t } from '../../i18n/he';
+import { Icon } from '../Icon';
 import { Avatar, type AvatarPerson } from '../primitives/Avatar';
 import { BAND_DENSITY, PhotoBand, type PhotoBandShot } from './PhotoBand';
 import './day-head.css';
@@ -31,6 +32,8 @@ export interface MemoryCoverProps {
   stragglers?: { count: number; titles: readonly string[] };
   /** Opens the stragglers sheet: the footer's one action, as a day head's footer has one. */
   onSettle?: () => void;
+  /** Opens the search over the trip: the page's first control (ADR-0240 §4, spec 2a). */
+  onSearch?: () => void;
 }
 
 export function MemoryCover({
@@ -41,12 +44,25 @@ export function MemoryCover({
   route,
   stragglers,
   onSettle,
+  onSearch,
 }: MemoryCoverProps) {
   return (
     <section className="wp-dayhead is-card mem-cover">
       {shot && <PhotoBand shot={{ ...shot, eager: true }} density={BAND_DENSITY.COVER} />}
       <div className="mem-head">
-        <h2>{autoIsolate(name)}</h2>
+        <div className="mem-title">
+          <h2>{autoIsolate(name)}</h2>
+          {onSearch && (
+            <button
+              type="button"
+              className="search-icon-btn"
+              aria-label={t.planHome.past.record.search.button}
+              onClick={onSearch}
+            >
+              <Icon name="search" />
+            </button>
+          )}
+        </div>
         <span className="mem-when">{when}</span>
         {route && route.length > 1 && (
           <div className="mem-route" aria-label={route.join(', ')}>

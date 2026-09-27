@@ -63,4 +63,11 @@ describe('MemoryCover', () => {
     fireEvent.click(screen.getByRole('button', { name: t.planHome.past.settle.action }));
     expect(onSettle).toHaveBeenCalledTimes(1);
   });
+
+  it('carries the search as the first control, beside the name', () => {
+    const onSearch = vi.fn();
+    render(<MemoryCover {...base} onSearch={onSearch} />);
+    fireEvent.click(screen.getByRole('button', { name: t.planHome.past.record.search.button }));
+    expect(onSearch).toHaveBeenCalledTimes(1);
+  });
 });

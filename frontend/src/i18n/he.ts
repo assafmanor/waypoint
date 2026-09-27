@@ -2747,6 +2747,20 @@ export const t = {
       },
       unresolved: (n: number) => `${n} לא סומנו`,
       // **The stragglers sheet** (ADR-0240 §4): the cover's footer action, and where the walk is.
+      // **The record by kind, and the search over it** (ADR-0240 §4, epic 4.7).
+      record: {
+        title: 'לפי סוג',
+        kindsLabel: 'סוג',
+        open: 'לא סומן',
+        search: {
+          button: 'חיפוש בטיול',
+          modeTitle: 'חיפוש בטיול',
+          placeholder: 'חיפוש לפי שם, מקום או סוג',
+          clear: 'ניקוי',
+          backAria: 'סגירת החיפוש',
+          noResults: 'אין בטיול משהו שמתאים לחיפוש',
+        },
+      },
       // **The journal** (ADR-0240 §4): every note in day order. A note about a day outside the
       // trip is planning, counted under the section rather than drawn.
       journal: {

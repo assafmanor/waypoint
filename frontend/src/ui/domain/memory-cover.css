@@ -8,6 +8,16 @@
   padding: 12px 14px 14px;
 }
 
+/* The name, and the page's first control at its end: the search is a way into the whole
+   trip, so it rides the card that names the trip rather than a bar of its own, which would
+   have cost the figures their place above the fold (ADR-0240 §4). */
+.mem-title {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
 .mem-head h2 {
   margin: 0;
   font-family: var(--font-head);
