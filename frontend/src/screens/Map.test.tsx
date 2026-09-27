@@ -99,6 +99,7 @@ vi.mock('../state/trip-state', () => ({
     trip: {
       id: 't1',
       name: 'טיול',
+      destination: 'טוקיו',
       timezone: 'Asia/Tokyo',
       startDate: '2026-07-19',
       endDate: '2026-07-25',

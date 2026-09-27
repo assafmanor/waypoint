@@ -1114,7 +1114,8 @@
 }
 .map-recenter,
 .map-frame,
-.map-compass {
+.map-compass,
+.map-replay {
   /* 44, not the 38 that shipped: design-language's floor is 44×44 and the old single
      control was already under it. Met by geometry — never by a hit area painted
      smaller than the box it claims.
@@ -1136,7 +1137,8 @@
   box-shadow: 0 2px 6px rgba(22, 35, 61, 0.16);
 }
 .map-recenter .icon,
-.map-frame .icon {
+.map-frame .icon,
+.map-replay .icon {
   width: 20px;
   height: 20px;
 }
@@ -1185,6 +1187,54 @@
   background: var(--idx-accent);
   border-color: var(--idx-accent);
   color: var(--idx-accent-text);
+}
+
+/* Replay playing is a state, painted as the compass paints following (ADR-0241 §2): rose on a
+   finished trip, because that is what `--idx-accent` is there. */
+.map-replay[aria-pressed='true'] {
+  background: var(--idx-accent);
+  border-color: var(--idx-accent);
+  color: var(--idx-accent-text);
+}
+/* The day being replayed, at the canvas foot above the attribution. Not in the area count's
+   seat, which leaves a free-text name ~186px at 360 beside the camera band (ADR-0241 §2). One
+   line, ellipsised: the canvas is the subject. */
+.map-replay-caption {
+  position: absolute;
+  inset-inline: 8px;
+  bottom: calc(var(--map-attr-h, 22px) + 8px);
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+.map-replay-caption > span {
+  max-width: 100%;
+  box-sizing: border-box;
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  box-shadow: 0 2px 6px rgba(22, 35, 61, 0.16);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* A stop not reached yet stays where it is, faint, so the map never jumps; arriving is an object
+   settling, which is `--ease-arrive`'s stated use. */
+.map-pane[data-replay] .map-pin {
+  transition:
+    opacity var(--t-base) var(--ease-standard),
+    scale var(--t-base) var(--ease-arrive);
+}
+.map-pane[data-replay] .map-pin.is-ahead {
+  opacity: 0.22;
+  scale: 0.82;
 }
 
 /* THE AREA COUNT (§9). ADR-0106 §4 decided pan/zoom IS the area filter and no chip

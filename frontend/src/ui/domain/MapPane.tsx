@@ -68,8 +68,11 @@ import {
   MAP_ORIENT,
   MAP_RELOAD_COOLDOWN_MS,
   MAP_ZOOM,
+  REPLAY,
   type PinHue,
 } from '../../constants';
+import type { ReplayDay } from '../../lib/map-replay';
+import { useMapReplay, type ReplayLit } from '../../lib/useMapReplay';
 import { useDeviceHeading } from '../../lib/useDeviceHeading';
 import { publishMapReading, TUNE, tune } from '../../lib/dev-tuning';
 import { DevMapProbe } from '../../dev/DevMapProbe';
@@ -441,6 +444,12 @@ export interface MapPaneProps {
    *  `useGeolocation` and the pre-prompt live (ADR-0126 §6). Absent, the control is too
    *  (a finished trip, ADR-0239 §3). */
   onLocate?: () => void;
+  /** **Replay** (ADR-0241 §2): the finished trip's days with a record, in order. Absent, the
+   *  control is too — every trip but a finished one, and under reduced motion. Memoized on a
+   *  content key by the caller, like `pins`. */
+  replay?: readonly ReplayDay[];
+  /** A replay started or ended, so the screen can drop its sheet to the map and bring it back. */
+  onReplayChange?: (playing: boolean) => void;
 }
 
 /** Below `MAP_ZOOM.DOT_BELOW` every pin degrades to a dot (ADR-0121 §6, finally built).
@@ -626,8 +635,13 @@ function MapPaneInner({
   cardReserveAt,
   onHold,
   draftMarker,
+  replay,
+  onReplayChange,
 }: MapPaneProps) {
   const paneRef = useRef<HTMLDivElement>(null);
+  /** What a replay has lit so far, `null` when none runs. State, because the pins and the line
+   *  both draw it; it changes a few times a second only while a replay plays. */
+  const [replayLit, setReplayLit] = useState<ReplayLit | null>(null);
   // Is the tap Google is about to report the release of a gesture of OURS? Owned by
   // `useCanvasGestures` and read below — a ref rather than state, because a re-render here
   // re-diffs every marker on a map that ticks every second (ADR-0121 §4).
@@ -990,7 +1004,12 @@ function MapPaneInner({
   );
 
   return (
-    <div className="map-pane" ref={paneRef} onClick={handlePaneClick}>
+    <div
+      className="map-pane"
+      ref={paneRef}
+      onClick={handlePaneClick}
+      {...(replayLit ? { 'data-replay': '' } : {})}
+    >
       {/* OUTSIDE the branch below, deliberately: the pane element is what carries the
           capture listener, and it has to keep hearing a context die even once the canvas
           has been swapped for `ErrorState`. */}
@@ -1036,7 +1055,14 @@ function MapPaneInner({
               the map exists and simply do nothing until it does, which is what keeps the pin
               set free of a loading branch. */}
           {pins.map((pin) => (
-            <PinMarker key={pin.placeId} map={map} gl={gl} pin={pin} onSelect={selectPin} />
+            <PinMarker
+              key={pin.placeId}
+              map={map}
+              gl={gl}
+              pin={pin}
+              onSelect={selectPin}
+              replay={replayLit ? (replayLit.places.has(pin.placeId) ? 'lit' : 'ahead') : undefined}
+            />
           ))}
           {results.map((result) => (
             <ResultMarker
@@ -1049,7 +1075,7 @@ function MapPaneInner({
           ))}
           {me && <MeMarker map={map} gl={gl} at={me} />}
           {draftMarker && <DraftMarker map={map} gl={gl} marker={draftMarker} />}
-          <DayConnector map={map} legs={connector} scheme={scheme} />
+          <DayConnector map={map} legs={connector} scheme={scheme} litReach={replayLit?.reach} />
           {/* **The wait, stated** (field report #35). Until the first tile paints the canvas
             is empty while our own markers already draw on it — the very picture #28 reported
             as a failure. Over the canvas rather than instead of it: the renderer needs its own
@@ -1116,6 +1142,9 @@ function MapPaneInner({
             cardReserveAt={cardReserveAt}
             onHold={handleHold}
             gestureTapRef={gestureTapRef}
+            replay={replay}
+            onReplayLit={setReplayLit}
+            onReplayChange={onReplayChange}
           />
         </>
       )}
@@ -1187,11 +1216,15 @@ const PinMarker = memo(function PinMarker({
   gl,
   pin,
   onSelect,
+  replay,
 }: {
   map: MapLibreMap | null;
   gl: MapLibreModule | null;
   pin: MapPin;
   onSelect: (placeId: string) => void;
+  /** Where a running replay has reached this pin (ADR-0241 §2). A prop beside `pin` rather than
+   *  a field in it, so the screen's pin array does not change while a replay plays. */
+  replay?: 'ahead' | 'lit';
 }) {
   const cls = [
     'map-pin',
@@ -1206,6 +1239,7 @@ const PinMarker = memo(function PinMarker({
     pin.nextStop && 'nextstop',
     pin.nowStop && 'nowstop',
     pin.selected && 'selected',
+    replay && `is-${replay}`,
   ]
     .filter(Boolean)
     .join(' ');
@@ -1459,6 +1493,9 @@ export interface MapDayLeg {
    *  Neutral, thin, no duration, no end dots and no stub — it asserts nothing about a path,
    *  only that the two pins share a number for a reason. Drawn in both modes. */
   tether?: boolean;
+  /** **The stop this leg reaches, as replay keys it** (`replayReach`, ADR-0241 §2): a replay
+   *  shows a segment when the stop it arrives at lights. Set on a finished trip's journey only. */
+  reach?: string;
 }
 
 const KIND = { leg: 'leg', stub: 'stub' } as const;
@@ -1475,6 +1512,7 @@ const legsKey = (legs?: readonly MapDayLeg[]): string =>
           leg.emphasis ?? '',
           leg.unrouted ? 'u' : '',
           leg.tether ? 't' : '',
+          leg.reach ?? '',
         ]),
       )
     : '';
@@ -1540,9 +1578,13 @@ const DayConnector = memo(function DayConnector({
   map,
   legs,
   scheme,
+  litReach,
 }: {
   map: MapLibreMap | null;
   legs?: readonly MapDayLeg[];
+  /** While a replay plays (ADR-0241 §2): the stops reached so far. A leg into any other stop
+   *  waits faint, so a segment appears with the stop it reaches. */
+  litReach?: ReadonlySet<string>;
   /** The canvas's OWN scheme. This used to be latched at construction because a Map ID's
    *  style could not be changed on a live map (ADR-0121 §11) — ADR-0186 §7 removes that
    *  limit, and the line still takes the same value the ground was painted from so the two
@@ -1553,6 +1595,25 @@ const DayConnector = memo(function DayConnector({
   const dark = scheme === MAP_COLOR_SCHEME.dark;
   const held = useRef<readonly MapDayLeg[]>([]);
   held.current = legs ?? [];
+
+  // **A replay's segments, as a paint override on the layers already drawn** — no source write,
+  // so a step costs one style property per layer rather than a rebuild of the line.
+  const litKey = litReach ? [...litReach].join(';') : null;
+  useEffect(() => {
+    if (!map) return;
+    const plain = ['match', ['get', 'emphasis'], 'dim', MAP_CONNECTOR.DIM_OPACITY, 1];
+    const opacity = litReach
+      ? ['case', ['in', ['get', 'reach'], ['literal', [...litReach]]], plain, REPLAY.AHEAD_OPACITY]
+      : plain;
+    for (const [layer, prop] of [
+      [CONNECTOR.layer, 'line-opacity'],
+      [DOT.layer, 'circle-opacity'],
+    ] as const) {
+      if (map.getLayer(layer)) map.setPaintProperty(layer, prop, opacity as never);
+    }
+    // `litReach` is read through its content key: a new Set per step with the same members is
+    // not a change.
+  }, [map, litKey, key]);
 
   useEffect(() => {
     if (!map || !key) return;
@@ -1606,11 +1667,13 @@ const DayConnector = memo(function DayConnector({
         lines.push(
           feature(
             { type: 'LineString', coordinates: coords },
-            { kind: KIND.leg, emphasis, unrouted: leg.unrouted ? 1 : 0 },
+            { kind: KIND.leg, emphasis, unrouted: leg.unrouted ? 1 : 0, reach: leg.reach ?? '' },
           ),
         );
         for (const end of [coords[0]!, coords[coords.length - 1]!]) {
-          dots.push(feature({ type: 'Point', coordinates: end }, { emphasis }));
+          dots.push(
+            feature({ type: 'Point', coordinates: end }, { emphasis, reach: leg.reach ?? '' }),
+          );
         }
 
         // **One stub per STOP, not one per leg end** (§AC5). Drawn at the leg's END, which yields
@@ -1922,6 +1985,9 @@ function MapCameraControls({
   cardReserveAt,
   onHold,
   gestureTapRef,
+  replay,
+  onReplayLit,
+  onReplayChange,
 }: {
   /** The camera's view of the live instance, or `null` before there is one. */
   map: CameraMap | null;
@@ -1950,6 +2016,9 @@ function MapCameraControls({
   /** Written by the recogniser, read by the canvas's own click handler above: the release of
    *  a completed gesture must not be read as a tap. */
   gestureTapRef: RefObject<boolean>;
+  replay?: readonly ReplayDay[];
+  onReplayLit: (lit: ReplayLit | null) => void;
+  onReplayChange?: (playing: boolean) => void;
 }) {
   // The camera answers to the day's OWN pins, never to the ghost tier: a ghost is a
   // place this day does not contain, so framing it makes the camera chase somewhere
@@ -2140,6 +2209,17 @@ function MapCameraControls({
   const framable = pins.some(isFramedByCamera);
   const frame = useCallback(() => reframe(points), [reframe, points]);
 
+  // **Replay** (ADR-0241 §2) lives beside the camera it drives: each day is a `reframe`, which is
+  // the one eased move, and the end frames the journey exactly as `frame` does.
+  const replayer = useMapReplay({
+    days: replay,
+    frame: reframe,
+    frameAll: frame,
+    paneRef,
+    onLit: onReplayLit,
+    onChange: onReplayChange,
+  });
+
   // Tappable only when there is an area to sort BY. Zero keeps saying so and stays a
   // readout; `null` is "no idle yet", so there are no bounds to snapshot either.
   const areaTappable = areaCount != null && areaCount > 0;
@@ -2258,6 +2338,19 @@ function MapCameraControls({
       {/* One cluster, so the band's geometry is written once and the
           one-floating-object rule (ADR-0122 §6) needs one selector, not three. */}
       <div className="map-camctl">
+        {/* In the seat `onLocate` leaves empty on a finished trip, so the band keeps its width. */}
+        {replay && replay.length > 0 && (
+          <button
+            type="button"
+            className="map-replay"
+            aria-pressed={replayer.playing}
+            aria-label={replayer.playing ? t.map.replay.stop : t.map.replay.play}
+            title={replayer.playing ? t.map.replay.stop : t.map.replay.play}
+            onClick={replayer.toggle}
+          >
+            <Icon name={replayer.playing ? 'pause' : 'play'} />
+          </button>
+        )}
         {onLocate && (
           <button
             type="button"
@@ -2307,31 +2400,45 @@ function MapCameraControls({
           `role="button"`. This is `StatusBanner`'s own shape — a polite region with a
           control inside it — so the count text exists once in the DOM and what the
           region announces is the button's own words, not a second copy of them. */}
-      <div className={'map-areacount' + (areaSorted ? ' on' : '')} role="status" aria-live="polite">
-        {areaTappable ? (
-          <button
-            type="button"
-            className="map-areabtn"
-            aria-pressed={areaSorted}
-            // The ACTION as a description. An `aria-label` would override the visible
-            // text, and the visible text has to stay the accessible NAME (§4).
-            title={t.map.area.action}
-            onClick={onAreaSort}
-          >
-            <b dir="auto">{areaCount}</b> {t.map.area.suffix}
-          </button>
-        ) : (
-          <span>
-            {areaCount === 0 ? (
-              t.map.area.none
-            ) : (
-              <>
-                <b dir="auto">-</b> {t.map.area.suffix}
-              </>
-            )}
-          </span>
-        )}
-      </div>
+      {/* While a replay runs the area count has nothing to count, and the day's name takes the
+          canvas foot, where a free-text name gets the canvas's width (ADR-0241 §2). */}
+      {replayer.playing ? (
+        replayer.caption && (
+          <div className="map-replay-caption" role="status" aria-live="polite">
+            <span dir="auto">{replayer.caption}</span>
+          </div>
+        )
+      ) : (
+        <div
+          className={'map-areacount' + (areaSorted ? ' on' : '')}
+          role="status"
+          aria-live="polite"
+        >
+          {areaTappable ? (
+            <button
+              type="button"
+              className="map-areabtn"
+              aria-pressed={areaSorted}
+              // The ACTION as a description. An `aria-label` would override the visible
+              // text, and the visible text has to stay the accessible NAME (§4).
+              title={t.map.area.action}
+              onClick={onAreaSort}
+            >
+              <b dir="auto">{areaCount}</b> {t.map.area.suffix}
+            </button>
+          ) : (
+            <span>
+              {areaCount === 0 ? (
+                t.map.area.none
+              ) : (
+                <>
+                  <b dir="auto">-</b> {t.map.area.suffix}
+                </>
+              )}
+            </span>
+          )}
+        </div>
+      )}
     </>
   );
 }

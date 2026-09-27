@@ -1650,6 +1650,17 @@ export const GOING_LIVE = {
   TAIL_MS: 80,
 } as const;
 
+/** **A finished trip replays** (ADR-0241 §2): per day, the camera eases in (`MAP_CAMERA_EASE`),
+ *  the day's stops light one step apart, and the day holds. The step shrinks on a crowded day so
+ *  its lighting never runs past `STOPS_MAX_MS`. The hold is the owner's call (drawn at 700). */
+export const REPLAY = {
+  STOP_STEP_MS: 220,
+  STOPS_MAX_MS: 1320,
+  DAY_HOLD_MS: 1000,
+  /** A leg not reached yet, as a line opacity — the pin's own 0.22 lives in `map-pane.css`. */
+  AHEAD_OPACITY: 0.22,
+} as const;
+
 /** A value that changes should be seen to change (`lib/useCountUp.ts`, ADR-0143).
  *  Steps rather than a duration, because what runs up is an integer count. */
 export const COUNT_UP = {
