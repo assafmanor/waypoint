@@ -475,6 +475,15 @@
 .map-pin .pin-n.outcome.skipped {
   background: color-mix(in srgb, var(--miss) 62%, var(--muted));
 }
+/* A finished trip's place nobody marked (ADR-0241 §1): the third outcome, in the same slot and
+   geometry — an empty ring, the `○` the memory Home's footer and SettleControl already use for
+   an open question. No glyph, so the card ground inside IS the ring's hollow. */
+.map-pin .pin-n.outcome.open {
+  background: var(--card);
+  box-shadow:
+    inset 0 0 0 calc(var(--pin-u) * 0.06) var(--muted),
+    0 0 0 calc(var(--pin-u) * 0.045) var(--card);
+}
 
 /* THE ORDER, as a number (§6). A line between two stops is symmetric, so it never
    said which end you reach first; the number does, and it is free — it is the index

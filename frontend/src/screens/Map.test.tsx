@@ -405,6 +405,18 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
       expect(row('food')!.querySelector('.wp-settle-btn')).toBeTruthy();
     });
 
+    // ADR-0241 §1: the slot `ניווט` left opens the first day the place happened on.
+    it('a place that happened offers its day in the trailing slot, and an unmarked one nothing', () => {
+      seed();
+      tripEvents = tripEvents.map((e) =>
+        e.id === 'food' ? { ...e, status: EVENT_STATUS.DONE } : e,
+      );
+      finish();
+      render(wrap(<MapView />));
+      expect(row('food')!.querySelector('.map-addmaybe')?.textContent).toContain(t.map.openDay(2));
+      expect(row('see')!.querySelector('.map-addmaybe')).toBeNull();
+    });
+
     // ADR-0239 §4: settling is a finished trip's only write, so a selected place can be neither
     // renamed nor deleted (the Phase 0 guard covered only the two ADD sources).
     it('a selected row can be neither renamed nor deleted', () => {

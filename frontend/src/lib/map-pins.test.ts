@@ -17,7 +17,10 @@ import { dayBookendStays } from './glance';
 import {
   amberLegIndex,
   buildDayStopSequence,
+  buildJourney,
   buildPinOrderIndex,
+  firstHappenedDate,
+  stayNights,
   hasScheduleSlot,
   isAsidePin,
   isFramedByCamera,
@@ -1928,5 +1931,96 @@ describe('buildDayStopSequence — the day in order, which is what you step thro
     for (const stop of buildDayStopSequence(all, ctx)) {
       if (stop.order != null) expect(index.get(stop.usage.placeId)).toBe(stop.order);
     }
+  });
+});
+
+// ADR-0241 §1: a finished trip's map reads the RECORD (`recapHappened`), not the clock.
+describe('a finished trip: the pin says what happened, and the line runs through it', () => {
+  const AFTER = at('2026-07-30', '12:00');
+  const events = [
+    // A hard row nobody skipped happened (ADR-0239 §9), though nobody marked it.
+    event({
+      id: 'dinner',
+      placeId: 'dinner',
+      kind: EVENT_KIND.HARD,
+      date: DAY,
+      startsAt: `${DAY}T19:00:00Z`,
+    }),
+    event({
+      id: 'museum',
+      placeId: 'museum',
+      date: DAY,
+      startsAt: `${DAY}T10:00:00Z`,
+      status: EVENT_STATUS.DONE,
+    }),
+    event({
+      id: 'skipped',
+      placeId: 'skipped',
+      date: DAY,
+      startsAt: `${DAY}T13:00:00Z`,
+      status: EVENT_STATUS.SKIPPED,
+    }),
+    event({ id: 'unmarked', placeId: 'unmarked', date: DAY, startsAt: `${DAY}T15:00:00Z` }),
+    event({
+      id: 'cafe',
+      placeId: 'cafe',
+      date: NEXT_DAY,
+      startsAt: `${NEXT_DAY}T09:00:00Z`,
+      status: EVENT_STATUS.DONE,
+    }),
+    event({
+      id: 'stay',
+      placeId: 'hotel',
+      kind: EVENT_KIND.HARD,
+      category: 'lodging',
+      icon: '🏨',
+      date: PREV_DAY,
+      endDate: NEXT_DAY,
+      startsAt: `${PREV_DAY}T15:00:00Z`,
+      endsAt: `${NEXT_DAY}T10:00:00Z`,
+    }),
+  ];
+  const eventById = (id: string) => events.find((e) => e.id === id);
+  const index = usages({
+    places: ['dinner', 'museum', 'skipped', 'unmarked', 'cafe', 'hotel'].map((id) => place(id)),
+    events,
+  });
+  const ctx = { nowMs: AFTER, today: '2026-07-30', finished: { eventById } };
+
+  it('a hard row reads as happened: a full pin with no mark', () => {
+    expect(placePinTier(index.get('dinner')!, ctx)).not.toBe(PIN_TIER.behind);
+    expect(pinOutcome(index.get('dinner')!, ctx)).toBeUndefined();
+  });
+
+  it('is not `behind` for a place that happened or nobody marked, though the clock passed it', () => {
+    expect(placePinTier(index.get('museum')!, ctx)).toBe(PIN_TIER.upcoming);
+    expect(placePinTier(index.get('unmarked')!, ctx)).toBe(PIN_TIER.upcoming);
+    expect(placePinTier(index.get('museum')!, { ...ctx, onDate: DAY })).toBe(PIN_TIER.upcoming);
+  });
+
+  it('a skipped place is the grey pin with the ✕, and an unmarked one the empty ring', () => {
+    expect(placePinTier(index.get('skipped')!, ctx)).toBe(PIN_TIER.behind);
+    expect(pinOutcome(index.get('skipped')!, ctx)).toBe('skipped');
+    expect(pinOutcome(index.get('unmarked')!, ctx)).toBe('open');
+    expect(pinOutcome(index.get('museum')!, ctx)).toBeUndefined();
+  });
+
+  it('the journey runs day by day through what happened, off the skipped and unmarked stops', () => {
+    const journey = buildJourney([...index.values()], [PREV_DAY, DAY, NEXT_DAY], {
+      nameOf,
+      eventById,
+    });
+    const ids = journey.map((stop) => stop.usage.placeId);
+    expect(ids).not.toContain('skipped');
+    expect(ids).not.toContain('unmarked');
+    // The bed that ends one day and starts the next is one point.
+    expect(ids).toEqual(['hotel', 'museum', 'dinner', 'hotel', 'cafe']);
+  });
+
+  it('a stay counts the nights we slept, and a row opens the first day it happened on', () => {
+    expect(stayNights(index.get('hotel')!, eventById)).toBe(2);
+    expect(stayNights(index.get('museum')!, eventById)).toBe(0);
+    expect(firstHappenedDate(index.get('cafe')!, eventById)).toBe(NEXT_DAY);
+    expect(firstHappenedDate(index.get('unmarked')!, eventById)).toBeUndefined();
   });
 });

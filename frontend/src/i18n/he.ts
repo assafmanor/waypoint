@@ -441,6 +441,10 @@ export const t = {
     // ends of the day, which is exactly what a reader cannot otherwise tell. Neutral, not
     // amber: it is where you are sleeping, not a commitment on the clock.
     stayNight: 'לינת לילה',
+    // A finished trip's row button (ADR-0241 §1): the first day we were at this place.
+    openDay: (n: number) => `יום ${n}`,
+    // The empty ring's words, for the pin's accessible name (ADR-0241 §1).
+    pinOpen: 'לא סומן',
     // The list is three blocks (ADR-0109 session-110 + session-127), keyed by
     // `PlaceBlock` so the header and the order read one vocabulary. The behind header
     // is deliberately NEUTRAL (ADR-0117 §3): it holds three outcomes — visited,
