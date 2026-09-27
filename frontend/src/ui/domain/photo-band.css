@@ -107,3 +107,25 @@
 .wp-photoband.is-cover img {
   height: 168px;
 }
+
+/* ── `thumb` — a day frame on the memory Home's contact sheet (ADR-0240 §4) ───────────────────
+   ⁦84px⁩, two frames to a row at 360. The caption keeps the CREDIT and drops the name: the frame
+   names its day under the picture, and a licence is not ours to drop (ADR-0166 §12.2). */
+.wp-photoband.is-thumb img {
+  height: 84px;
+}
+
+.wp-photoband.is-thumb figcaption {
+  padding: 10px 8px 4px;
+}
+
+.wp-photoband.is-thumb figcaption strong {
+  display: none;
+}
+
+.wp-photoband.is-thumb figcaption span {
+  font-size: 9.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

@@ -224,7 +224,7 @@ Updates `design-language.md` (drop its "not built yet" marks) and marks ADR-0240
 Replaces `PlanHome`'s past branch entirely, as drawn in ADR-0240 §4 (the stragglers live in the cover card's footer band, so 4.4 is the sheet it opens). One PR per item; 4.1 lands first because every other item sits inside its frame.
 
 - **4.1** The frame: cover, dates, faces, route strip and "by the numbers" _(spec 1a)_. **Built 2026-09-27** (ADR-0240 §4's build notes).
-- **4.2** The days as a contact sheet _(spec 1b)_, on `DayHead` / `dayShot` / `fallbackDayTitle`.
+- **4.2** The days as a contact sheet _(spec 1b)_, on `DayHead` / `dayShot` / `fallbackDayTitle`. **Built 2026-09-27.**
 - **4.3** Firsts and bests _(spec 1c)_.
 - **4.4** The stragglers, one at a time _(spec 4a)_, on `SettleControl`'s `sheet` density walking the list.
 - **4.5** The next-time list, read-only _(spec 5a, display half)_. Its "take to another trip" is Phase 7.

@@ -2730,6 +2730,9 @@ export const t = {
     past: {
       viewDays: 'עיון בימי הטיול',
       figures: 'במספרים',
+      days: 'הימים',
+      /** The days the sheet does not draw, counted (`ועוד 7 ימים בלי רשומות`). */
+      quietDays: (days: string) => `ועוד ${days} בלי רשומות`,
       unresolved: (n: number) => `${n} לא סומנו`,
       fig: {
         places: 'מקומות',

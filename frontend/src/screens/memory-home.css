@@ -35,3 +35,17 @@
 .mem-fig-open {
   display: block;
 }
+
+/* The days the sheet does not draw, counted under it. */
+.mem-foot {
+  margin: 8px 2px 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* **The way into every day, at the page's own section rhythm.** `.addbtn`'s own 2px is the
+   builder's, where it closes a list; here it followed the figures with nothing between them
+   (owner, on a phone: the button touched the tiles). */
+.mem-all-days {
+  margin-top: 18px;
+}

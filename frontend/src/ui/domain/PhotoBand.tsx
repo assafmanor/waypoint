@@ -28,6 +28,9 @@ export const BAND_DENSITY = {
   /** **A finished trip's cover** (ADR-0240 §4): the head of the memory Home, taller than a day's
    *  because it is the whole trip's picture and the page's first thing. */
   COVER: 'cover',
+  /** **A day frame on the memory Home's contact sheet** (ADR-0240 §4): 84px, two to a row.
+   *  Its caption keeps only the credit, since the frame under it names the day. */
+  THUMB: 'thumb',
 } as const;
 
 export type BandDensity = (typeof BAND_DENSITY)[keyof typeof BAND_DENSITY];

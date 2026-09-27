@@ -1959,3 +1959,7 @@ export const DOWNLOAD_SETTLE_MS = 4000;
 /** **How many figures the memory Home prints** (ADR-0240 §4): three sit in a row, four go 2×2,
  *  five go 3 + 2. A sixth would be a second screen of numbers above the days. */
 export const MEMORY_FIGURES_MAX = 5;
+
+/** **How many glyphs a contact-sheet frame carries** (ADR-0240 §4): enough to say what kind of
+ *  day it was, few enough to stay on one line in a half-width frame at 360. */
+export const MEMORY_DAY_GLYPHS = 4;
