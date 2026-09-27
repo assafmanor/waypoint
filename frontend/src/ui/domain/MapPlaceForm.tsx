@@ -309,6 +309,29 @@ export function MapPlaceForm({
             });
           }}
         />
+        {/* **Above the nickname, because it is what gets READ** (owner, 2026-09-27: _"still no
+            notes in the place editing"_). The card's height is a budget (`--map-card-max`), so
+            whatever comes last scrolls out of sight; a place's existing notes are content, a
+            nickname is a rarely-set label. It is the region ADR-0148 §1 built for exactly
+            this: the head (what am I naming), the actions (how do I get out) and now the note
+            box are three different jobs, and only the first two must survive a keyboard.
+
+            **And it carries NO hint**, where every other host's composer does. Two reasons, and
+            the second is the real one: a place has no category of its own, so the sentence the
+            hint exists to say (`יורש את הקטגוריה והסמל`) is not true here — and this is the one
+            card in the app whose height is arithmetic, where ADR-0148 §1 spent a session
+            refusing "two competing quiet lines". The `＋` beside the box says the rest. */}
+        {renderNotes ? (
+          renderNotes({
+            onAdd: composer.openNew,
+            compose: <NoteComposer state={composer} id={noteId} />,
+            composeActive: composer.open || composer.drafts.length > 0,
+          })
+        ) : (
+          <Field label={t.notes.composer.label} htmlFor={noteId}>
+            <NoteComposer state={composer} id={noteId} />
+          </Field>
+        )}
         {/* **The short label** (ADR-0166 §18), in the scroll region and not the pinned head —
             the head is what you are naming and the actions are how you get out, and this card's
             height is arithmetic (ADR-0148 §1). It is `Field` + an input like every other text
@@ -335,26 +358,6 @@ export function MapPlaceForm({
                 if (e.key === 'Enter') confirm();
               }}
             />
-          </Field>
-        )}
-        {/* The scroll region's SECOND child, which is the region ADR-0148 §1 built for exactly
-            this: the head (what am I naming), the actions (how do I get out) and now the note
-            box are three different jobs, and only the first two must survive a keyboard.
-
-            **And it carries NO hint**, where every other host's composer does. Two reasons, and
-            the second is the real one: a place has no category of its own, so the sentence the
-            hint exists to say (`יורש את הקטגוריה והסמל`) is not true here — and this is the one
-            card in the app whose height is arithmetic, where ADR-0148 §1 spent a session
-            refusing "two competing quiet lines". The `＋` beside the box says the rest. */}
-        {renderNotes ? (
-          renderNotes({
-            onAdd: composer.openNew,
-            compose: <NoteComposer state={composer} id={noteId} />,
-            composeActive: composer.open || composer.drafts.length > 0,
-          })
-        ) : (
-          <Field label={t.notes.composer.label} htmlFor={noteId}>
-            <NoteComposer state={composer} id={noteId} />
           </Field>
         )}
       </div>
