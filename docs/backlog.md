@@ -343,7 +343,7 @@ A finished trip becomes a memory with a palette of its own, not a read-only Plan
 
 - **Phase 1B · design, motion and the outputs:** the map journey, replay, the coming-home beat, the trip book, the group-chat card and the anniversary copy. Blocks 5 and 6A.
 - **Phase 3 · the archive posture** ([ADR-0240](decisions/0240-the-archive-is-rose.md), rose): **built 2026-09-26** except /trips' cover in the flag slot (3.5), now unblocked by Phase 2's cover choice.
-- **Phase 4 · the memory Home:** 4.1 (the cover and `במספרים`) and 4.2 (the days as a contact sheet) **built 2026-09-27**. Left: 4.3 firsts and bests, 4.4 the stragglers sheet (the cover footer's `לסמן`), 4.5 next time, 4.6 notes as a journal, 4.7 lists by kind and search.
+- **Phase 4 · the memory Home:** 4.1 (the cover and `במספרים`), 4.2 (the days as a contact sheet) and 4.3 (firsts and bests) **built 2026-09-27**. Left: 4.4 the stragglers sheet (the cover footer's `לסמן`), 4.5 next time, 4.6 notes as a journal, 4.7 lists by kind and search.
 - **Phase 5 · the map as a journey, replay, coming home:** needs 0.3, 1B, 2, and 4 for the beat.
 - **Phase 6 · share outputs (6A) and resurface (6B):** 6A needs 1B and 2; 6B needs 1A and 2, and its push (ADR-0239 §8) waits for 1B's copy.
 - **Phase 7 · new data, each behind its own ADR:** album link, cross-trip "next time", favourites, the weather we had, who did what, go again.

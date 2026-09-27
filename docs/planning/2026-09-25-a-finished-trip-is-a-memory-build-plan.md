@@ -225,7 +225,7 @@ Replaces `PlanHome`'s past branch entirely, as drawn in ADR-0240 §4 (the stragg
 
 - **4.1** The frame: cover, dates, faces, route strip and "by the numbers" _(spec 1a)_. **Built 2026-09-27** (ADR-0240 §4's build notes).
 - **4.2** The days as a contact sheet _(spec 1b)_, on `DayHead` / `dayShot` / `fallbackDayTitle`. **Built 2026-09-27.**
-- **4.3** Firsts and bests _(spec 1c)_.
+- **4.3** Firsts and bests _(spec 1c)_. **Built 2026-09-27.**
 - **4.4** The stragglers, one at a time _(spec 4a)_, on `SettleControl`'s `sheet` density walking the list.
 - **4.5** The next-time list, read-only _(spec 5a, display half)_. Its "take to another trip" is Phase 7.
 - **4.6** The notes as a journal _(spec 2b)_, read-only (§4).

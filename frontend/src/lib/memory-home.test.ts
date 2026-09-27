@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { RECAP_ABSENT, type RecapFigure, type TripRecap } from '@waypoint/shared';
 import { MEMORY_FIGURES_MAX } from '../constants';
 import { t } from '../i18n/he';
-import type { Place, TripEvent } from '@waypoint/shared';
-import { memoryDays, memoryFigures, recapHours, recapKm } from './memory-home';
+import type { Booking, Place, TripEvent, ZoneEvidence } from '@waypoint/shared';
+import { memoryBests, memoryDays, memoryFigures, recapHours, recapKm } from './memory-home';
 
 const present = (
   value: number,
@@ -169,5 +169,104 @@ describe('memoryDays: the contact sheet (ADR-0240 §4)', () => {
       ],
     });
     expect(days.map((day) => day.date)).toEqual(['2026-05-01']);
+  });
+});
+
+describe('memoryBests: firsts and bests (ADR-0240 §4)', () => {
+  const stamp = { tripId: 't1', createdAt: '', updatedAt: '', updatedBy: 'u1' };
+  const ev = (id: string, time: string, extra: Partial<TripEvent> = {}): TripEvent => ({
+    id,
+    date: '2026-05-02',
+    title: id,
+    kind: 'soft',
+    status: 'done',
+    startsAt: `2026-05-02T${time}:00.000Z`,
+    sortOrder: 0,
+    source: 'manual',
+    placeId: `p-${id}`,
+    ...stamp,
+    ...extra,
+  });
+  const evidence = {
+    primaryZone: 'UTC',
+    crossings: [],
+    events: [],
+    places: [],
+  } as unknown as ZoneEvidence;
+  const days = [
+    { date: '2026-05-02', when: 'ש׳ 02.05', numeral: '02', name: 'Asakusa', glyphs: [] },
+  ];
+  const run = (
+    events: TripEvent[],
+    figures: Partial<TripRecap['superlatives']> = {},
+    bookings: Booking[] = [],
+  ) => {
+    const base = recap({});
+    return memoryBests({
+      recap: { ...base, superlatives: { ...base.superlatives, ...figures } },
+      events,
+      bookings,
+      days,
+      evidence,
+    });
+  };
+
+  it('names the first and last thing that happened, with its clock and its place', () => {
+    const rows = run([
+      ev('late', '20:00'),
+      ev('early', '09:00'),
+      ev('skipped', '07:00', { status: 'skipped' }),
+    ]);
+    expect(rows.map((row) => [row.key, row.title])).toEqual([
+      ['first', 'early'],
+      ['last', 'late'],
+    ]);
+    expect(rows[0]!.clock).toContain('09:00');
+    expect(rows[0]!.placeId).toBe('p-early');
+  });
+
+  it('leaves out legs and beds, which are not places the trip was at', () => {
+    const rows = run([
+      ev('flight', '06:00', {
+        kind: 'hard',
+        status: 'planned',
+        category: 'transport',
+        placeId: undefined,
+      }),
+      ev('hotel', '07:00', { kind: 'hard', status: 'planned', category: 'lodging' }),
+      ev('museum', '10:00'),
+    ]);
+    expect(rows.map((row) => row.title)).toEqual(['museum']);
+  });
+
+  it('drops a superlative that repeats a row already named', () => {
+    const rows = run([ev('tour', '09:00'), ev('bar', '21:00')], {
+      longestStop: { state: 'present', value: { eventId: 'tour', minutes: 360 } },
+    });
+    expect(rows.map((row) => row.key)).toEqual(['first', 'last']);
+  });
+
+  it('a day row carries no place, so no pin', () => {
+    const rows = run([ev('a', '09:00')], {
+      busiestDay: { state: 'present', value: { date: '2026-05-02', places: 5 } },
+    });
+    const day = rows.find((row) => row.key === 'busiestDay')!;
+    expect(day.placeId).toBeUndefined();
+    expect(day.title).toContain('Asakusa');
+    expect(day.detail).toBe(t.planHome.past.bests.places(5));
+  });
+
+  it('the fullest day that was also the walked-furthest day is one row, not two', () => {
+    const rows = run([ev('a', '09:00')], {
+      busiestDay: { state: 'present', value: { date: '2026-05-02', places: 5 } },
+      longestWalkDay: {
+        state: 'present',
+        value: { date: '2026-05-02', meters: 600 },
+        estimate: true,
+      },
+    });
+    expect(rows.filter((row) => row.date === '2026-05-02' && !row.placeId)).toHaveLength(1);
+    expect(rows.find((row) => row.key === 'busiestDay')!.detail).toContain('0.6');
+    expect(rows.some((row) => row.key === 'walkDay')).toBe(false);
   });
 });
