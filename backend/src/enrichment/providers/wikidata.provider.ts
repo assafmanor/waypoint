@@ -392,8 +392,11 @@ export class WikidataProvider implements EnrichmentProvider {
     const entities = await this.entities(ids);
     const contexts = await this.candidateContexts(identity, entities);
 
-    let best: { entity: WbEntity; scored: ReturnType<typeof nameProximityConfidence> } | null =
-      null;
+    let best: {
+      entity: WbEntity;
+      scored: ReturnType<typeof nameProximityConfidence>;
+      primary: number;
+    } | null = null;
     for (const entity of entities) {
       // Against ALL of the names the entity offers — labels, aliases and article titles — for
       // the cross-script reason below, and with the entity's own coordinate, which the search
@@ -406,7 +409,10 @@ export class WikidataProvider implements EnrichmentProvider {
       );
       if (!scored) continue;
       seen(entity, scored);
-      if (!best || scored.confidence > best.scored.confidence) best = { entity, scored };
+      const primary = primaryAgreement(identity.name, entity);
+      if (!best || outranks(scored.confidence, primary, best.scored.confidence, best.primary)) {
+        best = { entity, scored, primary };
+      }
     }
     if (!best || !isMatchConfident(best.scored.confidence)) return null;
 
@@ -514,6 +520,7 @@ export class WikidataProvider implements EnrichmentProvider {
       confidence: number;
       nameSimilarity: number;
       corroborated: boolean;
+      primary: number;
     } | null = null;
     // How far away each candidate we were willing to score is — the input to the ambiguity
     // check below, and deliberately measured AFTER the broader-subject skip: a district we
@@ -557,12 +564,14 @@ export class WikidataProvider implements EnrichmentProvider {
       if (!scored) continue;
       seen(entity, scored, corroborated ? undefined : 'distance only');
       if (scored.distanceMeters != null) scoreable.push(scored.distanceMeters);
-      if (!best || scored.confidence > best.confidence) {
+      const primary = primaryAgreement(identity.name, entity);
+      if (!best || outranks(scored.confidence, primary, best.confidence, best.primary)) {
         best = {
           entity,
           confidence: scored.confidence,
           nameSimilarity: scored.nameSimilarity,
           corroborated,
+          primary,
         };
       }
     }
@@ -610,7 +619,12 @@ export class WikidataProvider implements EnrichmentProvider {
     const entities = await this.entities(hits.map((hit) => hit.qid));
     const contexts = await this.candidateContexts(identity, entities);
 
-    let best: { entity: WbEntity; confidence: number; nameSimilarity: number } | null = null;
+    let best: {
+      entity: WbEntity;
+      confidence: number;
+      nameSimilarity: number;
+      primary: number;
+    } | null = null;
     for (const entity of entities) {
       const labels = namesOfEntity(entity);
       const nouns = contexts.get(entity.id ?? '');
@@ -647,8 +661,9 @@ export class WikidataProvider implements EnrichmentProvider {
       if (!scored) continue;
       const capped = Math.min(scored.confidence, MATCH_METHOD_CONFIDENCE.wiki_search);
       seen(entity, { ...scored, confidence: capped });
-      if (!best || capped > best.confidence) {
-        best = { entity, confidence: capped, nameSimilarity: scored.nameSimilarity };
+      const primary = primaryAgreement(identity.name, entity);
+      if (!best || outranks(capped, primary, best.confidence, best.primary)) {
+        best = { entity, confidence: capped, nameSimilarity: scored.nameSimilarity, primary };
       }
     }
     if (!best || !isMatchConfident(best.confidence)) return null;
@@ -852,6 +867,39 @@ const labelOf = (entity: WbEntity): string | undefined =>
    loosening of §5.5's refusal: each comparison still has to clear the confidence gate on its
    own, and the distance veto still applies to whichever name won. What changes is that the
    right name is among the ones tried. */
+
+/**
+ * **How well our name agrees with what the item is called in Hebrew and English** — the tie-break
+ * that keeps `NAME_LANGUAGES` from reopening §16.
+ *
+ * Reading names in two dozen languages found `Chiesa di Sant'Ignazio`, and it also handed
+ * Piccadilly Circus's Underground station the bare label `Piccadilly Circus` (its `mul`, `it`,
+ * `fr`, `de`… labels): station and square then tied at the fuzzy ceiling and the list order
+ * chose the station, measured on the recall probe. A station named after a square is named after
+ * it in every language. The languages the app reads (`he`/`en`, the article titles among them)
+ * are where the two differ, so on a tie that is the evidence that decides.
+ */
+function primaryAgreement(ourName: string, entity: WbEntity): number {
+  const primary = (['he', 'en'] as const).flatMap((lang) => [
+    entity.labels?.[lang]?.value,
+    ...aliasesOf(entity, lang),
+  ]);
+  const titles = Object.values(entity.sitelinks ?? {}).map((link) => link?.title);
+  let best = 0;
+  for (const name of [...primary, ...titles]) {
+    if (name) best = Math.max(best, nameSimilarity(ourName, name));
+  }
+  return best;
+}
+
+/** Higher confidence wins; on a tie, the closer Hebrew/English name (`primaryAgreement`). */
+const outranks = (
+  confidence: number,
+  primary: number,
+  bestConfidence: number,
+  bestPrimary: number,
+): boolean =>
+  confidence > bestConfidence || (confidence === bestConfidence && primary > bestPrimary);
 
 /** Every label the entity read returned — `wbgetentities` is asked for `he|en`. */
 function labelsOf(entity: WbEntity): string[] {
