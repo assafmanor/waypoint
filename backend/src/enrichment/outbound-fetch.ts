@@ -32,6 +32,8 @@ import {
  *    §7's list predates §11.1's rule that the license must be verified on Commons before
  *    an image is stored, so this host is what makes that rule performable.
  *  - `upload.wikimedia.org` — the thumbnail bytes Commons generated (§12.1).
+ *  - `thumb.wikimedia.org` — the same bytes: since ~2026-09-26 Commons' `thumburl` points here,
+ *    and with it missing every image was refused and negative-cached for 30 days.
  *
  * The configured Overpass instance joins this list with ADR-0166's Phase 2, which is
  * blocked on measuring the restaurant fill rate (§12.4) — deliberately not added now,
@@ -45,6 +47,7 @@ const ALLOWED_HOSTS = [
   'www.wikidata.org',
   'commons.wikimedia.org',
   'upload.wikimedia.org',
+  'thumb.wikimedia.org',
   // The FX rate source (ADR-0180 §7). It is not enrichment, and it is here
   // anyway: this file is the process's ONE outbound seat, and the three
   // properties it enforces — allowlisted, timeboxed, size-capped — are exactly

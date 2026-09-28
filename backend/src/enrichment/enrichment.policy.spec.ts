@@ -4,7 +4,9 @@ import {
   ENRICHMENT_FIELD,
   ENRICHMENT_FIELD_TTL_MS,
   ENRICHMENT_MISS_TTL_MS,
+  ENRICHMENT_PIPELINE_VERSION,
   ENRICHMENT_SOURCE,
+  ENRICHMENT_UNAVAILABLE_RETRY_MS,
   MATCH_METHOD,
   type EnrichmentFields,
   type EnrichmentSource,
@@ -17,6 +19,7 @@ import {
 } from './enrichment.policy';
 
 const NOW = new Date('2026-08-05T10:00:00.000Z');
+const V = ENRICHMENT_PIPELINE_VERSION;
 const ago = (ms: number) => new Date(NOW.getTime() - ms).toISOString();
 
 const summaryValue = {
@@ -192,7 +195,13 @@ describe('fieldWantsAttempt', () => {
 
   it('does not re-ask about a miss inside its TTL — the negative cache (§6.4)', () => {
     const fields: EnrichmentFields = {
-      summary: { state: 'absent', attemptedAt: ago(1000), sources: [], reason: 'not_found' },
+      summary: {
+        state: 'absent',
+        attemptedAt: ago(1000),
+        sources: [],
+        reason: 'not_found',
+        pipeline: V,
+      },
     };
     expect(fieldWantsAttempt(fields, ENRICHMENT_FIELD.SUMMARY, NOW)).toBe(false);
   });
@@ -204,14 +213,57 @@ describe('fieldWantsAttempt', () => {
         attemptedAt: ago(ENRICHMENT_MISS_TTL_MS.summary + 1000),
         sources: [],
         reason: 'not_found',
+        pipeline: V,
       },
     };
     expect(fieldWantsAttempt(fields, ENRICHMENT_FIELD.SUMMARY, NOW)).toBe(true);
   });
 
+  it('re-asks at once about a miss an older pipeline concluded', () => {
+    // A recall fix must reach the places already saved, not wait out a 30-day miss.
+    for (const pipeline of [undefined, V - 1]) {
+      const fields: EnrichmentFields = {
+        summary: {
+          state: 'absent',
+          attemptedAt: ago(1000),
+          sources: [],
+          reason: 'not_found',
+          pipeline,
+        },
+      };
+      expect(fieldWantsAttempt(fields, ENRICHMENT_FIELD.SUMMARY, NOW), String(pipeline)).toBe(true);
+    }
+  });
+
+  it('retries a miss a failing source caused within the hour, not the month', () => {
+    const unavailable = (at: string): EnrichmentFields => ({
+      summary: {
+        state: 'absent',
+        attemptedAt: at,
+        sources: [],
+        reason: 'unavailable',
+        pipeline: V,
+      },
+    });
+    expect(fieldWantsAttempt(unavailable(ago(1000)), ENRICHMENT_FIELD.SUMMARY, NOW)).toBe(false);
+    expect(
+      fieldWantsAttempt(
+        unavailable(ago(ENRICHMENT_UNAVAILABLE_RETRY_MS + 1000)),
+        ENRICHMENT_FIELD.SUMMARY,
+        NOW,
+      ),
+    ).toBe(true);
+  });
+
   it('re-asks when a stored timestamp is unreadable rather than trusting it forever', () => {
     const fields: EnrichmentFields = {
-      summary: { state: 'absent', attemptedAt: 'not a date', sources: [], reason: 'not_found' },
+      summary: {
+        state: 'absent',
+        attemptedAt: 'not a date',
+        sources: [],
+        reason: 'not_found',
+        pipeline: V,
+      },
     };
     expect(fieldWantsAttempt(fields, ENRICHMENT_FIELD.SUMMARY, NOW)).toBe(true);
   });
@@ -225,12 +277,48 @@ describe('fieldWantsAttempt', () => {
   it('lists nothing when everything held is fresh or inside its miss TTL', () => {
     const fields: EnrichmentFields = {
       ...presentSummary(ago(1000)),
-      image: { state: 'absent', attemptedAt: ago(1000), sources: [], reason: 'not_found' },
-      hours: { state: 'absent', attemptedAt: ago(1000), sources: [], reason: 'not_found' },
-      iata: { state: 'absent', attemptedAt: ago(1000), sources: [], reason: 'not_found' },
-      servedCity: { state: 'absent', attemptedAt: ago(1000), sources: [], reason: 'not_found' },
-      kind: { state: 'absent', attemptedAt: ago(1000), sources: [], reason: 'not_found' },
-      region: { state: 'absent', attemptedAt: ago(1000), sources: [], reason: 'not_found' },
+      image: {
+        state: 'absent',
+        attemptedAt: ago(1000),
+        sources: [],
+        reason: 'not_found',
+        pipeline: V,
+      },
+      hours: {
+        state: 'absent',
+        attemptedAt: ago(1000),
+        sources: [],
+        reason: 'not_found',
+        pipeline: V,
+      },
+      iata: {
+        state: 'absent',
+        attemptedAt: ago(1000),
+        sources: [],
+        reason: 'not_found',
+        pipeline: V,
+      },
+      servedCity: {
+        state: 'absent',
+        attemptedAt: ago(1000),
+        sources: [],
+        reason: 'not_found',
+        pipeline: V,
+      },
+      kind: {
+        state: 'absent',
+        attemptedAt: ago(1000),
+        sources: [],
+        reason: 'not_found',
+        pipeline: V,
+      },
+      region: {
+        state: 'absent',
+        attemptedAt: ago(1000),
+        sources: [],
+        reason: 'not_found',
+        pipeline: V,
+      },
     };
     // Every member of the enum has to be held for this to be empty, which is the point:
     // a field added to `ENRICHMENT_FIELD` and forgotten here fails right there.

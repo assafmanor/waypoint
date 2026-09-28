@@ -22,6 +22,12 @@ import { RECALL_CORPUS, type RecallCase } from './live-recall.corpus';
 
 const OUT = process.env.PROBE_OUT ?? '/tmp/waypoint-recall-probe.json';
 
+/** **Every response, kept by URL** — so a matcher change re-runs the whole corpus offline in
+ *  seconds instead of against a rate limiter in half an hour. Wikimedia throttles a shared
+ *  egress IP hard (a sandbox saw 429s on its first request), and a probe that can only be run
+ *  once an hour is a probe nobody iterates with. `PROBE_CACHE=` (empty) turns it off. */
+const CACHE = process.env.PROBE_CACHE ?? '/tmp/waypoint-recall-cache.json';
+
 /** Wikimedia rate-limits a tight loop, and a 429 mid-corpus is not a matching result. Spacing
  *  the calls and backing off on a throttle is what makes a 170-case run finish at all. */
 const GAP_MS = Number(process.env.PROBE_GAP_MS ?? 400);
@@ -31,8 +37,22 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 class PoliteFetcher extends EnrichmentFetcher {
   private last = 0;
+  private readonly cache: Record<string, unknown> =
+    CACHE && existsSync(CACHE)
+      ? (JSON.parse(readFileSync(CACHE, 'utf8')) as Record<string, unknown>)
+      : {};
 
   override async fetchJson<T>(url: string, options: EnrichmentFetchOptions = {}): Promise<T> {
+    if (url in this.cache) return this.cache[url] as T;
+    const body = await this.politely<T>(url, options);
+    if (CACHE) {
+      this.cache[url] = body;
+      writeFileSync(CACHE, JSON.stringify(this.cache));
+    }
+    return body;
+  }
+
+  private async politely<T>(url: string, options: EnrichmentFetchOptions): Promise<T> {
     for (let attempt = 0; ; attempt++) {
       const wait = this.last + GAP_MS - Date.now();
       if (wait > 0) await sleep(wait);

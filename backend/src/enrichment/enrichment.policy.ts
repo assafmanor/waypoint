@@ -10,6 +10,8 @@ import {
   ENRICHMENT_ABSENCE_REASON,
   ENRICHMENT_FIELD,
   ENRICHMENT_MISS_TTL_MS,
+  ENRICHMENT_PIPELINE_VERSION,
+  ENRICHMENT_UNAVAILABLE_RETRY_MS,
   enrichmentValueFetchedAt,
   isTextVariantField,
   TEXT_VARIANT_FIELDS,
@@ -89,7 +91,9 @@ export function effectiveLicense(source: EnrichmentSource, value: ProviderValue)
  * Three states, and the middle one is what §6.4's negative cache buys:
  *
  *  - **no entry** — never asked. Ask.
- *  - **`absent`** — asked, nothing there. **Don't ask again until the miss TTL lapses.**
+ *  - **`absent`** — asked, nothing there. **Don't ask again until the miss TTL lapses** —
+ *    unless the miss was a source failing (`unavailable`, an hour) or was concluded by an
+ *    older pipeline (`ENRICHMENT_PIPELINE_VERSION`, now).
  *    Without this, the majority of places — Tokyo restaurants scored 0 of 7 (§11.3) —
  *    re-attempt every provider on every cold read forever.
  *  - **`present`** — ask again only past the value's TTL, and even then the stale value is
@@ -104,10 +108,14 @@ export function fieldWantsAttempt(
   if (!state) return true;
 
   if (state.state === 'absent') {
+    // A miss an older, weaker pipeline concluded is not worth believing any more.
+    if ((state.pipeline ?? 1) < ENRICHMENT_PIPELINE_VERSION) return true;
     const attemptedAt = Date.parse(state.attemptedAt);
-    return (
-      !Number.isFinite(attemptedAt) || now.getTime() - attemptedAt >= ENRICHMENT_MISS_TTL_MS[field]
-    );
+    const ttl =
+      state.reason === ENRICHMENT_ABSENCE_REASON.UNAVAILABLE
+        ? ENRICHMENT_UNAVAILABLE_RETRY_MS
+        : ENRICHMENT_MISS_TTL_MS[field];
+    return !Number.isFinite(attemptedAt) || now.getTime() - attemptedAt >= ttl;
   }
 
   const fetchedAt = enrichmentValueFetchedAt(fields, field);

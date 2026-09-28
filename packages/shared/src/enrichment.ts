@@ -241,6 +241,20 @@ export const ENRICHMENT_MISS_TTL_MS = {
   region: 180 * DAY_MS,
 } as const satisfies Record<EnrichmentField, number>;
 
+/** **Bump when the matcher or the pipeline gets materially better at finding things.**
+ *  A miss concluded by an older pipeline is re-asked on the next read instead of being
+ *  believed for its full miss TTL — otherwise a recall fix reaches a place already saved
+ *  30 days (180 for `kind`/`region`) after it ships. Only misses are re-asked; a present
+ *  value keeps its own TTL. Not a counter to tidy up: lowering it silently re-trusts misses.
+ *
+ *  2 — Hebrew definite article, location-qualified labels, local-language names, the
+ *      `thumb.wikimedia.org` allowlist (2026-09-28). */
+export const ENRICHMENT_PIPELINE_VERSION = 2;
+
+/** How soon an `unavailable` miss is retried — long enough not to hammer a rate limiter
+ *  from every snapshot read, short enough that a 429 costs an hour instead of a month. */
+export const ENRICHMENT_UNAVAILABLE_RETRY_MS = 60 * 60 * 1000;
+
 /** How long a value of `field` from `source` is trusted: the tighter of the field's own
  *  freshness need and the source's ceiling. The field usually wins — the exception that
  *  makes this a `min` rather than a lookup is OSM, whose whole-source ceiling is short
@@ -348,7 +362,7 @@ export const MATCH_REFUSAL = {
  *  for most places is the *common* one rather than an error (§Context 2). */
 export const enrichmentAbsenceReasonSchema = z.union([
   matchRefusalSchema,
-  z.enum(['not_found', 'unstorable', 'attribution_missing']),
+  z.enum(['not_found', 'unstorable', 'attribution_missing', 'unavailable']),
 ]);
 export type EnrichmentAbsenceReason = z.infer<typeof enrichmentAbsenceReasonSchema>;
 
@@ -361,6 +375,11 @@ export const ENRICHMENT_ABSENCE_REASON = {
   /** The value requires visible credit and arrived without any, so it cannot be rendered
    *  lawfully — refused rather than stored as an obligation we cannot discharge. */
   ATTRIBUTION_MISSING: 'attribution_missing',
+  /** A source this field needed **failed** (a 429, a timeout, an outage) — so nobody was
+   *  actually asked. Not a fact about the place, and retried on its own short clock
+   *  (`ENRICHMENT_UNAVAILABLE_RETRY_MS`) rather than believed for a month: Wikimedia
+   *  rate-limits a shared cloud IP readily, and one 429 used to blank a place for 30 days. */
+  UNAVAILABLE: 'unavailable',
 } as const satisfies Record<string, EnrichmentAbsenceReason>;
 
 /** The width asked of Commons' own thumbnailer (`iiurlwidth`).
@@ -524,6 +543,9 @@ export const enrichmentAbsenceSchema = z.object({
   attemptedAt: z.iso.datetime({ offset: true }),
   sources: z.array(enrichmentSourceSchema),
   reason: enrichmentAbsenceReasonSchema,
+  /** The `ENRICHMENT_PIPELINE_VERSION` that concluded this. Absent on rows written before
+   *  the stamp existed, which read as version 1. */
+  pipeline: z.number().int().optional(),
 });
 export type EnrichmentAbsence = z.infer<typeof enrichmentAbsenceSchema>;
 
