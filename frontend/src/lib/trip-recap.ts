@@ -8,8 +8,15 @@
 // Nothing is decided here: `tripRecap` in `@waypoint/shared` is the one derivation, so this page
 // and every share print the same number.
 import { useEffect, useMemo, useState } from 'react';
-import { tripRecap, tripRecapLegKeys, type TripRecap, type TravelEstimate } from '@waypoint/shared';
+import {
+  tripRecap,
+  tripRecapLegKeys,
+  type Trip,
+  type TripRecap,
+  type TravelEstimate,
+} from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
+import { readCachedSnapshot } from './cache';
 import { usePlaceLabels } from '../state/place-labels';
 import { shotOf, type DayShot } from './day-photo';
 import { placeLabelOf } from './place-label';
@@ -69,4 +76,37 @@ export function useTripRecap(): AppTripRecap | undefined {
     const recap = tripRecap({ ...input, legs: read.legs });
     return { ...recap, cover: recap.cover && shotOf(recap.cover, enrichments) };
   }, [input, read, keyId, enrichments]);
+}
+
+/**
+ * **The covers of the trips on `/trips`** (ADR-0240 §7), by trip id: `tripRecap`'s cover over
+ * each trip's cached snapshot, so a card shows the same picture its memory Home opens on. No
+ * trip is in context here, so the rows come from the device; a trip this device never opened
+ * has no snapshot and keeps its flag. Legs are not read: they move figures, never the cover.
+ */
+export function useTripCovers(trips: readonly Pick<Trip, 'id'>[]): ReadonlyMap<string, DayShot> {
+  const ids = trips.map((trip) => trip.id).join('|');
+  const [covers, setCovers] = useState<ReadonlyMap<string, DayShot>>(new Map());
+  useEffect(() => {
+    let live = true;
+    const read = async (tripId: string) => {
+      const snapshot = await readCachedSnapshot(tripId);
+      if (!snapshot) return undefined;
+      const { cover } = tripRecap({
+        ...snapshot,
+        maybes: snapshot.maybeItems,
+        overrides: snapshot.travelModeOverrides,
+        legs: new Map(),
+      });
+      const shot = cover && shotOf(cover, snapshot.enrichments);
+      return shot && ([tripId, shot] as const);
+    };
+    void Promise.all(ids ? ids.split('|').map(read) : []).then((pairs) => {
+      if (live) setCovers(new Map(pairs.filter((pair) => pair !== undefined)));
+    });
+    return () => {
+      live = false;
+    };
+  }, [ids]);
+  return covers;
 }

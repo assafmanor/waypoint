@@ -22,6 +22,9 @@ import { tripChip, type TripChip } from '../lib/active-trip';
 import { daysUntilStartOnDevice } from '../lib/mode';
 import { formatTripDates } from '../lib/time';
 import { useClock } from '../lib/useClock';
+import { useFailableImage } from '../lib/useFailableImage';
+import { useTripCovers } from '../lib/trip-recap';
+import type { DayShot } from '../lib/day-photo';
 import { DEFAULT_TRIP_ICON, GLYPH } from '../constants';
 import { NavArrow } from '../ui/NavArrow';
 import { t } from '../i18n/he';
@@ -68,6 +71,22 @@ function TripMeta({ trip }: { trip: Trip }) {
   );
 }
 
+// **A finished trip's flag slot holds its cover** (ADR-0240 §7), the way a badge holds a
+// photograph (ADR-0167 §1): the same box, so the card gains no height. No cover, or one that no
+// longer loads, is the flag as before.
+function TripFlag({ trip, cover }: { trip: Trip; cover?: DayShot }) {
+  const { src, onError } = useFailableImage(cover?.url);
+  return (
+    <span className="flag" data-photo={src ? '' : undefined}>
+      {src ? (
+        <img src={src} alt="" loading="lazy" decoding="async" onError={onError} />
+      ) : (
+        (trip.icon ?? DEFAULT_TRIP_ICON)
+      )}
+    </span>
+  );
+}
+
 export function AllTrips({
   onOpenAccount,
   onShare,
@@ -86,6 +105,7 @@ export function AllTrips({
   // Falls back to the cached list offline — and on a link too slow to say so yet — so the
   // all-trips view (and the back route into a live trip) keeps working with no network.
   const trips = useTripList();
+  const covers = useTripCovers((trips ?? []).filter((trip) => tripChip(trip, now) === 'past'));
 
   // **THE BACK ARROW AND THE SYSTEM BACK ARE ONE FUNCTION** (owner, session 175). This
   // screen is a declared root (`ROOT_PATHS`), so a structural back here is a no-op and the
@@ -149,7 +169,9 @@ export function AllTrips({
   // a tile with no measurable box — the plain route transition plays instead.
   const pick = (trip: Trip, card: HTMLElement) => {
     setTripId(trip.id);
-    const flying = beginTripHandoff(card.querySelector('.flag'), trip.id);
+    // A cover does not fly: the pill it would land on draws the glyph, and a shared element has
+    // to be the same object at both ends (`lib/trip-handoff.ts`).
+    const flying = beginTripHandoff(card.querySelector('.flag:not([data-photo])'), trip.id);
     navigate('/', flying ? { state: { navDir: NAV_DIR.HANDOFF } } : undefined);
   };
 
@@ -183,7 +205,7 @@ export function AllTrips({
       onClick={(e) => pick(trip, e.currentTarget)}
       {...holdProps(trip)}
     >
-      <span className="flag">{trip.icon ?? DEFAULT_TRIP_ICON}</span>
+      <TripFlag trip={trip} cover={covers.get(trip.id)} />
       <span className="main">
         <span className="t">{trip.name}</span>
         <TripMeta trip={trip} />

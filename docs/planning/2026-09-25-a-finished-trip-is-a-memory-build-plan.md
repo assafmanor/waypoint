@@ -180,7 +180,7 @@ Blocks 5 and 6A. Runs while 3 and 4 build.
 
 Starts today. Needs nothing.
 
-**Built 2026-09-26.** It is described in ADR-0239 §9's "As built" paragraph, and the TTL decision is in its Consequences. No surface reads it yet. Phase 4.1, 3.5's cover and 6A are its first consumers.
+**Built 2026-09-26.** It is described in ADR-0239 §9's "As built" paragraph, and the TTL decision is in its Consequences. Phase 4 and 3.5's cover read it; 6A is next.
 
 - **One pure function, `tripRecap(input)`,** in `packages/shared`. It computes:
   - the figures: days, nights and beds; places by category; kinds (`KIND`) and regions (`REGION`, `SERVED_CITY`); ground, foot and air distance; hours in the air; zones crossed;
@@ -204,20 +204,20 @@ Starts today. Needs nothing.
 
 Split by [ADR-0240](../decisions/0240-the-archive-is-rose.md)'s build phases. 3.1 lands first; 3.2–3.5 then run in parallel.
 
-**Built 2026-09-26** ([build note](2026-09-26-the-archive-is-rose-build.md)), all but 3.5's cover, which waits on Phase 2.
+**Built 2026-09-26** ([build note](2026-09-26-the-archive-is-rose-build.md)); 3.5's cover built 2026-09-29.
 
 - **3.1** The tokens (§2): `--memory`, `--memory-deep`, `--memory-tint`, `--chrome-bg-memory`, `--ok-deep`, both themes. No pixel changes.
 - **3.2** The chrome (§3): `data-phase` on `.app`, the header and `DayStrip`; the rose band and accents; no dimmed pill; the anchor's age (`לפני · 4 ימים`).
 - **3.3** The day list as a record (§5), **including the shipped defect**: `buildTimeTree` (`lib/time.ts:826`) drops skipped rows, so a finished trip never shows what was skipped.
 - **3.4** The Index (§6): Trip's `.archive-banner` in rose, no wash, tile copy that says what was.
-- **3.5** /trips (§7): no `.is-past` dimming; the cover in the flag slot once Phase 2 picks it.
+- **3.5** /trips (§7): no `.is-past` dimming; the cover in the flag slot. **Built 2026-09-29** (ADR-0240 §7).
 
 The palette and chrome across every tab of a finished trip:
 
 - the header anchor's words;
 - the Index banner and its treatment (ADR-0049 §2's remainder);
 - Plan's archive rows as a record;
-- `/trips` past cards with their cover (the cover comes from 2; until 2 lands the card ships without one).
+- `/trips` past cards with their cover.
 
 Updates `design-language.md` (drop its "not built yet" marks) and marks ADR-0240 built.
 
