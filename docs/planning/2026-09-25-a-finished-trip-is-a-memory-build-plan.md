@@ -268,7 +268,7 @@ Two sub-phases that can run in parallel with each other.
 Drawn and decided in [ADR-0241](../decisions/0241-a-finished-trip-plays-back-and-leaves-the-app.md) §4–§6.
 
 - **6A.0** _(new, lands first)_ `memoryFigures`' selection and `recapKm` / `recapHours` move from `frontend/src/lib/memory-home.ts` to `packages/shared`, so the Home, the beat, the card and the book print one string per figure. A small extraction. **Built 2026-09-29:** `packages/shared/src/recap-figures.ts` (`memoryFigureValues`, `recapKm`, `recapHours`, `MEMORY_FIGURES_MAX`), with `DISTANCE_STEP` beside it in shared's constants. Values only; the Home's `memoryFigures` adds its label by key.
-- **6A.1** The past-tense narrative _(spec 3b)_: a retrospective skill variant on the existing generator, over rows that happened (`recapHappened`), with the same allowlist and fallback.
+- **6A.1** The past-tense narrative _(spec 3b)_: a retrospective skill variant on the existing generator, over rows that happened (`recapHappened`), with the same allowlist and fallback. **Built 2026-09-29** (ADR-0241's 6A.1 build note). The book (6A.2) is its first caller.
 - **6A.2** The trip book _(spec 3c, ADR-0241 §6)_: `sharing/trip-book.template.ts` beside the itinerary's, on the same projection plus `TripRecapService`, at the link's policy.
   - Summary has no clocks. Full adds them. With notes in the policy, `מה כתבנו`.
   - A cover page, then the days with a record, two to a page and never split, then `במספרים`, `ראשונים וטובים` and `בפעם הבאה`.

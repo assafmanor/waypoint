@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   NARRATIVE_SOURCE,
+  NARRATIVE_TENSE,
   NO_SENSITIVE_FIELDS,
   SHARE_DAY_KIND,
   SHARE_DAY_SUMMARY_KIND,
@@ -134,6 +135,20 @@ describe('buildSummaryNarrativeInput', () => {
     expect(narrativeInputHash(a)).toBe(narrativeInputHash(b));
   });
 
+  // **A retrospective input says so, and a planned one is byte-for-byte what it was** (ADR-0241,
+  // 6A.1): absent means planned, so adding the tense retired no stored narrative.
+  it('marks only a retrospective input with its tense, and hashes the two apart', () => {
+    const planned = buildSummaryNarrativeInput([PRIVATE_DAY], [], 'he');
+    const past = buildSummaryNarrativeInput([PRIVATE_DAY], [], 'he', NARRATIVE_TENSE.RETROSPECTIVE);
+
+    expect(planned).not.toHaveProperty('tense');
+    expect(buildSummaryNarrativeInput([PRIVATE_DAY], [], 'he', NARRATIVE_TENSE.PLANNED)).toEqual(
+      planned,
+    );
+    expect(past.tense).toBe(NARRATIVE_TENSE.RETROSPECTIVE);
+    expect(narrativeInputHash(past)).not.toBe(narrativeInputHash(planned));
+  });
+
   it('hashes a renamed event to a different key, which is what makes a result stale', () => {
     const renamed: SharedDay = {
       ...PRIVATE_DAY,
@@ -191,7 +206,7 @@ describe('ItineraryNarrativeService', () => {
   ): ItineraryNarrativeGenerator => ({
     provider: 'test-provider',
     model: 'test-model',
-    skillVersion: 'v1',
+    skillVersions: { planned: 'v1', retrospective: 'v1-past' },
     generate: vi.fn().mockResolvedValue(VALID_OUTPUT),
     ...overrides,
   });
@@ -310,8 +325,35 @@ describe('ItineraryNarrativeService', () => {
       expect(await prisma.itineraryNarrative.count({ where: { tripId } })).toBe(1),
     );
 
-    const resolved = await resolve(serviceWith(stub({ skillVersion: 'v2' })));
+    const resolved = await resolve(
+      serviceWith(stub({ skillVersions: { planned: 'v2', retrospective: 'v1-past' } })),
+    );
     expect(resolved.source).toBe(NARRATIVE_SOURCE.DETERMINISTIC);
+  });
+
+  it('keys a retrospective result by the past-tense skill version, apart from the planned one', async () => {
+    const service = serviceWith(stub());
+    await resolve(service);
+    await vi.waitFor(async () =>
+      expect(await prisma.itineraryNarrative.count({ where: { tripId } })).toBe(1),
+    );
+
+    const past = () =>
+      service.resolve(
+        tripId,
+        [PRIVATE_DAY],
+        ['רייקיאוויק'],
+        'he',
+        { title: 'fallback', summary: '' },
+        NARRATIVE_TENSE.RETROSPECTIVE,
+      );
+    expect((await past()).source).toBe(NARRATIVE_SOURCE.DETERMINISTIC);
+    await vi.waitFor(async () =>
+      expect(
+        await prisma.itineraryNarrative.count({ where: { tripId, skillVersion: 'v1-past' } }),
+      ).toBe(1),
+    );
+    expect((await past()).source).toBe(NARRATIVE_SOURCE.GENERATED);
   });
 
   it('treats stored JSON that no longer validates as absent', async () => {

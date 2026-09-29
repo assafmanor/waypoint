@@ -55,6 +55,9 @@ import {
   resolveTextVariant,
   SUMMARY_LANG_PREFERENCE,
   type TripEnrichments,
+  NARRATIVE_TENSE,
+  type NarrativeTense,
+  recapHappened,
 } from '@waypoint/shared';
 
 import { EnrichmentService } from '../enrichment/enrichment.service';
@@ -62,6 +65,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import {
   applyNarrative,
   fallbackTripTitle,
+  type NarrativeStrings,
   routeLabelsFrom,
   routeStrip,
 } from './itinerary-narrative.fallback';
@@ -758,7 +762,16 @@ export class SharingProjectionService {
     return share;
   }
 
-  async project(share: SharePolicy, locale = DEFAULT_LOCALE): Promise<SharedItinerary> {
+  /**
+   * @param options.narrativeTense `retrospective` tells the narrative in the past tense, over the
+   *   rows that happened (ADR-0241, 6A.1). The caller decides when a trip is behind it: the
+   *   projection never reads the clock for it.
+   */
+  async project(
+    share: SharePolicy,
+    locale = DEFAULT_LOCALE,
+    options: { narrativeTense?: NarrativeTense } = {},
+  ): Promise<SharedItinerary> {
     const detail = share.detailLevel;
     const orienting = detail !== SHARE_DETAIL_LEVEL.SUMMARY;
 
@@ -1026,14 +1039,9 @@ export class SharingProjectionService {
       ).map((leg) => leg.id),
     );
 
-    const days: SharedDay[] = byDay.map(({ date, events: dayEvents }, index) => {
-      // **The stay leaves the schedule before anything else looks at it.** A lodging event
-      // sorts by its check-in hour, which put it between the two legs of the outbound
-      // flight; and its `startsAt`/`endsAt` span midnight, so it printed `15:00–11:00`.
-      // Both stop being true once it is the day's frame rather than one of its rows.
-      const scheduled = dayEvents.filter((event) => event.booking?.type !== BOOKING_TYPE.HOTEL);
-      const projected = this.withJourneys(
-        scheduled,
+    const projectRows = (rows: ShareEventRow[], rowChains: typeof chains) =>
+      this.withJourneys(
+        rows,
         zones,
         detail,
         journeys,
@@ -1042,9 +1050,17 @@ export class SharingProjectionService {
         labelById,
         codeById,
         (placeId) => capCaption(textOf(placeId, 'summary')),
-        chains,
+        rowChains,
         placeById,
       );
+
+    const days: SharedDay[] = byDay.map(({ date, events: dayEvents }, index) => {
+      // **The stay leaves the schedule before anything else looks at it.** A lodging event
+      // sorts by its check-in hour, which put it between the two legs of the outbound
+      // flight; and its `startsAt`/`endsAt` span midnight, so it printed `15:00–11:00`.
+      // Both stop being true once it is the day's frame rather than one of its rows.
+      const scheduled = dayEvents.filter((event) => event.booking?.type !== BOOKING_TYPE.HOTEL);
+      const projected = projectRows(scheduled, chains);
       const facts = {
         ...dayFacts(dayEvents, index),
         tripShape: shape.shape,
@@ -1162,12 +1178,19 @@ export class SharingProjectionService {
     // Words last, and never in the reader's way: a stored generated narrative may replace
     // these strings, and anything else — no result, a stale hash, an invalid one, no
     // provider at all — returns the deterministic ones without waiting (ADR-0213 §2).
-    const narrative = await this.narrative.resolve(share.tripId, days, routeLabels, locale, {
+    const fallback = {
       title: fallbackTripTitle(wholeRoute, trip.name),
       // Deliberately empty for a deterministic narrative: the counts beside it are
       // `trip.*` fields, and the sentence joining them is each renderer's own copy.
       summary: '',
-    });
+    };
+    const narrative =
+      options.narrativeTense === NARRATIVE_TENSE.RETROSPECTIVE
+        ? await this.retrospectiveNarrative(share.tripId, byDay, locale, fallback, {
+            projectRows,
+            principalStop,
+          })
+        : await this.narrative.resolve(share.tripId, days, routeLabels, locale, fallback);
 
     return sharedItinerarySchema.parse({
       status: 'live',
@@ -1207,6 +1230,48 @@ export class SharingProjectionService {
       appendix:
         detail === SHARE_DETAIL_LEVEL.EVERYTHING ? this.buildAppendix(ops.unattached) : undefined,
     });
+  }
+
+  /**
+   * **The trip told in the past tense** (ADR-0241, 6A.1; spec 3b): the same projection and the
+   * same allowlisted builder, over only the rows that happened (`recapHappened`), so a skipped
+   * dinner is never written as a memory. The route is where the trip went, and a day where
+   * nothing happened has no line, as on the contact sheet. Journeys are re-chained over the
+   * happened rows, so a skipped leg does not ride inside one that flew. The fallback is the
+   * planned one's: the deterministic words are tense-free.
+   */
+  private retrospectiveNarrative(
+    tripId: string,
+    byDay: { date: string; events: ShareEventRow[] }[],
+    locale: string,
+    fallback: { title: string; summary: string },
+    project: {
+      projectRows: (
+        rows: ShareEventRow[],
+        chains: ReturnType<typeof chainJourneys>,
+      ) => SharedEvent[];
+      principalStop: (rows: ShareEventRow[]) => string | undefined;
+    },
+  ): Promise<NarrativeStrings> {
+    const happened = byDay.map((day) => day.events.filter(recapHappened));
+    const scheduled = happened.map((rows) =>
+      rows.filter((event) => event.booking?.type !== BOOKING_TYPE.HOTEL),
+    );
+    const chains = chainJourneys(scheduled.flat());
+    const days = scheduled.flatMap((rows, index) =>
+      rows.length > 0
+        ? [{ ordinal: index + 1, sections: this.groupByDaypart(project.projectRows(rows, chains)) }]
+        : [],
+    );
+    const route = routeStrip(routeLabelsFrom(happened.map(project.principalStop)));
+    return this.narrative.resolve(
+      tripId,
+      days,
+      route,
+      locale,
+      fallback,
+      NARRATIVE_TENSE.RETROSPECTIVE,
+    );
   }
 
   /**

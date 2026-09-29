@@ -27,6 +27,9 @@ export const SHARE_EVENT_SELECT = {
   icon: true,
   category: true,
   kind: true,
+  /** Never published: read only to tell which rows happened (`recapHappened`), for a
+   *  retrospective narrative (ADR-0241, 6A.1). */
+  status: true,
   date: true,
   /** **A multi-day stay's far end** — nothing published reads it, and the day-zone consensus
    *  does: `eventsOnDate` counts a four-night hotel as evidence on every night it covers, so
