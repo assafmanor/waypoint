@@ -15,6 +15,7 @@ import { ItineraryNarrativeService } from './itinerary-narrative.service';
 import { SharingProjectionService } from './sharing-projection.service';
 import { SharingService } from './sharing.service';
 import type { PdfBrowserService } from './pdf-browser.service';
+import { TripRecapService } from './trip-recap.service';
 
 const ADMIN = 'u-assaf';
 const PEER = 'u-noam';
@@ -55,8 +56,15 @@ describe('SharingService', () => {
   // stub. `pdf-browser.service.spec.ts` drives the real Chromium.
   const pdfBrowser = {
     render: async () => Buffer.from('%PDF-1.4'),
+    renderBook: async () => Buffer.from('%PDF-1.4'),
   } as unknown as PdfBrowserService;
-  const service = new SharingService(prisma, projection, documents, pdfBrowser);
+  const service = new SharingService(
+    prisma,
+    projection,
+    documents,
+    pdfBrowser,
+    new TripRecapService(prisma, noEnrichment()),
+  );
 
   let tripId: string;
   let otherTripId: string;
@@ -313,5 +321,16 @@ describe('SharingService', () => {
     await expect(service.publicDocument(config.code, documentId)).rejects.toBeInstanceOf(
       NotFoundException,
     );
+  });
+
+  // The book is the link's own render (ADR-0241 §6): an active code prints it, and a revoked
+  // one is the same 404 every public read gives.
+  it('prints the trip book behind an active code, and nothing behind a revoked one', async () => {
+    const config = await service.upsert(tripId, ADMIN, FULL);
+    const book = await service.book(config.code);
+    expect(book.filename).toBe(`${TRIP_NAME} · ספר הטיול.pdf`);
+
+    await service.revoke(tripId, config.code, ADMIN);
+    await expect(service.book(config.code)).rejects.toBeInstanceOf(NotFoundException);
   });
 });

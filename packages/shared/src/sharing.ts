@@ -467,6 +467,13 @@ export function tripShapeOf(stays: readonly (string | undefined)[]): {
 export const SHARE_OP_KIND = { CODE: 'code', NOTE: 'note', FILE: 'file' } as const;
 export type ShareOpKind = (typeof SHARE_OP_KIND)[keyof typeof SHARE_OP_KIND];
 
+const sharedNoteOpSchema = z.strictObject({
+  kind: z.literal(SHARE_OP_KIND.NOTE),
+  title: z.string().optional(),
+  body: z.string().optional(),
+});
+export type SharedNoteOp = z.infer<typeof sharedNoteOpSchema>;
+
 export const sharedOpSchema = z.discriminatedUnion('kind', [
   /** A booking reference. `provider` and `code` stay separate values rather than one
    *  composed string, for the reason the day title had to stop being one: a renderer
@@ -476,11 +483,7 @@ export const sharedOpSchema = z.discriminatedUnion('kind', [
     code: z.string(),
     provider: z.string().optional(),
   }),
-  z.strictObject({
-    kind: z.literal(SHARE_OP_KIND.NOTE),
-    title: z.string().optional(),
-    body: z.string().optional(),
-  }),
+  sharedNoteOpSchema,
   z.strictObject({
     kind: z.literal(SHARE_OP_KIND.FILE),
     /** The bearer download handle under the share's own code — §1's single exception,
@@ -950,6 +953,15 @@ export const sharedDaySchema = z.strictObject({
   // start) survives the subtraction that the repetition did not.
   photo: sharedPhotoSchema.optional(),
   sections: z.array(sharedDaypartSectionSchema),
+  /**
+   * **The record's two extras** (ADR-0241 §6), set only by a projection of the record (what
+   * happened, for the trip book) and never on the live link. `skipped` is the titles of the
+   * day's rows marked skipped, for `דילגנו · …`. `notes` is the notes written on the day's
+   * rows, in the order they were written (the memory Home's journal order), moved off the rows
+   * so the book can print them as the day's `מה כתבנו`; Everything with notes only.
+   */
+  skipped: z.array(z.string()).optional(),
+  notes: z.array(sharedNoteOpSchema).optional(),
 });
 export type SharedDay = z.infer<typeof sharedDaySchema>;
 

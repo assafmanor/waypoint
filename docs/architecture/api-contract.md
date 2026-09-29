@@ -258,6 +258,7 @@ SPA route (the service worker must keep answering it with the app shell), and
 | DELETE | `/trips/:tripId/share`                        | → `204` (**admin-only**; the row and its configuration survive, the code stops resolving)                           |
 | GET    | `/shared-itineraries/:code`                   | **public** → `SharedItinerary` (20/min per IP; `404` for missing, revoked and rotated alike)                        |
 | GET    | `/shared-itineraries/:code/pdf`               | **public** → `application/pdf`, attachment (5/min per IP; `503` + `Retry-After` when the render queue is saturated) |
+| GET    | `/shared-itineraries/:code/book`              | **public** → the trip book, `application/pdf` attachment: the record at this link's policy (ADR-0241 §6; as `/pdf`) |
 | GET    | `/shared-itineraries/:code/documents/:handle` | **public** → the file's bytes, attachment (only a document explicitly selected for THIS active share)               |
 
 **The code is the credential** — the same durable-row technique as the invite (ADR-0067), so

@@ -3533,6 +3533,8 @@ export const t = {
       actions: {
         liveLink: 'שיתוף לינק חי',
         pdf: 'שיתוף PDF',
+        // After the trip the paper is the book, not the plan (ADR-0241 §4).
+        book: 'ספר הטיול',
         download: 'הורדה',
         // A policy with no link yet. The press is what creates it, exactly as before — the
         // sheet must never publish a trip just because somebody looked at a control.
@@ -3556,6 +3558,12 @@ export const t = {
         /** Everything switched off is still a policy, and saying so beats an empty title
          *  that reads as a rendering fault. */
         none: 'בלי תוספות',
+      },
+      // The file's name is `backend/src/sharing/hebrew.copy.ts`'s `book.filename` by value, so a
+      // shared book and a downloaded one are called the same thing.
+      book: {
+        preparing: 'מכינים את ספר הטיול',
+        filename: (tripName: string) => `${tripName} · ספר הטיול.pdf`,
       },
       pdf: {
         preparing: 'מכינים את ה-PDF',

@@ -38,6 +38,11 @@ export function sharedItineraryPdfUrl(code: string): string {
   return `${API_BASE_URL}/shared-itineraries/${encodeURIComponent(code)}/pdf`;
 }
 
+/** The trip book: a finished trip's record on paper, at the same link's policy (ADR-0241 §6). */
+export function sharedTripBookUrl(code: string): string {
+  return `${API_BASE_URL}/shared-itineraries/${encodeURIComponent(code)}/book`;
+}
+
 /**
  * A link that is gone, and one that never was, are the same thing here — on purpose. The
  * server refuses to distinguish them, so the client must not invent a distinction either;

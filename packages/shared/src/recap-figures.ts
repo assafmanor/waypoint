@@ -3,8 +3,10 @@
 // and the trip book all print from this, so a figure is one string wherever it appears.
 //
 // Values only: the label is copy, and each consumer looks its own up by `key`.
-import { DISTANCE_STEP } from './constants';
-import type { RecapFigure, TripRecap } from './trip-recap';
+import { isTransportEvent } from './icons';
+import { BOOKING_TYPE, DISTANCE_STEP, EVENT_CATEGORY } from './constants';
+import type { Booking, TripEvent } from './entities';
+import { recapHappened, type RecapFigure, type TripRecap } from './trip-recap';
 
 /** **How many figures print** (ADR-0240 §4): three sit in a row, four go 2×2, five go 3 + 2. A
  *  sixth would be a second screen of numbers above the days. */
@@ -77,4 +79,77 @@ export function memoryFigureValues(recap: TripRecap): MemoryFigureValue[] {
   ]
     .filter((figure): figure is MemoryFigureValue => figure !== undefined)
     .slice(0, MEMORY_FIGURES_MAX);
+}
+
+/**
+ * **Which rows `ראשונים וטובים` names** (ADR-0240 §4, moved here for the trip book in 6A.2), so
+ * the Home and the book pick the same five. The first and last thing the trip did, the longest
+ * stop, the fullest day and the day walked furthest. The three superlatives are `tripRecap`'s own;
+ * first and last are the earliest and latest stop that happened. A stop is a place the trip was
+ * AT: not a leg (its ends are airports) and not a bed. A row that would repeat another's subject
+ * is dropped, and one day that is both the fullest and the one walked furthest is one row.
+ */
+export type MemoryBestPick =
+  | { key: 'first' | 'last'; event: TripEvent }
+  | { key: 'longestStop'; event: TripEvent; minutes: number }
+  /** `walk`: the day's walk, when the fullest day is also the one walked furthest. */
+  | { key: 'busiestDay'; date: string; places: number; walk?: string }
+  | { key: 'walkDay'; date: string; walk: string };
+
+export function memoryBestPicks(input: {
+  recap: TripRecap;
+  events: readonly TripEvent[];
+  bookings: readonly Booking[];
+}): MemoryBestPick[] {
+  const { recap, events, bookings } = input;
+  const bookingOf = (event: TripEvent) =>
+    event.bookingId ? bookings.find((b) => b.id === event.bookingId) : undefined;
+  const stops = events
+    .filter((event) => recapHappened(event) && event.startsAt)
+    .filter((event) => {
+      const booking = bookingOf(event);
+      if (isTransportEvent(event, booking)) return false;
+      return booking
+        ? booking.type !== BOOKING_TYPE.HOTEL
+        : event.category !== EVENT_CATEGORY.LODGING;
+    })
+    .sort((a, b) => Date.parse(a.startsAt!) - Date.parse(b.startsAt!));
+
+  const picks: MemoryBestPick[] = [];
+  const seen = new Set<string>();
+  const first = stops[0];
+  const last = stops.at(-1);
+  if (first) {
+    picks.push({ key: 'first', event: first });
+    seen.add(first.id);
+  }
+  const { longestStop, busiestDay, longestWalkDay } = recap.superlatives;
+  if (longestStop.state === 'present' && !seen.has(longestStop.value.eventId)) {
+    const event = events.find((e) => e.id === longestStop.value.eventId);
+    if (event) {
+      picks.push({ key: 'longestStop', event, minutes: longestStop.value.minutes });
+      seen.add(event.id);
+    }
+  }
+  const walk =
+    longestWalkDay.state === 'present'
+      ? `${longestWalkDay.estimate ? RECAP_ESTIMATE_MARK : ''}${recapKm(longestWalkDay.value.meters)}`
+      : undefined;
+  const sameDay =
+    busiestDay.state === 'present' &&
+    longestWalkDay.state === 'present' &&
+    busiestDay.value.date === longestWalkDay.value.date;
+  if (busiestDay.state === 'present') {
+    picks.push({
+      key: 'busiestDay',
+      date: busiestDay.value.date,
+      places: busiestDay.value.places,
+      ...(sameDay && walk ? { walk } : {}),
+    });
+  }
+  if (longestWalkDay.state === 'present' && !sameDay && walk) {
+    picks.push({ key: 'walkDay', date: longestWalkDay.value.date, walk });
+  }
+  if (last && !seen.has(last.id)) picks.push({ key: 'last', event: last });
+  return picks;
 }

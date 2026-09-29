@@ -4,7 +4,27 @@
 // same `RouteLeg` rows the app's route pack is cut from, and `tripRecap` does the rest — so the app
 // and every share print one number for one trip.
 import { Injectable } from '@nestjs/common';
-import { tripRecap, tripRecapLegKeys, type TripRecap } from '@waypoint/shared';
+import {
+  tripRecap,
+  tripRecapLegKeys,
+  tripZoneCrossings,
+  type Booking,
+  type MaybeItem,
+  type TripEvent,
+  type TripRecap,
+  type ZoneEvidence,
+} from '@waypoint/shared';
+
+/** The recap and the rows it was counted from, so a renderer that names a row (the trip book's
+ *  firsts and bests) reads the same rows rather than a second query of its own. */
+export interface TripRecord {
+  recap: TripRecap;
+  events: TripEvent[];
+  bookings: Booking[];
+  maybes: MaybeItem[];
+  /** What a row's clock is read in (`eventDisplayZones`), built as the app builds it. */
+  evidence: ZoneEvidence;
+}
 import { EnrichmentService } from '../enrichment/enrichment.service';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -25,6 +45,10 @@ export class TripRecapService {
   ) {}
 
   async recapFor(tripId: string): Promise<TripRecap> {
+    return (await this.recordFor(tripId)).recap;
+  }
+
+  async recordFor(tripId: string): Promise<TripRecord> {
     const where = { tripId };
     const [trip, events, bookings, places, maybes, overrides] = await Promise.all([
       this.prisma.trip.findUniqueOrThrow({ where: { id: tripId } }),
@@ -57,6 +81,18 @@ export class TripRecapService {
           select: { key: true, durationSeconds: true, distanceMeters: true },
         })
       : [];
-    return tripRecap({ ...input, legs: new Map(legs.map((leg) => [leg.key, leg])) });
+    return {
+      recap: tripRecap({ ...input, legs: new Map(legs.map((leg) => [leg.key, leg])) }),
+      events: input.events,
+      bookings: input.bookings,
+      maybes: input.maybes,
+      evidence: {
+        events: input.events,
+        bookings: input.bookings,
+        places: input.places,
+        crossings: tripZoneCrossings(input.events, input.bookings, input.places),
+        primaryZone: input.trip.timezone,
+      },
+    };
   }
 }

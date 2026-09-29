@@ -598,10 +598,10 @@ describe('SharingProjectionService', () => {
     expect(projection.narrative.source).toBe('deterministic');
   });
 
-  // **The past tense is written from what happened** (ADR-0241, 6A.1; spec 3b). The fixture's
-  // two hard rows count (nobody skipped them) and its soft rows were never marked `היינו`, so
-  // the retrospective input holds the landing and the zip line and nothing else.
-  it('hands a retrospective narrative only the rows that happened', async () => {
+  // **The record is what happened** (ADR-0241 §6 and 6A.1; spec 3b). The fixture's two hard
+  // rows count (nobody skipped them) and its soft rows were never marked `היינו`, so the record,
+  // and the past-tense narrative written from it, hold the landing and the zip line alone.
+  it('projects the record, and tells its narrative in the past tense', async () => {
     const generate = vi.fn().mockResolvedValue(null);
     const generator: ItineraryNarrativeGenerator = {
       provider: 'test',
@@ -616,7 +616,10 @@ describe('SharingProjectionService', () => {
     );
     const share = await withModel.requireActiveShare(await shareAt(SHARE_DETAIL_LEVEL.SUMMARY));
 
-    await withModel.project(share, 'he', { narrativeTense: NARRATIVE_TENSE.RETROSPECTIVE });
+    const book = await withModel.project(share, 'he', { record: true });
+    expect(
+      book.days.map((day) => day.sections.flatMap((section) => section.events.map((e) => e.title))),
+    ).toEqual([['נחיתה בקפלוויק'], ['אומגה']]);
     const [past] = generate.mock.calls.at(-1)!;
     expect(past.tense).toBe(NARRATIVE_TENSE.RETROSPECTIVE);
     expect(
@@ -634,6 +637,57 @@ describe('SharingProjectionService', () => {
     const [planned] = generate.mock.calls.at(-1)!;
     expect(planned).not.toHaveProperty('tense');
     expect(JSON.stringify(planned)).toContain('אורות הצפון');
+  });
+
+  // A skipped row is the day's `דילגנו · …`, and a note on a row that happened is the day's
+  // `מה כתבנו`, lifted off the row in the order it was written. The note on nothing stays in
+  // the appendix.
+  it('carries what a day skipped and the notes written on its rows', async () => {
+    const [aurora, zip] = await Promise.all([
+      prisma.event.findFirstOrThrow({ where: { tripId, title: 'אורות הצפון' } }),
+      prisma.event.findFirstOrThrow({ where: { tripId, title: 'אומגה' } }),
+    ]);
+    await prisma.event.update({ where: { id: aurora.id }, data: { status: 'skipped' } });
+    const later = await prisma.note.create({
+      data: {
+        tripId,
+        eventId: zip.id,
+        body: 'שנייה',
+        createdAt: new Date('2026-08-30T22:00:00Z'),
+        createdBy: OWNER,
+        updatedBy: OWNER,
+      },
+    });
+    const earlier = await prisma.note.create({
+      data: {
+        tripId,
+        eventId: zip.id,
+        body: 'ראשונה',
+        createdAt: new Date('2026-08-30T21:30:00Z'),
+        createdBy: OWNER,
+        updatedBy: OWNER,
+      },
+    });
+    try {
+      const share = await service.requireActiveShare(
+        await shareAt(SHARE_DETAIL_LEVEL.EVERYTHING, { includeNotesAndTasks: true }),
+      );
+      const book = await service.project(share, 'he', { record: true });
+      // 01:10 on the 30th is the night of the 29th (`sharePreviousNight`), so day one skipped it.
+      expect(book.days.find((day) => day.ordinal === 1)!.skipped).toEqual(['אורות הצפון']);
+      const day2 = book.days.find((day) => day.ordinal === 2)!;
+      expect(day2.notes?.map((note) => note.body)).toEqual(['ראשונה', 'שנייה']);
+      expect(JSON.stringify(day2.sections)).not.toContain('ראשונה');
+      expect(book.appendix?.ops?.map((op) => (op.kind === 'note' ? op.title : undefined))).toEqual([
+        'פתק',
+      ]);
+
+      const live = await service.project(share, 'he');
+      expect(live.days.some((day) => day.skipped || day.notes)).toBe(false);
+    } finally {
+      await prisma.note.deleteMany({ where: { id: { in: [later.id, earlier.id] } } });
+      await prisma.event.update({ where: { id: aurora.id }, data: { status: aurora.status } });
+    }
   });
 
   // **The night before is not the morning after** (owner, 2026-08-30: _"The night part gets

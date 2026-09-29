@@ -88,7 +88,7 @@ import {
 import { API_BASE_URL, API_PHASE, API_TIMEOUT_MS, AVATAR_UPLOAD_FILENAME } from '../constants';
 import type { MapBounds } from './map-camera';
 import { withDeadline } from './deadline';
-import { sharedItineraryPdfUrl } from './share-itinerary';
+import { sharedItineraryPdfUrl, sharedTripBookUrl } from './share-itinerary';
 import { evictCachedDocument, readCachedBlob, writeCachedBlob } from './doc-cache';
 
 // Defined in `constants.ts` (a primitive needs it without importing this module) and
@@ -1177,6 +1177,13 @@ export async function stopAllTripShares(tripId: string): Promise<void> {
  *  token refresh for a request that never needed one. */
 export async function fetchSharedItineraryPdf(code: string): Promise<Blob> {
   const res = await fetch(sharedItineraryPdfUrl(code));
+  if (!res.ok) return throwApiError(res);
+  return res.blob();
+}
+
+/** The trip book behind a link (ADR-0241 §6). Public, so a plain `fetch` for the reason above. */
+export async function fetchSharedTripBook(code: string): Promise<Blob> {
+  const res = await fetch(sharedTripBookUrl(code));
   if (!res.ok) return throwApiError(res);
   return res.blob();
 }
