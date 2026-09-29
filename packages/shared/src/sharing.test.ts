@@ -133,6 +133,23 @@ describe('sharePreviousNight', () => {
 });
 
 describe('upsertTripShareSchema', () => {
+  // ADR-0242 §3: a list is a Summary share of one kind, and only that.
+  it('accepts a kind only at Summary', () => {
+    const list = {
+      detailLevel: SHARE_DETAIL_LEVEL.SUMMARY,
+      sensitive: NO_SENSITIVE_FIELDS,
+      documentIds: [],
+      scope: { category: 'food' },
+    };
+    expect(upsertTripShareSchema.parse(list)).toEqual(list);
+    expect(
+      upsertTripShareSchema.safeParse({ ...list, detailLevel: SHARE_DETAIL_LEVEL.FULL }).success,
+    ).toBe(false);
+    expect(upsertTripShareSchema.safeParse({ ...list, scope: { query: 'ramen' } }).success).toBe(
+      false,
+    );
+  });
+
   const full = {
     detailLevel: SHARE_DETAIL_LEVEL.FULL,
     sensitive: NO_SENSITIVE_FIELDS,

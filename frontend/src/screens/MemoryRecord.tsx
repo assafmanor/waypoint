@@ -6,15 +6,19 @@
 // keeps only the kinds' counts, each a way into the search on its kind (owner, 2026-09-27: the
 // list of the fullest kind was most of the page). The rows go through the app's one reveal
 // (ADR-0120), so a chip tap or a keystroke collapses rows in place.
-import { useMemo, useState } from 'react';
-import type { EventCategory } from '@waypoint/shared';
+import { useEffect, useMemo, useState } from 'react';
+import { MEMBERSHIP_ROLE, type EventCategory, type TripShareConfig } from '@waypoint/shared';
 import { DOT_SEPARATOR } from '../constants';
 import { t } from '../i18n/he';
 import { autoIsolate } from '../lib/bidi';
 import { EVENT_CATEGORY_OPTIONS } from '../lib/category-options';
 import { countVisible, revealRows } from '../lib/filter-reveal';
 import { matchesRecordQuery, recordKinds, type RecordRow } from '../lib/memory-home';
+import { fetchTripShares } from '../lib/api';
+import { useAuth } from '../state/auth-state';
 import { useMode } from '../state/mode-state';
+import { useTrip } from '../state/trip-state';
+import { ListShareSheet } from '../ui/ListShareSheet';
 import { ListRow } from '../ui/domain/ListRow';
 import { EmptyState } from '../ui/feedback';
 import { Icon } from '../ui/Icon';
@@ -100,6 +104,66 @@ export function RecordKinds({
   );
 }
 
+/**
+ * **The list's send, under the list it sends** (ADR-0242 §1). The trip's links are read once
+ * per search, so moving between chips asks nothing. An admin always has it; anyone else only
+ * when a link for this kind already exists, the share sheet's rule for a level.
+ */
+function useListLinks(tripId: string) {
+  const [links, setLinks] = useState<TripShareConfig[]>([]);
+  useEffect(() => {
+    let live = true;
+    // A failed read is no link: an admin can still create one, a peer sees no send.
+    void fetchTripShares(tripId)
+      .then((existing) => live && setLinks(existing))
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [tripId]);
+  return [links, setLinks] as const;
+}
+
+function ListSend({
+  category,
+  count,
+  link,
+  onLink,
+}: {
+  category: EventCategory;
+  count: number;
+  link: TripShareConfig | undefined;
+  onLink: (link: TripShareConfig | undefined) => void;
+}) {
+  const { trip, members } = useTrip();
+  const myId = useAuth().me?.user.id;
+  const isAdmin = members.some(
+    (member) => member.userId === myId && member.role === MEMBERSHIP_ROLE.ADMIN,
+  );
+  const [open, setOpen] = useState(false);
+  if (!isAdmin && !link) return null;
+  return (
+    <div className="mem-list-send">
+      <button type="button" className="share-outcome" onClick={() => setOpen(true)}>
+        <Icon name="share" />
+        {t.share.list.send(t.share.list.name[category])}
+      </button>
+      {open ? (
+        <ListShareSheet
+          tripId={trip.id}
+          tripName={trip.name}
+          category={category}
+          count={count}
+          link={link}
+          isAdmin={isAdmin}
+          onLink={onLink}
+          onClose={() => setOpen(false)}
+        />
+      ) : null}
+    </div>
+  );
+}
+
 /** The search over the whole record (spec 2a), on the app's full-screen search shell. */
 export function RecordSearch({
   rows,
@@ -125,6 +189,16 @@ export function RecordSearch({
     (row) => (kind === RECORD_KIND_ALL || row.category === kind) && matchesRecordQuery(row, query),
   );
   const copy = t.planHome.past.record.search;
+  const { trip } = useTrip();
+  const [links, setLinks] = useListLinks(trip.id);
+  // What the list sends is what happened (ADR-0242 §4), so a skipped or unmarked row on screen
+  // is not counted, and a kind where nothing happened has nothing to send.
+  const listed =
+    kind === RECORD_KIND_ALL || query.trim()
+      ? 0
+      : rows.filter((row) => row.category === kind && row.outcome === 'done').length;
+  const listLink =
+    kind === RECORD_KIND_ALL ? undefined : links.find((link) => link.scope?.category === kind);
   return (
     <SearchOverlay
       title={copy.modeTitle}
@@ -176,6 +250,20 @@ export function RecordSearch({
       ) : (
         <EmptyState icon={<Icon name="search" />} title={copy.noResults} />
       )}
+      {/* Only while the screen shows exactly what would be sent: one kind, no query (§1). */}
+      {kind !== RECORD_KIND_ALL && listed > 0 ? (
+        <ListSend
+          category={kind}
+          count={listed}
+          link={listLink}
+          onLink={(next) =>
+            setLinks((prev) => [
+              ...prev.filter((link) => link.scope?.category !== kind),
+              ...(next ? [next] : []),
+            ])
+          }
+        />
+      ) : null}
     </SearchOverlay>
   );
 }

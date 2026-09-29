@@ -110,3 +110,10 @@
 .mem-journal-rest .mem-journal-day:first-child {
   margin-top: 12px;
 }
+
+/* **The list's send, under the list it sends** (ADR-0242 §1): the share sheet's
+   `.share-outcome`, inside the results scroller at the list card's gutter. */
+.mem-list-send {
+  display: grid;
+  margin-block: 12px 4px;
+}

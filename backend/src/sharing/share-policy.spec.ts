@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SHARE_DETAIL_LEVEL } from '@waypoint/shared';
+import { EVENT_CATEGORY, SHARE_DETAIL_LEVEL } from '@waypoint/shared';
 import { normalizeSharePolicy, sharePolicyHash } from './share-policy';
 
 const everything = (over: Partial<Parameters<typeof sharePolicyHash>[0]> = {}) => ({
@@ -69,5 +69,30 @@ describe('sharePolicyHash', () => {
       }),
     ).toBe(sharePolicyHash(clean));
     expect(normalizeSharePolicy(clean)).toEqual(clean);
+  });
+
+  // ADR-0242 §3: a list is one more link, and it moves no link that already exists.
+  it('gives each list its own link and leaves the unscoped hash alone', () => {
+    const summary = {
+      detailLevel: SHARE_DETAIL_LEVEL.SUMMARY,
+      sensitive: { bookingSecrets: false, notesAndTasks: false, travelerIdentity: false },
+      documentIds: [],
+    };
+    const food = sharePolicyHash({ ...summary, scope: { category: EVENT_CATEGORY.FOOD } });
+    expect(food).not.toBe(sharePolicyHash(summary));
+    expect(food).not.toBe(
+      sharePolicyHash({ ...summary, scope: { category: EVENT_CATEGORY.NATURE } }),
+    );
+    expect(sharePolicyHash({ ...summary, scope: undefined })).toBe(
+      'a34c7dc002c18b3d7d6ec1543a64ad9cbe5533249fd4be1b015fd4cb1dcaa6eb',
+    );
+    // Only Summary carries a scope; anywhere else it is folded away rather than trusted.
+    expect(
+      sharePolicyHash({
+        ...summary,
+        detailLevel: SHARE_DETAIL_LEVEL.FULL,
+        scope: { category: EVENT_CATEGORY.FOOD },
+      }),
+    ).toBe(sharePolicyHash({ ...summary, detailLevel: SHARE_DETAIL_LEVEL.FULL }));
   });
 });

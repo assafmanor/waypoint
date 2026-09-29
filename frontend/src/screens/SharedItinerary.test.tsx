@@ -1529,3 +1529,86 @@ describe('a long note on the shared page', () => {
     expect(document.querySelector('.note-full')).toBeNull();
   });
 });
+
+/** **A list, not the trip** (ADR-0242 §4): the same masthead, one list where the days were. */
+describe('a shared list', () => {
+  const list = {
+    status: 'list' as const,
+    generatedAt: '2026-09-29T08:00:00.000Z',
+    shareUrl: `/s/${CODE}`,
+    trip: {
+      name: 'יפן עם החבר׳ה',
+      destination: 'יפן',
+      startDate: '2026-10-06',
+      endDate: '2026-10-13',
+    },
+    category: 'food' as const,
+    groups: [
+      {
+        region: 'טוקיו',
+        rows: [
+          {
+            title: 'שוק צוקיג׳י',
+            icon: '🍽️',
+            placeName: 'Tsukiji Outer Market',
+            caption: 'שוק דגים ומזון',
+            mapUrl: 'https://www.google.com/maps/search/?api=1&query=Tsukiji',
+          },
+          { title: 'Ichiran Shibuya', placeName: 'Ichiran Shibuya' },
+        ],
+      },
+      { region: 'קיוטו', rows: [{ title: 'שוק נישיקי', placeName: 'Nishiki Market' }] },
+    ],
+  };
+  beforeEach(() => setSimulatedNow(NOW));
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+    setSimulatedNow(null);
+  });
+
+  it('names the list, groups it by city, and offers no paper', async () => {
+    serve(list);
+    const { container } = renderShared();
+    await screen.findByText('יפן עם החבר׳ה');
+    expect(screen.getByText(t.share.list.heading.food)).toBeTruthy();
+    expect(container.querySelector('.sh-kicker')!.textContent).toContain(t.share.list.kicker);
+    const heads = [...container.querySelectorAll('.sh-list-head')].map((el) =>
+      el.textContent?.replace(/[\u2066-\u2069]/g, ''),
+    );
+    expect(heads).toEqual(['טוקיו2', 'קיוטו1']);
+    expect(container.querySelectorAll('.sh-event')).toHaveLength(3);
+    expect(container.querySelector('.sh-dates')!.textContent).toContain(t.share.list.places(3));
+    // No day cards, no clock, and nothing to download: a list is a link.
+    expect(container.querySelector('.sh-day')).toBeNull();
+    expect(container.querySelector('.sh-time')).toBeNull();
+    expect(container.querySelector('.sh-take, .sh-bar-take')).toBeNull();
+  });
+
+  it('prints a place line only where it is not the title, and a map link where there is one', async () => {
+    serve(list);
+    const { container } = renderShared();
+    await screen.findByText('יפן עם החבר׳ה');
+    const [tsukiji, ichiran] = [...container.querySelectorAll('.sh-event')];
+    expect(tsukiji.textContent).toContain('Tsukiji Outer Market');
+    expect(tsukiji.querySelector('.sh-map-link')).not.toBeNull();
+    expect(ichiran.querySelectorAll('.sh-place-line')).toHaveLength(0);
+    expect(ichiran.querySelector('.sh-map-link')).toBeNull();
+  });
+});
+
+// ADR-0242 §5: JetBrains Mono ships no Hebrew, so only the dates are mono on the trip page too.
+describe('the date line', () => {
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+  it('keeps the Hebrew counts out of the mono run', async () => {
+    serve(summaryProjection);
+    const { container } = renderShared();
+    await screen.findByText('איסלנד עם המשפחה');
+    const mono = container.querySelector('.sh-dates .sh-dates-num')!;
+    expect(mono.textContent).not.toMatch(/[\u0590-\u05ff]/);
+    expect(container.querySelector('.sh-dates')!.textContent).toMatch(/[\u0590-\u05ff]/);
+  });
+});

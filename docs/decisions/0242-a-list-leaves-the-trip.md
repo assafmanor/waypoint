@@ -1,6 +1,6 @@
 # ADR-0242: A list leaves the trip
 
-**Status:** Proposed 2026-09-29, for the owner's review; nothing built. Mockup: [`mockups/a-list-leaves-the-trip-v1.html`](../../mockups/a-list-leaves-the-trip-v1.html). Session note: [`planning/2026-09-29-a-list-leaves-the-trip.md`](../planning/2026-09-29-a-list-leaves-the-trip.md). Epic plan: [`planning/2026-09-25-a-finished-trip-is-a-memory-build-plan.md`](../planning/2026-09-25-a-finished-trip-is-a-memory-build-plan.md), item 6A.4.
+**Status:** Accepted 2026-09-29 (owner: _"Accepted, build it"_) and built the same day. Mockup: [`mockups/a-list-leaves-the-trip-v1.html`](../../mockups/a-list-leaves-the-trip-v1.html). Session note: [`planning/2026-09-29-a-list-leaves-the-trip.md`](../planning/2026-09-29-a-list-leaves-the-trip.md). Epic plan: [`planning/2026-09-25-a-finished-trip-is-a-memory-build-plan.md`](../planning/2026-09-25-a-finished-trip-is-a-memory-build-plan.md), item 6A.4.
 
 **Fills in** spec 3e of [`planning/2026-09-25-what-a-finished-trip-is-for.md`](../planning/2026-09-25-what-a-finished-trip-is-for.md) and the last of [0241](0241-a-finished-trip-plays-back-and-leaves-the-app.md)'s outputs. **Amends** [0213](0213-a-shared-trip-changes-emphasis-and-print-is-its-own-rendering.md) §1 (a list row carries place facts that Summary withholds) and its tenth amendment §3 (the policy hash takes a scope). **Applies unchanged** [0240](0240-the-archive-is-rose.md) §4 (the kind chips open the search), [0120](0120-filter-reveal-is-shared-infrastructure.md) (the search's rows), and the share sheet's rule that a peer sends only links that already exist.
 
@@ -77,3 +77,11 @@ The narrative generator is not called for a list.
 - **Including what we skipped, as "next time".** A recommendation is a place we went to. Places we missed are a different list.
 - **Grouping by day.** `ב׳ 22.09 · בוקר` over a ramen shop tells a friend nothing. The visit order is kept inside each city.
 - **Scoping by the search query.** See the first consequence.
+
+## Build notes (2026-09-29)
+
+- **The list files a row the way the Home does.** The Home's chips file a row by `event.category`, else its booking's category, else `other`. The first cut filtered the stored column, so a booked restaurant with no category of its own would have counted under the food chip and been missing from the food list. That rule is now `recordCategory` in `packages/shared` (`icons.ts`), and both the Home's record and `projectList` call it.
+- **One place-facts helper.** A day's row and a list's row name a place through the same `stopPlaceFacts` (`sharing-projection.service.ts`), extracted from `projectEvent`, so the two cannot name one place two ways.
+- **The public route has no response serializer now.** A code answers `sharedPageSchema`, a discriminated union, and a union cannot be a DTO base class. Both branches are `.parse`d by the projection before they leave it. The OpenAPI response still documents the trip's shape.
+- **The live cover's date slot** (`scripts/og-covers/og-live.html`) wraps its digits in `.sh-dates-num`, so the cover stays mono after §5 set the line in the body face.
+- `SharingProjectionService.tripByCode` is `byCode`'s trip branch, for callers holding a trip link's code.

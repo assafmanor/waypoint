@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import {
   memoryFigureValues,
+  type EventCategory,
   NARRATIVE_SEPARATOR,
   tripDates,
   type TripShareConfig,
@@ -38,6 +39,7 @@ const SHARE_CONFIG_SELECT = {
   includeBookingSecrets: true,
   includeNotesAndTasks: true,
   includeTravelerIdentity: true,
+  scopeCategory: true,
   updatedAt: true,
   documents: { select: { documentId: true } },
 } as const;
@@ -48,6 +50,7 @@ type ShareConfigRow = {
   includeBookingSecrets: boolean;
   includeNotesAndTasks: boolean;
   includeTravelerIdentity: boolean;
+  scopeCategory: EventCategory | null;
   updatedAt: Date;
   documents: { documentId: string }[];
 };
@@ -65,6 +68,7 @@ const toConfig = (row: ShareConfigRow): TripShareConfig => ({
     travelerIdentity: row.includeTravelerIdentity,
   },
   documentIds: row.documents.map((document) => document.documentId),
+  ...(row.scopeCategory ? { scope: { category: row.scopeCategory } } : {}),
   updatedAt: row.updatedAt.toISOString(),
 });
 
@@ -150,6 +154,7 @@ export class SharingService {
         includeBookingSecrets: policy.sensitive.bookingSecrets,
         includeNotesAndTasks: policy.sensitive.notesAndTasks,
         includeTravelerIdentity: policy.sensitive.travelerIdentity,
+        scopeCategory: policy.scope?.category ?? null,
         code: generatePublicCode(),
       };
       const share = existing
@@ -274,6 +279,7 @@ export class SharingService {
       endDate: toDateOnly(trip.endDate),
       travellers,
       icon: trip.icon ?? undefined,
+      ...(share.scopeCategory ? { list: share.scopeCategory } : {}),
     };
   }
 
@@ -286,7 +292,7 @@ export class SharingService {
    * prevent, and regenerating costs one render.
    */
   async pdf(code: string): Promise<{ buffer: Buffer; filename: string }> {
-    const share = await this.projection.requireActiveShare(code);
+    const share = await this.projection.requireTripShare(code);
     const projection = await this.projection.project(share);
     return {
       buffer: await this.pdfBrowser.render(projection, publicShareUrl(projection.shareUrl)),
@@ -301,7 +307,7 @@ export class SharingService {
    * it, and the server does not keep a second answer to "is this trip over".
    */
   async book(code: string): Promise<{ buffer: Buffer; filename: string }> {
-    const share = await this.projection.requireActiveShare(code);
+    const share = await this.projection.requireTripShare(code);
     const [projection, record] = await Promise.all([
       this.projection.project(share, undefined, { record: true }),
       this.recap.recordFor(share.tripId),

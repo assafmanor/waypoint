@@ -7,6 +7,7 @@ import {
   SHARE_DAY_SUMMARY_KIND,
   SHARE_DAYPART,
   type BookingType,
+  type EventCategory,
   type LegTravelMode,
   type MemoryFigureKey,
   type ShareDaypart,
@@ -382,7 +383,7 @@ export function heTravellersInside(count: number): string {
  * **The same range as digits** — `05.08–28.09`, `formatTripDates`' numeric style.
  *
  * Not a nicer or a shorter version of `heTripRange`: it is what a **mono** slot has to hold.
- * The reader page's `.sh-dates` is `var(--font-mono)`, which is JetBrains Mono and ships
+ * The reader page's `.sh-dates-num` is `var(--font-mono)`, which is JetBrains Mono and ships
  * Latin only by design (design-language.md — it carries times, codes and money, never
  * prose), so the prose range put every Hebrew month name into a fallback face on the live
  * cover. The element's own CSS decides which of the two a surface takes.
@@ -437,5 +438,23 @@ export const SHARE_META_COPY = {
     title: (tripName: string) => `${tripName} - הלו״ז החי`,
     description: (destination: string, dates: string) =>
       `${destination}, ${dates}. לינק שמתעדכן עם הטיול.`,
+  },
+  /** A list's link (ADR-0242 §4): what the list is, from which trip. `he.ts`'s
+   *  `share.list.name` by value, for this file's reason. */
+  list: {
+    name: {
+      transport: 'רשימת התחבורה',
+      food: 'רשימת האוכל',
+      lodging: 'רשימת הלינה',
+      sightseeing: 'רשימת האתרים',
+      nature: 'רשימת הטבע',
+      activity: 'רשימת הפעילויות',
+      shopping: 'רשימת הקניות',
+      services: 'רשימת השירותים',
+      other: 'רשימת השונות',
+    } satisfies Record<EventCategory, string>,
+    title: (listName: string, tripName: string) => `${listName} · ${tripName}`,
+    description: (destination: string, dates: string) =>
+      `${destination}, ${dates}. המקומות שהיינו בהם, עם מפה.`,
   },
 } as const;

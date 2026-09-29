@@ -62,6 +62,19 @@ describe('fetchSharedItinerary', () => {
     await expect(fetchSharedItinerary(CODE)).resolves.toMatchObject({ status: 'live' });
   });
 
+  // ADR-0242 §4: a code may answer one list of the trip rather than the trip.
+  it('reads a list as well as a trip', async () => {
+    serve({
+      status: 'list',
+      generatedAt: '2026-09-29T08:00:00.000Z',
+      shareUrl: `/s/${CODE}`,
+      trip: { name: 'יפן', destination: 'יפן', startDate: '2026-10-06', endDate: '2026-10-13' },
+      category: 'food',
+      groups: [{ rows: [{ title: 'שוק צוקיג׳י' }] }],
+    });
+    await expect(fetchSharedItinerary(CODE)).resolves.toMatchObject({ status: 'list' });
+  });
+
   it('separates a projection it cannot read from a link that is gone', async () => {
     // A field a later deploy added. `sharedItinerarySchema` is strict in both directions
     // (see its header), so this is a PARSE failure and not an ignored key — which is the

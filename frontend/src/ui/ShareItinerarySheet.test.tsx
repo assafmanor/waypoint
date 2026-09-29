@@ -250,6 +250,25 @@ describe('ShareItinerarySheet', () => {
     expect(document.querySelectorAll('.share-level-live')).toHaveLength(2);
   });
 
+  // ADR-0242 §2: a list is a Summary share scoped to one kind, never the trip's Summary link,
+  // and `stop all` still counts it.
+  it("does not read a list's link as the trip's Summary link", async () => {
+    const foodList: TripShareConfig = {
+      ...config,
+      code: '4hQx8Rk2',
+      shareUrl: '/s/4hQx8Rk2',
+      detailLevel: SHARE_DETAIL_LEVEL.SUMMARY,
+      scope: { category: 'food' },
+    };
+    api.fetchTripShares.mockResolvedValue([config, foodList]);
+    renderSheet();
+    await openRead();
+
+    expect(await screen.findByRole('radio', { name: t.share.owner.levels.summary })).toBeTruthy();
+    expect(document.querySelectorAll('.share-level-live')).toHaveLength(1);
+    expect(screen.getByRole('button', { name: t.share.owner.stopAll(2) })).toBeTruthy();
+  });
+
   /**
    * **WHERE IS THE LINK** (owner, 2026-08-30, three times). Still asserted on the DOM rather
    * than argued from the source. At a level that already holds links the send unit IS the

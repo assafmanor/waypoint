@@ -280,7 +280,7 @@ Drawn and decided in [ADR-0241](../decisions/0241-a-finished-trip-plays-back-and
   - Sent as a file (`shareFileOrDownload`), never as the link preview.
   - It heads the finished trip's share sheet as the sheet's one primary.
   - The sheet's preview unit (`.share-preview`, ADR-0241 §4) ships in **every phase**: the audience's link cover before and during the trip, the card after it. It can land before the card, showing only link covers.
-- **6A.4** A list share _(spec 3e)_, scoped to a category. Designed in [ADR-0242](../decisions/0242-a-list-leaves-the-trip.md): the send is at the foot of the filtered search, and the policy is Summary plus a kind.
+- **6A.4** A list share _(spec 3e)_, scoped to a category. Designed in [ADR-0242](../decisions/0242-a-list-leaves-the-trip.md): the send is at the foot of the filtered search, and the policy is Summary plus a kind. **Built 2026-09-29** (ADR-0242's build notes).
 
 ### 6B · Resurface (needs 1A and 2)
 

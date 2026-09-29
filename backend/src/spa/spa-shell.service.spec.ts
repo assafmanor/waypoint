@@ -152,6 +152,14 @@ describe('SpaShellService', () => {
       expect(html).toContain('<meta name="robots" content="noindex, nofollow, noarchive" />');
     });
 
+    // ADR-0242 §4: a list's preview names the list, and keeps the trip's cover.
+    it('gives a list share its own words and the trip cover', () => {
+      const html = render(liveMeta('9pTb3Wx1', { ...FACTS, list: 'food' }));
+      expect(html).toContain('<meta property="og:title" content="רשימת האוכל · יפן 2026" />');
+      expect(html).toMatch(/og:image" content="https:\/\/travelive\.app\/og\/s\/9pTb3Wx1\.png/);
+      expect(html).toContain('<meta name="robots" content="noindex, nofollow, noarchive" />');
+    });
+
     /**
      * **Three URLs, three covers** (the 2026-09-05 amendment). The live share used to reuse
      * the brand cover, which made an itinerary sent to family look like a marketing link

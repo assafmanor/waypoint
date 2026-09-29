@@ -4,7 +4,7 @@
 // and how each value reads is shared's `memoryFigureValues` (ADR-0241, 6A.0); what this composes
 // is the Home's own sections around them.
 import {
-  categoryForBookingType,
+  recordCategory,
   EVENT_CATEGORY,
   EVENT_STATUS,
   eventDisplayZones,
@@ -419,8 +419,7 @@ export function memoryRecord(input: {
     .sort((a, b) => (a.date !== b.date ? (a.date < b.date ? -1 : 1) : at(a) - at(b)))
     .map((event) => {
       const booking = event.bookingId ? bookingById.get(event.bookingId) : undefined;
-      const category =
-        event.category ?? (booking ? categoryForBookingType(booking.type) : EVENT_CATEGORY.OTHER);
+      const category = recordCategory(event, booking);
       const placeId = eventStopPlaceId(event, booking);
       const name = placeId ? placeName(placeId) : undefined;
       return {

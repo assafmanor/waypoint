@@ -24,4 +24,4 @@
 
 ## Next
 
-The owner reviews ADR-0242 and the mockup; the build follows in its own PR.
+The owner accepted the design (_"Accepted, build it"_) and it was built the same day, in the same PR. The one surprise was in the build: the list first filtered on the stored category, which would have dropped booked restaurants that the Home files under food. `recordCategory` is now the one filing rule (ADR-0242's build notes).

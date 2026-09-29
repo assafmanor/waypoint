@@ -216,6 +216,15 @@ export const categoryForBookingType = (type: BookingType): EventCategory =>
 
 export const iconForCategory = (category: EventCategory): string => CATEGORY_DEFAULT_ICON[category];
 
+/** **The kind a row is filed under in the trip's record**: its own category, else its
+ *  booking's, else `other`. The memory Home's chips and a list share (ADR-0242) both read it,
+ *  so a booked restaurant with no category of its own is in the food list it is counted in. */
+export const recordCategory = (
+  event: { category?: EventCategory | null },
+  booking?: { type: BookingType } | null,
+): EventCategory =>
+  event.category ?? (booking ? categoryForBookingType(booking.type) : EVENT_CATEGORY.OTHER);
+
 /** Reverse lookup: the canonical category a chosen glyph belongs to (the picker
  *  records this alongside the glyph). `undefined` for a glyph not in the set. */
 export const categoryForIcon = (icon: string): EventCategory | undefined =>

@@ -227,7 +227,14 @@
 .sh-dates {
   margin-block-start: 8px;
   color: var(--on-dark-dim);
-  font: 500 12px/1.4 var(--font-mono);
+  font: 500 12px/1.4 var(--font-body);
+}
+
+/* **Only the dates are mono** (ADR-0242 §5). The line also prints the counts, a Hebrew
+   sentence, and JetBrains Mono ships no Hebrew: the whole line in mono borrowed a fallback
+   face on screen and printed boxes on paper (#899). */
+.sh-dates-num {
+  font-family: var(--font-mono);
 }
 
 .sh-story {
@@ -1184,4 +1191,30 @@
   .sh-dl-bar[data-indeterminate] > span {
     animation-duration: 2.6s;
   }
+}
+
+/* **A list, not the trip** (ADR-0242 §4). A city's head over its rows: the daypart head's
+   type without its mark, and nothing at all when the list is in one city. */
+.sh-list-group + .sh-list-group {
+  margin-block-start: 6px;
+}
+
+.sh-list-head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 4px 3px 7px;
+  color: var(--ink);
+  font: 700 var(--sh-caption) var(--font-body);
+}
+
+.sh-list-head span {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.sh-list-empty {
+  margin: 0 3px;
+  color: var(--muted);
+  font-size: var(--sh-caption);
 }

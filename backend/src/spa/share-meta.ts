@@ -1,4 +1,4 @@
-import { OG_COVER_PATH } from '@waypoint/shared';
+import { OG_COVER_PATH, type EventCategory } from '@waypoint/shared';
 import { heTripRange, SHARE_META_COPY } from '../sharing/hebrew.copy';
 import { coverSignature, type CoverKind } from './og-cover.template';
 import type { ShareMeta } from './spa-shell.service';
@@ -64,6 +64,9 @@ export interface TripPreviewFacts {
    *  `<meta>` tag — it is drawn on the COVER, which is what the 2026-09-06 amendment made
    *  per-trip, and the fifth field is here because the cover is filled from these facts. */
   icon?: string;
+  /** A list's kind (ADR-0242 §4). It names the preview's text only: the cover is the trip's,
+   *  so it stays out of the cover's signature. */
+  list?: EventCategory;
 }
 
 /** The homepage, and every in-app route that is not a bearer link. */
@@ -98,9 +101,10 @@ export function inviteMeta(code: string, facts: TripPreviewFacts): ShareMeta {
 /** `/s/<code>` — the read-only live itinerary, and the one surface with its own cover since
  *  the 2026-09-05 amendment. */
 export function liveMeta(code: string, facts: TripPreviewFacts): ShareMeta {
+  const { list, live } = SHARE_META_COPY;
   return {
-    title: SHARE_META_COPY.live.title(facts.name),
-    description: SHARE_META_COPY.live.description(facts.destination, dateRange(facts)),
+    title: facts.list ? list.title(list.name[facts.list], facts.name) : live.title(facts.name),
+    description: (facts.list ? list : live).description(facts.destination, dateRange(facts)),
     imagePath: coverImagePath('live', code, facts),
     imageAlt: COVER_ALT.live(facts.name),
     path: `/s/${code}`,

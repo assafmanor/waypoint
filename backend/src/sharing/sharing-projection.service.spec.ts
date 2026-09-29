@@ -3,6 +3,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 import { NotFoundException } from '@nestjs/common';
 import {
   NARRATIVE_TENSE,
+  EVENT_CATEGORY,
   NO_SENSITIVE_FIELDS,
   SHARE_DAY_KIND,
   SHARE_DAY_SUMMARY_KIND,
@@ -366,7 +367,7 @@ describe('SharingProjectionService', () => {
   it.each([SHARE_DETAIL_LEVEL.SUMMARY, SHARE_DETAIL_LEVEL.FULL, SHARE_DETAIL_LEVEL.EVERYTHING])(
     'never leaks identifiers, emails, coordinates or provider keys in %s',
     async (detailLevel) => {
-      const json = JSON.stringify(await service.byCode(await shareAt(detailLevel)));
+      const json = JSON.stringify(await service.tripByCode(await shareAt(detailLevel)));
       expect(json).not.toContain(tripId);
       expect(json).not.toContain(OWNER);
       expect(json).not.toContain(SECRET.email);
@@ -381,7 +382,7 @@ describe('SharingProjectionService', () => {
   it.each([SHARE_DETAIL_LEVEL.SUMMARY, SHARE_DETAIL_LEVEL.FULL])(
     'withholds every sensitive family below Everything in %s',
     async (detailLevel) => {
-      const projection = await service.byCode(await shareAt(detailLevel));
+      const projection = await service.tripByCode(await shareAt(detailLevel));
       const json = JSON.stringify(projection);
       expect(projection.appendix).toBeUndefined();
       expect(json).not.toContain(SECRET.confirmationCode);
@@ -392,7 +393,7 @@ describe('SharingProjectionService', () => {
   );
 
   it('keeps Summary identity while removing every exact orientation fact', async () => {
-    const projection = await service.byCode(await shareAt(SHARE_DETAIL_LEVEL.SUMMARY));
+    const projection = await service.tripByCode(await shareAt(SHARE_DETAIL_LEVEL.SUMMARY));
     const events = projection.days.flatMap((day) => day.sections).flatMap((s) => s.events);
 
     expect(events[0]).toEqual(
@@ -421,12 +422,12 @@ describe('SharingProjectionService', () => {
    *  has: the SAME literal in the SAME place is present at Full, so Summary's silence is a
    *  real difference rather than an empty search. */
   it('proves that absence by finding the same time at Full', async () => {
-    const projection = await service.byCode(await shareAt(SHARE_DETAIL_LEVEL.FULL));
+    const projection = await service.tripByCode(await shareAt(SHARE_DETAIL_LEVEL.FULL));
     expect(JSON.stringify(projection.days)).toContain('09:20');
   });
 
   it('adds times, addresses and map links at Full', async () => {
-    const projection = await service.byCode(await shareAt(SHARE_DETAIL_LEVEL.FULL));
+    const projection = await service.tripByCode(await shareAt(SHARE_DETAIL_LEVEL.FULL));
     const events = projection.days.flatMap((day) => day.sections).flatMap((s) => s.events);
     const arrival = events.find((event) => event.title === 'נחיתה בקפלוויק');
     const checkin = events.find((event) => event.title === 'כניסה לדירה');
@@ -450,7 +451,7 @@ describe('SharingProjectionService', () => {
    * were one afternoon.
    */
   it('says what each clock means, off `edgeMeaning` rather than off `hard`', async () => {
-    const projection = await service.byCode(await shareAt(SHARE_DETAIL_LEVEL.FULL));
+    const projection = await service.tripByCode(await shareAt(SHARE_DETAIL_LEVEL.FULL));
     const events = projection.days.flatMap((day) => day.sections).flatMap((s) => s.events);
 
     // An ordinary point: one clock, and nothing invented beside it.
@@ -475,7 +476,7 @@ describe('SharingProjectionService', () => {
   });
 
   it('groups by daypart, in order, and renders no empty section', async () => {
-    const projection = await service.byCode(await shareAt(SHARE_DETAIL_LEVEL.FULL));
+    const projection = await service.tripByCode(await shareAt(SHARE_DETAIL_LEVEL.FULL));
     const firstDay = projection.days[0];
 
     // `night` is here because the 01:10 event on the 30th belongs to this day's night —
@@ -493,7 +494,7 @@ describe('SharingProjectionService', () => {
   });
 
   it('puts an event with no start time in flexible', async () => {
-    const projection = await service.byCode(await shareAt(SHARE_DETAIL_LEVEL.FULL));
+    const projection = await service.tripByCode(await shareAt(SHARE_DETAIL_LEVEL.FULL));
     const walk = projection.days
       .flatMap((day) => day.sections)
       .find((section) => section.daypart === SHARE_DAYPART.FLEXIBLE);
@@ -501,7 +502,7 @@ describe('SharingProjectionService', () => {
   });
 
   it('keeps the day spine complete, including a day with nothing on it', async () => {
-    const projection = await service.byCode(await shareAt(SHARE_DETAIL_LEVEL.SUMMARY));
+    const projection = await service.tripByCode(await shareAt(SHARE_DETAIL_LEVEL.SUMMARY));
     expect(projection.days.map((day) => day.date)).toEqual([
       '2026-08-29',
       '2026-08-30',
@@ -525,7 +526,7 @@ describe('SharingProjectionService', () => {
       SHARE_DETAIL_LEVEL.FULL,
       SHARE_DETAIL_LEVEL.EVERYTHING,
     ]) {
-      const projection = await service.byCode(await shareAt(level));
+      const projection = await service.tripByCode(await shareAt(level));
       expect(projection.trip.timezone).toBe('Atlantic/Reykjavik');
       // No zone crossing on this trip, so home is wherever the primary zone is.
       expect(projection.trip.homeZone).toBe('Atlantic/Reykjavik');
@@ -536,7 +537,7 @@ describe('SharingProjectionService', () => {
   });
 
   it('includes only the Everything families that are switched on', async () => {
-    const projection = await service.byCode(
+    const projection = await service.tripByCode(
       await shareAt(SHARE_DETAIL_LEVEL.EVERYTHING, { includeBookingSecrets: true }),
     );
     // **The code travels on its row now, not in an appendix** (ADR-0213's 2026-08-30
@@ -554,7 +555,7 @@ describe('SharingProjectionService', () => {
   });
 
   it('publishes traveller names and never an email, even at Everything', async () => {
-    const projection = await service.byCode(
+    const projection = await service.tripByCode(
       await shareAt(SHARE_DETAIL_LEVEL.EVERYTHING, { includeTravelerIdentity: true }),
     );
     // On the trip, not in a block at the foot: who is going is part of the trip's identity.
@@ -564,7 +565,7 @@ describe('SharingProjectionService', () => {
   });
 
   it('publishes only the documents chosen for this share', async () => {
-    const projection = await service.byCode(
+    const projection = await service.tripByCode(
       await shareAt(SHARE_DETAIL_LEVEL.EVERYTHING, { withDocument: true }),
     );
     // Attached to no event, so it rides the appendix — as a `FILE` op, the same shape the
@@ -581,7 +582,7 @@ describe('SharingProjectionService', () => {
   });
 
   it('derives a route and a day title from real places, with no authored title anywhere', async () => {
-    const projection = await service.byCode(await shareAt(SHARE_DETAIL_LEVEL.SUMMARY));
+    const projection = await service.tripByCode(await shareAt(SHARE_DETAIL_LEVEL.SUMMARY));
     expect(projection.trip.routeLabels).toEqual(['רייקיאוויק', 'Zip line']);
     // **The kind and its values, never a sentence** (ADR-0213's 2026-08-30 amendment). The
     // words are each renderer's, so what the projection owes is the shape they key off.
@@ -696,7 +697,7 @@ describe('SharingProjectionService', () => {
   // happened nineteen hours earlier. `SHARE_DAYPART_START_HOUR.morning` already declared
   // that the day begins at 05:00; the grouping now honours it.
   it('files a pre-dawn event on the night before, not at the foot of its own day', async () => {
-    const projection = await service.byCode(await shareAt(SHARE_DETAIL_LEVEL.FULL));
+    const projection = await service.tripByCode(await shareAt(SHARE_DETAIL_LEVEL.FULL));
 
     const titlesOn = (date: string) =>
       projection.days
@@ -713,7 +714,7 @@ describe('SharingProjectionService', () => {
   // clock — and no name, no address, no description and no map link. Four fields, all four
   // absent, on exactly the rows somebody needs in order to turn up.
   it('gives a booked row its place, address and map link', async () => {
-    const projection = await service.byCode(await shareAt(SHARE_DETAIL_LEVEL.FULL));
+    const projection = await service.tripByCode(await shareAt(SHARE_DETAIL_LEVEL.FULL));
     const zip = projection.days
       .flatMap((day) => day.sections.flatMap((section) => section.events))
       .find((event) => event.title === 'אומגה');
@@ -730,7 +731,7 @@ describe('SharingProjectionService', () => {
   // reading `event.placeId` sees nothing at every hotel, restaurant and ticket on the trip —
   // and names the day after whatever unbooked stops happen to sit between them.
   it('names a day by its booked stops, whose place lives on the booking', async () => {
-    const projection = await service.byCode(await shareAt(SHARE_DETAIL_LEVEL.SUMMARY));
+    const projection = await service.tripByCode(await shareAt(SHARE_DETAIL_LEVEL.SUMMARY));
     const day = projection.days.find((d) => d.date === '2026-08-30');
     // The booked activity is the day's FIRST stop — the position the owner's report is about,
     // and the one a cleared `event.placeId` silently dropped, leaving the day named by the
@@ -746,7 +747,7 @@ describe('SharingProjectionService', () => {
   // PDF masthead: _"Seems very redundant"_). The flight's endpoints are on its booking, so
   // before this a trip's strip opened and closed on two airport names.
   it('builds the route from settled stops, skipping transport endpoints', async () => {
-    const projection = await service.byCode(await shareAt(SHARE_DETAIL_LEVEL.SUMMARY));
+    const projection = await service.tripByCode(await shareAt(SHARE_DETAIL_LEVEL.SUMMARY));
     expect(projection.trip.routeLabels).toEqual(['רייקיאוויק', 'Zip line']);
     expect(projection.trip.routeLabels).not.toContain('קפלוויק');
   });
@@ -754,14 +755,14 @@ describe('SharingProjectionService', () => {
   // `routeLabels` is capped at `MAX_ROUTE_LABELS`; the masthead was printing its length as
   // the trip's `אזורים` count, so a long trip reported eight however many it visited.
   it('counts the whole route, not the capped strip', async () => {
-    const projection = await service.byCode(await shareAt(SHARE_DETAIL_LEVEL.SUMMARY));
+    const projection = await service.tripByCode(await shareAt(SHARE_DETAIL_LEVEL.SUMMARY));
     expect(projection.trip.routeStopCount).toBe(2);
   });
 
   // A booking states its kind, and the kind is what a renderer captions a row from. Nothing
   // operational travels with it — that stays behind Everything's appendix.
   it('carries a booking type, and nothing else off the booking', async () => {
-    const projection = await service.byCode(await shareAt(SHARE_DETAIL_LEVEL.FULL));
+    const projection = await service.tripByCode(await shareAt(SHARE_DETAIL_LEVEL.FULL));
     const arrival = projection.days
       .flatMap((day) => day.sections.flatMap((section) => section.events))
       .find((event) => event.title === 'נחיתה בקפלוויק');
@@ -780,7 +781,7 @@ describe('SharingProjectionService', () => {
     // out: they are now a kind plus its values, and each renderer isolates them itself —
     // which is why those assertions are the renderers' and this one is not.
     it('titles the trip by its NAME, isolated, and not by a route', async () => {
-      const projection = await service.byCode(await shareAt(SHARE_DETAIL_LEVEL.SUMMARY));
+      const projection = await service.tripByCode(await shareAt(SHARE_DETAIL_LEVEL.SUMMARY));
 
       // **The trip's own name** (ADR-0213's 2026-08-30 amendment; owner: _"Why נתב״ג to
       // Frankfurt?? What does it have to do with anything?"_). `fallbackTripTitle` composed
@@ -795,7 +796,7 @@ describe('SharingProjectionService', () => {
     // arrives pre-wrapped — an isolate applied twice is what puts a stray control character
     // inside a value a renderer then isolates again.
     it('ships day values raw, for the renderer to isolate', async () => {
-      const projection = await service.byCode(await shareAt(SHARE_DETAIL_LEVEL.SUMMARY));
+      const projection = await service.tripByCode(await shareAt(SHARE_DETAIL_LEVEL.SUMMARY));
       expect(JSON.stringify(projection.days)).not.toContain(FSI);
       expect(JSON.stringify(projection.days)).not.toContain(PDI);
     });
@@ -805,8 +806,8 @@ describe('SharingProjectionService', () => {
     const code = await shareAt(SHARE_DETAIL_LEVEL.FULL);
     await prisma.tripShare.updateMany({ where: { code }, data: { revokedAt: new Date() } });
 
-    await expect(service.byCode(code)).rejects.toBeInstanceOf(NotFoundException);
-    await expect(service.byCode('zzzzzzzz')).rejects.toBeInstanceOf(NotFoundException);
+    await expect(service.tripByCode(code)).rejects.toBeInstanceOf(NotFoundException);
+    await expect(service.tripByCode('zzzzzzzz')).rejects.toBeInstanceOf(NotFoundException);
   });
 
   /**
@@ -947,7 +948,7 @@ describe('SharingProjectionService', () => {
           createdBy: OWNER,
         },
       });
-      return service.byCode(code);
+      return service.tripByCode(code);
     };
 
     it('makes two chained legs one journey, and names the wait between them', async () => {
@@ -1055,7 +1056,7 @@ describe('SharingProjectionService', () => {
           }),
         },
       });
-      const projection = await service.byCode(code);
+      const projection = await service.tripByCode(code);
       const rowsOf = (index: number) =>
         projection.days[index].sections.flatMap((section) => section.events);
 
@@ -1166,7 +1167,7 @@ describe('SharingProjectionService', () => {
           }),
         },
       });
-      const projection = await service.byCode(code);
+      const projection = await service.tripByCode(code);
       const rowsOf = (index: number) =>
         projection.days[index].sections.flatMap((section) => section.events);
 
@@ -1270,7 +1271,7 @@ describe('SharingProjectionService', () => {
         new ItineraryNarrativeService(prisma, new DisabledItineraryNarrativeGenerator()),
         enrichmentOf(byPlaceId),
       );
-      return withStore.byCode(await shareAt(SHARE_DETAIL_LEVEL.FULL));
+      return withStore.tripByCode(await shareAt(SHARE_DETAIL_LEVEL.FULL));
     };
 
     const placeIds = async () =>
@@ -1435,7 +1436,7 @@ describe('SharingProjectionService', () => {
           createdBy: OWNER,
         },
       });
-      const projection = await service.byCode(code);
+      const projection = await service.tripByCode(code);
       const rows = projection.days.flatMap((day) =>
         day.sections.flatMap((section) => section.events),
       );
@@ -1625,7 +1626,7 @@ describe('SharingProjectionService', () => {
     /** One share for the block: `TripShare` is unique on (tripId, policyHash), so a second
      *  one at the same level is a constraint violation rather than a second link. */
     const projectBeds = async () => {
-      const projection = await service.byCode(bedCode);
+      const projection = await service.tripByCode(bedCode);
       const dayOn = (date: string) => projection.days.find((day) => day.date === date)!;
       return { projection, dayOn };
     };
@@ -1862,7 +1863,7 @@ describe('SharingProjectionService', () => {
           createdBy: OWNER,
         },
       });
-      return service.byCode(code);
+      return service.tripByCode(code);
     };
 
     it('prints each leg’s departure in its ORIGIN’s zone and its arrival in its destination’s', async () => {
@@ -1995,6 +1996,171 @@ describe('SharingProjectionService', () => {
       } finally {
         await prisma.event.deleteMany({ where: { id: span.id } });
       }
+    });
+  });
+
+  /** **A list, not the trip** (ADR-0242 §4). One kind of what the trip did, with the place
+   *  facts a friend needs, and nothing a Summary share withholds for another reason. */
+  describe('a list share', () => {
+    let listTripId: string;
+    const regionOf: Record<string, unknown> = {};
+
+    beforeAll(async () => {
+      const trip = await prisma.trip.create({
+        data: {
+          name: 'יפן עם החבר׳ה',
+          destination: 'Japan',
+          startDate: new Date('2026-10-06'),
+          endDate: new Date('2026-10-13'),
+          timezone: 'Asia/Tokyo',
+          createdBy: OWNER,
+          updatedBy: OWNER,
+          memberships: { create: [{ userId: OWNER, role: 'admin' }] },
+        },
+      });
+      listTripId = trip.id;
+      tripIds.push(trip.id);
+      const place = async (name: string, region: string) => {
+        const row = await prisma.place.create({
+          data: {
+            tripId: trip.id,
+            name,
+            address: `${name} St 1`,
+            lat: 35.6,
+            lng: 139.7,
+            timezone: 'Asia/Tokyo',
+            updatedBy: OWNER,
+          },
+        });
+        regionOf[row.id] = { region: { he: { value: region, lang: 'he' } } };
+        return row.id;
+      };
+      const tsukiji = await place('Tsukiji Outer Market', 'טוקיו');
+      const ichiran = await place('Ichiran Shibuya', 'טוקיו');
+      const sushiDai = await place('Sushi Dai', 'טוקיו');
+      const nishiki = await place('Nishiki Market', 'קיוטו');
+      const shrine = await place('Meiji Jingu', 'טוקיו');
+      const row = (
+        title: string,
+        at: string,
+        placeId: string,
+        extra: {
+          kind?: 'hard' | 'soft';
+          status?: 'planned' | 'done' | 'skipped';
+          category?: 'food' | 'sightseeing';
+        } = {},
+      ) =>
+        prisma.event.create({
+          data: {
+            tripId: trip.id,
+            date: new Date(at.slice(0, 10)),
+            startsAt: new Date(at),
+            title,
+            placeId,
+            kind: extra.kind ?? 'soft',
+            status: extra.status ?? 'done',
+            category: extra.category ?? 'food',
+            updatedBy: OWNER,
+          },
+        });
+      await row('שוק צוקיג׳י', '2026-10-06T23:30:00.000Z', tsukiji);
+      await row('Ichiran', '2026-10-07T04:00:00.000Z', ichiran);
+      await row('סושי דאי', '2026-10-08T22:00:00.000Z', sushiDai, { status: 'skipped' });
+      await row('ארוחה שלא סומנה', '2026-10-09T10:00:00.000Z', ichiran, { status: 'planned' });
+      // Hard counts unless skipped: a reservation that was never marked still happened.
+      await row('שוק נישיקי', '2026-10-10T02:00:00.000Z', nishiki, {
+        kind: 'hard',
+        status: 'planned',
+      });
+      await row('מקדש מייג׳י', '2026-10-07T01:00:00.000Z', shrine, { category: 'sightseeing' });
+      // A booked restaurant with no category of its own: the memory Home files it under food
+      // by its booking, so the list must too (`recordCategory`). ADR-0048 puts its place on
+      // the booking and leaves the event's own column null.
+      const afuri = await place('Afuri Ebisu', 'טוקיו');
+      const afuriBooking = await prisma.booking.create({
+        data: {
+          tripId: trip.id,
+          type: 'restaurant',
+          title: 'Afuri',
+          placeId: afuri,
+          updatedBy: OWNER,
+        },
+      });
+      await prisma.event.create({
+        data: {
+          tripId: trip.id,
+          date: new Date('2026-10-07'),
+          startsAt: new Date('2026-10-07T09:00:00.000Z'),
+          title: 'Afuri',
+          bookingId: afuriBooking.id,
+          kind: 'hard',
+          updatedBy: OWNER,
+        },
+      });
+    });
+
+    const listAt = async () => {
+      const code = generatePublicCode();
+      await prisma.tripShare.deleteMany({ where: { tripId: listTripId } });
+      const summary = {
+        detailLevel: SHARE_DETAIL_LEVEL.SUMMARY,
+        sensitive: NO_SENSITIVE_FIELDS,
+        documentIds: [],
+      };
+      await prisma.tripShare.create({
+        data: {
+          tripId: listTripId,
+          code,
+          policyHash: sharePolicyHash({ ...summary, scope: { category: EVENT_CATEGORY.FOOD } }),
+          detailLevel: SHARE_DETAIL_LEVEL.SUMMARY,
+          scopeCategory: EVENT_CATEGORY.FOOD,
+          createdBy: OWNER,
+        },
+      });
+      return code;
+    };
+    const withRegions = () =>
+      new SharingProjectionService(
+        prisma,
+        new ItineraryNarrativeService(prisma, new DisabledItineraryNarrativeGenerator()),
+        enrichmentOf(regionOf),
+      );
+
+    it('holds what happened of its kind, in visit order, grouped by city', async () => {
+      const page = await withRegions().byCode(await listAt());
+      expect(page.status).toBe('list');
+      if (page.status !== 'list') return;
+      expect(page.category).toBe(EVENT_CATEGORY.FOOD);
+      expect(page.groups.map((group) => group.region)).toEqual(['טוקיו', 'קיוטו']);
+      expect(page.groups.map((group) => group.rows.map((r) => r.title))).toEqual([
+        ['שוק צוקיג׳י', 'Ichiran', 'Afuri'],
+        ['שוק נישיקי'],
+      ]);
+      const [first] = page.groups[0].rows;
+      expect(first.placeName).toBe('Tsukiji Outer Market');
+      expect(first.mapUrl).toContain('Tsukiji');
+    });
+
+    it('carries no clock, address line, day or anything operational', async () => {
+      const page = await withRegions().byCode(await listAt());
+      const json = JSON.stringify(page);
+      for (const key of ['startLabel', 'time', 'address', 'daypart', 'ops', 'journey', 'days']) {
+        expect(json).not.toContain(`"${key}"`);
+      }
+      expect(json).not.toContain('09:30');
+    });
+
+    it('has no headings when the list is in one city', async () => {
+      const page = await service.byCode(await listAt());
+      if (page.status !== 'list') throw new Error('expected a list');
+      expect(page.groups).toHaveLength(1);
+      expect(page.groups[0].region).toBeUndefined();
+    });
+
+    it('is a link and never paper', async () => {
+      const code = await listAt();
+      await expect(service.tripByCode(code)).rejects.toBeInstanceOf(NotFoundException);
+      await expect(service.requireTripShare(code)).rejects.toBeInstanceOf(NotFoundException);
     });
   });
 });

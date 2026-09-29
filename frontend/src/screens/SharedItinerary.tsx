@@ -20,6 +20,9 @@ import {
   type SharedOp,
   type SharedTime,
   type SharedItinerary as SharedItineraryProjection,
+  type SharedList,
+  type SharedListRow,
+  type SharedPage,
 } from '@waypoint/shared';
 import {
   DEFAULT_STAY_ICON,
@@ -171,7 +174,7 @@ function tripPhaseText(trip: SharedItineraryProjection['trip'], today: string): 
  */
 type LoadState =
   | { kind: 'loading' }
-  | { kind: 'ready'; projection: SharedItineraryProjection; stale: boolean }
+  | { kind: 'ready'; projection: SharedPage; stale: boolean }
   | { kind: 'unavailable' }
   | { kind: 'failed' };
 
@@ -310,7 +313,9 @@ export function SharedItinerary() {
     return () => document.removeEventListener('visibilitychange', refresh);
   }, [load]);
 
-  const ready = state.kind === 'ready' ? state.projection : undefined;
+  // The trip's clock questions; a list has no day to ask them about (ADR-0242 §4).
+  const ready =
+    state.kind === 'ready' && state.projection.status === 'live' ? state.projection : undefined;
   /**
    * **The clock the page's "now" is on** — never the reader's (§6), and since the eighteenth
    * amendment never the destination's either. A relative in Tel Aviv following a group in
@@ -392,6 +397,8 @@ export function SharedItinerary() {
   if (state.kind === 'unavailable') return <Unavailable />;
   if (state.kind === 'failed') return <LoadFailed onRetry={askAgain} />;
 
+  if (state.projection.status === 'list')
+    return <SharedListPage list={state.projection} stale={state.stale} now={now} />;
   const { projection, stale } = state;
   const summary = projection.detailLevel === SHARE_DETAIL_LEVEL.SUMMARY;
   /** The clock the now-line prints, through the same formatter that built every label on the
@@ -411,33 +418,14 @@ export function SharedItinerary() {
 
   return (
     <div className="sh-page">
-      <div className="sh-public-bar">
-        <span className="sh-brand">
-          {/* The app's own mark, not its initial (owner, 2026-08-30). `public/` rather than
-              an inline SVG: the same file the favicon and the PWA icon are cut from, so the
-              page a stranger lands on cannot drift from the icon in their tab. */}
-          <img className="sh-brand-mark" src={brandMark} alt="" width={20} height={20} />
-          {t.share.public.brand}
-        </span>
-        <span className="sh-bar-end">
-          <span className={`sh-freshness${stale ? ' stale' : ''}`}>
-            <span className="sh-live-dot" aria-hidden="true" />
-            {/* **Elapsed, not a claim.** `עודכן עכשיו` was stamped at load and never
-                revisited (§4); it is now the app's one elapsed ladder (ADR-0114, through
-                `agoLabel`) over the projection's own `generatedAt`, re-read on every clock
-                tick — so a tab left open says how old what it shows really is. */}
-            {stale
-              ? t.share.public.stale
-              : t.share.public.updated(agoLabel(projection.generatedAt, now.getTime()))}
-          </span>
-          {/* **The reader's own copy, where it is always reachable** (ninth amendment §6).
-              The masthead is theme-fixed `--indigo`, so this control takes the `--on-dark-*`
-              ramp (ADR-0158 §3) — drawn with `--ink` in the mockup it rendered navy on navy.
-              Short label here and the full sentence at the foot: the bar has 42px and a
-              status line to share it with. */}
-          <TakePdf code={code} className="sh-bar-take" short filename={pdfName} />
-        </span>
-      </div>
+      <PublicBar generatedAt={projection.generatedAt} stale={stale} now={now}>
+        {/* **The reader's own copy, where it is always reachable** (ninth amendment §6).
+            The masthead is theme-fixed `--indigo`, so this control takes the `--on-dark-*`
+            ramp (ADR-0158 §3) — drawn with `--ink` in the mockup it rendered navy on navy.
+            Short label here and the full sentence at the foot: the bar has 42px and a
+            status line to share it with. */}
+        <TakePdf code={code} className="sh-bar-take" short filename={pdfName} />
+      </PublicBar>
 
       <header className="sh-hero">
         {/* **How the trip moves**, beside where it goes (owner, 2026-08-30). Two trips with
@@ -474,7 +462,11 @@ export function SharedItinerary() {
         {/* The app's own trip-range shape (`lib/time.ts`), not two raw ISO dates — the
             All Trips card has read `27.08–02.09` since long before this page existed. */}
         <div className="sh-dates">
-          {ltrIsolate(formatTripDates(projection.trip.startDate, projection.trip.endDate))}
+          {/* Only the dates are mono: the counts are a Hebrew sentence, and JetBrains Mono
+              ships no Hebrew (ADR-0242 §5, the web twin of the book's boxes). */}
+          <span className="sh-dates-num">
+            {ltrIsolate(formatTripDates(projection.trip.startDate, projection.trip.endDate))}
+          </span>
           {' · '}
           {t.share.public.counts(projection.trip.dayCount, projection.trip.eventCount)}
         </div>
@@ -574,12 +566,151 @@ export function SharedItinerary() {
         <TakePdf code={code} className="share-outcome" filename={pdfName} />
       </div>
 
-      <footer className="sh-footer">
-        <strong>{t.share.public.inviteTitle}</strong>
-        <span>{t.share.public.inviteBody}</span>
-        <a href="/">{t.share.public.inviteCta}</a>
-      </footer>
+      <PublicFooter />
     </div>
+  );
+}
+
+/** The masthead's bar, on the trip page and a list's (ADR-0242 §4). */
+function PublicBar({
+  generatedAt,
+  stale,
+  now,
+  children,
+}: {
+  generatedAt: string;
+  stale: boolean;
+  now: Date;
+  children?: ReactNode;
+}) {
+  return (
+    <div className="sh-public-bar">
+      <span className="sh-brand">
+        {/* The app's own mark, not its initial (owner, 2026-08-30). `public/` rather than
+            an inline SVG: the same file the favicon and the PWA icon are cut from, so the
+            page a stranger lands on cannot drift from the icon in their tab. */}
+        <img className="sh-brand-mark" src={brandMark} alt="" width={20} height={20} />
+        {t.share.public.brand}
+      </span>
+      <span className="sh-bar-end">
+        <span className={`sh-freshness${stale ? ' stale' : ''}`}>
+          <span className="sh-live-dot" aria-hidden="true" />
+          {/* **Elapsed, not a claim.** `עודכן עכשיו` was stamped at load and never
+              revisited (§4); it is now the app's one elapsed ladder (ADR-0114, through
+              `agoLabel`) over the projection's own `generatedAt`, re-read on every clock
+              tick — so a tab left open says how old what it shows really is. */}
+          {stale
+            ? t.share.public.stale
+            : t.share.public.updated(agoLabel(generatedAt, now.getTime()))}
+        </span>
+        {children}
+      </span>
+    </div>
+  );
+}
+
+const PublicFooter = () => (
+  <footer className="sh-footer">
+    <strong>{t.share.public.inviteTitle}</strong>
+    <span>{t.share.public.inviteBody}</span>
+    <a href="/">{t.share.public.inviteCta}</a>
+  </footer>
+);
+
+/**
+ * **A list, not the trip** (ADR-0242 §4): the same masthead, and one list where the days were.
+ * No clock, no day and no PDF: a friend going next month needs where, not when.
+ */
+function SharedListPage({ list, stale, now }: { list: SharedList; stale: boolean; now: Date }) {
+  const copy = t.share.list;
+  const count = list.groups.reduce((sum, group) => sum + group.rows.length, 0);
+  return (
+    <div className="sh-page">
+      <PublicBar generatedAt={list.generatedAt} stale={stale} now={now} />
+      <header className="sh-hero">
+        <div className="sh-kicker">
+          <strong>{copy.kicker}</strong>
+          {NARRATIVE_SEPARATOR}
+          {t.iconPicker.categories[list.category]}
+          {' · '}
+          <span>{autoIsolate(list.trip.destination)}</span>
+        </div>
+        <h1 className="sh-title">
+          {list.trip.icon ? (
+            <span className="sh-title-mark" aria-hidden="true">
+              {list.trip.icon}
+            </span>
+          ) : null}
+          <span>{list.trip.name}</span>
+        </h1>
+        <div className="sh-dates">
+          <span className="sh-dates-num">
+            {ltrIsolate(formatTripDates(list.trip.startDate, list.trip.endDate))}
+          </span>
+          {' · '}
+          {copy.places(count)}
+        </div>
+      </header>
+      {stale ? <div className="sh-stale">{t.share.public.staleBody}</div> : null}
+      <main className="sh-days">
+        <div className="sh-days-head">
+          <h2>{copy.heading[list.category]}</h2>
+          <span>{copy.order}</span>
+        </div>
+        {list.groups.length === 0 ? <p className="sh-list-empty">{copy.empty}</p> : null}
+        {list.groups.map((group, index) =>
+          group.region ? (
+            <section className="sh-list-group" key={group.region}>
+              <h3 className="sh-list-head">
+                {autoIsolate(group.region)}
+                <span>{group.rows.length}</span>
+              </h3>
+              {group.rows.map((row, at) => (
+                <ListStop key={at} row={row} />
+              ))}
+            </section>
+          ) : (
+            <section className="sh-list-group" key={`@${index}`}>
+              {group.rows.map((row, at) => (
+                <ListStop key={at} row={row} />
+              ))}
+            </section>
+          ),
+        )}
+      </main>
+      <PublicFooter />
+    </div>
+  );
+}
+
+/** A list's row: `EventRow`'s card with no clock, no journey and nothing operational. The
+ *  place line is dropped when the row is named for its place, the book's rule. */
+function ListStop({ row }: { row: SharedListRow }) {
+  return (
+    <article className="sh-event">
+      <span className="sh-event-glyph" aria-hidden="true">
+        {row.icon ?? '•'}
+      </span>
+      <span className="sh-event-main">
+        <strong>{autoIsolate(row.title)}</strong>
+        {row.placeName && row.placeName.trim() !== row.title.trim() ? (
+          <span className="sh-place-line">
+            <span>{autoIsolate(row.placeName)}</span>
+          </span>
+        ) : null}
+        {row.caption ? (
+          <span className="sh-place-line sh-cap" dir="auto">
+            {row.caption}
+          </span>
+        ) : null}
+        {row.mapUrl ? (
+          <a className="sh-map-link" href={row.mapUrl} target="_blank" rel="noreferrer noopener">
+            <Icon name="map" />
+            {t.share.public.map}
+          </a>
+        ) : null}
+      </span>
+    </article>
   );
 }
 
