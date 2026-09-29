@@ -202,7 +202,9 @@ body {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  padding: 48px 64px 40px;
+  /* The drawn 40px foot was 32px here and in the tiles and foot below once a cover's card
+     had to hold a two-line name: measured, the drawn spacing put the foot 4px past 1350. */
+  padding: 48px 64px 32px;
 }
 .og-memory-name {
   margin: 0;
@@ -210,6 +212,12 @@ body {
   font-weight: 400;
   font-size: 92px;
   line-height: 1.05;
+  /* Two lines at most. The card is a fixed 1350 tall and clips, and under a cover a third
+     line of name pushes the figures and the foot off its bottom edge. */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
 }
 .og-memory-when {
   font-size: 42px;
@@ -222,7 +230,7 @@ body {
   margin-top: auto;
 }
 .og-memory-fig {
-  padding: 30px 12px 26px;
+  padding: 24px 12px 20px;
   border-radius: 28px;
   background: var(--card);
   text-align: center;
@@ -249,7 +257,7 @@ body {
   color: var(--muted);
 }
 .og-memory-foot {
-  margin-top: 18px;
+  margin-top: 10px;
   font-size: 24px;
   color: var(--muted);
 }
