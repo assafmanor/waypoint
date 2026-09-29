@@ -54,11 +54,25 @@ export interface TripBookInput {
 
 const COPY = PDF_COPY.book;
 
+function dayParts(date: string): { weekday: string; dayMonth: string } {
+  const [year, month, day] = date.split('-').map(Number);
+  return {
+    weekday: COPY.weekdayLetters[new Date(Date.UTC(year, month - 1, day)).getUTCDay()],
+    dayMonth: `${String(day).padStart(2, '0')}.${String(month).padStart(2, '0')}`,
+  };
+}
+
 /** `ה׳ 25.09`: how the Home names a day (`dayWhen` in `lib/memory-home.ts`). */
 export function bookDayWhen(date: string): string {
-  const [year, month, day] = date.split('-').map(Number);
-  const weekday = COPY.weekdayLetters[new Date(Date.UTC(year, month - 1, day)).getUTCDay()];
-  return `${weekday} ${String(day).padStart(2, '0')}.${String(month).padStart(2, '0')}`;
+  const { weekday, dayMonth } = dayParts(date);
+  return `${weekday} ${dayMonth}`;
+}
+
+/** The same, as markup: **only the digits are mono**. The weekday is a Hebrew letter and
+ *  JetBrains Mono ships none, so wrapping the whole run in `num` printed it as a box. */
+export function bookDayWhenHtml(date: string): string {
+  const { weekday, dayMonth } = dayParts(date);
+  return `${weekday} ${num(dayMonth)}`;
 }
 
 /** A picture with its subject and credit on it: the licence does not end at the app's edge
@@ -113,7 +127,7 @@ function dayBlock(day: SharedDay, timed: boolean, dataUrls: Record<string, strin
   return (
     `<section class="bk-day">` +
     `<div class="bk-kicker">${COPY.dayKicker(day.ordinal, bookDayWhen(day.date))}</div>` +
-    `<h2 class="bk-day-title">${dayTitleText(day.title) || num(bookDayWhen(day.date))}</h2>` +
+    `<h2 class="bk-day-title">${dayTitleText(day.title) || bookDayWhenHtml(day.date)}</h2>` +
     `<div class="bk-rule"></div>` +
     shot(day.photo, dataUrls, 220) +
     `<ul class="bk-stops">${events.map((event) => stopRow(event, timed)).join('')}</ul>` +
@@ -175,7 +189,7 @@ export function bookBests(input: {
   const dayName = (date: string) => {
     const day = days.find((d) => d.date === date);
     const title = day ? dayTitleText(day.title) : '';
-    return [num(bookDayWhen(date)), title].filter(Boolean).join(NARRATIVE_SEPARATOR);
+    return [bookDayWhenHtml(date), title].filter(Boolean).join(NARRATIVE_SEPARATOR);
   };
   const eventRow = (label: string, event: TripEvent, detail?: string): BackRow => ({
     clock: clockOf(event),
@@ -217,7 +231,7 @@ export function bookNextTime(record: TripRecord): BackRow[] {
         ? [
             {
               lead: auto(event.title),
-              detail: `${copy.skipped}${NARRATIVE_SEPARATOR}${num(bookDayWhen(event.date))}`,
+              detail: `${copy.skipped}${NARRATIVE_SEPARATOR}${bookDayWhenHtml(event.date)}`,
             },
           ]
         : [];

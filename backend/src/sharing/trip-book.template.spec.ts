@@ -212,6 +212,17 @@ describe('tripBookHtml (ADR-0241 §6)', () => {
     expect(strip(named).split('שוק צוקיג׳י')).toHaveLength(2);
   });
 
+  // JetBrains Mono ships no Hebrew, so a Hebrew letter inside a mono run prints as a box: the
+  // weekday in `ה׳ 12.09` did, on the back page and every day title (owner, with a photo).
+  it('puts no Hebrew inside a mono run, anywhere in the book', () => {
+    for (const level of [SHARE_DETAIL_LEVEL.SUMMARY, SHARE_DETAIL_LEVEL.FULL]) {
+      const html = render(bookProjection(level));
+      const mono = [...html.matchAll(/<span class="pdf-(?:num|mono)">([^<]*)<\/span>/g)];
+      expect(mono.length).toBeGreaterThan(0);
+      for (const [, run] of mono) expect(run).not.toMatch(/[֐-׿]/);
+    }
+  });
+
   it('names a day the way the Home does', () => {
     expect(bookDayWhen('2026-09-25')).toBe('ו׳ 25.09');
   });
