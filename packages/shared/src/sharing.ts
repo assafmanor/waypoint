@@ -343,18 +343,27 @@ const anySensitiveEnabled = (fields: ShareSensitiveFields): boolean =>
  * only accepted value is off, so the level and the exposure can never disagree — and the
  * stored row can be trusted by the projection without re-deriving the rule.
  */
+/** **A list, not the trip** (ADR-0242 §3): one kind of what the trip did. A kind and nothing
+ *  else, because free text in a policy is a link nobody can name in the sheet's link list. */
+export const shareScopeSchema = z.strictObject({ category: eventCategorySchema });
+export type ShareScope = z.infer<typeof shareScopeSchema>;
+
 export const upsertTripShareSchema = z
   .strictObject({
     detailLevel: shareDetailLevelSchema,
     sensitive: shareSensitiveFieldsSchema,
     documentIds: z.array(entityIdSchema).max(50),
+    scope: shareScopeSchema.optional(),
   })
   .refine(
     (input) =>
       input.detailLevel === SHARE_DETAIL_LEVEL.EVERYTHING ||
       (!anySensitiveEnabled(input.sensitive) && input.documentIds.length === 0),
     { message: 'sensitive fields require the everything detail level' },
-  );
+  )
+  .refine((input) => !input.scope || input.detailLevel === SHARE_DETAIL_LEVEL.SUMMARY, {
+    message: 'a list is a summary share',
+  });
 export type UpsertTripShareInput = z.infer<typeof upsertTripShareSchema>;
 
 /** A root-relative public path, never an origin: the client owns which host it is on
@@ -369,6 +378,8 @@ export const tripShareConfigSchema = z.strictObject({
   detailLevel: shareDetailLevelSchema,
   sensitive: shareSensitiveFieldsSchema,
   documentIds: z.array(entityIdSchema),
+  /** Present on a list's link, which is no level's link (ADR-0242 §2). */
+  scope: shareScopeSchema.optional(),
   updatedAt: isoDateTimeSchema,
 });
 export type TripShareConfig = z.infer<typeof tripShareConfigSchema>;
@@ -1117,6 +1128,52 @@ export const sharedItinerarySchema = z.strictObject({
   appendix: sharedAppendixSchema.optional(),
 });
 export type SharedItinerary = z.infer<typeof sharedItinerarySchema>;
+
+/**
+ * **A list's row** (ADR-0242 §4): the place facts a friend needs to go there, and none of what
+ * the trip did around it. No clock, no address line, no booking, no ops, no journey, no day.
+ */
+export const sharedListRowSchema = sharedEventSchema.pick({
+  title: true,
+  icon: true,
+  category: true,
+  placeName: true,
+  caption: true,
+  mapUrl: true,
+});
+export type SharedListRow = z.infer<typeof sharedListRowSchema>;
+
+/** A city's rows, in the order they were visited. `region` is absent when the list has one
+ *  region (the masthead names it) and on the last group of rows whose region is unknown. */
+export const sharedListGroupSchema = z.strictObject({
+  region: z.string().optional(),
+  rows: z.array(sharedListRowSchema).min(1),
+});
+export type SharedListGroup = z.infer<typeof sharedListGroupSchema>;
+
+/** **What a list's code answers** (ADR-0242 §4): the record's rows of one kind. */
+export const sharedListSchema = z.strictObject({
+  status: z.literal('list'),
+  generatedAt: isoDateTimeSchema,
+  shareUrl: publicSharePathSchema,
+  trip: z.strictObject({
+    name: z.string(),
+    destination: z.string(),
+    icon: z.string().nullish(),
+    startDate: dateOnlySchema,
+    endDate: dateOnlySchema,
+  }),
+  category: eventCategorySchema,
+  groups: z.array(sharedListGroupSchema),
+});
+export type SharedList = z.infer<typeof sharedListSchema>;
+
+/** Everything a public code can answer: the trip, or one list of it. */
+export const sharedPageSchema = z.discriminatedUnion('status', [
+  sharedItinerarySchema,
+  sharedListSchema,
+]);
+export type SharedPage = z.infer<typeof sharedPageSchema>;
 
 // ── The model boundary ──────────────────────────────────────────────────────────────
 

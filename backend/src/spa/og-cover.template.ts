@@ -190,7 +190,7 @@ function slotsFor(
         raw: { avatars: avatarRow(facts.travellers) },
       }
     : {
-        // Digits, because `.sh-dates` is the reader page's MONO slot — see
+        // Digits, because `.sh-dates-num` is the reader page's MONO slot — see
         // `heTripRangeNumeric`. The ticket's own meta line is body font and takes the prose.
         text: {
           icon,

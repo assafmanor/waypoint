@@ -3,11 +3,24 @@
 // **The record, by kind** (owner, 2026-09-27): the Home's kind chips open the search on their
 // kind, and the search's own chips can widen it back to every row.
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { EVENT_KIND, EVENT_SOURCE, EVENT_STATUS, type EventCategory } from '@waypoint/shared';
 import type { RecordRow } from '../lib/memory-home';
 
 vi.mock('../state/mode-state', () => ({ useMode: () => ({ mode: 'plan' }) }));
+// The list's send (ADR-0242 §1) asks who is looking and which links the trip has.
+const session = vi.hoisted(() => ({
+  role: 'admin' as 'admin' | 'peer',
+  links: [] as unknown[],
+}));
+vi.mock('../state/trip-state', () => ({
+  useTrip: () => ({
+    trip: { id: 't1', name: 'Iceland' },
+    members: [{ userId: 'u1', role: session.role }],
+  }),
+}));
+vi.mock('../state/auth-state', () => ({ useAuth: () => ({ me: { user: { id: 'u1' } } }) }));
+vi.mock('../lib/api', () => ({ fetchTripShares: async () => session.links }));
 
 import { wrapNav } from '../test/nav-harness';
 import { t } from '../i18n/he';
@@ -68,5 +81,69 @@ describe('the record by kind', () => {
     expect(shown(document.body)).toEqual(['Skógafoss', 'Gullfoss']);
     fireEvent.click(screen.getByRole('radio', { name: t.planHome.past.record.kindsAll }));
     expect(shown(document.body)).toEqual(['Skógafoss', 'Gullfoss', 'Dill']);
+  });
+
+  describe('sending a list (ADR-0242 §1)', () => {
+    const open = async (kind?: EventCategory, list = rows) => {
+      render(
+        wrapNav(
+          <RecordSearch
+            rows={list}
+            tripName="Iceland"
+            kind={kind}
+            onClose={() => {}}
+            {...actions}
+          />,
+        ),
+      );
+      // Let the links read settle.
+      await act(async () => {});
+    };
+    const send = () =>
+      screen.queryByRole('button', { name: t.share.list.send(t.share.list.name.nature) });
+    afterEach(() => {
+      session.role = 'admin';
+      session.links = [];
+    });
+
+    it('offers the send under one kind, and not on every kind or with a query', async () => {
+      await open('nature');
+      expect(send()).not.toBeNull();
+      fireEvent.change(screen.getByPlaceholderText(t.planHome.past.record.search.placeholder), {
+        target: { value: 'Sk' },
+      });
+      expect(send()).toBeNull();
+      cleanup();
+      await open();
+      expect(screen.queryByText(/^שליחת רשימת/)).toBeNull();
+    });
+
+    it('offers nothing where nothing of that kind happened', async () => {
+      await open('nature', [
+        { ...row('Glymur', 'nature'), outcome: 'skipped' },
+        row('Dill', 'food'),
+      ]);
+      expect(send()).toBeNull();
+    });
+
+    it("gives a traveller who is not an admin the send only once the kind's link exists", async () => {
+      session.role = 'peer';
+      await open('nature');
+      expect(send()).toBeNull();
+      cleanup();
+      session.links = [
+        {
+          code: 'Ab3dEf7h',
+          shareUrl: '/s/Ab3dEf7h',
+          detailLevel: 'summary',
+          sensitive: { bookingSecrets: false, notesAndTasks: false, travelerIdentity: false },
+          documentIds: [],
+          scope: { category: 'nature' },
+          updatedAt: '2026-09-29T00:00:00.000Z',
+        },
+      ];
+      await open('nature');
+      expect(send()).not.toBeNull();
+    });
   });
 });

@@ -1,14 +1,17 @@
 import { Controller, Get, Param, Res } from '@nestjs/common';
 import { ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
-import { sharedItinerarySchema, type SharedItinerary } from '@waypoint/shared';
+import { sharedItinerarySchema, type SharedPage } from '@waypoint/shared';
 import type { Response } from 'express';
-import { createZodDto, ZodSerializerDto } from 'nestjs-zod';
+import { createZodDto } from 'nestjs-zod';
 import { Public } from '../auth/public.decorator';
 import { attachmentDisposition } from '../common/attachment-disposition';
 import { applyPublicShareHeaders } from './public-response-headers';
 import { SharingService } from './sharing.service';
 
+/** The trip's shape, for the API docs. A code may also answer a list (`sharedListSchema`,
+ *  ADR-0242 §4); both branches are parsed by the projection before they leave it, and a
+ *  union cannot be a DTO's base class, so there is no serializer here. */
 class SharedItineraryDto extends createZodDto(sharedItinerarySchema) {}
 
 /**
@@ -31,11 +34,10 @@ export class PublicSharingController {
 
   @Get(':code')
   @ApiOkResponse({ type: SharedItineraryDto })
-  @ZodSerializerDto(SharedItineraryDto)
   async read(
     @Param('code') code: string,
     @Res({ passthrough: true }) res: Response,
-  ): Promise<SharedItinerary> {
+  ): Promise<SharedPage> {
     applyPublicShareHeaders(res);
     return this.sharing.byCode(code);
   }

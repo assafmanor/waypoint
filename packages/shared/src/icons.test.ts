@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { BookingType, EventCategory, TripEvent } from './entities';
-import { BOOKING_TYPE, BOOKING_TYPE_TO_CATEGORY, PLACE_SEARCH_KIND } from './constants';
+import {
+  BOOKING_TYPE,
+  BOOKING_TYPE_TO_CATEGORY,
+  EVENT_CATEGORY,
+  PLACE_SEARCH_KIND,
+} from './constants';
 import {
   authorsRoundTrip,
   bookingTypeDurationUnit,
@@ -9,6 +14,7 @@ import {
   titlesFromRoute,
   BOOKING_TYPE_PROFILE,
   placeSearchKindFor,
+  recordCategory,
   spendsSpanInMotion,
   carriesRoute,
   CATEGORY_TIME_PROFILE,
@@ -727,5 +733,17 @@ describe('edgeOutlivesItsInstant', () => {
     const flight = { category: 'transport' as const, icon: '✈️' };
     expect(edgeOutlivesItsInstant(flight, 'start')).toBe(false);
     expect(edgeOutlivesItsInstant(flight, 'end')).toBe(false);
+  });
+});
+
+describe('recordCategory', () => {
+  it("files a row by its own kind, else its booking's, else other", () => {
+    expect(
+      recordCategory({ category: EVENT_CATEGORY.NATURE }, { type: BOOKING_TYPE.RESTAURANT }),
+    ).toBe(EVENT_CATEGORY.NATURE);
+    expect(recordCategory({ category: null }, { type: BOOKING_TYPE.RESTAURANT })).toBe(
+      EVENT_CATEGORY.FOOD,
+    );
+    expect(recordCategory({})).toBe(EVENT_CATEGORY.OTHER);
   });
 });

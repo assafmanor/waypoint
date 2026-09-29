@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import {
   NO_SENSITIVE_FIELDS,
   SHARE_DETAIL_LEVEL,
+  type ShareScope,
   type ShareSensitiveFields,
   type UpsertTripShareInput,
 } from '@waypoint/shared';
@@ -11,6 +12,7 @@ export interface SharePolicyInput {
   detailLevel: UpsertTripShareInput['detailLevel'];
   sensitive: ShareSensitiveFields;
   documentIds: string[];
+  scope?: ShareScope;
 }
 
 /**
@@ -28,6 +30,10 @@ export function normalizeSharePolicy(input: SharePolicyInput): SharePolicyInput 
     detailLevel: input.detailLevel,
     sensitive: everything ? input.sensitive : NO_SENSITIVE_FIELDS,
     documentIds: everything ? [...new Set(input.documentIds)].sort() : [],
+    // Summary only, as the schema already refuses; dropped anywhere else rather than trusted.
+    ...(input.scope && input.detailLevel === SHARE_DETAIL_LEVEL.SUMMARY
+      ? { scope: { category: input.scope.category } }
+      : {}),
   };
 }
 
@@ -54,6 +60,9 @@ export function sharePolicyHash(input: SharePolicyInput): string {
     policy.sensitive.notesAndTasks ? '1' : '0',
     policy.sensitive.travelerIdentity ? '1' : '0',
     policy.documentIds.join(','),
+    // **Appended only when scoped** (ADR-0242 §3), so an unscoped policy is byte-identical to
+    // what the migration's SQL twin hashed and no existing link moves.
+    ...(policy.scope ? [policy.scope.category] : []),
   ].join('|');
   return createHash('sha256').update(canonical, 'utf8').digest('hex');
 }

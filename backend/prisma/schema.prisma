@@ -1061,6 +1061,9 @@ model TripShare {
   includeBookingSecrets   Boolean          @default(false)
   includeNotesAndTasks    Boolean          @default(false)
   includeTravelerIdentity Boolean          @default(false)
+  /// **A list, not the trip** (ADR-0242 §3): one kind of the record, at Summary. Null on every
+  /// trip link. It enters the hash only when set, so no link that predates it changed hash.
+  scopeCategory           EventCategory?
   createdBy               String
   createdAt               DateTime         @default(now())
   updatedAt               DateTime         @updatedAt

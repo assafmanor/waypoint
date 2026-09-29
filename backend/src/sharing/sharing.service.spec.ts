@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import {
+  EVENT_CATEGORY,
   NO_SENSITIVE_FIELDS,
   SHARE_DETAIL_LEVEL,
   type UpsertTripShareInput,
@@ -280,6 +281,30 @@ describe('SharingService', () => {
     await expect(service.publicDocument(operational.code, documentId)).rejects.toBeInstanceOf(
       NotFoundException,
     );
+  });
+
+  // ADR-0242 §2–§4: a list is a link of its own, beside the trip's, and has no paper.
+  it('keeps a list apart from the trip link at the same level', async () => {
+    const summary = await service.upsert(tripId, ADMIN, SUMMARY);
+    const food = await service.upsert(tripId, ADMIN, {
+      ...SUMMARY,
+      scope: { category: EVENT_CATEGORY.FOOD },
+    });
+    expect(food.code).not.toBe(summary.code);
+    expect(food.scope).toEqual({ category: EVENT_CATEGORY.FOOD });
+    expect(summary.scope).toBeUndefined();
+    expect(
+      (
+        await service.upsert(tripId, ADMIN, {
+          ...SUMMARY,
+          scope: { category: EVENT_CATEGORY.FOOD },
+        })
+      ).code,
+    ).toBe(food.code);
+    expect((await projection.byCode(food.code)).status).toBe('list');
+    await expect(service.pdf(food.code)).rejects.toBeInstanceOf(NotFoundException);
+    await expect(service.book(food.code)).rejects.toBeInstanceOf(NotFoundException);
+    expect((await service.previewByCode(food.code)).list).toBe(EVENT_CATEGORY.FOOD);
   });
 
   it('re-shares a withdrawn policy with a fresh code rather than reviving one', async () => {

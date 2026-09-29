@@ -30,6 +30,7 @@ import {
   NOTE_HOST_FIELD,
   type BookingType,
   type DocumentType,
+  type EventCategory,
   type LegTravelMode,
 } from '@waypoint/shared';
 import { countdownText } from '../lib/time';
@@ -3657,6 +3658,45 @@ export const t = {
           detail: 'אי אפשר להצטרף לטיול שכבר נגמר · אפשר לשתף אותו לצפייה',
         },
       },
+    },
+    /** **A list, not the trip** (ADR-0242). `name` is `backend/src/sharing/hebrew.copy.ts`'s
+     *  `list.name` by value, so the preview and the sheet call a list the same thing. */
+    list: {
+      name: {
+        transport: 'רשימת התחבורה',
+        food: 'רשימת האוכל',
+        lodging: 'רשימת הלינה',
+        sightseeing: 'רשימת האתרים',
+        nature: 'רשימת הטבע',
+        activity: 'רשימת הפעילויות',
+        shopping: 'רשימת הקניות',
+        services: 'רשימת השירותים',
+        other: 'רשימת השונות',
+      } satisfies Record<EventCategory, string>,
+      send: (listName: string) => `שליחת ${listName}`,
+      places: (n: number) => (n === 1 ? 'מקום אחד שהיינו בו' : `${n} מקומות שהיינו בהם`),
+      scope: 'השם, המקום ולינק למפה. בלי שעות, בלי הזמנות, בלי פתקים ובלי שמות.',
+      live: 'כל מי שיש לו את הלינק יכול לקרוא אותו',
+      create: 'יצירת לינק ושליחה',
+      again: 'שליחת הרשימה',
+      stop: 'הפסקת השיתוף',
+      stopBody: 'הלינק לרשימה יפסיק לעבוד. שאר הלינקים של הטיול ימשיכו.',
+      // The reader's page (§4): what the kicker calls it, and a heading per kind that says
+      // what the group did there.
+      kicker: 'רשימה',
+      heading: {
+        transport: 'איך נסענו',
+        food: 'מה אכלנו',
+        lodging: 'איפה ישנו',
+        sightseeing: 'מה ראינו',
+        nature: 'איפה טיילנו',
+        activity: 'מה עשינו',
+        shopping: 'איפה קנינו',
+        services: 'מה עזר לנו',
+        other: 'מה עוד',
+      } satisfies Record<EventCategory, string>,
+      order: 'לפי סדר הביקור',
+      empty: 'עוד אין ברשימה מקומות שהיינו בהם.',
     },
     public: {
       brand: 'Travelive',

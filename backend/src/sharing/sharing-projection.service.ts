@@ -27,6 +27,11 @@ import {
   type SharedDayBed,
   type SharedEvent,
   type SharedItinerary,
+  type SharedList,
+  type SharedListGroup,
+  type SharedListRow,
+  type SharedPage,
+  sharedListSchema,
   type BookingType,
   type EventCategory,
   type LegTravelMode,
@@ -58,6 +63,7 @@ import {
   EVENT_STATUS,
   NARRATIVE_TENSE,
   recapHappened,
+  recordCategory,
   type SharedNoteOp,
 } from '@waypoint/shared';
 
@@ -88,6 +94,8 @@ export interface SharePolicy {
   includeBookingSecrets: boolean;
   includeNotesAndTasks: boolean;
   includeTravelerIdentity: boolean;
+  /** A list's kind (ADR-0242 §3); null on every trip link. */
+  scopeCategory: EventCategory | null;
 }
 
 /** A calendar day as `YYYY-MM-DD`. `Event.date` is a `@db.Date`, which Prisma hands back at
@@ -135,6 +143,45 @@ export const labelWith =
     );
     return (derived?.trim() || shortPlaceLabel(place.name)).trim() || undefined;
   };
+
+/**
+ * **Where a row IS, not what column happens to hold it.** ADR-0048 clears `Event.placeId` on
+ * every booking-backed row, so `event.place` is null for every hotel, restaurant, ticket and
+ * activity on the trip; reading it alone published no name, address, description or map link
+ * for exactly the stops a reader most needs to find (owner, 2026-09-05). `event.place` stays
+ * as the fallback for a row the map has no entry for. Shared by the day's rows and a list's
+ * (ADR-0242 §4), so the two never name one place two ways.
+ */
+function stopPlaceFacts(
+  event: ShareEventRow,
+  placeById: ReadonlyMap<string, SharePlaceRow>,
+  placeLabel: PlaceLabeller,
+  captionOf: (placeId: string | undefined) => string | undefined,
+): {
+  stopPlaceId: string | undefined;
+  placeName: string | undefined;
+  address: string | undefined;
+  caption: string | undefined;
+  mapUrl: string | undefined;
+} {
+  const stopPlaceId = eventStopPlaceId(event, event.booking ?? undefined);
+  const stopPlace = (stopPlaceId ? placeById.get(stopPlaceId) : undefined) ?? event.place;
+  const placeName = placeLabel(stopPlace);
+  const address = stopPlace?.address?.trim() || undefined;
+  return {
+    stopPlaceId,
+    placeName,
+    address,
+    // **A stop's one-line description** (owner, 2026-08-30). Public knowledge about a public
+    // place: it reveals nothing about the trip, so it is behind no sensitive toggle.
+    caption: captionOf(stopPlaceId),
+    // Built from the public display text, so opening a map never requires the projection to
+    // carry a coordinate the owner did not choose to publish.
+    mapUrl: placeName
+      ? `${GOOGLE_MAPS_SEARCH}${encodeURIComponent([placeName, address].filter(Boolean).join(', '))}`
+      : undefined,
+  };
+}
 
 /**
  * **The trip's fixed points, derived from the schedule** (ADR-0213's 2026-08-30 amendment).
@@ -772,8 +819,109 @@ export class SharingProjectionService {
   /** Resolve a public code to its live projection. A missing, revoked or rotated code is
    *  the same `NotFoundException` — the response must not distinguish "never existed" from
    *  "was withdrawn", or the 404 becomes a trip-existence oracle. */
-  async byCode(code: string, locale = DEFAULT_LOCALE): Promise<SharedItinerary> {
-    return this.project(await this.requireActiveShare(code), locale);
+  async byCode(code: string, locale = DEFAULT_LOCALE): Promise<SharedPage> {
+    const share = await this.requireActiveShare(code);
+    return share.scopeCategory
+      ? this.projectList(share, share.scopeCategory)
+      : this.project(share, locale);
+  }
+
+  /** `byCode`'s trip branch, for a caller that holds a trip link's code. */
+  async tripByCode(code: string, locale = DEFAULT_LOCALE): Promise<SharedItinerary> {
+    return this.project(await this.requireTripShare(code), locale);
+  }
+
+  /** A trip link only: a list is a link and has no paper (ADR-0242 §4). The same 404 as a
+   *  missing code, so the answer says nothing about what the code is. */
+  async requireTripShare(code: string): Promise<SharePolicy> {
+    const share = await this.requireActiveShare(code);
+    if (share.scopeCategory) throw new NotFoundException('Shared itinerary unavailable');
+    return share;
+  }
+
+  /**
+   * **One kind of what the trip did** (ADR-0242 §4): the record's rows of the list's category,
+   * in the order they were visited, each with the place facts a friend needs to go there and
+   * nothing about the trip around it. Grouped by the stop's region only when there are two or
+   * more, since the masthead already names one. No narrative is generated for a list.
+   */
+  async projectList(share: SharePolicy, category: EventCategory): Promise<SharedList> {
+    const [trip, events, places] = await Promise.all([
+      this.prisma.trip.findUniqueOrThrow({
+        where: { id: share.tripId },
+        select: { name: true, destination: true, icon: true, startDate: true, endDate: true },
+      }),
+      this.prisma.event.findMany({
+        where: { tripId: share.tripId },
+        select: SHARE_EVENT_SELECT,
+        orderBy: [{ date: 'asc' }, { startsAt: 'asc' }, { sortOrder: 'asc' }],
+      }),
+      this.prisma.place.findMany({ where: { tripId: share.tripId }, select: SHARE_PLACE_SELECT }),
+    ]);
+    // Read only, never refreshed, for the reason `project` gives: the reader is anonymous.
+    const { enrichments } = await this.enrichment.readForPlaces(places);
+    const placeLabel = labelWith(enrichments);
+    const placeById = new Map(places.map((place) => [place.id, place] as const));
+    const textOf = (placeId: string | undefined, field: 'region' | 'servedCity' | 'summary') => {
+      const variants = placeId ? enrichments[placeId]?.[field] : undefined;
+      return variants ? resolveTextVariant(variants, SUMMARY_LANG_PREFERENCE)?.value : undefined;
+    };
+
+    // The memory Home's own filing (`recordCategory`), not the stored column alone: a booked
+    // restaurant with no category of its own is in the food chip's count, so it is in the list.
+    const listed = events.filter(
+      (event) =>
+        recapHappened(event) &&
+        recordCategory(
+          { category: event.category as EventCategory | null },
+          event.booking as { type: BookingType } | null,
+        ) === category,
+    );
+    const rows = listed.map((event) => {
+      const facts = stopPlaceFacts(event, placeById, placeLabel, (placeId) =>
+        capCaption(textOf(placeId, 'summary')),
+      );
+      const row: SharedListRow = stripUndefined({
+        title: event.title,
+        icon: event.icon,
+        category: event.category as EventCategory | null,
+        placeName: facts.placeName,
+        caption: facts.caption,
+        mapUrl: facts.mapUrl,
+      });
+      // `tripRecap`'s own read for a stop's region, so the list and the route agree.
+      const region = textOf(facts.stopPlaceId, 'region') ?? textOf(facts.stopPlaceId, 'servedCity');
+      return { row, region };
+    });
+
+    const regions = [...new Set(rows.flatMap(({ region }) => (region ? [region] : [])))];
+    const groups: SharedListGroup[] =
+      regions.length < 2
+        ? rows.length > 0
+          ? [{ rows: rows.map(({ row }) => row) }]
+          : []
+        : [
+            ...regions.map((region) => ({
+              region,
+              rows: rows.filter((entry) => entry.region === region).map(({ row }) => row),
+            })),
+            { rows: rows.filter((entry) => !entry.region).map(({ row }) => row) },
+          ].filter((group) => group.rows.length > 0);
+
+    return sharedListSchema.parse({
+      status: 'list',
+      generatedAt: new Date().toISOString(),
+      shareUrl: `/s/${share.code}`,
+      trip: {
+        name: trip.name,
+        destination: trip.destination,
+        icon: trip.icon,
+        startDate: dayKey(trip.startDate),
+        endDate: dayKey(trip.endDate),
+      },
+      category,
+      groups,
+    });
   }
 
   async requireActiveShare(code: string): Promise<SharePolicy> {
@@ -787,6 +935,7 @@ export class SharingProjectionService {
         includeBookingSecrets: true,
         includeNotesAndTasks: true,
         includeTravelerIdentity: true,
+        scopeCategory: true,
       },
     });
     if (!share) throw new NotFoundException('Shared itinerary unavailable');
@@ -1599,21 +1748,12 @@ export class SharingProjectionService {
     };
     if (detail === SHARE_DETAIL_LEVEL.SUMMARY) return base;
 
-    // **WHERE THIS ROW IS, not what column happens to hold it.** ADR-0048 clears
-    // `Event.placeId` on every booking-backed row, so `event.place` is null for every hotel,
-    // restaurant, ticket and activity on the trip — and this row published no name, no
-    // address, no description and no map link for exactly the stops a reader most needs to
-    // find (owner, 2026-09-05, on closing the gap: _"even if they change the live sharing
-    // page"_). `event.place` stays as the fallback for a row the map has no entry for.
-    const stopPlaceId = eventStopPlaceId(event, event.booking ?? undefined);
-    const stopPlace = (stopPlaceId ? placeById.get(stopPlaceId) : undefined) ?? event.place;
-    const label = placeLabel(stopPlace);
-    const address = stopPlace?.address?.trim() || undefined;
-    // **A stop's one-line description, at every level** (owner, 2026-08-30). Public
-    // knowledge about a public place: it reveals nothing about the trip, which is why it
-    // is not behind a sensitive toggle and why Summary — the level whose whole job is to
-    // inspire — is the one that gains most from it.
-    const caption = captionOf(stopPlaceId);
+    const {
+      placeName: label,
+      address,
+      caption,
+      mapUrl,
+    } = stopPlaceFacts(event, placeById, placeLabel, captionOf);
     // **A row asks BOTH hosts.** A note may be written against the event or against the
     // booking behind it (`Note`'s union allows either) and to a reader those are one row,
     // so a row that only asked one would drop half the material for no reason a reader
@@ -1636,11 +1776,7 @@ export class SharingProjectionService {
       ...(isTransport(event) ? travelFacts(event, placeById) : {}),
       placeName: label,
       address,
-      // Built from the public display text, so opening a map never requires the projection
-      // to carry a coordinate the owner did not choose to publish.
-      mapUrl: label
-        ? `${GOOGLE_MAPS_SEARCH}${encodeURIComponent([label, address].filter(Boolean).join(', '))}`
-        : undefined,
+      mapUrl,
       journey,
     };
   }

@@ -163,6 +163,11 @@ export function ShareItinerarySheet({
     | undefined
   >();
 
+  /** **The trip's links, without its lists** (ADR-0242 §2). A list is a Summary share scoped to
+   *  one kind, so counted as a level it would read as the trip's Summary link. Stopping every
+   *  link still stops the lists, which is why `shares` stays whole for that. */
+  const tripLinks = useMemo(() => shares.filter((config) => !config.scope), [shares]);
+
   const myUserId = useAuth().me?.user.id;
   const toast = useToast();
 
@@ -260,8 +265,8 @@ export function ShareItinerarySheet({
    * they have no way to enliven it.
    */
   const peerLevels = useMemo(
-    () => LEVELS.filter((value) => shares.some((config) => config.detailLevel === value)),
-    [shares],
+    () => LEVELS.filter((value) => tripLinks.some((config) => config.detailLevel === value)),
+    [tripLinks],
   );
 
   /**
@@ -276,8 +281,8 @@ export function ShareItinerarySheet({
   }, [isAdmin, loading, peerLevels]);
 
   const atLevel = useMemo(
-    () => shares.filter((config) => config.detailLevel === level),
-    [shares, level],
+    () => tripLinks.filter((config) => config.detailLevel === level),
+    [tripLinks, level],
   );
   /** Summary and Full hold at most one, so "the link at this level" is a fact about them. */
   const single = isEverything(level) ? undefined : atLevel[0];
@@ -412,7 +417,7 @@ export function ShareItinerarySheet({
   const levelOptions = useMemo(
     () =>
       (isAdmin ? LEVELS : peerLevels).map((value) => {
-        const live = shares.some((config) => config.detailLevel === value);
+        const live = tripLinks.some((config) => config.detailLevel === value);
         return {
           value,
           icon: '',
@@ -425,7 +430,7 @@ export function ShareItinerarySheet({
             : {}),
         };
       }),
-    [isAdmin, peerLevels, shares],
+    [isAdmin, peerLevels, tripLinks],
   );
   // **Marked, where the level cards are not** — this is the one choice in the sheet whose
   // wrong answer cannot be taken back, so it gets a second channel besides its words. They
@@ -795,7 +800,7 @@ export function ShareItinerarySheet({
                 say anything about, and the empty note names who can fix it. */}
             {!isAdmin && !loading && !error ? (
               <p className="share-lead">
-                {shares.length === 0 ? t.share.owner.notShared : t.share.owner.peerNote}
+                {tripLinks.length === 0 ? t.share.owner.notShared : t.share.owner.peerNote}
               </p>
             ) : null}
 

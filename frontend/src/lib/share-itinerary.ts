@@ -1,8 +1,8 @@
 import {
   OG_COVER_FALLBACK,
   OG_COVER_PATH,
-  sharedItinerarySchema,
-  type SharedItinerary,
+  sharedPageSchema,
+  type SharedPage,
 } from '@waypoint/shared';
 import { API_BASE_URL, API_PHASE, API_TIMEOUT_MS } from '../constants';
 import { withDeadline } from './deadline';
@@ -21,13 +21,14 @@ import { withDeadline } from './deadline';
  * It fails as its **own** error, though — see `SharedItineraryUnreadable`: that failure is
  * about the document's age and not about the link, and the two used to be indistinguishable.
  */
-export async function fetchSharedItinerary(code: string): Promise<SharedItinerary> {
+export async function fetchSharedItinerary(code: string): Promise<SharedPage> {
   const res = await withDeadline(API_PHASE.FETCH, API_TIMEOUT_MS.FETCH, (signal) =>
     fetch(`${API_BASE_URL}/shared-itineraries/${encodeURIComponent(code)}`, { signal }),
   );
   if (!res.ok) throw new SharedItineraryUnavailable(res.status);
   const body = await withDeadline(API_PHASE.BODY, API_TIMEOUT_MS.BODY, () => res.json());
-  const parsed = sharedItinerarySchema.safeParse(body);
+  // A code answers the trip or one list of it (ADR-0242 §4); both are strict.
+  const parsed = sharedPageSchema.safeParse(body);
   if (!parsed.success) throw new SharedItineraryUnreadable(parsed.error);
   return parsed.data;
 }

@@ -250,17 +250,17 @@ SPA route (the service worker must keep answering it with the app shell), and
 `shared-itineraries` is the backend prefix the page then fetches from. Both are in
 `SERVER_ROUTE_PREFIXES` terms exactly once — only the second one is.
 
-| Method | Path                                          | Body → Response                                                                                                     |
-| ------ | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/trips/:tripId/share`                        | → `TripShareConfig` (any member; `404` when not shared — **a read never creates a share**)                          |
-| PUT    | `/trips/:tripId/share`                        | `upsertTripShareSchema` → `TripShareConfig` (**admin-only**, idempotent: same input, same code)                     |
-| POST   | `/trips/:tripId/share/rotate`                 | → `TripShareConfig` (**admin-only**; the previously shared code stops resolving at once)                            |
-| GET    | `/trips/:tripId/share/card`                   | → `image/png`, the group-chat card (any member; `204` when there is nothing to draw; 5/min; ADR-0241 §5)            |
-| DELETE | `/trips/:tripId/share`                        | → `204` (**admin-only**; the row and its configuration survive, the code stops resolving)                           |
-| GET    | `/shared-itineraries/:code`                   | **public** → `SharedItinerary` (20/min per IP; `404` for missing, revoked and rotated alike)                        |
-| GET    | `/shared-itineraries/:code/pdf`               | **public** → `application/pdf`, attachment (5/min per IP; `503` + `Retry-After` when the render queue is saturated) |
-| GET    | `/shared-itineraries/:code/book`              | **public** → the trip book, `application/pdf` attachment: the record at this link's policy (ADR-0241 §6; as `/pdf`) |
-| GET    | `/shared-itineraries/:code/documents/:handle` | **public** → the file's bytes, attachment (only a document explicitly selected for THIS active share)               |
+| Method | Path                                          | Body → Response                                                                                                                                                 |
+| ------ | --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/trips/:tripId/share`                        | → `TripShareConfig` (any member; `404` when not shared — **a read never creates a share**)                                                                      |
+| PUT    | `/trips/:tripId/share`                        | `upsertTripShareSchema` → `TripShareConfig` (**admin-only**, idempotent: same input, same code; an optional `scope.category` at Summary makes a list, ADR-0242) |
+| POST   | `/trips/:tripId/share/rotate`                 | → `TripShareConfig` (**admin-only**; the previously shared code stops resolving at once)                                                                        |
+| GET    | `/trips/:tripId/share/card`                   | → `image/png`, the group-chat card (any member; `204` when there is nothing to draw; 5/min; ADR-0241 §5)                                                        |
+| DELETE | `/trips/:tripId/share`                        | → `204` (**admin-only**; the row and its configuration survive, the code stops resolving)                                                                       |
+| GET    | `/shared-itineraries/:code`                   | **public** → `SharedItinerary`, or `SharedList` (`status: 'list'`) for a list's code (20/min per IP; `404` for missing, revoked and rotated alike)              |
+| GET    | `/shared-itineraries/:code/pdf`               | **public** → `application/pdf`, attachment (`404` for a list; 5/min per IP; `503` + `Retry-After` when the render queue is saturated)                           |
+| GET    | `/shared-itineraries/:code/book`              | **public** → the trip book, `application/pdf` attachment: the record at this link's policy (ADR-0241 §6; as `/pdf`, `404` for a list)                           |
+| GET    | `/shared-itineraries/:code/documents/:handle` | **public** → the file's bytes, attachment (only a document explicitly selected for THIS active share)                                                           |
 
 **The code is the credential** — the same durable-row technique as the invite (ADR-0067), so
 the URL carries no trip id and nothing to verify, and rotating it is one write. The tight
