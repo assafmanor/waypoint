@@ -53,6 +53,7 @@ const api = vi.hoisted(() => ({
   fetchSharedItineraryPdf: vi.fn(),
   fetchSharedTripBook: vi.fn(),
   fetchSnapshot: vi.fn(),
+  fetchTripCard: vi.fn(),
 }));
 const systemShare = vi.hoisted(() => ({
   shareUrlOrCopy: vi.fn(),
@@ -127,6 +128,10 @@ describe('ShareItinerarySheet', () => {
     api.fetchSnapshot.mockResolvedValue({ documents: [{ id: 'd1', title: 'כרטיסים.pdf' }] });
     systemShare.shareUrlOrCopy.mockResolvedValue('shared');
     systemShare.shareFileOrDownload.mockResolvedValue('shared');
+    api.fetchTripCard.mockResolvedValue(null);
+    // jsdom has no object URLs; the card's thumbnail is one.
+    URL.createObjectURL = vi.fn(() => 'blob:card');
+    URL.revokeObjectURL = vi.fn();
   });
   afterEach(() => {
     cleanup();
@@ -649,6 +654,31 @@ describe('ShareItinerarySheet', () => {
   });
   // **After the trip, a share is for reading** (ADR-0239 §5). The join route answers an ended
   // trip with 410, so the sheet must neither open on join nor mint a link it would refuse.
+  // ADR-0241 §4: the preview heads the sheet in every phase and follows the audience.
+  describe('the preview of what the chat will show', () => {
+    const thumb = () =>
+      document.querySelector('.share-preview-thumb img')?.getAttribute('src') ?? '';
+
+    it("shows the invitation's own cover while joining is the audience", async () => {
+      renderSheet();
+      await waitFor(() => expect(thumb()).toContain(`/og/join/${INVITE}.png`));
+      expect(screen.getByText(t.share.owner.preview.join)).toBeTruthy();
+    });
+
+    it("shows the live link's own cover for reading, and the generic one before it exists", async () => {
+      renderSheet();
+      await openRead();
+      await waitFor(() => expect(thumb()).toBe('/og-live.png'));
+
+      cleanup();
+      api.fetchTripShares.mockResolvedValue([config]);
+      renderSheet();
+      await openRead();
+      await waitFor(() => expect(thumb()).toContain(`/og/s/${CODE}.png`));
+      expect(screen.getByText(t.share.owner.preview.read)).toBeTruthy();
+    });
+  });
+
   describe('a finished trip', () => {
     const endedLine = () => screen.findByText(t.share.owner.join.ended.title);
 
@@ -662,6 +692,38 @@ describe('ShareItinerarySheet', () => {
 
     // ADR-0241 §4: after the trip the paper is the book, under the same link, and the itinerary
     // PDF is not offered beside it.
+    // ADR-0241 §4-§5: after the trip the card heads the sheet as its one primary, and goes
+    // as a file. The link beside it gives up `.primary`.
+    it('heads the sheet with the card, which is the one primary, and sends it as a file', async () => {
+      api.fetchTripShares.mockResolvedValue([config]);
+      api.fetchTripCard.mockResolvedValue(new Blob(['PNG'], { type: 'image/png' }));
+      renderSheet(true);
+      const send = await screen.findByRole('button', { name: new RegExp(t.share.owner.card.send) });
+      expect(screen.getByText(t.share.owner.card.title)).toBeTruthy();
+      expect(document.querySelectorAll('.share-outcome.primary')).toHaveLength(1);
+      expect(send.classList.contains('primary')).toBe(true);
+
+      fireEvent.click(send);
+      await waitFor(() =>
+        expect(systemShare.shareFileOrDownload).toHaveBeenCalledWith(
+          expect.objectContaining({ name: t.share.owner.card.filename('איסלנד עם המשפחה') }),
+        ),
+      );
+    });
+
+    it('draws no card and no placeholder when the trip has nothing to draw', async () => {
+      api.fetchTripShares.mockResolvedValue([config]);
+      renderSheet(true);
+      await screen.findByRole('button', { name: new RegExp(t.share.owner.actions.liveLink) });
+      await waitFor(() => expect(api.fetchTripCard).toHaveBeenCalledWith('t1'));
+      expect(document.querySelector('.share-preview')).toBeNull();
+      expect(
+        screen
+          .getByRole('button', { name: new RegExp(t.share.owner.actions.liveLink) })
+          .classList.contains('primary'),
+      ).toBe(true);
+    });
+
     it('offers the trip book in place of the PDF', async () => {
       api.fetchTripShares.mockResolvedValue([config]);
       api.fetchSharedTripBook.mockResolvedValue(new Blob(['%PDF-1.4']));

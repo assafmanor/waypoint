@@ -60,3 +60,14 @@ export const SERVER_ROUTE_PATTERN = new RegExp(`^/(${SERVER_ROUTE_PREFIXES.join(
  * (`frontend/src/sw.ts`).
  */
 export const PUBLIC_READER_PATTERN = /^\/s(\/|$)/;
+
+/**
+ * **Where a link's per-trip preview cover is served** (ADR-0220's 2026-09-06 amendment), and
+ * the committed generic cut served when there is nothing to draw. The backend mounts the path
+ * and writes it into `og:image`; the share sheet shows the same picture as its preview
+ * (ADR-0241 §4). One spelling for both, since a wrong one is a broken image in every chat.
+ * Not a `SERVER_ROUTE_PREFIXES` entry: the spa controller serves it and a thumbnail is an
+ * `<img>`, which the service worker's navigation fallback never answers.
+ */
+export const OG_COVER_PATH = { invite: 'og/join', live: 'og/s' } as const;
+export const OG_COVER_FALLBACK = { invite: 'og-invite.png', live: 'og-live.png' } as const;

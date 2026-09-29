@@ -14,6 +14,7 @@ import {
   fetchSharedItineraryPdf,
   fetchSharedTripBook,
   fetchSnapshot,
+  fetchTripCard,
   fetchTripShares,
   fetchTripWithMembers,
   isInviteExpiredError,
@@ -24,12 +25,14 @@ import {
   upsertTripShare,
 } from '../lib/api';
 import { publicAppLink, publicAppUrl } from '../lib/invite-link';
+import { linkCoverUrl } from '../lib/share-itinerary';
 import { shareFileOrDownload, shareUrlOrCopy } from '../lib/system-share';
 import { CONTROL_ICON } from '../constants';
 import { useToast } from './Toast';
 import { Icon } from './Icon';
 import { TripLinkRow } from './TripLinkRow';
 import { ListRow, RowManageSheet, type RowAction } from './domain/ListRow';
+import { SharePreview } from './domain/SharePreview';
 import { ChoiceGrid } from './primitives/ChoiceGrid';
 import { ConfirmDialog } from './primitives/ConfirmDialog';
 import { Switch } from './primitives/Switch';
@@ -141,7 +144,10 @@ export function ShareItinerarySheet({
   const [sensitive, setSensitive] = useState<ShareSensitiveFields>(NO_SENSITIVE_FIELDS);
   const [documentIds, setDocumentIds] = useState<string[]>([]);
   const [documents, setDocuments] = useState<DocumentChoice[] | undefined>();
-  const [busy, setBusy] = useState<'link' | 'pdf' | undefined>();
+  const [busy, setBusy] = useState<'link' | 'pdf' | 'card' | undefined>();
+  // **The group-chat card** (ADR-0241 §5), fetched once the sheet knows the trip is over.
+  // `null` means there is nothing to draw, and then there is no card at all.
+  const [card, setCard] = useState<{ blob: Blob; url: string } | null | undefined>();
   const [note, setNote] = useState<string | undefined>();
   const [error, setError] = useState<string | undefined>();
   // The Everything create form. Open by default only when there is nothing to list yet —
@@ -205,6 +211,25 @@ export function ShareItinerarySheet({
       live = false;
     };
   }, [audience, invite, ended, tripId]);
+
+  useEffect(() => {
+    if (!ended) return;
+    let live = true;
+    let url: string | undefined;
+    void fetchTripCard(tripId)
+      .then((blob) => {
+        if (!live) return;
+        if (!blob) return setCard(null);
+        url = URL.createObjectURL(blob);
+        setCard({ blob, url });
+      })
+      // A card that could not be drawn is no card; the sheet's own sends still work.
+      .catch(() => live && setCard(null));
+    return () => {
+      live = false;
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [ended, tripId]);
 
   // Only Everything needs the file list, and only once.
   useEffect(() => {
@@ -283,7 +308,7 @@ export function ShareItinerarySheet({
     return remember(await upsertTripShare(tripId, draft));
   }, [atLevel, draft, isAdmin, remember, single, tripId]);
 
-  const run = useCallback(async (kind: 'link' | 'pdf', action: () => Promise<void>) => {
+  const run = useCallback(async (kind: 'link' | 'pdf' | 'card', action: () => Promise<void>) => {
     setBusy(kind);
     setError(undefined);
     setNote(undefined);
@@ -317,6 +342,18 @@ export function ShareItinerarySheet({
   };
 
   const sendPdf = (config: TripShareConfig) => run('pdf', () => sendPaper(config));
+
+  /** The card goes as a FILE, through the PDF's own path (ADR-0241 §5): never a link preview. */
+  const sendCard = (blob: Blob) =>
+    run('card', async () => {
+      await shareFileOrDownload(
+        new File([blob], t.share.owner.card.filename(tripName), { type: 'image/png' }),
+      );
+    });
+
+  /** **After the trip the card is the sheet's one primary** (ADR-0241 §4), so the link beside
+   *  it gives up `.primary`; with no card, the link keeps it as before. */
+  const cardLeads = ended && Boolean(card);
 
   /** Create-or-find the drafted policy, then hand it over. The press is what publishes —
    *  opening the sheet, or moving a control somebody was only looking at, never does. */
@@ -540,7 +577,7 @@ export function ShareItinerarySheet({
     <div className="share-outcomes">
       <button
         type="button"
-        className="share-outcome primary"
+        className={cardLeads ? 'share-outcome' : 'share-outcome primary'}
         onClick={onLink}
         disabled={busy !== undefined || loading}
       >
@@ -634,6 +671,45 @@ export function ShareItinerarySheet({
       </div>
     );
 
+  /**
+   * **What the recipient's chat will show** (ADR-0241 §4). Before and during the trip it is
+   * the chosen audience's own link cover, the generic cut until that link exists, and nothing
+   * to press. After it, the card with its own send, or nothing when the trip has nothing to
+   * draw.
+   */
+  const joining = audience === AUDIENCE.JOIN;
+  const preview = ended ? (
+    card ? (
+      <SharePreview
+        kind="card"
+        src={card.url}
+        title={t.share.owner.card.title}
+        line={t.share.owner.card.line}
+        action={
+          <button
+            type="button"
+            className="share-outcome primary"
+            onClick={() => void sendCard(card.blob)}
+            disabled={busy !== undefined}
+          >
+            <Icon name="share" />
+            {busy === 'card' ? t.share.owner.card.preparing : t.share.owner.card.send}
+          </button>
+        }
+      />
+    ) : null
+  ) : (
+    <SharePreview
+      kind="link"
+      src={linkCoverUrl(
+        joining ? 'invite' : 'live',
+        joining ? invite?.split('/').filter(Boolean).at(-1) : (single ?? atLevel[0])?.code,
+      )}
+      title={t.share.owner.preview.title}
+      line={joining ? t.share.owner.preview.join : t.share.owner.preview.read}
+    />
+  );
+
   const manageActions = (config: TripShareConfig): RowAction[] => [
     { label: t.share.owner.actions.liveLink, icon: 'share', onSelect: () => void sendLink(config) },
     { label: t.share.owner.copyLink, icon: 'clipboard', onSelect: () => copyToClipboard(config) },
@@ -654,6 +730,7 @@ export function ShareItinerarySheet({
   return (
     <Sheet title={t.share.owner.title} onClose={onClose}>
       <div className="modal-form share-sheet">
+        {preview}
         <div className="share-group">
           <p className="share-lead">{t.share.owner.audience.lead}</p>
           <ChoiceGrid

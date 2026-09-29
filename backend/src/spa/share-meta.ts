@@ -1,3 +1,4 @@
+import { OG_COVER_PATH } from '@waypoint/shared';
 import { heTripRange, SHARE_META_COPY } from '../sharing/hebrew.copy';
 import { coverSignature, type CoverKind } from './og-cover.template';
 import type { ShareMeta } from './spa-shell.service';
@@ -20,15 +21,9 @@ import type { ShareMeta } from './spa-shell.service';
  */
 const COVER = { brand: '/og-cover.png' } as const;
 
-/**
- * **The route prefix each per-trip cover is served from**, named once because the controller
- * mounts it and `coverImagePath` writes it into `og:image`; two spellings of the same path
- * would be a broken picture in every chat card, and nothing in a test suite looks at both.
- */
-export const OG_COVER_PREFIX: Record<CoverKind, string> = {
-  invite: 'og/join',
-  live: 'og/s',
-};
+/** The route each per-trip cover is served from: `OG_COVER_PATH` in `@waypoint/shared`, which
+ *  the share sheet's preview also reads (ADR-0241 §4). */
+export const OG_COVER_PREFIX: Record<CoverKind, string> = OG_COVER_PATH;
 
 /**
  * **`og:image` for one trip** (ADR-0220's 2026-09-06 amendment).

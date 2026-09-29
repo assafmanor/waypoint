@@ -274,7 +274,7 @@ Drawn and decided in [ADR-0241](../decisions/0241-a-finished-trip-plays-back-and
   - A cover page, then the days with a record, two to a page and never split, then `במספרים`, `ראשונים וטובים` and `בפעם הבאה`.
   - The itinerary's footer.
   - On a finished trip's share sheet it replaces `שיתוף PDF` as `ספר הטיול`.
-- **6A.3** The group-chat card _(spec 3d, ADR-0241 §4–§5)_: **a third og-cover source, not new renderer work** (ADR-0220's covers stopped being static on 2026-09-06).
+- **6A.3** The group-chat card _(spec 3d, ADR-0241 §4–§5)_: **a third og-cover source, not new renderer work** (ADR-0220's covers stopped being static on 2026-09-06). **Built 2026-09-29**, with the preview unit (ADR-0241's 6A.3 build note).
   - `scripts/og-covers/og-memory.html` at 1080×1350, filled by `og-cover.template.ts` and screenshotted by `og-image.service.ts`, on an authenticated member route.
   - It carries the cover with its credit, the name, the dates and the first three figures. No faces and no names.
   - Sent as a file (`shareFileOrDownload`), never as the link preview.

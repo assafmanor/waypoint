@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import {
   NO_SENSITIVE_FIELDS,
@@ -15,6 +15,8 @@ import { ItineraryNarrativeService } from './itinerary-narrative.service';
 import { SharingProjectionService } from './sharing-projection.service';
 import { SharingService } from './sharing.service';
 import type { PdfBrowserService } from './pdf-browser.service';
+import { PDF_COPY } from './hebrew.copy';
+import type { RenderBrowserService } from './render-browser.service';
 import { TripRecapService } from './trip-recap.service';
 
 const ADMIN = 'u-assaf';
@@ -58,12 +60,15 @@ describe('SharingService', () => {
     render: async () => Buffer.from('%PDF-1.4'),
     renderBook: async () => Buffer.from('%PDF-1.4'),
   } as unknown as PdfBrowserService;
+  // The card's shot is the pool's; what this spec owns is the document handed to it.
+  const shootElement = vi.fn(async () => Buffer.from('PNG'));
   const service = new SharingService(
     prisma,
     projection,
     documents,
     pdfBrowser,
     new TripRecapService(prisma, noEnrichment()),
+    { shootElement } as unknown as RenderBrowserService,
   );
 
   let tripId: string;
@@ -321,6 +326,49 @@ describe('SharingService', () => {
     await expect(service.publicDocument(config.code, documentId)).rejects.toBeInstanceOf(
       NotFoundException,
     );
+  });
+
+  // ADR-0241 §5: no cover and no figure is no card, never a placeholder.
+  it('draws no card for a trip with nothing to count', async () => {
+    shootElement.mockClear();
+    expect(await service.card(tripId)).toBeNull();
+    expect(shootElement).not.toHaveBeenCalled();
+  });
+
+  // The name, the dates and the figures; no faces and no names, whoever is in the trip.
+  it('draws the card from the recap, with nobody named on it', async () => {
+    shootElement.mockClear();
+    const place = await prisma.place.create({
+      data: { tripId, name: 'Gullfoss', lat: 64.33, lng: -20.12, updatedBy: ADMIN },
+    });
+    await prisma.event.create({
+      data: {
+        tripId,
+        date: new Date('2026-08-29'),
+        title: 'גולפוס',
+        kind: 'soft',
+        status: 'done',
+        placeId: place.id,
+        updatedBy: ADMIN,
+      },
+    });
+
+    expect(await service.card(tripId)).toEqual(Buffer.from('PNG'));
+    const [html, size, selector] = shootElement.mock.calls[0] as unknown as [
+      string,
+      { width: number; height: number },
+      string,
+    ];
+    expect(size).toEqual({ width: 1080, height: 1350 });
+    expect(selector).toBe('.og-memory');
+    expect(html).toContain(TRIP_NAME);
+    expect(html).toContain(PDF_COPY.memory.fig.places);
+    expect(html).toContain('class="og-memory no-shot"');
+    const members = await prisma.membership.findMany({
+      where: { tripId },
+      select: { user: { select: { displayName: true } } },
+    });
+    for (const { user } of members) expect(html).not.toContain(user.displayName);
   });
 
   // The book is the link's own render (ADR-0241 §6): an active code prints it, and a revoked

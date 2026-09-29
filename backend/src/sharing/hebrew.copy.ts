@@ -228,6 +228,18 @@ export const PDF_COPY = {
     activity: 'פעילות',
     other: 'אחר',
   } satisfies Record<BookingType, string>,
+  /** **A finished trip's figures**, as the trip book and the group-chat card print them: the
+   *  memory Home's labels (`planHome.past.fig`) by value. */
+  memory: {
+    unresolved: (n: number) => `${n} לא סומנו`,
+    fig: {
+      places: 'מקומות',
+      air: 'ק״מ בטיסה',
+      shift: 'שעות הפרש',
+      ground: 'ק״מ בדרכים',
+      foot: 'ק״מ ברגל',
+    } satisfies Record<MemoryFigureKey, string>,
+  },
   /**
    * **The trip book** (ADR-0241 §6). Its sections speak the memory Home's words, which live in
    * `frontend/src/i18n/he.ts` under `planHome.past`: `במספרים`, `ראשונים וטובים`, `בפעם הבאה`,
@@ -241,14 +253,6 @@ export const PDF_COPY = {
     skipped: (titles: string) => `דילגנו · ${titles}`,
     notes: 'מה כתבנו',
     figures: 'במספרים',
-    unresolved: (n: number) => `${n} לא סומנו`,
-    fig: {
-      places: 'מקומות',
-      air: 'ק״מ בטיסה',
-      shift: 'שעות הפרש',
-      ground: 'ק״מ בדרכים',
-      foot: 'ק״מ ברגל',
-    } satisfies Record<MemoryFigureKey, string>,
     bests: {
       title: 'ראשונים וטובים',
       first: 'הדבר הראשון',

@@ -7,8 +7,11 @@ import {
   Param,
   Post,
   Put,
+  Res,
   UseGuards,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
+import type { Response } from 'express';
 import { ApiBearerAuth, ApiNoContentResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import {
   tripShareConfigSchema,
@@ -48,6 +51,23 @@ export class TripSharingController {
   @ZodSerializerDto(TripShareListDto)
   list(@Param('tripId') tripId: string): Promise<TripShareConfig[]> {
     return this.sharing.list(tripId);
+  }
+
+  /**
+   * **The group-chat card** (ADR-0241 §5): a PNG a member sends as a file. 204 when the trip
+   * has nothing to draw yet. The PDF's cap, for the PDF's reason: it is a browser tab.
+   */
+  @Get('card')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  async card(@Param('tripId') tripId: string, @Res() res: Response): Promise<void> {
+    const png = await this.sharing.card(tripId);
+    if (!png) {
+      res.status(204).end();
+      return;
+    }
+    // Private, and a fresh picture each time: the figures move while stragglers are settled.
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.type('png').send(png);
   }
 
   @Put()

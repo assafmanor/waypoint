@@ -80,8 +80,10 @@ function figuresBlock(record: TripRecord): string {
     figures
       .map(
         (figure) =>
-          `<div class="bk-fig"><b>${ltr(figure.value)}</b><span>${COPY.fig[figure.key]}</span>` +
-          (figure.unresolved ? `<small>${COPY.unresolved(figure.unresolved)}</small>` : '') +
+          `<div class="bk-fig"><b>${ltr(figure.value)}</b><span>${PDF_COPY.memory.fig[figure.key]}</span>` +
+          (figure.unresolved
+            ? `<small>${PDF_COPY.memory.unresolved(figure.unresolved)}</small>`
+            : '') +
           `</div>`,
       )
       .join('') +

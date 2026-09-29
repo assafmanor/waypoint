@@ -131,8 +131,10 @@ describe('tripBookHtml (ADR-0241 §6)', () => {
     expect(text).toContain(COPY.kicker);
     expect(text).toContain(NINE_DAY_REFERENCE_TRIP.trip.name);
     // The Home's figures, in its order and words: places first, with what is still unmarked.
-    expect(text).toMatch(new RegExp(`12${COPY.fig.places}${COPY.unresolved(2)}`));
-    expect(text).toContain(`9,203${COPY.fig.air}`);
+    expect(text).toMatch(
+      new RegExp(`12${PDF_COPY.memory.fig.places}${PDF_COPY.memory.unresolved(2)}`),
+    );
+    expect(text).toContain(`9,203${PDF_COPY.memory.fig.air}`);
     expect(html).toContain(`<img src="${QR}"`);
     expect(html).toMatch(/\.bk-cover\{[^}]*break-after:page/);
   });

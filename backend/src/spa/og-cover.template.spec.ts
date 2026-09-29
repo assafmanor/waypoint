@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { INVITE_AVATARS } from '@waypoint/shared';
-import { coverHtml, coverSignature, type CoverKind } from './og-cover.template';
+import {
+  coverHtml,
+  coverSignature,
+  memoryCardHtml,
+  type CoverKind,
+  type MemoryCardFacts,
+} from './og-cover.template';
 import type { TripPreviewFacts } from './share-meta';
 
 const FACTS: TripPreviewFacts = {
@@ -109,5 +115,52 @@ describe('coverSignature', () => {
    *  in a cache keyed on this. */
   it('separates the two surfaces', () => {
     expect(coverSignature('invite', FACTS)).not.toBe(coverSignature('live', FACTS));
+  });
+});
+
+describe('memoryCardHtml (ADR-0241 §5)', () => {
+  const CARD: MemoryCardFacts = {
+    name: 'יפן ׳26',
+    when: '23 בספטמבר – 2 באוקטובר · 10 ימים · טוקיו',
+    figures: [
+      { value: '12', label: 'מקומות', unresolved: '2 לא סומנו' },
+      { value: '9,203', label: 'ק״מ בטיסה' },
+    ],
+  };
+  const card = (facts: MemoryCardFacts = CARD): string => {
+    const out = memoryCardHtml(facts);
+    expect(out, 'card assets not found — check COVER_ROOTS/SHEET_ROOTS').not.toBeNull();
+    return out as string;
+  };
+
+  it('fills every slot, and says how many figures there are', () => {
+    const html = card();
+    expect(html).not.toMatch(/\{\{/);
+    expect(html).toContain('--og-figs: 2');
+    expect(html).toContain('2 לא סומנו');
+  });
+
+  it('isolates each figure, so a sign or a comma cannot drift in the RTL line', () => {
+    expect(card()).toContain('\u20669,203\u2069');
+  });
+
+  it('has no picture and no placeholder without a cover, and credits one it has', () => {
+    const bare = card();
+    expect(bare).toContain('class="og-memory no-shot"');
+    expect(bare).not.toContain('<img');
+
+    const shot = card({
+      ...CARD,
+      cover: { src: 'data:image/jpeg;base64,AAAA', of: 'Senso-ji', credit: 'Wikimedia · CC BY-SA' },
+    });
+    expect(shot).not.toContain('class="og-memory no-shot"');
+    expect(shot).toContain('<img src="data:image/jpeg;base64,AAAA"');
+    expect(shot).toContain('Senso-ji');
+    expect(shot).toContain('Wikimedia · CC BY-SA');
+  });
+
+  it('escapes what a member typed', () => {
+    const html = card({ ...CARD, name: '<img src=x onerror=alert(1)>' });
+    expect(html).not.toContain('<img src=x');
   });
 });

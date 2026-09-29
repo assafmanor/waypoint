@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import { DEFAULT_TRIP_ICON, INVITE_AVATARS } from '@waypoint/shared';
+import { DEFAULT_TRIP_ICON, INVITE_AVATARS, ltrIsolate } from '@waypoint/shared';
 import { HEBREW_RANGE, inlineFaces, LATIN_RANGE, type FontFace } from '../common/inline-fonts';
 import { heTravellersInside, heTripRange, heTripRangeNumeric } from '../sharing/hebrew.copy';
 import { STATIC_ROOT } from './spa-paths';
@@ -247,4 +247,64 @@ export function coverHtml(kind: CoverKind, facts: TripPreviewFacts): string | nu
     `<style>${inlineFaces('cover', COVER_FACES)}${loaded.css}</style></head>` +
     `<body>${body}</body></html>`
   );
+}
+
+/** What the group-chat card draws (ADR-0241 §5), already worded by its caller. No faces and no
+ *  names: the shape has nowhere to put them. */
+export interface MemoryCardFacts {
+  name: string;
+  /** The trip's dates, length and destination, one line. */
+  when: string;
+  /** At most three, in `memoryFigureValues`' order. */
+  figures: readonly { value: string; label: string; unresolved?: string }[];
+  /** The cover shot as a data URL (the page reaches nothing), with its subject and credit. */
+  cover?: { src: string; of: string; credit: string };
+}
+
+let memoryTemplate: string | null | undefined;
+
+/**
+ * **The card's document** — the covers' sheets, faces and slot filler with its own template.
+ * Read apart from the two covers so a deploy missing it can never take the link previews down
+ * with it. `null` when the assets are not in this deploy.
+ */
+export function memoryCardHtml(facts: MemoryCardFacts): string | null {
+  const loaded = assets();
+  memoryTemplate ??= readFrom(COVER_ROOTS, 'og-memory.html');
+  if (!loaded || !memoryTemplate) return null;
+  const shot = facts.cover
+    ? `<figure class="og-memory-shot"><img src="${escapeHtml(facts.cover.src)}" alt="" />` +
+      `<div class="og-memory-credit"><b>${escapeHtml(facts.cover.of)}</b>` +
+      `${escapeHtml(facts.cover.credit)}</div></figure>`
+    : '';
+  // The longest value sizes every figure, so a row of three reads as one size and `9,203` fits.
+  const chars = Math.max(0, ...facts.figures.map((figure) => figure.value.length));
+  const figures = facts.figures.length
+    ? `<div class="og-memory-figs" style="--og-figs: ${facts.figures.length}; --og-chars: ${chars}">` +
+      facts.figures
+        .map(
+          (figure) =>
+            `<div class="og-memory-fig"><b>${escapeHtml(ltrIsolate(figure.value))}</b>` +
+            `<span>${escapeHtml(figure.label)}</span>` +
+            (figure.unresolved ? `<small>${escapeHtml(figure.unresolved)}</small>` : '') +
+            `</div>`,
+        )
+        .join('') +
+      `</div>`
+    : '';
+  const body = fillSlots(
+    memoryTemplate,
+    { name: facts.name, when: facts.when },
+    { shot, figures, shotClass: facts.cover ? '' : 'no-shot' },
+  );
+  return (
+    `<!doctype html><html lang="he" dir="rtl"><head><meta charset="UTF-8">` +
+    `<style>${inlineFaces('cover', COVER_FACES)}${loaded.css}</style></head>` +
+    `<body>${body}</body></html>`
+  );
+}
+
+/** Tests only. */
+export function resetMemoryTemplateCache(): void {
+  memoryTemplate = undefined;
 }
