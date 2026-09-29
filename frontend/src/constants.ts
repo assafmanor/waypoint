@@ -536,14 +536,8 @@ export const PLACE_REFS_CAP = 3;
 export const SLOT_FILL_CAP = 6;
 export const SLOT_FILL_SEARCH_AT = 8;
 
-/** Where a near-me distance chip changes precision (ADR-0109 §7): sub-kilometre
- *  distances round to a walkable 10 m, then read as one decimal of a kilometre,
- *  then as whole kilometres once the decimal stops meaning anything. */
-export const DISTANCE_STEP = {
-  NEAR_ROUND_M: 10,
-  KM_FROM_M: 1000,
-  WHOLE_KM_FROM: 10,
-} as const;
+// In shared since 6A.0: the recap's figures step at the same thresholds on the server.
+export { DISTANCE_STEP } from '@waypoint/shared';
 
 /** Near-me location fix (lib/useGeolocation.ts): a one-shot read, so it may take a
  *  moment on a cold GPS, and a fix from the last minute is still where you are. */
@@ -1974,9 +1968,7 @@ export const DAY_TRAVEL_WARM_ATTEMPTS = 6;
  *  a plain link. Long enough to be read after the eye returns from the download shelf. */
 export const DOWNLOAD_SETTLE_MS = 4000;
 
-/** **How many figures the memory Home prints** (ADR-0240 §4): three sit in a row, four go 2×2,
- *  five go 3 + 2. A sixth would be a second screen of numbers above the days. */
-export const MEMORY_FIGURES_MAX = 5;
+export { MEMORY_FIGURES_MAX } from '@waypoint/shared';
 
 /** **How many glyphs a contact-sheet frame carries** (ADR-0240 §4): enough to say what kind of
  *  day it was, few enough to stay on one line in a half-width frame at 360. */
