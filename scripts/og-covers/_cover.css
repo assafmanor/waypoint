@@ -156,3 +156,113 @@ body {
   justify-content: center;
   gap: 7px;
 }
+
+/* ══ THE GROUP-CHAT CARD (og-memory.html, ADR-0241 §5). 1080×1350, fixed light. The band is the
+   archive's own (`--chrome-bg-memory`), the figures are the StatTile's mono face in
+   `--memory-deep` (7.60:1 on white), and rose is spent on nothing else. Sized as drawn in
+   `mockups/a-finished-trip-leaves-the-app-v1.html` §2, so a label reads at 9.2px once a chat
+   shows the card at about 22% of its width. ══ */
+.og-memory {
+  width: 1080px;
+  height: 1350px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--chrome-bg-memory);
+  color: var(--ink);
+  font-family: var(--font-body);
+}
+.og-memory-shot {
+  position: relative;
+  flex: 0 0 720px;
+  margin: 0;
+  overflow: hidden;
+}
+.og-memory-shot img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+/* The place and its credit ride the picture, as on every band in the app (ADR-0219 §6). */
+.og-memory-credit {
+  position: absolute;
+  inset-inline-end: 28px;
+  bottom: 22px;
+  font-size: 22px;
+  color: #fff;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+}
+.og-memory-credit b {
+  display: block;
+  font-size: 30px;
+}
+.og-memory-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 48px 64px 40px;
+}
+.og-memory-name {
+  margin: 0;
+  font-family: var(--font-head);
+  font-weight: 400;
+  font-size: 92px;
+  line-height: 1.05;
+}
+.og-memory-when {
+  font-size: 42px;
+  color: var(--muted);
+}
+.og-memory-figs {
+  display: grid;
+  grid-template-columns: repeat(var(--og-figs), minmax(0, 1fr));
+  gap: 20px;
+  margin-top: auto;
+}
+.og-memory-fig {
+  padding: 30px 12px 26px;
+  border-radius: 28px;
+  background: var(--card);
+  text-align: center;
+}
+.og-memory-fig b {
+  display: block;
+  font-family: var(--font-mono);
+  /* The drawn 100px, until the longest value would outgrow the tile. A tile's text box is 280px
+     in a row of three and a mono digit is 0.6em wide, so 440px / chars fits with a little air:
+     the first render put 9,203 at 300px and ran it off both edges. */
+  font-size: min(100px, calc(440px / var(--og-chars)));
+  line-height: 1.1;
+  color: var(--memory-deep);
+}
+.og-memory-fig span {
+  display: block;
+  font-size: 42px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.og-memory-fig small {
+  display: block;
+  font-size: 34px;
+  color: var(--muted);
+}
+.og-memory-foot {
+  margin-top: 18px;
+  font-size: 24px;
+  color: var(--muted);
+}
+.og-memory-foot b {
+  font-family: var(--font-head);
+  font-weight: 400;
+  font-size: 28px;
+  color: var(--memory-deep);
+}
+/* No cover: the band carries the card and the name grows. Never a placeholder picture. */
+.og-memory.no-shot .og-memory-body {
+  padding-top: 120px;
+}
+.og-memory.no-shot .og-memory-name {
+  font-size: 120px;
+}

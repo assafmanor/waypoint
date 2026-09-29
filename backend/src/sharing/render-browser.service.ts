@@ -107,6 +107,41 @@ export class RenderBrowserService implements OnModuleDestroy {
     }
   }
 
+  /**
+   * **A picture of one element**, at a viewport the caller names: the link-preview covers
+   * (1200×630) and the group-chat card (1080×1350, ADR-0241 §5).
+   *
+   * **The element, never the viewport** — the cutter's own rule (`gen-app-icons.mjs`): a
+   * viewport shot is the WINDOW, and the cover's root is exactly its size by its own CSS, so
+   * clipping to it makes the size a construction rather than a coincidence.
+   */
+  async shootElement(
+    html: string,
+    viewport: { width: number; height: number },
+    selector: string,
+  ): Promise<Buffer> {
+    const timeoutMs = this.timeoutMs;
+    return this.withPage(async (page) => {
+      await page.setViewportSize(viewport);
+      await page.setContent(html, { waitUntil: 'load', timeout: timeoutMs });
+      // The faces are `font-display: block` data URLs, so they resolve without the network —
+      // but `load` fires before the last of them is applied, and a picture shot a frame early
+      // lays its Hebrew out in fallback metrics. Passed as a string because this package
+      // compiles without the DOM lib: the expression runs in the page, not here.
+      await withPhaseDeadline(
+        'fonts',
+        timeoutMs,
+        page.evaluate('document.fonts.ready.then(() => undefined)'),
+      );
+      const shot = await withPhaseDeadline(
+        'screenshot',
+        timeoutMs,
+        page.locator(selector).screenshot(),
+      );
+      return Buffer.from(shot);
+    });
+  }
+
   private launch(): Promise<Browser> {
     this.browser ??= chromium
       .launch({

@@ -1,0 +1,29 @@
+<!-- THE GROUP-CHAT CARD — a finished trip, sent into the group (ADR-0241 §5, epic 6A.3).
+
+     **Not a link preview, and not cut at build time.** The two covers beside it are what a
+     crawler shows for a link, and `og-cover.template.ts`'s rule is that nothing on them may go
+     stale. A finished trip's figures still move while its stragglers are settled, so this is
+     sent as a FILE by a member (`GET /trips/:tripId/share/card`) and never served to a
+     crawler. For the same reason `gen-app-icons.mjs` does not cut it and it has no
+     `defaults.json` entry: with no trip to draw there is no card, rather than a generic one.
+
+     1080×1350, 4:5, because a chat shows a landscape image as a low strip. Fixed light: no
+     `data-theme`, so `tokens.css`'s `:root` block is what applies.
+
+     **What it carries:** the cover shot with its place and credit on the picture (ADR-0219 §6:
+     the licence does not end at the app's edge), the trip's name and its when line, and the
+     first three of `memoryFigureValues`. **No faces and no names** — it goes to a group that
+     knows who was there, and on from there without anyone's say.
+
+     `{{{shot}}}` and `{{{figures}}}` are markup the template builds; every value inside them is
+     escaped there. `{{{shotClass}}}` is `no-shot` when there is no cover, and then the band
+     carries the card and the name grows. There is never a placeholder picture. -->
+<div class="og-memory {{{shotClass}}}">
+  {{{shot}}}
+  <div class="og-memory-body">
+    <h1 class="og-memory-name">{{name}}</h1>
+    <div class="og-memory-when">{{when}}</div>
+    {{{figures}}}
+    <div class="og-memory-foot"><b>Travelive</b></div>
+  </div>
+</div>

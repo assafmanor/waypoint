@@ -1,5 +1,11 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { type TripShareConfig, type UpsertTripShareInput } from '@waypoint/shared';
+import { Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
+import {
+  memoryFigureValues,
+  NARRATIVE_SEPARATOR,
+  tripDates,
+  type TripShareConfig,
+  type UpsertTripShareInput,
+} from '@waypoint/shared';
 import { FRONTEND_URL } from '../common/env';
 import { generatePublicCode } from '../common/public-code.util';
 import { assertTripAdmin } from '../common/trip-scope.util';
@@ -8,12 +14,23 @@ import { PrismaService } from '../prisma/prisma.service';
 // Type-only, so nothing at runtime crosses back: `spa/` imports this module's Hebrew copy,
 // and the shape a preview says is `spa/`'s to define.
 import type { TripPreviewFacts } from '../spa/share-meta';
+// The one runtime import from `spa/`, and a leaf: the cover template reads only this
+// package's copy and two path helpers, so it never reaches back into this service. The card
+// is its third source (ADR-0241 §5), filled by the same slot filler as the two covers.
+import { memoryCardHtml } from '../spa/og-cover.template';
 import { toDateOnly } from '../trips/trips.mapper';
-import { PDF_COPY } from './hebrew.copy';
+import { heTripRange, PDF_COPY } from './hebrew.copy';
+import { photoDataUrls } from './inline-photos';
 import { PdfBrowserService } from './pdf-browser.service';
+import { RenderBrowserService } from './render-browser.service';
 import { normalizeSharePolicy, sharePolicyHash } from './share-policy';
 import { SharingProjectionService } from './sharing-projection.service';
 import { TripRecapService } from './trip-recap.service';
+
+/** 4:5, because a chat shows a landscape picture as a low strip (ADR-0241 §5). */
+const CARD_SIZE = { width: 1080, height: 1350 } as const;
+/** Three figures sit in a row on the card; the Home's other two stay in the app. */
+const CARD_FIGURES = 3;
 
 const SHARE_CONFIG_SELECT = {
   code: true,
@@ -73,6 +90,7 @@ export class SharingService {
     private readonly documents: DocumentsService,
     private readonly pdfBrowser: PdfBrowserService,
     private readonly recap: TripRecapService,
+    private readonly renderBrowser: RenderBrowserService,
   ) {}
 
   /**
@@ -296,6 +314,50 @@ export class SharingService {
       ),
       filename: PDF_COPY.book.filename(projection.trip.name),
     };
+  }
+
+  /**
+   * **The group-chat card** (ADR-0241 §5): a finished trip, drawn once for a member to send.
+   *
+   * Member-only and never a link preview: the figures still move while stragglers are
+   * settled, and a chat app would cache a preview forever. `null` when there is nothing to
+   * draw (no cover and no figure), which the route answers with 204 and the share sheet
+   * with no card at all, never a placeholder.
+   */
+  async card(tripId: string): Promise<Buffer | null> {
+    const [trip, recap] = await Promise.all([
+      this.prisma.trip.findUniqueOrThrow({
+        where: { id: tripId },
+        select: { name: true, destination: true, startDate: true, endDate: true },
+      }),
+      this.recap.recapFor(tripId),
+    ]);
+    const figures = memoryFigureValues(recap).slice(0, CARD_FIGURES);
+    const photos = recap.cover ? await photoDataUrls([recap.cover.url]) : {};
+    const coverSrc = recap.cover ? photos[recap.cover.url] : undefined;
+    if (!coverSrc && figures.length === 0) return null;
+
+    const [startDate, endDate] = [toDateOnly(trip.startDate), toDateOnly(trip.endDate)];
+    const html = memoryCardHtml({
+      name: trip.name,
+      when: [
+        heTripRange(startDate, endDate),
+        PDF_COPY.days(tripDates(startDate, endDate).length),
+        trip.destination,
+      ]
+        .filter(Boolean)
+        .join(NARRATIVE_SEPARATOR),
+      figures: figures.map((figure) => ({
+        value: figure.value,
+        label: PDF_COPY.memory.fig[figure.key],
+        ...(figure.unresolved ? { unresolved: PDF_COPY.memory.unresolved(figure.unresolved) } : {}),
+      })),
+      ...(recap.cover && coverSrc
+        ? { cover: { src: coverSrc, of: recap.cover.of, credit: recap.cover.credit } }
+        : {}),
+    });
+    if (!html) throw new ServiceUnavailableException('The card cannot be drawn in this deploy');
+    return this.renderBrowser.shootElement(html, CARD_SIZE, '.og-memory');
   }
 
   private async requireLink(tripId: string, code: string): Promise<{ id: string }> {

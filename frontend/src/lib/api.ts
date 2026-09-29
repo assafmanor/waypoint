@@ -1181,6 +1181,15 @@ export async function fetchSharedItineraryPdf(code: string): Promise<Blob> {
   return res.blob();
 }
 
+/** **The group-chat card** (ADR-0241 §5), a PNG drawn for a member. `null` when the trip has
+ *  nothing to draw yet (204), which means no card rather than a placeholder. */
+export async function fetchTripCard(tripId: string): Promise<Blob | null> {
+  const res = await apiFetch(`${API_BASE_URL}/trips/${tripId}/share/card`);
+  if (res.status === 204) return null;
+  if (!res.ok) return throwApiError(res);
+  return res.blob();
+}
+
 /** The trip book behind a link (ADR-0241 §6). Public, so a plain `fetch` for the reason above. */
 export async function fetchSharedTripBook(code: string): Promise<Blob> {
   const res = await fetch(sharedTripBookUrl(code));

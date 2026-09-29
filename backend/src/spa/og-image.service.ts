@@ -1,9 +1,10 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Injectable, Logger } from '@nestjs/common';
+import { OG_COVER_FALLBACK } from '@waypoint/shared';
 import { createByteLru } from '../common/byte-lru';
 import { DEFAULT_OG_COVER_CACHE_MAX_BYTES, OG_COVER_CACHE_MAX_BYTES } from '../common/env';
-import { RenderBrowserService, withPhaseDeadline } from '../sharing/render-browser.service';
+import { RenderBrowserService } from '../sharing/render-browser.service';
 import { coverHtml, coverSignature, type CoverKind } from './og-cover.template';
 import type { TripPreviewFacts } from './share-meta';
 import { STATIC_ROOT } from './spa-paths';
@@ -13,10 +14,7 @@ const COVER_HEIGHT = 630;
 
 /** The committed cut of the same two templates, filled with `defaults.json`'s generic text.
  *  Served when a render cannot happen — see `render`. */
-const FALLBACK_PNG: Record<CoverKind, string> = {
-  invite: 'og-invite.png',
-  live: 'og-live.png',
-};
+const FALLBACK_PNG: Record<CoverKind, string> = OG_COVER_FALLBACK;
 
 function maxBytes(): number {
   const raw = process.env[OG_COVER_CACHE_MAX_BYTES];
@@ -69,31 +67,12 @@ export class OgImageService {
     return this.generic(kind);
   }
 
-  private async shoot(html: string): Promise<Buffer> {
-    const timeoutMs = this.browser.timeoutMs;
-    return this.browser.withPage(async (page) => {
-      await page.setViewportSize({ width: COVER_WIDTH, height: COVER_HEIGHT });
-      await page.setContent(html, { waitUntil: 'load', timeout: timeoutMs });
-      // The faces are `font-display: block` data URLs, so they resolve without the network —
-      // but `load` fires before the last of them is applied, and a cover shot a frame early
-      // lays its Hebrew out in fallback metrics. Passed as a string because this package
-      // compiles without the DOM lib: the expression runs in the page, not here.
-      await withPhaseDeadline(
-        'fonts',
-        timeoutMs,
-        page.evaluate('document.fonts.ready.then(() => undefined)'),
-      );
-      // **Screenshot the element, never the viewport** — the cutter's own rule
-      // (`gen-app-icons.mjs`): a viewport shot is the WINDOW, and `.og-cover` is exactly
-      // 1200x630 by its own CSS, so clipping to it is what makes the size a construction
-      // rather than a coincidence.
-      const shot = await withPhaseDeadline(
-        'screenshot',
-        timeoutMs,
-        page.locator('.og-cover').screenshot(),
-      );
-      return Buffer.from(shot);
-    });
+  private shoot(html: string): Promise<Buffer> {
+    return this.browser.shootElement(
+      html,
+      { width: COVER_WIDTH, height: COVER_HEIGHT },
+      '.og-cover',
+    );
   }
 
   /**

@@ -3559,6 +3559,20 @@ export const t = {
          *  that reads as a rendering fault. */
         none: 'בלי תוספות',
       },
+      // **What the recipient's chat will show** (ADR-0241 §4), heading the sheet in every phase.
+      // Before and during the trip it follows the audience; after it, the card.
+      preview: {
+        title: 'כך זה ייראה בצ׳אט',
+        join: 'ההזמנה להצטרף · מתעדכנת עם הטיול',
+        read: 'הלו״ז החי · אותו לינק כל הטיול',
+      },
+      card: {
+        title: 'כרטיס לקבוצה',
+        line: 'השער, התאריכים ושלושה מספרים · בלי שמות',
+        send: 'שליחה לקבוצה',
+        preparing: 'מכינים את הכרטיס',
+        filename: (tripName: string) => `${tripName} · כרטיס לקבוצה.png`,
+      },
       // The file's name is `backend/src/sharing/hebrew.copy.ts`'s `book.filename` by value, so a
       // shared book and a downloaded one are called the same thing.
       book: {

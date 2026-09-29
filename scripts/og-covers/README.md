@@ -17,6 +17,11 @@ brand mark's data URL) and is never handed anything a user typed. **Both fillers
 slot they have no value for** — a slot added for one of them would otherwise ship as literal
 braces baked into a PNG.
 
+**`og-memory.html` is the third source and the exception** (ADR-0241 §5): the group-chat card
+a member sends as a file, never a link preview. Only the backend fills it, `gen-app-icons.mjs`
+does not cut it, and it has no `defaults.json` entry: a trip with nothing to draw gets no card
+rather than a generic one. Its rules are the `og-memory*` block at the end of `_cover.css`.
+
 The committed PNGs are the **degradation path**, not the normal one: they are served when a
 render fails, when the renderer is busy past its deadline, or when a code does not resolve
 (where there are no facts to draw and inventing some would be an existence oracle). The

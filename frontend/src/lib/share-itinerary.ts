@@ -1,4 +1,9 @@
-import { sharedItinerarySchema, type SharedItinerary } from '@waypoint/shared';
+import {
+  OG_COVER_FALLBACK,
+  OG_COVER_PATH,
+  sharedItinerarySchema,
+  type SharedItinerary,
+} from '@waypoint/shared';
 import { API_BASE_URL, API_PHASE, API_TIMEOUT_MS } from '../constants';
 import { withDeadline } from './deadline';
 
@@ -36,6 +41,14 @@ export function sharedDocumentUrl(code: string, handle: string): string {
 /** The PDF of exactly what the page is showing, rendered server-side (ADR-0213 §4). */
 export function sharedItineraryPdfUrl(code: string): string {
   return `${API_BASE_URL}/shared-itineraries/${encodeURIComponent(code)}/pdf`;
+}
+
+/** **The picture a link shows in a chat** (ADR-0241 §4): the per-trip cover the backend draws
+ *  for that code, or the committed generic one until a link exists to draw it for. */
+export function linkCoverUrl(kind: keyof typeof OG_COVER_PATH, code?: string): string {
+  return code
+    ? `${API_BASE_URL}/${OG_COVER_PATH[kind]}/${encodeURIComponent(code)}.png`
+    : `/${OG_COVER_FALLBACK[kind]}`;
 }
 
 /** The trip book: a finished trip's record on paper, at the same link's policy (ADR-0241 §6). */

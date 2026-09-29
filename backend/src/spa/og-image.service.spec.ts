@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { RenderBrowserService } from '../sharing/render-browser.service';
+import { RenderBrowserService } from '../sharing/render-browser.service';
 import { OgImageService } from './og-image.service';
 import type { TripPreviewFacts } from './share-meta';
 
@@ -37,6 +37,8 @@ function poolWith(screenshot: () => Promise<Buffer>): {
       pages += 1;
       return work(page);
     },
+    // The real method over this fake page, so the shot still goes through the pool's path.
+    shootElement: RenderBrowserService.prototype.shootElement,
   } as unknown as RenderBrowserService;
   return { pool, pages: () => pages };
 }
