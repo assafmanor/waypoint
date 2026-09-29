@@ -2,9 +2,11 @@ import { createHash } from 'node:crypto';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
   NARRATIVE_SOURCE,
+  NARRATIVE_TENSE,
   itineraryNarrativeOutputSchema,
   summaryNarrativeInputSchema,
   type ItineraryNarrativeOutput,
+  type NarrativeTense,
   type SharedDay,
   type SummaryNarrativeInput,
 } from '@waypoint/shared';
@@ -15,6 +17,10 @@ import {
   type ItineraryNarrativeGenerator,
 } from './itinerary-narrative.generator';
 import { redactedOrUndefined } from './narrative-redaction';
+
+/** The two fields of a day the builder reads, so a retrospective pass can hand it days that
+ *  were projected from the rows that happened without building a whole `SharedDay`. */
+export type NarrativeDay = Pick<SharedDay, 'ordinal' | 'sections'>;
 
 /**
  * **What the model may see**, built here rather than anywhere near the projection.
@@ -35,12 +41,14 @@ import { redactedOrUndefined } from './narrative-redaction';
  * `narrative-redaction.ts` for why that is defence in depth rather than the defence).
  */
 export function buildSummaryNarrativeInput(
-  days: SharedDay[],
+  days: readonly NarrativeDay[],
   routeLabels: string[],
   locale: string,
+  tense: NarrativeTense = NARRATIVE_TENSE.PLANNED,
 ): SummaryNarrativeInput {
   return summaryNarrativeInputSchema.parse({
     locale,
+    ...(tense === NARRATIVE_TENSE.RETROSPECTIVE ? { tense } : {}),
     routeLabels: routeLabels.map(redactedOrUndefined).filter(Boolean),
     days: days.map((day) => ({
       ordinal: day.ordinal,
@@ -103,11 +111,13 @@ export class ItineraryNarrativeService {
    */
   async resolve(
     tripId: string,
-    days: SharedDay[],
+    days: readonly NarrativeDay[],
     routeLabels: string[],
     locale: string,
     fallback: { title: string; summary: string },
+    tense: NarrativeTense = NARRATIVE_TENSE.PLANNED,
   ): Promise<NarrativeStrings> {
+    const skillVersion = this.generator.skillVersions[tense];
     const deterministic: NarrativeStrings = {
       source: NARRATIVE_SOURCE.DETERMINISTIC,
       title: fallback.title,
@@ -118,7 +128,7 @@ export class ItineraryNarrativeService {
     let input: SummaryNarrativeInput;
     let inputHash: string;
     try {
-      input = buildSummaryNarrativeInput(days, routeLabels, locale);
+      input = buildSummaryNarrativeInput(days, routeLabels, locale, tense);
       inputHash = narrativeInputHash(input);
     } catch (error) {
       // A projection this builder cannot describe is not a reason to fail a public read.
@@ -132,7 +142,7 @@ export class ItineraryNarrativeService {
           tripId,
           locale,
           inputHash,
-          skillVersion: this.generator.skillVersion,
+          skillVersion,
         },
       },
       select: { output: true },
@@ -146,7 +156,7 @@ export class ItineraryNarrativeService {
       this.logger.warn(`stored itinerary narrative failed validation for trip ${tripId}`);
     }
 
-    this.scheduleGeneration(tripId, locale, inputHash, input);
+    this.scheduleGeneration(tripId, locale, inputHash, skillVersion, input);
     return deterministic;
   }
 
@@ -155,12 +165,13 @@ export class ItineraryNarrativeService {
     tripId: string,
     locale: string,
     inputHash: string,
+    skillVersion: string,
     input: SummaryNarrativeInput,
   ): void {
-    const key = `${tripId}:${locale}:${inputHash}:${this.generator.skillVersion}`;
+    const key = `${tripId}:${locale}:${inputHash}:${skillVersion}`;
     if (this.running.has(key)) return;
     this.running.add(key);
-    void this.generateAndStore(tripId, locale, inputHash, input)
+    void this.generateAndStore(tripId, locale, inputHash, skillVersion, input)
       .catch((error) => this.logger.warn(`narrative generation failed: ${errorMessage(error)}`))
       .finally(() => this.running.delete(key));
   }
@@ -169,6 +180,7 @@ export class ItineraryNarrativeService {
     tripId: string,
     locale: string,
     inputHash: string,
+    skillVersion: string,
     input: SummaryNarrativeInput,
   ): Promise<void> {
     const raw = await this.generator.generate(input);
@@ -185,14 +197,14 @@ export class ItineraryNarrativeService {
           tripId,
           locale,
           inputHash,
-          skillVersion: this.generator.skillVersion,
+          skillVersion,
         },
       },
       create: {
         tripId,
         locale,
         inputHash,
-        skillVersion: this.generator.skillVersion,
+        skillVersion,
         // Provenance from the adapter, never from model-authored text: a model that names
         // its own provider is a model that can lie about where its output came from.
         provider: this.generator.provider,

@@ -1,5 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
-import type { ItineraryNarrativeOutput, SummaryNarrativeInput } from '@waypoint/shared';
+import type {
+  ItineraryNarrativeOutput,
+  NarrativeTense,
+  SummaryNarrativeInput,
+} from '@waypoint/shared';
 
 /**
  * **The whole surface a future model gets**, and deliberately not an inch more.
@@ -10,14 +14,18 @@ import type { ItineraryNarrativeOutput, SummaryNarrativeInput } from '@waypoint/
  * — it cannot see the trip, the share level, the Everything toggles, or the projection. It
  * gets `SummaryNarrativeInput`, which the server builds from Summary-public text alone.
  *
- * `skillVersion` is part of the identity of a result, not metadata about it: it is one
+ * A skill version is part of the identity of a result, not metadata about it: it is one
  * column of the row's compound unique, so revising a prompt makes every stored result
  * ineligible immediately rather than leaving old text on a live link.
+ *
+ * **One version per tense** (ADR-0241, 6A.1): the retrospective variant is its own prompt over
+ * the same input schema, which carries `tense` so the adapter knows which to run. Revising
+ * the past-tense prompt then retires only past-tense text.
  */
 export interface ItineraryNarrativeGenerator {
   readonly provider: string;
   readonly model: string;
-  readonly skillVersion: string;
+  readonly skillVersions: Readonly<Record<NarrativeTense, string>>;
   /** `null` means "no narrative this time" — a refusal, a timeout, a disabled provider.
    *  It is an ordinary answer, never an error the caller has to handle specially. */
   generate(input: SummaryNarrativeInput): Promise<ItineraryNarrativeOutput | null>;
@@ -39,7 +47,7 @@ export class DisabledItineraryNarrativeGenerator implements ItineraryNarrativeGe
   private readonly logger = new Logger(DisabledItineraryNarrativeGenerator.name);
   readonly provider = 'none';
   readonly model = 'none';
-  readonly skillVersion = 'disabled';
+  readonly skillVersions = { planned: 'disabled', retrospective: 'disabled' } as const;
 
   async generate(): Promise<null> {
     this.logger.debug('itinerary narrative generation is disabled; using deterministic fallback');

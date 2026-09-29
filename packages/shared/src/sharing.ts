@@ -959,6 +959,15 @@ export const NARRATIVE_SOURCE = { DETERMINISTIC: 'deterministic', GENERATED: 'ge
 export type NarrativeSource = (typeof NARRATIVE_SOURCE)[keyof typeof NARRATIVE_SOURCE];
 
 /**
+ * **Which way the narrative looks** (ADR-0241, 6A.1). `planned` writes a trip still ahead; a
+ * `retrospective` one is told in the past tense, over the rows that happened (`recapHappened`).
+ * One port and one allowlist for both: the tense is an input the generator writes to, never a
+ * second pipe.
+ */
+export const NARRATIVE_TENSE = { PLANNED: 'planned', RETROSPECTIVE: 'retrospective' } as const;
+export type NarrativeTense = (typeof NARRATIVE_TENSE)[keyof typeof NARRATIVE_TENSE];
+
+/**
  * **The trip's fixed points, five lines above the seventy-nine** (owner, 2026-08-30:
  * _"Maybe these sharings should have sections for important stuff, like flights,
  * reservations etc."_).
@@ -1129,6 +1138,9 @@ const noUrl = (value: string) => !NO_URL.test(value);
  */
 export const summaryNarrativeInputSchema = z.strictObject({
   locale: z.string().max(8),
+  /** Present only on a retrospective input. Absent means planned, so every planned input
+   *  hashes exactly as it did before the tense existed and no stored narrative goes stale. */
+  tense: z.literal(NARRATIVE_TENSE.RETROSPECTIVE).optional(),
   routeLabels: z.array(z.string()),
   days: z.array(
     z.strictObject({

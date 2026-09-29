@@ -1,7 +1,8 @@
 import 'reflect-metadata';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { NotFoundException } from '@nestjs/common';
 import {
+  NARRATIVE_TENSE,
   NO_SENSITIVE_FIELDS,
   SHARE_DAY_KIND,
   SHARE_DAY_SUMMARY_KIND,
@@ -19,7 +20,10 @@ import { generatePublicCode } from '../common/public-code.util';
 import { sharePolicyHash } from './share-policy';
 import { SharingProjectionService } from './sharing-projection.service';
 import { ItineraryNarrativeService } from './itinerary-narrative.service';
-import { DisabledItineraryNarrativeGenerator } from './itinerary-narrative.generator';
+import {
+  DisabledItineraryNarrativeGenerator,
+  type ItineraryNarrativeGenerator,
+} from './itinerary-narrative.generator';
 
 /**
  * The leak fixture, and the point of this whole file.
@@ -592,6 +596,44 @@ describe('SharingProjectionService', () => {
       titles: ['נחיתה בקפלוויק', 'כניסה לדירה'],
     });
     expect(projection.narrative.source).toBe('deterministic');
+  });
+
+  // **The past tense is written from what happened** (ADR-0241, 6A.1; spec 3b). The fixture's
+  // two hard rows count (nobody skipped them) and its soft rows were never marked `היינו`, so
+  // the retrospective input holds the landing and the zip line and nothing else.
+  it('hands a retrospective narrative only the rows that happened', async () => {
+    const generate = vi.fn().mockResolvedValue(null);
+    const generator: ItineraryNarrativeGenerator = {
+      provider: 'test',
+      model: 'test',
+      skillVersions: { planned: 'v1', retrospective: 'v1-past' },
+      generate,
+    };
+    const withModel = new SharingProjectionService(
+      prisma,
+      new ItineraryNarrativeService(prisma, generator),
+      noEnrichment(),
+    );
+    const share = await withModel.requireActiveShare(await shareAt(SHARE_DETAIL_LEVEL.SUMMARY));
+
+    await withModel.project(share, 'he', { narrativeTense: NARRATIVE_TENSE.RETROSPECTIVE });
+    const [past] = generate.mock.calls.at(-1)!;
+    expect(past.tense).toBe(NARRATIVE_TENSE.RETROSPECTIVE);
+    expect(
+      past.days.map((day: { ordinal: number; events: { title: string }[] }) => [
+        day.ordinal,
+        day.events.map((event) => event.title),
+      ]),
+    ).toEqual([
+      [1, ['נחיתה בקפלוויק']],
+      [2, ['אומגה']],
+    ]);
+    expect(past.routeLabels).toEqual(['רייקיאוויק', 'Zip line']);
+
+    await withModel.project(share, 'he');
+    const [planned] = generate.mock.calls.at(-1)!;
+    expect(planned).not.toHaveProperty('tense');
+    expect(JSON.stringify(planned)).toContain('אורות הצפון');
   });
 
   // **The night before is not the morning after** (owner, 2026-08-30: _"The night part gets
