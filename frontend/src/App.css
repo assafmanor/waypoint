@@ -1912,6 +1912,14 @@
   font-size: 23px;
   flex: 0 0 auto;
 }
+.trip-card .flag[data-photo] {
+  overflow: hidden;
+}
+.trip-card .flag img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
 .trip-card .main,
 .trip-hero .main {
   flex: 1;

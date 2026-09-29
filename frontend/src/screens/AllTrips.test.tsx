@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import type { Trip } from '@waypoint/shared';
 import { t } from '../i18n/he';
 import { DRAG_HOLD_MS } from '../constants';
@@ -52,8 +52,52 @@ const TRIPS: Trip[] = vi.hoisted(() => [
 // (frontend/CLAUDE.md — a spec that reads the system clock passes for the wrong reason).
 const NOW = Date.parse('2026-08-30T09:00:00.000Z');
 
+// Only the finished trip was ever opened on this device, and its one visited place has a
+// picture: the cover `tripRecap` picks is the one its card shows (ADR-0240 §7).
+const LISBON = vi.hoisted(() => {
+  const stamp = { tripId: 't3', createdAt: '', updatedAt: '', updatedBy: 'u1' };
+  return {
+    trip: { id: 't3', startDate: '2024-03-01', endDate: '2024-03-08' },
+    events: [
+      {
+        id: 'e1',
+        date: '2024-03-02',
+        title: 'Belém',
+        kind: 'soft',
+        status: 'done',
+        placeId: 'p1',
+        startsAt: '2024-03-02T10:00:00.000Z',
+        endsAt: '2024-03-02T13:00:00.000Z',
+        sortOrder: 0,
+        source: 'manual',
+        ...stamp,
+      },
+    ],
+    bookings: [],
+    places: [{ id: 'p1', name: 'Belém', lat: 38.69, lng: -9.21, ...stamp }],
+    maybeItems: [],
+    travelModeOverrides: [],
+    enrichments: {
+      p1: {
+        image: {
+          url: '/assets/belem.jpg',
+          mimeType: 'image/jpeg',
+          width: 800,
+          height: 600,
+          sizeBytes: 1,
+          source: 'wikimedia_commons',
+          license: 'CC BY-SA 4.0',
+          confidence: 1,
+          fetchedAt: '',
+        },
+      },
+    },
+  };
+});
+
 vi.mock('../lib/cache', () => ({
   loadTripList: vi.fn().mockResolvedValue({ trips: TRIPS, fromCache: false }),
+  readCachedSnapshot: vi.fn(async (tripId: string) => (tripId === 't3' ? LISBON : null)),
 }));
 vi.mock('../state/auth-state', () => ({
   useAuth: () => ({
@@ -179,6 +223,17 @@ describe('AllTrips sharing entry', () => {
 
   // ADR-0240 §7: a finished trip is a memory, not a disabled row, so its card is the same
   // card as an upcoming one's.
+  it("shows a finished trip's cover in its flag slot, and the flag without one", async () => {
+    renderTrips();
+    const past = (await screen.findByText('ליסבון')).closest('button')!;
+    await waitFor(() => expect(past.querySelector('.flag img')).not.toBeNull());
+    expect(past.querySelector('.flag img')!.getAttribute('src')).toContain('/assets/belem.jpg');
+
+    const soon = screen.getByText('סוף שבוע ברומא').closest('button')!;
+    expect(soon.querySelector('.flag img')).toBeNull();
+    expect(soon.querySelector('.flag')!.textContent).not.toBe('');
+  });
+
   it('does not dim a finished trip', async () => {
     renderTrips();
     const past = (await screen.findByText('ליסבון')).closest('button')!;

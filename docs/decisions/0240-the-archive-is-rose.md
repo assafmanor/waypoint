@@ -1,6 +1,6 @@
 # 0240 — The archive is rose: a finished trip's palette and posture
 
-**Status:** Accepted 2026-09-26 (owner: _"Rose, as per your recommendation"_). **Phase 3 (§2, §3, §5, §6, §7's undimming) built 2026-09-26**; §4 (Phase 4, built 2026-09-27), §7's cover, lifetime line and anniversary card (3.5 and 6B) wait on Phase 2's recap derivation. Build note: [`planning/2026-09-26-the-archive-is-rose-build.md`](../planning/2026-09-26-the-archive-is-rose-build.md). The build is phased below, inside the epic's Phases 3, 4 and 6B. Mockup: [`mockups/past-trip-v1.html`](../../mockups/past-trip-v1.html). Session note: [`planning/2026-09-26-the-archive-is-rose.md`](../planning/2026-09-26-the-archive-is-rose.md). Epic plan: [`planning/2026-09-25-a-finished-trip-is-a-memory-build-plan.md`](../planning/2026-09-25-a-finished-trip-is-a-memory-build-plan.md) §1A.
+**Status:** Accepted 2026-09-26 (owner: _"Rose, as per your recommendation"_). **Phase 3 (§2, §3, §5, §6, §7's undimming) built 2026-09-26**, and §7's cover (3.5) 2026-09-29; §4 (Phase 4) built 2026-09-27; §7's lifetime line and anniversary card (6B) are unbuilt. Build note: [`planning/2026-09-26-the-archive-is-rose-build.md`](../planning/2026-09-26-the-archive-is-rose-build.md). The build is phased below, inside the epic's Phases 3, 4 and 6B. Mockup: [`mockups/past-trip-v1.html`](../../mockups/past-trip-v1.html). Session note: [`planning/2026-09-26-the-archive-is-rose.md`](../planning/2026-09-26-the-archive-is-rose.md). Epic plan: [`planning/2026-09-25-a-finished-trip-is-a-memory-build-plan.md`](../planning/2026-09-25-a-finished-trip-is-a-memory-build-plan.md) §1A.
 **Date:** 2026-09-26
 
 **Amends** [0028](0028-plan-violet-color-budget-dark-ready.md) (the semantic budget gains a fourth hue) · [`design-language.md`](../design/design-language.md) (palette, color coding, mode identity, dark remap) · root [`CLAUDE.md`](../../CLAUDE.md) rule 4 · [0044](0044-settling-a-finished-trip.md) (the archive row's done circle leaves, §5) · [0049](0049-index-tab-mode-and-lifecycle.md) §2 (its wash is not built; its banner is §6 here).
@@ -127,7 +127,7 @@ On a finished trip, Plan's archive rows:
 ### §7 · /trips
 
 - **The `.is-past` dimming goes.** The name reads `--ink` (15.65 · 12.39, against 5.57 · 5.65 muted). A memory is not a disabled row.
-- **The flag slot takes the cover** the way a badge takes a photograph (ADR-0167 §1), at 0px of height. With no cover, the flag stays.
+- **The flag slot takes the cover** the way a badge takes a photograph (ADR-0167 §1), at 0px of height. With no cover, the flag stays. **Built 2026-09-29:** the cover is read from the device's cached snapshot, since `/trips` holds no trip's rows, so a trip this device never opened keeps its flag; and a card with a cover does not fly its glyph into the switcher pill (ADR-0140 §7), because the photo is not the object that lands there.
 - **A lifetime line under the `הסתיים` heading:** trips, days away, countries (`destinationCountryCode`), counted over finished trips only.
 - **The anniversary card** (ADR-0239 §8, in-app half): above everything on the day, a `PhotoBand` with `לפני שנה בדיוק · <a place marked היינו>` on the scrim, and the trip's name and dates under it. Its small line is `--memory-deep`, not amber: an anniversary is not a deadline. No place marked `היינו` means no card.
 
@@ -141,7 +141,7 @@ Each is its own PR, in the epic's numbering. Every PR ends green on `pnpm typech
 | **3.2** ✓     | The chrome (§3): `data-phase` on `.app`, the header and `DayStrip`; the band, the six accents, the tab bar, the un-dimmed strip; the anchor's words (`lib/time.ts` age ladder + `i18n/he.ts`). | 3.1, 0.1       | 3          |
 | **3.3** ✓     | The day list as a record (§5), including the `buildTimeTree` skipped-row fix with a regression test.                                                                                           | 3.1            | 3          |
 | **3.4** ✓     | The Index (§6): the banner and the tile copy.                                                                                                                                                  | 3.1            | 3          |
-| **3.5** ◐     | /trips (§7): no dimming (built); the cover in the flag slot once Phase 2 supplies the cover choice (ships without it until then).                                                              | 3.1 (cover: 2) | 3          |
+| **3.5** ✓     | /trips (§7): no dimming; the cover in the flag slot, `tripRecap`'s cover over the device's cached snapshot (`useTripCovers`), so a trip never opened here keeps its flag.                      | 3.1 (cover: 2) | 3          |
 | **4.1–4.5**   | The memory Home (§4), in the epic's order: the cover card with the stragglers footer and "by the numbers", the contact sheet, firsts and bests, the stragglers sheet, next time.               | 3.1, 2         | 4          |
 | **6B.1–6B.2** | The lifetime line and the anniversary card (§7).                                                                                                                                               | 3.1, 2         | 6B         |
 
