@@ -503,3 +503,12 @@ export function isAllowedAvatarMimeType(mimeType: string): boolean {
 export function isInlineOpenableDocumentMimeType(mimeType: string): boolean {
   return mimeType === 'application/pdf';
 }
+
+/** Where a distance changes precision (ADR-0109 §7): sub-kilometre distances round to a walkable
+ *  10 m, then read as one decimal of a kilometre, then as whole kilometres once the decimal stops
+ *  meaning anything. The near-me chip and the recap's figures both step here. */
+export const DISTANCE_STEP = {
+  NEAR_ROUND_M: 10,
+  KM_FROM_M: 1000,
+  WHOLE_KM_FROM: 10,
+} as const;
