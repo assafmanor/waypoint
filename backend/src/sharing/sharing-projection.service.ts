@@ -55,9 +55,10 @@ import {
   resolveTextVariant,
   SUMMARY_LANG_PREFERENCE,
   type TripEnrichments,
+  EVENT_STATUS,
   NARRATIVE_TENSE,
-  type NarrativeTense,
   recapHappened,
+  type SharedNoteOp,
 } from '@waypoint/shared';
 
 import { EnrichmentService } from '../enrichment/enrichment.service';
@@ -65,7 +66,6 @@ import { PrismaService } from '../prisma/prisma.service';
 import {
   applyNarrative,
   fallbackTripTitle,
-  type NarrativeStrings,
   routeLabelsFrom,
   routeStrip,
 } from './itinerary-narrative.fallback';
@@ -346,6 +346,35 @@ function travelFacts(
  * appears on the day it left. Nothing is dropped: the absorbed date becomes the card's
  * `endDate`, so the header can say `21–22` and a reader can see where the time went.
  */
+/**
+ * **The record's days** (ADR-0241 §6): only a day where something happened, and each one's
+ * notes lifted off its rows into `notes`, in the order they were written. A note ON a row
+ * belongs to that row's day (the memory Home's journal rule), and the book prints it as the
+ * day's `מה כתבנו` rather than under a stop. A note on nothing stays in the appendix: which day
+ * it was written on is the Home's `liveToday`, a frontend derivation this layer does not have.
+ */
+function recordDays(days: SharedDay[], writtenAt: ReadonlyMap<SharedOp, number>): SharedDay[] {
+  return days.flatMap((day) => {
+    if (!day.sections.some((section) => section.events.length > 0)) return [];
+    const notes: SharedNoteOp[] = [];
+    const sections = day.sections.map((section) => ({
+      ...section,
+      events: section.events.map((event) => {
+        if (!event.ops) return event;
+        const kept = event.ops.filter((op) => {
+          if (op.kind !== SHARE_OP_KIND.NOTE) return true;
+          notes.push(op);
+          return false;
+        });
+        const { ops: _lifted, ...rest } = event;
+        return kept.length > 0 ? { ...rest, ops: kept } : rest;
+      }),
+    }));
+    notes.sort((a, b) => (writtenAt.get(a) ?? 0) - (writtenAt.get(b) ?? 0));
+    return [{ ...day, sections, ...(notes.length > 0 ? { notes } : {}) }];
+  });
+}
+
 /** The calendar date a day's journeys stop moving on — the latest arrival among the transport
  *  rows placed on it, as a plain `YYYY-MM-DD` so it compares with `byDay`'s own keys. Empty
  *  string when nothing here arrives anywhere, which makes the caller's `<=` refuse every
@@ -404,6 +433,8 @@ interface OpsByHost {
   /** Attached to nothing, and published under its own heading rather than smuggled onto
    *  whichever row happened to be first. This is the packing list. */
   unattached: SharedOp[];
+  /** When each note op was written, never published: the record orders a day's notes by it. */
+  writtenAt: Map<SharedOp, number>;
 }
 
 /** **Does this leg continue that one?** The whole journey derivation, and it needed no
@@ -763,15 +794,19 @@ export class SharingProjectionService {
   }
 
   /**
-   * @param options.narrativeTense `retrospective` tells the narrative in the past tense, over the
-   *   rows that happened (ADR-0241, 6A.1). The caller decides when a trip is behind it: the
-   *   projection never reads the clock for it.
+   * @param options.record **The record, not the plan** (ADR-0241 §6, the trip book): only the
+   *   rows that happened (`recapHappened`), so every day, its title, the route and the
+   *   narrative are of what the trip did, and the narrative is told in the past tense (6A.1).
+   *   A day where nothing happened is dropped; each day carries what it skipped and, at
+   *   Everything with notes, the notes written on its rows. The caller decides when a trip is
+   *   behind it: the projection never reads the clock for it.
    */
   async project(
     share: SharePolicy,
     locale = DEFAULT_LOCALE,
-    options: { narrativeTense?: NarrativeTense } = {},
+    options: { record?: boolean } = {},
   ): Promise<SharedItinerary> {
+    const record = options.record === true;
     const detail = share.detailLevel;
     const orienting = detail !== SHARE_DETAIL_LEVEL.SUMMARY;
 
@@ -901,7 +936,18 @@ export class SharingProjectionService {
     );
     const isFlight = (event: ShareEventRow): boolean => event.booking?.type === BOOKING_TYPE.FLIGHT;
 
-    const byDay = this.groupByDay(events, trip.startDate, trip.endDate, zones);
+    const planned = this.groupByDay(events, trip.startDate, trip.endDate, zones);
+    const skippedByDay = planned.map(({ events: dayEvents }) =>
+      dayEvents
+        .filter(
+          (event) =>
+            event.status === EVENT_STATUS.SKIPPED && event.booking?.type !== BOOKING_TYPE.HOTEL,
+        )
+        .map((event) => event.title),
+    );
+    const byDay = record
+      ? planned.map((day) => ({ ...day, events: day.events.filter(recapHappened) }))
+      : planned;
 
     // **Which day is the way out and which is the way home** — a whole-trip question, so it
     // is answered here and handed to the per-day derivation as two booleans. Both ends are
@@ -1039,9 +1085,14 @@ export class SharingProjectionService {
       ).map((leg) => leg.id),
     );
 
-    const projectRows = (rows: ShareEventRow[], rowChains: typeof chains) =>
-      this.withJourneys(
-        rows,
+    const days: SharedDay[] = byDay.map(({ date, events: dayEvents }, index) => {
+      // **The stay leaves the schedule before anything else looks at it.** A lodging event
+      // sorts by its check-in hour, which put it between the two legs of the outbound
+      // flight; and its `startsAt`/`endsAt` span midnight, so it printed `15:00–11:00`.
+      // Both stop being true once it is the day's frame rather than one of its rows.
+      const scheduled = dayEvents.filter((event) => event.booking?.type !== BOOKING_TYPE.HOTEL);
+      const projected = this.withJourneys(
+        scheduled,
         zones,
         detail,
         journeys,
@@ -1050,17 +1101,9 @@ export class SharingProjectionService {
         labelById,
         codeById,
         (placeId) => capCaption(textOf(placeId, 'summary')),
-        rowChains,
+        chains,
         placeById,
       );
-
-    const days: SharedDay[] = byDay.map(({ date, events: dayEvents }, index) => {
-      // **The stay leaves the schedule before anything else looks at it.** A lodging event
-      // sorts by its check-in hour, which put it between the two legs of the outbound
-      // flight; and its `startsAt`/`endsAt` span midnight, so it printed `15:00–11:00`.
-      // Both stop being true once it is the day's frame rather than one of its rows.
-      const scheduled = dayEvents.filter((event) => event.booking?.type !== BOOKING_TYPE.HOTEL);
-      const projected = projectRows(scheduled, chains);
       const facts = {
         ...dayFacts(dayEvents, index),
         tripShape: shape.shape,
@@ -1081,6 +1124,7 @@ export class SharingProjectionService {
       return {
         ordinal: index + 1,
         date,
+        ...(record && skippedByDay[index].length > 0 ? { skipped: skippedByDay[index] } : {}),
         // **The zone this card's clock means** (`SharedDay.timezone`) — the day's own events
         // when they agree, else the segment, never the destination by default.
         timezone: dayZone(date, zones),
@@ -1184,13 +1228,15 @@ export class SharingProjectionService {
       // `trip.*` fields, and the sentence joining them is each renderer's own copy.
       summary: '',
     };
-    const narrative =
-      options.narrativeTense === NARRATIVE_TENSE.RETROSPECTIVE
-        ? await this.retrospectiveNarrative(share.tripId, byDay, locale, fallback, {
-            projectRows,
-            principalStop,
-          })
-        : await this.narrative.resolve(share.tripId, days, routeLabels, locale, fallback);
+    const published = record ? recordDays(combined, ops.writtenAt) : combined;
+    const narrative = await this.narrative.resolve(
+      share.tripId,
+      record ? published : days,
+      routeLabels,
+      locale,
+      fallback,
+      record ? NARRATIVE_TENSE.RETROSPECTIVE : NARRATIVE_TENSE.PLANNED,
+    );
 
     return sharedItinerarySchema.parse({
       status: 'live',
@@ -1225,53 +1271,11 @@ export class SharingProjectionService {
         title: narrative.title,
         summary: narrative.summary,
       },
-      days: applyNarrative(combined, narrative),
+      days: applyNarrative(published, narrative),
       commitments,
       appendix:
         detail === SHARE_DETAIL_LEVEL.EVERYTHING ? this.buildAppendix(ops.unattached) : undefined,
     });
-  }
-
-  /**
-   * **The trip told in the past tense** (ADR-0241, 6A.1; spec 3b): the same projection and the
-   * same allowlisted builder, over only the rows that happened (`recapHappened`), so a skipped
-   * dinner is never written as a memory. The route is where the trip went, and a day where
-   * nothing happened has no line, as on the contact sheet. Journeys are re-chained over the
-   * happened rows, so a skipped leg does not ride inside one that flew. The fallback is the
-   * planned one's: the deterministic words are tense-free.
-   */
-  private retrospectiveNarrative(
-    tripId: string,
-    byDay: { date: string; events: ShareEventRow[] }[],
-    locale: string,
-    fallback: { title: string; summary: string },
-    project: {
-      projectRows: (
-        rows: ShareEventRow[],
-        chains: ReturnType<typeof chainJourneys>,
-      ) => SharedEvent[];
-      principalStop: (rows: ShareEventRow[]) => string | undefined;
-    },
-  ): Promise<NarrativeStrings> {
-    const happened = byDay.map((day) => day.events.filter(recapHappened));
-    const scheduled = happened.map((rows) =>
-      rows.filter((event) => event.booking?.type !== BOOKING_TYPE.HOTEL),
-    );
-    const chains = chainJourneys(scheduled.flat());
-    const days = scheduled.flatMap((rows, index) =>
-      rows.length > 0
-        ? [{ ordinal: index + 1, sections: this.groupByDaypart(project.projectRows(rows, chains)) }]
-        : [],
-    );
-    const route = routeStrip(routeLabelsFrom(happened.map(project.principalStop)));
-    return this.narrative.resolve(
-      tripId,
-      days,
-      route,
-      locale,
-      fallback,
-      NARRATIVE_TENSE.RETROSPECTIVE,
-    );
   }
 
   /**
@@ -1423,7 +1427,12 @@ export class SharingProjectionService {
    * off the booking behind it, and to a reader those are the same row.
    */
   private async loadOps(share: SharePolicy, detail: ShareDetailLevel): Promise<OpsByHost> {
-    const empty: OpsByHost = { byEvent: new Map(), byBooking: new Map(), unattached: [] };
+    const empty: OpsByHost = {
+      byEvent: new Map(),
+      byBooking: new Map(),
+      unattached: [],
+      writtenAt: new Map(),
+    };
     if (detail !== SHARE_DETAIL_LEVEL.EVERYTHING) return empty;
 
     const push = (map: Map<string, SharedOp[]>, key: string | null, op: SharedOp): void => {
@@ -1432,7 +1441,12 @@ export class SharingProjectionService {
       if (list) list.push(op);
       else map.set(key, [op]);
     };
-    const out: OpsByHost = { byEvent: new Map(), byBooking: new Map(), unattached: [] };
+    const out: OpsByHost = {
+      byEvent: new Map(),
+      byBooking: new Map(),
+      unattached: [],
+      writtenAt: new Map(),
+    };
 
     if (share.includeBookingSecrets) {
       const bookings = await this.prisma.booking.findMany({
@@ -1456,7 +1470,8 @@ export class SharingProjectionService {
       // is the difference between not showing them and not loading them.
       const notes = await this.prisma.note.findMany({
         where: { tripId: share.tripId },
-        select: { title: true, body: true, eventId: true, bookingId: true },
+        select: { title: true, body: true, eventId: true, bookingId: true, createdAt: true },
+        orderBy: { createdAt: 'asc' },
       });
       for (const note of notes) {
         const title = note.title?.trim();
@@ -1467,6 +1482,7 @@ export class SharingProjectionService {
           title: title || undefined,
           body: body || undefined,
         }) as SharedOp;
+        out.writtenAt.set(op, note.createdAt.getTime());
         if (note.eventId) push(out.byEvent, note.eventId, op);
         else if (note.bookingId) push(out.byBooking, note.bookingId, op);
         // **Attached to nothing is a real answer, not a leftover.** A packing list belongs

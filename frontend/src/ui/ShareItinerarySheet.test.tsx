@@ -51,6 +51,7 @@ const api = vi.hoisted(() => ({
   stopTripShare: vi.fn(),
   stopAllTripShares: vi.fn(),
   fetchSharedItineraryPdf: vi.fn(),
+  fetchSharedTripBook: vi.fn(),
   fetchSnapshot: vi.fn(),
 }));
 const systemShare = vi.hoisted(() => ({
@@ -657,6 +658,31 @@ describe('ShareItinerarySheet', () => {
       expect(read.getAttribute('aria-checked')).toBe('true');
       await screen.findByRole('button', { name: new RegExp(t.share.owner.actions.createAndShare) });
       expect(api.createInvite).not.toHaveBeenCalled();
+    });
+
+    // ADR-0241 §4: after the trip the paper is the book, under the same link, and the itinerary
+    // PDF is not offered beside it.
+    it('offers the trip book in place of the PDF', async () => {
+      api.fetchTripShares.mockResolvedValue([config]);
+      api.fetchSharedTripBook.mockResolvedValue(new Blob(['%PDF-1.4']));
+      renderSheet(true);
+      const book = await screen.findByRole('button', {
+        name: new RegExp(t.share.owner.actions.book),
+      });
+      expect(
+        screen.queryByRole('button', { name: new RegExp(t.share.owner.actions.pdf) }),
+      ).toBeNull();
+
+      fireEvent.click(book);
+      await waitFor(() => expect(api.fetchSharedTripBook).toHaveBeenCalledWith(CODE));
+      expect(api.fetchSharedItineraryPdf).not.toHaveBeenCalled();
+      await waitFor(() =>
+        expect(systemShare.shareFileOrDownload).toHaveBeenCalledWith(
+          expect.objectContaining({
+            name: t.share.owner.book.filename('איסלנד עם המשפחה'),
+          }),
+        ),
+      );
     });
 
     it('says the trip has ended on join, with no link, no send and no rotate', async () => {

@@ -64,7 +64,7 @@ const FONT_FACES: readonly FontFace[] = [
 ] as const;
 
 /** Inline `@font-face` rules for the paper's faces. */
-function fontFaces(): string {
+export function fontFaces(): string {
   return inlineFaces('pdf', FONT_FACES);
 }
 
@@ -73,7 +73,7 @@ export function resetPdfFontCache(): void {
   resetInlinedFontCache();
 }
 
-const escapeHtml = (value: string): string =>
+export const escapeHtml = (value: string): string =>
   value.replace(
     /[&<>"']/g,
     (char) =>
@@ -83,17 +83,17 @@ const escapeHtml = (value: string): string =>
 /** A Latin/numeric run inside Hebrew prose, isolated so it reads left-to-right (ADR-0118).
  *  The same instrument `lib/bidi.ts` uses on screen, spelled here because the print
  *  renderer cannot import the frontend. */
-const ltr = (value: string | number): string => `⁦${escapeHtml(String(value))}⁩`;
+export const ltr = (value: string | number): string => `⁦${escapeHtml(String(value))}⁩`;
 
 /** **A value the app did not write, inside a line the app composed** — a place name, an
  *  event title, a person. First-strong rather than forced-LTR, because it can be either
  *  script; the same instrument `lib/bidi.ts`'s `autoIsolate` is on screen. A container of
  *  these must NOT carry `dir="auto"`, which skips isolates when it sniffs. */
-const auto = (value: string): string => `\u2068${escapeHtml(value)}\u2069`;
+export const auto = (value: string): string => `\u2068${escapeHtml(value)}\u2069`;
 
 /** A date, a code or a stamp — mono, isolated, and **only ever the numeric run**. Its
  *  element sets the row in Assistant so Hebrew beside it has a face with Hebrew glyphs. */
-const num = (value: string): string => `<span class="pdf-num">${ltr(value)}</span>`;
+export const num = (value: string): string => `<span class="pdf-num">${ltr(value)}</span>`;
 
 /**
  * **The derived headline, said in words** (ADR-0213's 2026-08-30 amendment). The projection
@@ -105,7 +105,7 @@ const num = (value: string): string => `<span class="pdf-num">${ltr(value)}</spa
  * `NONE` returns empty and the caller falls back to the date: a day with nothing in it has
  * no true title, and inventing one is the mandatory day title the owner rejected.
  */
-function dayTitleText(title: SharedDayTitle): string {
+export function dayTitleText(title: SharedDayTitle): string {
   switch (title.kind) {
     case SHARE_DAY_KIND.FLIGHT_OUT:
       return PDF_COPY.dayTitle.flightOut(auto(title.to));
@@ -153,7 +153,7 @@ function daySummaryText(summary: SharedDaySummary): string {
 
 /** `DD.MM–DD.MM`, the app's own trip-range shape (`lib/time.ts`'s `formatTripDates`), which
  *  the masthead was printing as two raw ISO dates the app shows nowhere else. */
-const tripRange = (startDate: string, endDate: string): string => {
+export const tripRange = (startDate: string, endDate: string): string => {
   const dayMonth = (iso: string) => {
     const [, month, day] = iso.split('-');
     return `${day}.${month}`;
@@ -172,7 +172,7 @@ const dayLabel = (date: string): { day: string; weekday: string } => {
 /** The hour, or the range where there is one — a flight has to say when it lands (owner,
  *  2026-08-30). One isolate around the whole run, so `09:20–14:05` cannot be reordered by the
  *  page's RTL flow into its own reverse. */
-function timeText(event: SharedEvent): string {
+export function timeText(event: SharedEvent): string {
   // **`גמיש` is prose too, and it has been printing as boxes since §1** — found 2026-08-31
   // by widening the mono guard for the flexible edges, not by looking at it. An untimed
   // event's cell has always carried a Hebrew word in a face with no Hebrew glyphs; the
@@ -386,7 +386,7 @@ function namesItsOwnHref(label: string, href: string): boolean {
   return bare(label) === bare(href);
 }
 
-function noteMarkup(body: string): string {
+export function noteMarkup(body: string): string {
   const inline = (runs: readonly NoteInline[]): string =>
     runs
       .map((run) => {
@@ -604,7 +604,7 @@ function dayCard(day: SharedDay, summary: boolean, photoSrc?: string): string {
   );
 }
 
-function appendixBlock(projection: SharedItinerary): string {
+export function appendixBlock(projection: SharedItinerary): string {
   // **The same renderer the rows use.** These ARE row ops — they simply have no row — so a
   // note here and a note under an event print identically (ADR-0096). Travelers left this
   // block entirely: they are who the trip IS, and they print in the masthead.
@@ -614,6 +614,55 @@ function appendixBlock(projection: SharedItinerary): string {
         `<div class="pdf-op">${ops}</div></section>`
     : '';
 }
+
+/** **The appendix's box**, shared with the trip book so a note on nothing prints one way. */
+export const PDF_APPENDIX_CSS = `/* One column, not two: a note is prose and a 2-column measure at this size is unreadable —
+   which is most of what "the section is too dense" meant (owner, 2026-08-30). */
+.pdf-ops{display:block;margin-block-start:12px;}
+/* **A heading may not be the last thing on a page.** break-after:avoid keeps it with the
+   block it names; without it the title landed alone at the foot of page 4 with its content on
+   page 5, which reads as a rendering fault (owner, 2026-08-30, with a screenshot). */
+.pdf-ops-title{margin:0 0 6px;font:13px 'Secular One',sans-serif;break-after:avoid;page-break-after:avoid;}
+.pdf-op{break-inside:avoid;padding:9px 11px;border:1px solid var(--pdf-line);border-radius:9px;}
+/* Two rules lived here for the per-family appendix markup (a title element and a
+   joined-lines element) that no longer exists. They were not merely dead: the descendant
+   selector .pdf-op span is (0,1,1) and beat .pdf-ops-line (0,1,0), so it silently held the
+   ops line at 7.8px however large this file said to set it — the third time in this feature
+   a declaration lost to a descendant selector and looked exactly like one never written. */`;
+
+/** **How a note's body prints** (`noteMarkup`), shared with the trip book's `מה כתבנו`. */
+export const PDF_NOTE_CSS = `/* **Assistant, and JetBrains only where the value is a code.** This rule set the font
+   shorthand to 600 7.2px JetBrains Mono — and JetBrains ships NO Hebrew, so every note body
+   printed as empty rectangles while the bold label beside it, which overrides back to
+   Assistant, printed perfectly (owner, 2026-08-30: "Notes also gibberish on the pdf"). That
+   is the same defect ADR-0213 already recorded once for .pdf-subtitle, in a second element:
+   the font SHORTHAND replaces the family list, so the fallback never applies. 7.2px was also
+   simply too small to read. */
+/* **'Noto Emoji' stays in the stack, and its absence was the tofu.** The font SHORTHAND
+   replaces the whole family list, so naming only Assistant here dropped the emoji face the
+   body sets — and a note written with 🚁 printed an empty rectangle (owner, 2026-08-31).
+   That is the SEVENTH time this shorthand has eaten a family in this file. Anything using the
+   font shorthand here must repeat the whole stack; a bare font-size property cannot make the
+   mistake at all, which is why the rules below prefer one. */
+.pdf-ops-line{display:block;margin-block-start:4px;color:var(--pdf-ink)!important;font-family:'Assistant','Noto Emoji',sans-serif;font-size:9.4px;font-weight:400;line-height:1.55;white-space:normal!important;}
+.pdf-ops-line b{font-weight:700;color:var(--pdf-muted);}
+.pdf-mono{font-family:'JetBrains Mono',monospace;font-weight:600;}
+.pdf-travel-facts{display:block;margin-block-start:1px;color:var(--pdf-muted);font-size:7.6px;}
+.pdf-note{display:block;}
+.pdf-note-title{display:block;margin-block-end:2px;}
+.pdf-note-p{margin:0 0 4px;}
+.pdf-note-h1{margin:6px 0 3px;font-size:10.4px;font-weight:700;}
+.pdf-note-h2{margin:5px 0 2px;font-weight:700;}
+.pdf-note-list{margin:0 0 4px;padding:0;list-style:none;}
+.pdf-note-list li{display:flex;gap:5px;align-items:baseline;margin-block-end:1px;}
+.pdf-note-mark{flex:none;color:var(--pdf-muted);font-variant-numeric:tabular-nums;}
+.pdf-note-quote{margin:0 0 4px;padding-inline-start:7px;border-inline-start:2px solid var(--pdf-line);color:var(--pdf-muted);}
+.pdf-note-rule{height:1px;margin:6px 0;background:var(--pdf-line);}
+/* A printed link states its destination, because it cannot be tapped. */
+.pdf-url{font-family:'JetBrains Mono',monospace;font-size:0.9em;color:var(--pdf-teal);word-break:break-all;}
+/* A note is prose the author wrote with line breaks in it; a paragraph that collapses them
+   is the wall of text this block keeps being reported as. */
+.pdf-prose{white-space:pre-line;}`;
 
 export interface PdfRenderInput {
   projection: SharedItinerary;
@@ -872,19 +921,7 @@ html,body{margin:0;background:#fff;color:var(--pdf-ink);font-family:'Assistant',
 .pdf-summary-event span:first-child{text-align:center;}
 .pdf-summary-event strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .pdf-journey{padding:2px 0;color:var(--pdf-muted);font-size:7px;}
-/* One column, not two: a note is prose and a 2-column measure at this size is unreadable —
-   which is most of what "the section is too dense" meant (owner, 2026-08-30). */
-.pdf-ops{display:block;margin-block-start:12px;}
-/* **A heading may not be the last thing on a page.** break-after:avoid keeps it with the
-   block it names; without it the title landed alone at the foot of page 4 with its content on
-   page 5, which reads as a rendering fault (owner, 2026-08-30, with a screenshot). */
-.pdf-ops-title{margin:0 0 6px;font:13px 'Secular One',sans-serif;break-after:avoid;page-break-after:avoid;}
-.pdf-op{break-inside:avoid;padding:9px 11px;border:1px solid var(--pdf-line);border-radius:9px;}
-/* Two rules lived here for the per-family appendix markup (a title element and a
-   joined-lines element) that no longer exists. They were not merely dead: the descendant
-   selector .pdf-op span is (0,1,1) and beat .pdf-ops-line (0,1,0), so it silently held the
-   ops line at 7.8px however large this file said to set it — the third time in this feature
-   a declaration lost to a descendant selector and looked exactly like one never written. */
+${PDF_APPENDIX_CSS}
 
 /* ══ ADR-0213's 2026-08-30 amendment. **LAST IN THE SHEET ON PURPOSE**: these override
    shipped rules at EQUAL specificity, so placed above them they lose and do it silently —
@@ -942,38 +979,7 @@ html,body{margin:0;background:#fff;color:var(--pdf-ink);font-family:'Assistant',
 .pdf-layover{padding:2px 6px 2px 50px;background:color-mix(in srgb,var(--pdf-ink) 3%,transparent);color:var(--pdf-muted);font-size:7px;}
 /* **Printed, not folded** — paper has no setting, and whoever holds the printout is the
    operator. The one decision that inverts against the reader page. */
-/* **Assistant, and JetBrains only where the value is a code.** This rule set the font
-   shorthand to 600 7.2px JetBrains Mono — and JetBrains ships NO Hebrew, so every note body
-   printed as empty rectangles while the bold label beside it, which overrides back to
-   Assistant, printed perfectly (owner, 2026-08-30: "Notes also gibberish on the pdf"). That
-   is the same defect ADR-0213 already recorded once for .pdf-subtitle, in a second element:
-   the font SHORTHAND replaces the family list, so the fallback never applies. 7.2px was also
-   simply too small to read. */
-/* **'Noto Emoji' stays in the stack, and its absence was the tofu.** The font SHORTHAND
-   replaces the whole family list, so naming only Assistant here dropped the emoji face the
-   body sets — and a note written with 🚁 printed an empty rectangle (owner, 2026-08-31).
-   That is the SEVENTH time this shorthand has eaten a family in this file. Anything using the
-   font shorthand here must repeat the whole stack; a bare font-size property cannot make the
-   mistake at all, which is why the rules below prefer one. */
-.pdf-ops-line{display:block;margin-block-start:4px;color:var(--pdf-ink)!important;font-family:'Assistant','Noto Emoji',sans-serif;font-size:9.4px;font-weight:400;line-height:1.55;white-space:normal!important;}
-.pdf-ops-line b{font-weight:700;color:var(--pdf-muted);}
-.pdf-mono{font-family:'JetBrains Mono',monospace;font-weight:600;}
-.pdf-travel-facts{display:block;margin-block-start:1px;color:var(--pdf-muted);font-size:7.6px;}
-.pdf-note{display:block;}
-.pdf-note-title{display:block;margin-block-end:2px;}
-.pdf-note-p{margin:0 0 4px;}
-.pdf-note-h1{margin:6px 0 3px;font-size:10.4px;font-weight:700;}
-.pdf-note-h2{margin:5px 0 2px;font-weight:700;}
-.pdf-note-list{margin:0 0 4px;padding:0;list-style:none;}
-.pdf-note-list li{display:flex;gap:5px;align-items:baseline;margin-block-end:1px;}
-.pdf-note-mark{flex:none;color:var(--pdf-muted);font-variant-numeric:tabular-nums;}
-.pdf-note-quote{margin:0 0 4px;padding-inline-start:7px;border-inline-start:2px solid var(--pdf-line);color:var(--pdf-muted);}
-.pdf-note-rule{height:1px;margin:6px 0;background:var(--pdf-line);}
-/* A printed link states its destination, because it cannot be tapped. */
-.pdf-url{font-family:'JetBrains Mono',monospace;font-size:0.9em;color:var(--pdf-teal);word-break:break-all;}
-/* A note is prose the author wrote with line breaks in it; a paragraph that collapses them
-   is the wall of text this block keeps being reported as. */
-.pdf-prose{white-space:pre-line;}
+${PDF_NOTE_CSS}
 .pdf-travelers{margin-block-start:3px;color:var(--pdf-muted);font-size:8.4px;}
 /* A stop's description, clamped — a caption is two lines and four is a paragraph. */
 .pdf-cap{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;white-space:normal!important;color:var(--pdf-muted)!important;}

@@ -8,6 +8,7 @@ import {
   SHARE_DAYPART,
   type BookingType,
   type LegTravelMode,
+  type MemoryFigureKey,
   type ShareDaypart,
 } from '@waypoint/shared';
 
@@ -227,6 +228,46 @@ export const PDF_COPY = {
     activity: 'פעילות',
     other: 'אחר',
   } satisfies Record<BookingType, string>,
+  /**
+   * **The trip book** (ADR-0241 §6). Its sections speak the memory Home's words, which live in
+   * `frontend/src/i18n/he.ts` under `planHome.past`: `במספרים`, `ראשונים וטובים`, `בפעם הבאה`,
+   * `מה כתבנו`, the figure labels and the bests' labels are those strings by value, so rewording
+   * one there means rewording it here.
+   */
+  book: {
+    kicker: 'ספר הטיול',
+    filename: (tripName: string) => `${tripName} · ספר הטיול.pdf`,
+    dayKicker: (ordinal: number, when: string) => `יום ${ordinal} · ${when}`,
+    skipped: (titles: string) => `דילגנו · ${titles}`,
+    notes: 'מה כתבנו',
+    figures: 'במספרים',
+    unresolved: (n: number) => `${n} לא סומנו`,
+    fig: {
+      places: 'מקומות',
+      air: 'ק״מ בטיסה',
+      shift: 'שעות הפרש',
+      ground: 'ק״מ בדרכים',
+      foot: 'ק״מ ברגל',
+    } satisfies Record<MemoryFigureKey, string>,
+    bests: {
+      title: 'ראשונים וטובים',
+      first: 'הדבר הראשון',
+      last: 'הדבר האחרון',
+      longestStop: 'העצירה הארוכה',
+      busiestDay: 'היום המלא',
+      walkDay: 'הכי הרבה ברגל',
+      places: (n: number) => `${n} מקומות`,
+      walked: (distance: string) => `${distance} ברגל`,
+      km: (value: string) => `${value} ק״מ`,
+    },
+    nextTime: {
+      title: 'בפעם הבאה',
+      skipped: 'דילגנו',
+      idea: 'רעיון שלא הגענו אליו',
+    },
+    /** The app's narrow weekday (`lib/time.ts`'s `weekdayLetter`, `he-IL` narrow). */
+    weekdayLetters: ['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳'],
+  },
 } as const;
 
 /** **The glyph a bed row carries** (ADR-0238 §4) — the app's own `DEFAULT_STAY_ICON`, which

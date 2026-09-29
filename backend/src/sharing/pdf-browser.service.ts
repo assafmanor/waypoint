@@ -5,6 +5,8 @@ import { sniffImageMimeType } from '../common/image-sniff';
 import { getObject } from '../common/storage';
 import { itineraryPdfFooterHtml, itineraryPdfHtml } from './itinerary-pdf.template';
 import { RenderBrowserService, withPhaseDeadline } from './render-browser.service';
+import { tripBookHtml } from './trip-book.template';
+import type { TripRecord } from './trip-recap.service';
 
 /**
  * **The paper's margins, and they belong here rather than in the template's `@page`.**
@@ -30,16 +32,43 @@ export class PdfBrowserService {
   constructor(private readonly browser: RenderBrowserService) {}
 
   async render(projection: SharedItinerary, publicUrl: string): Promise<Buffer> {
+    const input = {
+      projection,
+      publicUrl,
+      qrDataUrl: await qrOf(publicUrl),
+      generatedAtLabel: generatedAtLabel(projection.generatedAt),
+      photoDataUrls: await photoDataUrls(dayPhotoUrls(projection)),
+    };
+    return this.print(itineraryPdfHtml(input), itineraryPdfFooterHtml(input));
+  }
+
+  /** **The trip book** (ADR-0241 §6): the record's projection and the recap, on the itinerary's
+   *  paper, footer and QR. The cover's picture rides the day photos' path. */
+  async renderBook(
+    projection: SharedItinerary,
+    record: TripRecord,
+    publicUrl: string,
+  ): Promise<Buffer> {
+    const cover = record.recap.cover ? [record.recap.cover.url] : [];
+    const html = tripBookHtml({
+      projection,
+      record,
+      publicUrl,
+      qrDataUrl: await qrOf(publicUrl),
+      photoDataUrls: await photoDataUrls([...dayPhotoUrls(projection), ...cover]),
+    });
+    const footer = itineraryPdfFooterHtml({
+      projection,
+      publicUrl,
+      generatedAtLabel: generatedAtLabel(projection.generatedAt),
+    });
+    return this.print(html, footer);
+  }
+
+  private async print(html: string, footerTemplate: string): Promise<Buffer> {
     const timeoutMs = this.browser.timeoutMs;
     return this.browser.withPage(async (page) => {
-      const input = {
-        projection,
-        publicUrl,
-        qrDataUrl: await QRCode.toDataURL(`https://${publicUrl}`, { margin: 0, width: 176 }),
-        generatedAtLabel: generatedAtLabel(projection.generatedAt),
-        photoDataUrls: await dayPhotoDataUrls(projection),
-      };
-      await page.setContent(itineraryPdfHtml(input), { waitUntil: 'load', timeout: timeoutMs });
+      await page.setContent(html, { waitUntil: 'load', timeout: timeoutMs });
       // The faces are `font-display: block` data URLs, so they resolve without the network
       // — but `load` fires before the last of them is applied, and a page printed a frame
       // early lays its Hebrew out in fallback metrics. Passed as a string because this
@@ -65,7 +94,7 @@ export class PdfBrowserService {
             // Chromium's default header is a date and a title in a font this container does
             // not have; an empty element is how you say "no header" and keep the footer.
             headerTemplate: '<span></span>',
-            footerTemplate: itineraryPdfFooterHtml(input),
+            footerTemplate,
             margin: PDF_PAGE_MARGIN,
           }),
         ),
@@ -74,8 +103,14 @@ export class PdfBrowserService {
   }
 }
 
+const qrOf = (publicUrl: string): Promise<string> =>
+  QRCode.toDataURL(`https://${publicUrl}`, { margin: 0, width: 176 });
+
+const dayPhotoUrls = (projection: SharedItinerary): string[] =>
+  projection.days.flatMap((day) => day.photo?.url ?? []);
+
 /**
- * **The day photos, inlined — because this page reaches nothing.**
+ * **The photos, inlined — because this page reaches nothing.**
  *
  * The route abort above is not a policy the renderer can make an exception to: it is what
  * makes a PDF of somebody's itinerary unable to phone anywhere. So a photo has to arrive
@@ -87,8 +122,8 @@ export class PdfBrowserService {
  * ephemeral disk lost it) simply yields no entry, and the template prints no image — the
  * same degradation the public page gets from a 404.
  */
-async function dayPhotoDataUrls(projection: SharedItinerary): Promise<Record<string, string>> {
-  const urls = [...new Set(projection.days.flatMap((day) => day.photo?.url ?? []))];
+async function photoDataUrls(photoUrls: readonly string[]): Promise<Record<string, string>> {
+  const urls = [...new Set(photoUrls)];
   const out: Record<string, string> = {};
   await Promise.all(
     urls.map(async (url) => {

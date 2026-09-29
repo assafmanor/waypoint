@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { MEMORY_FIGURES_MAX, memoryFigureValues, recapHours, recapKm } from './recap-figures';
+import type { TripEvent } from './entities';
+import {
+  MEMORY_FIGURES_MAX,
+  memoryBestPicks,
+  memoryFigureValues,
+  recapHours,
+  recapKm,
+} from './recap-figures';
 import { RECAP_ABSENT, type RecapFigure, type TripRecap } from './trip-recap';
 
 const present = (
@@ -107,5 +114,58 @@ describe('memoryFigureValues: which tiles, in what order (ADR-0240 §4)', () => 
       }),
     );
     expect(figures).toHaveLength(MEMORY_FIGURES_MAX);
+  });
+});
+
+describe('memoryBestPicks: which rows ראשונים וטובים names (ADR-0240 §4)', () => {
+  const stamp = { tripId: 't1', createdAt: '', updatedAt: '', updatedBy: 'u1' };
+  const ev = (id: string, startsAt: string, extra: Partial<TripEvent> = {}): TripEvent => ({
+    id,
+    date: startsAt.slice(0, 10),
+    title: id,
+    kind: 'soft',
+    status: 'done',
+    sortOrder: 0,
+    source: 'manual',
+    startsAt,
+    ...stamp,
+    ...extra,
+  });
+  const events = [
+    ev('bed', '2026-05-01T08:00:00Z', { category: 'lodging' }),
+    ev('museum', '2026-05-01T10:00:00Z'),
+    ev('skipped', '2026-05-01T09:00:00Z', { status: 'skipped' }),
+    ev('market', '2026-05-02T11:00:00Z'),
+  ];
+
+  it('first and last are the earliest and latest stop that happened, never a bed', () => {
+    const picks = memoryBestPicks({ recap: recap({}), events, bookings: [] });
+    expect(picks.map((pick) => [pick.key, 'event' in pick ? pick.event.id : pick.date])).toEqual([
+      ['first', 'museum'],
+      ['last', 'market'],
+    ]);
+  });
+
+  it('drops a superlative that repeats a row, and merges the fullest day with its walk', () => {
+    const base = recap({});
+    const picks = memoryBestPicks({
+      recap: {
+        ...base,
+        superlatives: {
+          ...base.superlatives,
+          longestStop: { state: 'present', value: { eventId: 'museum', minutes: 120 } },
+          busiestDay: { state: 'present', value: { date: '2026-05-01', places: 2 } },
+          longestWalkDay: {
+            state: 'present',
+            value: { date: '2026-05-01', meters: 12_400 },
+            estimate: true,
+          },
+        },
+      },
+      events,
+      bookings: [],
+    });
+    expect(picks.map((pick) => pick.key)).toEqual(['first', 'busiestDay', 'last']);
+    expect(picks[1]).toEqual({ key: 'busiestDay', date: '2026-05-01', places: 2, walk: '~12' });
   });
 });

@@ -12,6 +12,7 @@ import { useAuth } from '../state/auth-state';
 import {
   createInvite,
   fetchSharedItineraryPdf,
+  fetchSharedTripBook,
   fetchSnapshot,
   fetchTripShares,
   fetchTripWithMembers,
@@ -305,11 +306,17 @@ export function ShareItinerarySheet({
       if (outcome === 'copied') setNote(t.share.owner.copied);
     });
 
-  const sendPdf = (config: TripShareConfig) =>
-    run('pdf', async () => {
-      const blob = await fetchSharedItineraryPdf(config.code);
-      await shareFileOrDownload(new File([blob], `${tripName}.pdf`, { type: 'application/pdf' }));
-    });
+  /** **After the trip the paper is the book** (ADR-0241 §4): the same link's policy, printed as
+   *  what happened rather than as the plan. Before it, the itinerary PDF, as ever. */
+  const sendPaper = async (config: TripShareConfig) => {
+    const blob = ended
+      ? await fetchSharedTripBook(config.code)
+      : await fetchSharedItineraryPdf(config.code);
+    const name = ended ? t.share.owner.book.filename(tripName) : `${tripName}.pdf`;
+    await shareFileOrDownload(new File([blob], name, { type: 'application/pdf' }));
+  };
+
+  const sendPdf = (config: TripShareConfig) => run('pdf', () => sendPaper(config));
 
   /** Create-or-find the drafted policy, then hand it over. The press is what publishes —
    *  opening the sheet, or moving a control somebody was only looking at, never does. */
@@ -329,8 +336,7 @@ export function ShareItinerarySheet({
     run('pdf', async () => {
       const config = await ensureShare();
       setComposing(false);
-      const blob = await fetchSharedItineraryPdf(config.code);
-      await shareFileOrDownload(new File([blob], `${tripName}.pdf`, { type: 'application/pdf' }));
+      await sendPaper(config);
     });
 
   const copyToClipboard = (config: TripShareConfig) => {
@@ -548,7 +554,13 @@ export function ShareItinerarySheet({
         disabled={busy !== undefined || loading}
       >
         <Icon name="download" />
-        {busy === 'pdf' ? t.share.owner.pdf.preparing : t.share.owner.actions.pdf}
+        {busy === 'pdf'
+          ? ended
+            ? t.share.owner.book.preparing
+            : t.share.owner.pdf.preparing
+          : ended
+            ? t.share.owner.actions.book
+            : t.share.owner.actions.pdf}
       </button>
     </div>
   );

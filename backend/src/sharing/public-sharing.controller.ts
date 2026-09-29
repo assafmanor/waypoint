@@ -56,6 +56,19 @@ export class PublicSharingController {
     res.send(buffer);
   }
 
+  /** **The trip book** (ADR-0241 §6): the record at this link's policy. The PDF's cap, for the
+   *  PDF's reason: it is a browser tab and seconds of CPU. */
+  @Get(':code/book')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  async book(@Param('code') code: string, @Res() res: Response): Promise<void> {
+    const { buffer, filename } = await this.sharing.book(code);
+    applyPublicShareHeaders(res);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Disposition', attachmentDisposition(filename));
+    res.send(buffer);
+  }
+
   @Get(':code/documents/:documentId')
   async document(
     @Param('code') code: string,

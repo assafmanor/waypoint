@@ -9,9 +9,11 @@ import { PrismaService } from '../prisma/prisma.service';
 // and the shape a preview says is `spa/`'s to define.
 import type { TripPreviewFacts } from '../spa/share-meta';
 import { toDateOnly } from '../trips/trips.mapper';
+import { PDF_COPY } from './hebrew.copy';
 import { PdfBrowserService } from './pdf-browser.service';
 import { normalizeSharePolicy, sharePolicyHash } from './share-policy';
 import { SharingProjectionService } from './sharing-projection.service';
+import { TripRecapService } from './trip-recap.service';
 
 const SHARE_CONFIG_SELECT = {
   code: true,
@@ -70,6 +72,7 @@ export class SharingService {
     private readonly projection: SharingProjectionService,
     private readonly documents: DocumentsService,
     private readonly pdfBrowser: PdfBrowserService,
+    private readonly recap: TripRecapService,
   ) {}
 
   /**
@@ -270,6 +273,28 @@ export class SharingService {
     return {
       buffer: await this.pdfBrowser.render(projection, publicShareUrl(projection.shareUrl)),
       filename: `${projection.trip.name}.pdf`,
+    };
+  }
+
+  /**
+   * **The trip book** (ADR-0241 §6): the record of the trip at this link's own policy, plus the
+   * recap, rendered fresh like the itinerary and stored nowhere, for the same reason. A book of
+   * a trip still under way is not refused: the share sheet offers it once the trip is behind
+   * it, and the server does not keep a second answer to "is this trip over".
+   */
+  async book(code: string): Promise<{ buffer: Buffer; filename: string }> {
+    const share = await this.projection.requireActiveShare(code);
+    const [projection, record] = await Promise.all([
+      this.projection.project(share, undefined, { record: true }),
+      this.recap.recordFor(share.tripId),
+    ]);
+    return {
+      buffer: await this.pdfBrowser.renderBook(
+        projection,
+        record,
+        publicShareUrl(projection.shareUrl),
+      ),
+      filename: PDF_COPY.book.filename(projection.trip.name),
     };
   }
 
