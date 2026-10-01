@@ -4,7 +4,7 @@ Two kinds live here, and the difference matters more than anything else on this 
 
 | | Written for this repo | Vendored from upstream |
 | --- | --- | --- |
-| Which | `design-mockups` ([ADR-0175](../../docs/decisions/0175-the-mockup-procedure-is-a-skill.md)) | the other 33, from three public repos |
+| Which | `design-mockups` ([ADR-0175](../../docs/decisions/0175-the-mockup-procedure-is-a-skill.md)), `awesome-design` ([ADR-0243](../../docs/decisions/0243-design-skills-come-in-as-critics.md)) | the other 35, from five public repos |
 | Authority | **it is the rule** — it encodes decisions this repo has actually made | **advice** — it knows nothing about Travelive |
 | Edit it? | yes, in place, like any file we own | no: edit the pin in [`../vendor/skills.json`](../vendor/skills.json) instead |
 
@@ -18,11 +18,28 @@ engineering practice only — roughly 1 MB of markdown and small scripts.
 | [addyosmani/agent-skills](https://github.com/addyosmani/agent-skills) | 21 — review, debugging, perf, security, specs, incremental delivery, `agent-skills-test-driven-development` | MIT |
 | [obra/superpowers](https://github.com/obra/superpowers) | 11 — `brainstorming`, `systematic-debugging`, `verification-before-completion`, `test-driven-development`, plans, subagents | MIT |
 | [multica-ai/andrej-karpathy-skills](https://github.com/multica-ai/andrej-karpathy-skills) | 1 — `karpathy-guidelines` | MIT (declared in its README; the repo ships no `LICENSE` file) |
+| [Leonxlnx/taste-skill](https://github.com/Leonxlnx/taste-skill) | 1 — `taste-skill` (upstream `design-taste-frontend`) | MIT |
+| [vercel-labs/agent-skills](https://github.com/vercel-labs/agent-skills) | 1 — `web-design-guidelines` | MIT (declared in its README; no `LICENSE` file) |
 
 One name differs from upstream: both repos ship a `test-driven-development`, and a
 project skill is invoked by its **directory** name, so two cannot share one. Superpowers
 keeps the plain name; addyosmani's is **`agent-skills-test-driven-development`**, and
 the siblings that route to it by name were rewritten to match.
+
+## The design voices
+
+Three skills speak about how a UI looks, and all three are **critics, not designers**
+([ADR-0243](../../docs/decisions/0243-design-skills-come-in-as-critics.md)). None sets a
+color, font, token or library; `design-language.md` and `design-mockups` still decide.
+
+| Skill | Reach for it when | Watch for |
+| --- | --- | --- |
+| `web-design-guidelines` | reviewing any `frontend/` or `mockups/` change before calling it done: a11y, focus, forms, motion, typography rules | fetches its rules from a pinned commit (network needed); curly quotes, hover feedback and LTR assumptions yield to RTL Hebrew and touch-first |
+| `taste-skill` | a surface or mockup looks generic or AI-made and you want to know why | written for landing pages; ignore its aesthetic picks, font and library installs (root rule 8) |
+| `awesome-design` | the owner says "like Airbnb", or a design session wants a mature product's answer to a pattern | ours, not vendored: fetches one `DESIGN.md` per brand from [awesome-design-md](https://github.com/VoltAgent/awesome-design-md); borrow reasoning, never values |
+
+Run-time fetches are pinned too, under `fetchedAtRuntime` in `skills.json`; `--bump`
+does not move them.
 
 ## What was refused, and why
 
@@ -40,6 +57,9 @@ ADR-0028 and the `design-mockups` skill:
 - **impeccable** — 1 skill, 72k lines, 3.5 MB, mostly bundled browser JS for its own
   anti-pattern detector. The detector is the good part; without its scripts the skill is
   only a second design language, and with them it was the largest thing in the repo.
+
+From the two newer sources, only the flagship (`taste-skill`) and `web-design-guidelines`
+were taken; the rest of each repo is in `excluded` with a reason.
 
 **Six process skills**, because each prescribes something this repo has already decided
 differently: `using-superpowers` (demands a skill be invoked before any response,

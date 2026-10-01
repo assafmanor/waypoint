@@ -143,8 +143,79 @@
       "excluded": {},
       "renames": {},
       "rewrites": []
+    },
+    {
+      "id": "taste-skill",
+      "repo": "https://github.com/Leonxlnx/taste-skill",
+      "branch": "main",
+      "commit": "ce26fc25c0e5e8cab638f883de62d9a86ee5e45b",
+      "license": "MIT",
+      "skillsDir": "skills",
+      "skills": ["taste-skill"],
+      "excluded": {
+        "taste-skill-v1": "Superseded by taste-skill upstream; two versions of one voice is noise.",
+        "gpt-tasteskill": "The same skill tuned for GPT models.",
+        "soft-skill": "Picks an aesthetic (soft, premium). The aesthetic here is decided by design-language.md.",
+        "minimalist-skill": "Picks an aesthetic (editorial minimalism). Same reason.",
+        "brutalist-skill": "Picks an aesthetic (brutalist). Same reason.",
+        "redesign-skill": "Audit-then-restyle toward its own taste; taste-skill already carries the audit, and restyling is design-mockups' job here.",
+        "brandkit": "Brand identity generation. Travelive's identity is decided (ADR-0170, design-language.md).",
+        "stitch-skill": "Writes DESIGN.md files for Google Stitch; our design system is design-language.md.",
+        "image-to-code-skill": "An image-generation-first pipeline needing an image model this repo does not ship.",
+        "imagegen-frontend-web": "Same: image-generation pipeline.",
+        "imagegen-frontend-mobile": "Same: image-generation pipeline.",
+        "output-skill": "Anti-truncation prompt for code output; generic, and not what was asked for."
+      },
+      "renames": {},
+      "rewrites": [
+        {
+          "why": "Invocation is by directory name, so the frontmatter label follows it. The description gains this repo's scope: upstream aims it at landing pages and lets it pick an aesthetic, which is decided here.",
+          "find": "name: design-taste-frontend\ndescription: Anti-slop frontend skill for landing pages, portfolios, and redesigns. The agent reads the brief, infers the right design direction, and ships interfaces that do not look templated. Real design systems when applicable, audit-first on redesigns, strict pre-flight check.",
+          "replace": "name: taste-skill\ndescription: Anti-slop frontend critique (tasteskill). Use as a second opinion when a Travelive surface or mockup looks generic, templated or AI-made - weak hierarchy, uniform spacing, card soup, gratuitous motion - and before calling a UI change visually done. In this repo it is a critic, not a designer - palette, type, color roles, RTL and the component library are fixed by docs/design/design-language.md and the design-mockups skill, and those win every disagreement; never install a design system or font it recommends. Upstream's own scope is landing pages and portfolios.",
+          "include": "SKILL\\.md$"
+        }
+      ]
+    },
+    {
+      "id": "vercel-agent-skills",
+      "repo": "https://github.com/vercel-labs/agent-skills",
+      "branch": "main",
+      "commit": "063bee94c3f4df8453406c830b0a7df0f2860278",
+      "license": "MIT (declared in README; the repo ships no LICENSE file)",
+      "skillsDir": "skills",
+      "skills": ["web-design-guidelines"],
+      "excluded": {
+        "react-best-practices": "Not asked for; the React conventions here live in frontend/CLAUDE.md.",
+        "composition-patterns": "Not asked for; same.",
+        "react-view-transitions": "Not asked for; motion is decided per ADR and mockup.",
+        "react-native-skills": "No React Native in this repo.",
+        "deploy-to-vercel": "Not deployed on Vercel.",
+        "vercel-cli-with-tokens": "Not deployed on Vercel.",
+        "vercel-optimize": "Not deployed on Vercel.",
+        "writing-guidelines": "English product-copy rules; UI copy here is Hebrew under root CLAUDE.md's rules."
+      },
+      "renames": {},
+      "rewrites": [
+        {
+          "why": "The skill fetches its rules at run time from web-interface-guidelines@main, which would bypass the pin. Point it at a pinned commit; move this hash on a --bump like any other.",
+          "find": "vercel-labs/web-interface-guidelines/main/command.md",
+          "replace": "vercel-labs/web-interface-guidelines/e3d624baaf29dc1fc645aff3e38f03e564d2d6b1/command.md",
+          "include": "SKILL\\.md$"
+        },
+        {
+          "why": "The description gains this repo's scope, so it is matched on a review and the rules that assume an English, hover-first page are read against ours.",
+          "find": "description: Review UI code for Web Interface Guidelines compliance. Use when asked to \"review my UI\", \"check accessibility\", \"audit design\", \"review UX\", or \"check my site against best practices\".",
+          "replace": "description: Review UI code for Web Interface Guidelines compliance (Vercel's accessibility, focus, forms, motion, typography and performance rules, fetched from a pinned commit). Use when asked to \"review my UI\", \"check accessibility\", \"audit design\", \"review UX\", or \"check my site against best practices\", and on any frontend/ or mockups/ change before calling it done. Where a rule assumes an English, desktop or hover-first page - curly quotes, hover-only feedback, LTR - root CLAUDE.md, design-language.md and the RTL rules win.",
+          "include": "SKILL\\.md$"
+        }
+      ]
     }
   ],
+  "fetchedAtRuntime": {
+    "$comment": "Content a skill reads over the network instead of from the tree, each pinned by commit in the URL the skill fetches. A --bump does not move these: update the hash here and where it is used, together.",
+    "https://github.com/vercel-labs/web-interface-guidelines": "e3d624baaf29dc1fc645aff3e38f03e564d2d6b1 — command.md, read by web-design-guidelines (rewrite above).",
+    "https://github.com/VoltAgent/awesome-design-md": "f6961238d5cddcf8042a74a70fc400ec67181abb — design-md/<brand>/DESIGN.md, read by our own awesome-design skill. 74 brand analyses, 2.9 MB; fetched per brand rather than vendored because a session needs one or two, not all."
+  },
   "sourcesRefused": {
     "$comment": "Asked for, cloned, measured, and not taken. Recorded so the question is not reopened from memory — see ADR-0201.",
     "https://github.com/nextlevelbuilder/ui-ux-pro-max-skill": "7 skills, 69k+ lines, 11 MB — a palette, type scale and font/icon corpus (5.5 MB of TTFs, an 824 KB icon index) that exists to decide what a UI looks like. That is decided here by docs/design/design-language.md and ADR-0028, and drawn by the design-mockups skill.",

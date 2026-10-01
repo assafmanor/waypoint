@@ -1,6 +1,6 @@
 # 0201 — Vendored skills are method, pinned; the ones that decide things for us are refused
 
-**Status:** Accepted
+**Status:** Accepted; partially revised by [ADR-0243](0243-design-skills-come-in-as-critics.md) (three design skills come in as critics; the refusals here stand)
 **Date:** 2026-08-21
 **Relates:** [ADR-0175](0175-the-mockup-procedure-is-a-skill.md) (the one skill we wrote; this places 33 we did not beside it), [ADR-0096](0096-per-domain-claude-md-guides.md) (progressive disclosure — the reason a skill is cheaper than a `CLAUDE.md` paragraph), [ADR-0028](0028-plan-violet-color-budget-dark-ready.md) / [`design-language.md`](../design/design-language.md) (the palette two of these repos wanted to replace), [ADR-0046](0046-retire-the-task-board.md) (the backlog line this adds)
 
