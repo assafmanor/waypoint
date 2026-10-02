@@ -347,6 +347,24 @@ async function swipeDay(
   return { x: x0 + dx, y: y0 + dy };
 }
 
+/** Until the last turn has finished landing. The URL commits before the page has settled, and
+ *  a swipe that starts inside that settle is not a new gesture to the pager, so a spec chaining
+ *  swipes waits here between them or its second swipe is silently refused. */
+async function untilLevel(page: Page) {
+  await page.waitForFunction(
+    (sel) => {
+      const el = document.querySelector(`${sel} > .day-page`);
+      if (!el || el.getAnimations({ subtree: true }).some((a) => a.playState === 'running')) {
+        return false;
+      }
+      const tx = getComputedStyle(el).transform;
+      return tx === 'none' || Math.abs(new DOMMatrixReadOnly(tx).m41) < 1;
+    },
+    PAGE,
+    { timeout: 5_000 },
+  );
+}
+
 /** Comfortably past `COMMIT_SHARE` of the 390px column (the surface is narrower than the
  *  viewport by the body's padding, so this over-shoots on purpose rather than measuring). */
 const COMMIT_PX = Math.ceil(390 * SWIPE_PAGER.COMMIT_SHARE) + 40;
@@ -362,9 +380,11 @@ test.describe('a day surface steps day to day with a swipe', () => {
     await swipeDay(page, cdp, COMMIT_PX);
     await expect.poll(() => dayParam(page)).toBe(TOMORROW);
 
+    await untilLevel(page);
     await swipeDay(page, cdp, -COMMIT_PX);
     await expect.poll(() => dayParam(page)).toBeNull();
 
+    await untilLevel(page);
     await swipeDay(page, cdp, -COMMIT_PX);
     await expect.poll(() => dayParam(page)).toBe(YESTERDAY);
   });

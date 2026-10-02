@@ -126,10 +126,25 @@ export function DateField({
         className="df-input"
         lang={APP_LOCALE}
         min={min}
-        max={max}
+        // A floor past the ceiling (a stay's check-in after the trip's last day) is a range with
+        // no days in it. Android Chrome's Material picker builds its calendar from these two
+        // without normalising them, so the floor wins and the ceiling is dropped.
+        max={min && max && min > max ? undefined : max}
         value={shown}
         onPointerDown={latch}
         onFocus={latch}
+        onClick={(e) => {
+          // A mouse click on a desktop Chromium date input only focuses its (invisible)
+          // segments; the picker opens from the calendar icon alone, which `.vt-date`
+          // hides — so on a laptop the field did nothing. Touch platforms open the picker
+          // themselves and are left alone.
+          if ((e.nativeEvent as PointerEvent).pointerType !== 'mouse') return;
+          try {
+            e.currentTarget.showPicker?.();
+          } catch {
+            // Already open, or not allowed here: the native click behaviour stands.
+          }
+        }}
         onKeyDown={(e) => {
           if (e.key !== 'Tab') setTypingTo(true);
         }}

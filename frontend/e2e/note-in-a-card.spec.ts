@@ -74,6 +74,12 @@ async function openBooking(page: Page, bodies: string[]) {
   await page.getByText('הזמנות', { exact: true }).first().click();
   await page.locator('.wp-listrow', { hasText: hotel.title }).first().click();
   await expect(page.getByRole('dialog')).toContainText(hotel.title);
+  // The sheet is still sliding in when its text first matches, and the hit tests below read
+  // positions: on a slow runner a point measured mid-arrival lands on whatever the card has
+  // not yet covered.
+  await page
+    .locator('.modal-card')
+    .evaluate((el) => Promise.all(el.getAnimations().map((a) => a.finished.catch(() => {}))));
 }
 
 test.describe('a long note in a host’s section', () => {
