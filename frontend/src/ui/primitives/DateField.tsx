@@ -126,7 +126,10 @@ export function DateField({
         className="df-input"
         lang={APP_LOCALE}
         min={min}
-        max={max}
+        // A floor past the ceiling (a stay's check-in after the trip's last day) is a range with
+        // no days in it. Android Chrome's Material picker builds its calendar from these two
+        // without normalising them, so the floor wins and the ceiling is dropped.
+        max={min && max && min > max ? undefined : max}
         value={shown}
         onPointerDown={latch}
         onFocus={latch}

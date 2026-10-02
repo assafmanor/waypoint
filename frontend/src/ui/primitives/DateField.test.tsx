@@ -210,4 +210,15 @@ describe('DateField', () => {
     click('mouse');
     expect(showPicker).toHaveBeenCalledTimes(1);
   });
+  // An end whose floor is a start past the trip's last day: no day satisfies both bounds,
+  // and Android Chrome's Material picker does not normalise the pair before drawing.
+  it('never hands the platform a floor past its ceiling', () => {
+    const { container, rerender } = render(
+      <DateField value="" min="2026-08-12" max="2026-08-10" onChange={() => {}} />,
+    );
+    const input = container.querySelector('input[type="date"]') as HTMLInputElement;
+    expect([input.min, input.hasAttribute('max')]).toEqual(['2026-08-12', false]);
+    rerender(<DateField value="" min="2026-08-01" max="2026-08-10" onChange={() => {}} />);
+    expect([input.min, input.max]).toEqual(['2026-08-01', '2026-08-10']);
+  });
 });
