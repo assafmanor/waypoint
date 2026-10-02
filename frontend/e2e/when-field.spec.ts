@@ -52,28 +52,40 @@ test.describe('a when can be operated', () => {
     await expect(input).toBeFocused();
   });
 
-  test('the date target still reaches ADR-0017 floor, on the input itself', async ({ page }) => {
-    // The whole reason the overlay existed: a real `min-height` would grow every form.
-    // A date reaches the same 44px by growing its INPUT past the token's box, which is
-    // both the target and the control — so this asserts the box stayed small and the
-    // hit area did not.
-    const box = await form(page).locator('.vt-date').first().boundingBox();
-    const hit = await form(page).locator('.vt-date input[type="date"]').first().boundingBox();
-    expect(box).not.toBeNull();
-    expect(hit).not.toBeNull();
-    expect(hit!.height).toBeGreaterThanOrEqual(44);
-    expect(hit!.height).toBeGreaterThan(box!.height);
-  });
-
-  test('the whole token is the target, even where the input sizes to its content', async ({
+  test('the date target still reaches ADR-0017 floor, without growing the token', async ({
     page,
   }) => {
-    // A Galaxy's Chrome lays the abspos date input out at its content size rather than
-    // stretching it between its insets, so only the token's left end took a tap. Desktop
-    // Chromium stretches, so the spec puts it on that same path: a non-normal self-alignment
-    // is what turns Blink's abspos `auto` size into fit-content.
+    // The whole reason the reach exists: a real `min-height` would grow every form. The token
+    // stays its own size and its `::after` reaches the 44px, so a point 20px off its centre is
+    // still the token — the element whose click opens the picker.
+    const token = form(page).locator('.vt-date').first();
+    const box = (await token.boundingBox())!;
+    expect(box.height).toBeLessThan(44);
+    const reached = await token.evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      const x = r.x + r.width / 2;
+      const y = r.y + r.height / 2;
+      return [y - 20, y + 20].map((py) => el.contains(document.elementFromPoint(x, py)));
+    });
+    expect(reached).toEqual([true, true]);
+  });
+
+  test('the whole token opens the picker, wherever the engine lays out its input', async ({
+    page,
+  }) => {
+    // The token, not the native input, is the target (field reports from a Galaxy S25 Ultra:
+    // only the token's left end opened anything, twice, through two different layout causes).
+    // So the spec gives the input the worst layout an engine could choose — a sliver at one end
+    // — and still expects every point of the token and its reach to open the picker.
     await page.addStyleTag({
-      content: '.vt-date .df-input { justify-self: start; align-self: start; }',
+      content: '.df .df-input { inline-size: 10px !important; block-size: 10px !important; }',
+    });
+    await page.evaluate(() => {
+      const w = window as unknown as { __pickers: number };
+      w.__pickers = 0;
+      HTMLInputElement.prototype.showPicker = function () {
+        w.__pickers++;
+      };
     });
     // A click lands at coordinates, so the sheet must have finished arriving before they are read.
     await page
@@ -83,14 +95,23 @@ test.describe('a when can be operated', () => {
     const token = form(page).locator('.vt-date').first();
     const input = token.locator('input[type="date"]');
     const box = (await token.boundingBox())!;
-    const hit = (await input.boundingBox())!;
-    expect(hit.x).toBeLessThanOrEqual(box.x);
-    expect(hit.x + hit.width).toBeGreaterThanOrEqual(box.x + box.width);
-    expect(hit.height).toBeGreaterThanOrEqual(44);
-
-    // The reported failure: the token's right end, which in RTL is where its words start.
-    await page.mouse.click(box.x + box.width - 4, box.y + box.height / 2);
-    await expect(input).toBeFocused();
+    const midY = box.y + box.height / 2;
+    const points = [
+      [box.x + box.width - 3, midY], // the end the Galaxy refused: where RTL words start
+      [box.x + box.width / 2, midY],
+      [box.x + 3, midY],
+      // ADR-0017's 44px reach, above and below a token shorter than that
+      [box.x + box.width / 2, midY - 20],
+      [box.x + box.width / 2, midY + 20],
+    ];
+    for (const [i, [x, y]] of points.entries()) {
+      await page.mouse.click(x, y);
+      await expect(input).toBeFocused();
+      await expect
+        .poll(() => page.evaluate(() => (window as unknown as { __pickers: number }).__pickers))
+        .toBe(i + 1);
+      await input.evaluate((el) => (el as HTMLInputElement).blur());
+    }
   });
 
   test('a date typed into the token is the date the form holds', async ({ page }) => {
@@ -215,6 +236,31 @@ test.describe('a two-date range stays operable and ordered', () => {
     await expect(tokens.nth(0).locator('input')).toBeFocused();
     await tokens.nth(1).click();
     await expect(tokens.nth(1).locator('input')).toBeFocused();
+  });
+
+  test('a press at either end of a full-width date still opens it', async ({ page }) => {
+    // `:active` shrinks a token about its centre and the click is hit-tested after that, so
+    // the ends of a wide token used to click the line instead: 372px at 0.97 loses ~5.6px per
+    // end. The reach is sized to give back exactly what the press takes.
+    await page.evaluate(() => {
+      const w = window as unknown as { __pickers: number };
+      w.__pickers = 0;
+      HTMLInputElement.prototype.showPicker = function () {
+        w.__pickers++;
+      };
+    });
+    const tokens = page.locator('.wf-line .vt-date');
+    let expected = 0;
+    for (const k of [0, 1]) {
+      const box = (await tokens.nth(k).boundingBox())!;
+      for (const x of [box.x + 2, box.x + box.width - 2]) {
+        await page.mouse.click(x, box.y + box.height / 2);
+        expected++;
+        await expect
+          .poll(() => page.evaluate(() => (window as unknown as { __pickers: number }).__pickers))
+          .toBe(expected);
+      }
+    }
   });
 
   test('the end date cannot be set before the start, at the control', async ({ page }) => {

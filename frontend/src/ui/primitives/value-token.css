@@ -35,7 +35,16 @@
 .vt::after {
   content: '';
   position: absolute;
-  inset: -7px -2px;
+  inset-block: -7px;
+  inset-inline: var(--vt-reach-inline);
+}
+/* **The press must not shrink the target out from under the finger.** `:active` scales the
+   token at touch-down and Chrome hit-tests the tap's click AFTER that, against the scaled box,
+   so the token's ends stopped being the token: a tap 3px inside a full-width date (372px)
+   clicked the line around it. The reach therefore grows by exactly what the press takes,
+   `w·(1−s)/2s` per end, a share of the token's own width, so it follows `--press-scale`. */
+.vt {
+  --vt-reach-inline: calc(-2px - (1 - var(--press-scale)) / var(--press-scale) * 50%);
 }
 
 .vt:active {
@@ -122,34 +131,18 @@
   opacity: 0;
 }
 
-/* **A DATE GROWS ITS INPUT, NOT AN OVERLAY** — and getting this wrong made every date
-   in the app unopenable. The `::after` target above is painted after its siblings and
-   takes pointer events, which is harmless over a `<button>` (the button under it is
-   what handles the press anyway) and fatal over a date, whose real control is the
-   native `<input>` INSIDE the token (ADR-0176). The overlay simply swallowed every tap.
-
-   So a date drops the pseudo-element and reaches the same 44px with the input itself:
-   same target, and it is the control rather than a decoration sitting on one. Nothing
-   here can be "cleaned up" into the shared `::after` without breaking the field again. */
+/* **A date's reach is the token's own `::after`**, like every other token's. It once had to
+   be the INPUT grown past the token instead, because the overlay swallowed taps meant for the
+   native input underneath; the token now takes the press itself (`DateField`'s `openPicker`),
+   so the overlay is the target rather than in its way. -8px block reach, not the shared -7px: on
+   a date token -7px measured 43.75px against ADR-0017's 44px floor. */
 .vt-date::after {
-  content: none;
+  inset-block: -8px;
 }
-/* `.df.vt-date`, one class heavier than `date-field.css`'s `.df .df-input { inset: 0 }`,
-   which it must out-specify rather than merely follow: both sheets are lazy chunks and
-   neither's load order is knowable from the source (the same trap that hid App.css's
-   dead mono rule). Written at (0,3,0) the growth holds whichever lands last — and when
-   it did NOT, the click still worked and only the 44px floor quietly went missing, which
-   is exactly the kind of half-failure a measured assertion catches and an eye does not. */
-.df.vt-date .df-input {
-  /* -8px, ADR-0161 §7's own number, so the two reaches are one lineage rather than two
-     guesses. -7px measured 43.75px against ADR-0017's 44px floor — a quarter-pixel short,
-     which is exactly the sort of miss that survives review and fails a measurement. */
-  inset: -8px -2px;
-  /* Stated, not `auto`: an abspos `auto` stretches between the insets only on some engines. A
-     Galaxy's Chrome sized the input to its content instead, at the token's left end, so an
-     empty date took a tap only there. The size is the insets' own arithmetic. */
-  inline-size: calc(100% + 4px);
-  block-size: calc(100% + 16px);
+/* Mid-entry the opaque input takes its own presses (`date-field.css`); the overlay painted
+   over it would take them instead. */
+.vt-date[data-typing]::after {
+  content: none;
 }
 
 /* A value that is a word rather than a figure — a duration ("שעה"), where the app

@@ -97,7 +97,7 @@ describe('DateField', () => {
     it('puts the pre-picker date back on the control and on the face', () => {
       const { container } = render(<DateField value="2026-09-12" onChange={() => {}} />);
       const input = dateInput(container);
-      fireEvent.pointerDown(input);
+      fireEvent.click(container.querySelector('.df-face')!);
       clear(input);
       expect(input.value).toBe('2026-09-12');
       expect(container.querySelector('.df-face')?.textContent).toBe('12.09.2026');
@@ -109,7 +109,7 @@ describe('DateField', () => {
       const onChange = vi.fn();
       const { container, rerender } = render(<DateField value="2026-09-12" onChange={onChange} />);
       const input = dateInput(container);
-      fireEvent.pointerDown(input);
+      fireEvent.click(container.querySelector('.df-face')!);
       fireEvent.change(input, { target: { value: '2026-09-14' } });
       expect(onChange).toHaveBeenLastCalledWith('2026-09-14');
       rerender(<DateField value="2026-09-14" onChange={onChange} />);
@@ -125,11 +125,11 @@ describe('DateField', () => {
       const onChange = vi.fn();
       const { container, rerender } = render(<DateField value="2026-09-12" onChange={onChange} />);
       const input = dateInput(container);
-      fireEvent.pointerDown(input);
+      fireEvent.click(container.querySelector('.df-face')!);
       fireEvent.change(input, { target: { value: '2026-09-14' } });
       rerender(<DateField value="2026-09-14" onChange={onChange} />);
 
-      fireEvent.pointerDown(input); // the picker opens a second time
+      fireEvent.click(container.querySelector('.df-face')!); // the picker opens a second time
       clear(input);
       expect(onChange).toHaveBeenLastCalledWith('2026-09-14');
     });
@@ -137,7 +137,7 @@ describe('DateField', () => {
     it('still commits a date the picker actually selected', () => {
       const onChange = vi.fn();
       const { container } = render(<DateField value="2026-09-12" onChange={onChange} />);
-      fireEvent.pointerDown(dateInput(container));
+      fireEvent.click(container.querySelector('.df-face')!);
       fireEvent.change(dateInput(container), { target: { value: '2026-09-20' } });
       expect(onChange).toHaveBeenCalledExactlyOnceWith('2026-09-20');
     });
@@ -193,22 +193,35 @@ describe('DateField', () => {
       expect(input.value).toBe('2026-09-12');
     });
   });
-  // Desktop Chromium opens a date's picker from its calendar icon only, which the token
-  // hides, so a mouse click asks for it explicitly; a tap is left to the platform.
-  it('opens the picker on a mouse click, and leaves a tap to the platform', () => {
+  // The token takes the press and opens the picker itself, so the target is the box the reader
+  // sees rather than wherever an engine lays out an invisible form control (a Galaxy's Chrome
+  // laid it out at the token's left end). A press on the input itself only happens mid-entry,
+  // where it belongs to the segments.
+  it('opens the picker from a press anywhere on the token, not from the input', () => {
     const { container } = render(<DateField value="" onChange={() => {}} />);
     const input = container.querySelector('input[type="date"]') as HTMLInputElement;
     const showPicker = vi.fn();
     input.showPicker = showPicker;
-    const click = (pointerType: string) => {
-      const event = new MouseEvent('click', { bubbles: true });
-      Object.defineProperty(event, 'pointerType', { value: pointerType });
-      fireEvent(input, event);
-    };
-    click('touch');
-    expect(showPicker).not.toHaveBeenCalled();
-    click('mouse');
+    fireEvent.click(container.querySelector('.df-face')!);
     expect(showPicker).toHaveBeenCalledTimes(1);
+    expect(document.activeElement).toBe(input);
+    fireEvent.click(container.querySelector('.df')!);
+    expect(showPicker).toHaveBeenCalledTimes(2);
+    fireEvent.click(input);
+    expect(showPicker).toHaveBeenCalledTimes(2);
+  });
+
+  // An engine without `showPicker` still opens: iOS on focus, Android Chrome on a click.
+  it('falls back to focus and a click where the picker cannot be asked for', () => {
+    const { container } = render(<DateField value="" onChange={() => {}} />);
+    const input = container.querySelector('input[type="date"]') as HTMLInputElement;
+    input.showPicker = () => {
+      throw new DOMException('not supported', 'NotSupportedError');
+    };
+    const click = vi.spyOn(input, 'click');
+    fireEvent.click(container.querySelector('.df-face')!);
+    expect(document.activeElement).toBe(input);
+    expect(click).toHaveBeenCalledTimes(1);
   });
   // An end whose floor is a start past the trip's last day: no day satisfies both bounds,
   // and Android Chrome's Material picker does not normalise the pair before drawing.
