@@ -75,6 +75,11 @@ test.describe('a when can be operated', () => {
     await page.addStyleTag({
       content: '.vt-date .df-input { justify-self: start; align-self: start; }',
     });
+    // A click lands at coordinates, so the sheet must have finished arriving before they are read.
+    await page
+      .locator('.modal-card')
+      .first()
+      .evaluate((el) => Promise.all(el.getAnimations().map((a) => a.finished.catch(() => {}))));
     const token = form(page).locator('.vt-date').first();
     const input = token.locator('input[type="date"]');
     const box = (await token.boundingBox())!;
