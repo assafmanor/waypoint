@@ -65,6 +65,34 @@ test.describe('a when can be operated', () => {
     expect(hit!.height).toBeGreaterThan(box!.height);
   });
 
+  test('the whole token is the target, even where the input sizes to its content', async ({
+    page,
+  }) => {
+    // A Galaxy's Chrome lays the abspos date input out at its content size rather than
+    // stretching it between its insets, so only the token's left end took a tap. Desktop
+    // Chromium stretches, so the spec puts it on that same path: a non-normal self-alignment
+    // is what turns Blink's abspos `auto` size into fit-content.
+    await page.addStyleTag({
+      content: '.vt-date .df-input { justify-self: start; align-self: start; }',
+    });
+    // A click lands at coordinates, so the sheet must have finished arriving before they are read.
+    await page
+      .locator('.modal-card')
+      .first()
+      .evaluate((el) => Promise.all(el.getAnimations().map((a) => a.finished.catch(() => {}))));
+    const token = form(page).locator('.vt-date').first();
+    const input = token.locator('input[type="date"]');
+    const box = (await token.boundingBox())!;
+    const hit = (await input.boundingBox())!;
+    expect(hit.x).toBeLessThanOrEqual(box.x);
+    expect(hit.x + hit.width).toBeGreaterThanOrEqual(box.x + box.width);
+    expect(hit.height).toBeGreaterThanOrEqual(44);
+
+    // The reported failure: the token's right end, which in RTL is where its words start.
+    await page.mouse.click(box.x + box.width - 4, box.y + box.height / 2);
+    await expect(input).toBeFocused();
+  });
+
   test('a date typed into the token is the date the form holds', async ({ page }) => {
     const input = form(page).locator('.vt-date input[type="date"]').first();
     await input.fill('2026-09-12');
