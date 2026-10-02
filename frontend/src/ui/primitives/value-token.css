@@ -145,8 +145,11 @@
      guesses. -7px measured 43.75px against ADR-0017's 44px floor — a quarter-pixel short,
      which is exactly the sort of miss that survives review and fails a measurement. */
   inset: -8px -2px;
-  inline-size: auto;
-  block-size: auto;
+  /* Stated, not `auto`: an abspos `auto` stretches between the insets only on some engines. A
+     Galaxy's Chrome sized the input to its content instead, at the token's left end, so an
+     empty date took a tap only there. The size is the insets' own arithmetic. */
+  inline-size: calc(100% + 4px);
+  block-size: calc(100% + 16px);
 }
 
 /* A value that is a word rather than a figure — a duration ("שעה"), where the app
