@@ -193,4 +193,21 @@ describe('DateField', () => {
       expect(input.value).toBe('2026-09-12');
     });
   });
+  // Desktop Chromium opens a date's picker from its calendar icon only, which the token
+  // hides, so a mouse click asks for it explicitly; a tap is left to the platform.
+  it('opens the picker on a mouse click, and leaves a tap to the platform', () => {
+    const { container } = render(<DateField value="" onChange={() => {}} />);
+    const input = container.querySelector('input[type="date"]') as HTMLInputElement;
+    const showPicker = vi.fn();
+    input.showPicker = showPicker;
+    const click = (pointerType: string) => {
+      const event = new MouseEvent('click', { bubbles: true });
+      Object.defineProperty(event, 'pointerType', { value: pointerType });
+      fireEvent(input, event);
+    };
+    click('touch');
+    expect(showPicker).not.toHaveBeenCalled();
+    click('mouse');
+    expect(showPicker).toHaveBeenCalledTimes(1);
+  });
 });

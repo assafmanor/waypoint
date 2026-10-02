@@ -130,6 +130,18 @@ export function DateField({
         value={shown}
         onPointerDown={latch}
         onFocus={latch}
+        onClick={(e) => {
+          // A mouse click on a desktop Chromium date input only focuses its (invisible)
+          // segments; the picker opens from the calendar icon alone, which `.vt-date`
+          // hides — so on a laptop the field did nothing. Touch platforms open the picker
+          // themselves and are left alone.
+          if ((e.nativeEvent as PointerEvent).pointerType !== 'mouse') return;
+          try {
+            e.currentTarget.showPicker?.();
+          } catch {
+            // Already open, or not allowed here: the native click behaviour stands.
+          }
+        }}
         onKeyDown={(e) => {
           if (e.key !== 'Tab') setTypingTo(true);
         }}
