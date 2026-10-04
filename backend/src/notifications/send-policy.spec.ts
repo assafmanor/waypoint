@@ -168,6 +168,7 @@ describe('the daily caps (ADR-0198 §5)', () => {
     ['readiness.nudge', 'nudge'],
     ['group.imminent', 'nudge'],
     ['event.hard.soon', 'nudge'],
+    ['memory.anniversary', 'memory'],
   ])('classifies %s as %s', (kind, source) => {
     expect(dailySource(kind)).toBe(source);
   });

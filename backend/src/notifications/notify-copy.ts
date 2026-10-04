@@ -404,3 +404,32 @@ export function readinessNudgePayload(input: {
     url: taskUrl(input.tripId),
   };
 }
+
+// ── The anniversary ─────────────────────────────────────────────────────────────────────────
+
+/** **How long ago, exactly**, on the app's year ladder (`formatDuration`, ADR-0240 §3): the
+ *  dual is a word, not `2 שנים`. The /trips card prints the same line from `he.ts`. */
+export function yearsAgoExactly(years: number): string {
+  if (years === 1) return 'לפני שנה בדיוק';
+  if (years === 2) return 'לפני שנתיים בדיוק';
+  return `לפני ${years} שנים בדיוק`;
+}
+
+/**
+ * `memory.anniversary` (ADR-0241 §7). The title is the trip's name and the body is the /trips
+ * card's own line. No question, no call to action, no exclamation mark. It opens the finished
+ * trip's Home, which is where `?trip=` alone lands.
+ */
+export function memoryAnniversaryPayload(input: {
+  tripId: string;
+  tripName: string;
+  years: number;
+  place: string;
+}): PushPayload {
+  return {
+    kind: NOTIFICATION_KIND.MEMORY_ANNIVERSARY,
+    title: input.tripName,
+    body: `${yearsAgoExactly(input.years)} · ${input.place}`,
+    url: appUrl({ trip: input.tripId }),
+  };
+}

@@ -6,6 +6,9 @@ import { taskAssignedKind } from './task-assigned.kind';
 import { DIGEST_HOUR, taskDigestKind } from './task-digest.kind';
 import { taskDueKind } from './task-due.kind';
 
+/** These kinds read no recap; one that starts to has to say so here. */
+const noRecap = () => Promise.reject(new Error('this kind reads no recap'));
+
 const HOUR = 60 * 60 * 1000;
 const utc = (iso: string) => Date.parse(iso);
 
@@ -136,6 +139,7 @@ const input = (prisma: PrismaService, nowMs: number, zone?: string): DueInput =>
   prisma,
   nowMs,
   zonesFor: zonesFor(zone),
+  recapFor: noRecap,
 });
 
 describe('the phase-A kinds declare their policy', () => {

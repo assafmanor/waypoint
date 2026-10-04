@@ -31,6 +31,7 @@
 import type {
   NotificationKind as CatalogueKind,
   PushPayload,
+  TripRecap,
   ZoneCrossing,
 } from '@waypoint/shared';
 import type { PrismaService } from '../prisma/prisma.service';
@@ -69,6 +70,11 @@ export interface DueInput {
    * query actually returned — that is the whole point of the inverted loop.
    */
   zonesFor: (tripId: string) => Promise<TripZones>;
+  /** **What happened on a trip**, through the server's recap adapter (`TripRecapService`), for
+   *  the kind whose words come from the record rather than from one row: the anniversary names
+   *  the place the /trips card names (ADR-0241 §7). A whole-trip read, so call it only for a
+   *  trip the kind's own query returned and its own checks kept. */
+  recapFor: (tripId: string) => Promise<TripRecap>;
 }
 
 /** One thing that should be sent, as a kind reports it. */
@@ -121,6 +127,7 @@ export type Dedup = (typeof DEDUP)[keyof typeof DEDUP];
 export const NOTIFY_PREF = {
   TASKS: 'notifyTasks',
   OBLIGATIONS: 'notifyObligations',
+  MEMORIES: 'notifyMemories',
 } as const;
 export type NotifyPref = (typeof NOTIFY_PREF)[keyof typeof NOTIFY_PREF];
 

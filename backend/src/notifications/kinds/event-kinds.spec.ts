@@ -6,6 +6,9 @@ import { eventSoonKind } from './event-soon.kind';
 import { spanEdgeKind } from './span-edge.kind';
 import { TOMORROW_HOUR, tripTomorrowKind } from './trip-tomorrow.kind';
 
+/** These kinds read no recap; one that starts to has to say so here. */
+const noRecap = () => Promise.reject(new Error('this kind reads no recap'));
+
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
 const utc = (iso: string) => Date.parse(iso);
@@ -161,6 +164,7 @@ const input = (prisma: PrismaService, nowMs: number, zone?: string): DueInput =>
   prisma,
   nowMs,
   zonesFor: zonesFor(zone),
+  recapFor: noRecap,
 });
 
 describe('the phase-B kinds declare their policy', () => {
@@ -320,7 +324,12 @@ describe('event.hard.soon', () => {
           { id: 'p-vie', timezone: 'Europe/Vienna' },
         ],
       });
-    const sends = await eventSoonKind.due({ prisma, nowMs: now, zonesFor: crossingZones });
+    const sends = await eventSoonKind.due({
+      prisma,
+      nowMs: now,
+      zonesFor: crossingZones,
+      recapFor: noRecap,
+    });
 
     // 18:30 Tel Aviv — the hour on the boarding pass. Not 17:30, which is when it is in the
     // city it is flying to, and which is what the segment lookup answered.

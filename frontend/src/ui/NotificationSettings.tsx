@@ -19,10 +19,10 @@
 // beside the theme: one hint per card. A single card would leave two contradicting promises
 // stacked under it with nothing to say which was which.
 //
-// ── AND ONE SWITCH IN THE SECOND CARD, NOT THREE ──────────────────────────────────────────
+// ── A SWITCH PER CATEGORY THAT SENDS, AND NONE FOR ONE THAT DOES NOT ──────────────────────
 //
-// `notifyTasks` gates phase A, which now fires. `notifyObligations` arrives with phase B and
-// `notifyGroup` only if phase D is ever built — and a preference for a feature that may never
+// `notifyTasks` gates phase A, `notifyObligations` phase B, and `notifyMemories` the
+// anniversary (ADR-0239 §8). `notifyGroup` arrives only if phase D is ever built — and a preference for a feature that may never
 // come is a promise, not a control (ADR-0198 §6, amended 2026-08-21; the same argument
 // ADR-0133 §7 made against a theme toggle that was not connected to anything).
 import { useCallback, useEffect, useState } from 'react';
@@ -70,9 +70,10 @@ const BLOCKED: Record<
 const CATEGORIES = [
   { key: 'notifyTasks', label: t.shell.account.notifyTasksLabel },
   { key: 'notifyObligations', label: t.shell.account.notifyObligationsLabel },
+  { key: 'notifyMemories', label: t.shell.account.notifyMemoriesLabel },
 ] as const satisfies readonly { key: keyof NotifyPatch; label: string }[];
 
-type NotifyPatch = { notifyTasks?: boolean; notifyObligations?: boolean };
+type NotifyPatch = { notifyTasks?: boolean; notifyObligations?: boolean; notifyMemories?: boolean };
 
 export function NotificationSettings({
   vapidPublicKey,
@@ -81,7 +82,7 @@ export function NotificationSettings({
 }: {
   vapidPublicKey: string | null;
   /** The account's switches, as `/me` reports them. */
-  prefs: { notifyTasks: boolean; notifyObligations: boolean };
+  prefs: { notifyTasks: boolean; notifyObligations: boolean; notifyMemories: boolean };
   /** Rejects on failure so this component can show its own banner-less failure line without
    *  owning the account patch. */
   onPatchPrefs: (patch: NotifyPatch) => Promise<void>;

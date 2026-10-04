@@ -47,6 +47,10 @@ export const NOTIFICATION_KIND = {
    *  countdown, and each names what is still MISSING: a nudge that repeats every day about
    *  a thing nobody has done yet is a nag with a calendar. */
   READINESS_NUDGE: 'readiness.nudge',
+  /** **A year on, the trip comes back, once, by name** (ADR-0239 §8, copy ADR-0241 §7): a
+   *  morning hour on the anniversary of day 1, naming a place that happened. The one send for
+   *  joy rather than duty, so it has its own switch and its own budget. */
+  MEMORY_ANNIVERSARY: 'memory.anniversary',
 } as const;
 export type NotificationKind = (typeof NOTIFICATION_KIND)[keyof typeof NOTIFICATION_KIND];
 

@@ -854,6 +854,7 @@ export const updateMeSchema = z
     // (ADR-0198 §6). The device's permission is the opt-in; this only narrows it.
     notifyTasks: z.boolean().optional(),
     notifyObligations: z.boolean().optional(),
+    notifyMemories: z.boolean().optional(),
   })
   .refine((v) => Object.keys(v).length > 0, { message: 'patch must change at least one field' });
 export type UpdateMeInput = z.infer<typeof updateMeSchema>;
