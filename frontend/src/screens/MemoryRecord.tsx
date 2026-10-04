@@ -105,7 +105,7 @@ export function RecordKinds({
 }
 
 /**
- * **The list's send, under the list it sends** (ADR-0242 §1). The trip's links are read once
+ * **The list's send, in the search's bar** (ADR-0242 §1, amended 2026-10-04). The trip's links are read once
  * per search, so moving between chips asks nothing. An admin always has it; anyone else only
  * when a link for this kind already exists, the share sheet's rule for a level.
  */
@@ -143,10 +143,16 @@ function ListSend({
   const [open, setOpen] = useState(false);
   if (!isAdmin && !link) return null;
   return (
-    <div className="mem-list-send">
-      <button type="button" className="share-outcome" onClick={() => setOpen(true)}>
+    <>
+      {/* The trip header's own share, one level down: the same control for "send what this
+          screen is about". */}
+      <button
+        type="button"
+        className="chrome-ghost-btn share-header-btn"
+        onClick={() => setOpen(true)}
+        aria-label={t.share.list.send(t.share.list.name[category])}
+      >
         <Icon name="share" />
-        {t.share.list.send(t.share.list.name[category])}
       </button>
       {open ? (
         <ListShareSheet
@@ -160,7 +166,7 @@ function ListSend({
           onClose={() => setOpen(false)}
         />
       ) : null}
-    </div>
+    </>
   );
 }
 
@@ -192,9 +198,10 @@ export function RecordSearch({
   const { trip } = useTrip();
   const [links, setLinks] = useListLinks(trip.id);
   // What the list sends is what happened (ADR-0242 §4), so a skipped or unmarked row on screen
-  // is not counted, and a kind where nothing happened has nothing to send.
+  // is not counted, and a kind where nothing happened has nothing to send. A query narrows the
+  // screen, never the list: the sheet says how many places travel.
   const listed =
-    kind === RECORD_KIND_ALL || query.trim()
+    kind === RECORD_KIND_ALL
       ? 0
       : rows.filter((row) => row.category === kind && row.outcome === 'done').length;
   const listLink =
@@ -211,6 +218,21 @@ export function RecordSearch({
       clearLabel={copy.clear}
       backAria={copy.backAria}
       onClose={onClose}
+      action={
+        kind !== RECORD_KIND_ALL && listed > 0 ? (
+          <ListSend
+            category={kind}
+            count={listed}
+            link={listLink}
+            onLink={(next) =>
+              setLinks((prev) => [
+                ...prev.filter((link) => link.scope?.category !== kind),
+                ...(next ? [next] : []),
+              ])
+            }
+          />
+        ) : null
+      }
     >
       <div className="mem-kinds">
         <ChoiceGrid
@@ -250,20 +272,6 @@ export function RecordSearch({
       ) : (
         <EmptyState icon={<Icon name="search" />} title={copy.noResults} />
       )}
-      {/* Only while the screen shows exactly what would be sent: one kind, no query (§1). */}
-      {kind !== RECORD_KIND_ALL && listed > 0 ? (
-        <ListSend
-          category={kind}
-          count={listed}
-          link={listLink}
-          onLink={(next) =>
-            setLinks((prev) => [
-              ...prev.filter((link) => link.scope?.category !== kind),
-              ...(next ? [next] : []),
-            ])
-          }
-        />
-      ) : null}
     </SearchOverlay>
   );
 }

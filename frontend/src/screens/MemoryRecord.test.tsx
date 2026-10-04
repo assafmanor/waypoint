@@ -106,16 +106,18 @@ describe('the record by kind', () => {
       session.links = [];
     });
 
-    it('offers the send under one kind, and not on every kind or with a query', async () => {
+    // Amended 2026-10-04 (`a-list-leaves-the-trip-v2.html`): the send moved from the list's foot,
+    // 136px below the fold, to the bar, where a query no longer hides it.
+    it('offers the send in the bar under one kind, with or without a query, and not on all', async () => {
       await open('nature');
-      expect(send()).not.toBeNull();
+      expect(send()?.closest('.search-overlay-bar')).not.toBeNull();
       fireEvent.change(screen.getByPlaceholderText(t.planHome.past.record.search.placeholder), {
         target: { value: 'Sk' },
       });
-      expect(send()).toBeNull();
+      expect(send()).not.toBeNull();
       cleanup();
       await open();
-      expect(screen.queryByText(/^שליחת רשימת/)).toBeNull();
+      expect(document.querySelector('.search-overlay-action')).toBeNull();
     });
 
     it('offers nothing where nothing of that kind happened', async () => {
