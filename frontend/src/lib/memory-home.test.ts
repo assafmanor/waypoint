@@ -54,6 +54,7 @@ function recap(figures: Partial<TripRecap['figures']>): TripRecap {
     stragglers: [],
     nextTime: { skipped: [], ideas: [] },
     cover: undefined,
+    memoryPlace: undefined,
   };
 }
 

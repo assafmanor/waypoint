@@ -137,6 +137,9 @@ export interface TripRecap {
   /** `dayPhoto`'s rank over every row that happened, so the cover is the trip's best-ranked shot.
    *  Re-ranked on every read: an image a refresh removed falls through to the next one. */
   cover: SharedPhoto | undefined;
+  /** **The place a memory names** (ADR-0241 §7): the cover's subject, else the first place
+   *  counted in `places`, by time. The anniversary card and push print it, so they agree. */
+  memoryPlace: string | undefined;
 }
 
 const isSoft = (event: TripEvent) => event.kind === EVENT_KIND.SOFT;
@@ -344,6 +347,7 @@ export function tripRecap(input: TripRecapInput): TripRecap {
 
   // ── Places visited and beds ──
   const visited: string[] = [];
+  let firstVisitTitle: string | undefined;
   const beds = new Set<string>();
   const categoryOf = new Map<string, EventCategory>();
   const placesByDate = new Map<string, Set<string>>();
@@ -356,6 +360,7 @@ export function tripRecap(input: TripRecapInput): TripRecap {
     }
     if (!placeId) continue;
     if (!categoryOf.has(placeId)) {
+      firstVisitTitle ??= event.title;
       visited.push(placeId);
       categoryOf.set(placeId, place?.category ?? event.category ?? EVENT_CATEGORY.OTHER);
     }
@@ -586,5 +591,8 @@ export function tripRecap(input: TripRecapInput): TripRecap {
       ideas: input.maybes.filter((maybe) => !maybe.consumed).map((maybe) => maybe.id),
     },
     cover,
+    memoryPlace:
+      cover?.of ??
+      (visited.length ? (input.placeLabel?.(visited[0]) ?? firstVisitTitle) : undefined),
   };
 }

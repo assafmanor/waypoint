@@ -250,4 +250,28 @@ describe('AllTrips sharing entry', () => {
     expect(life.textContent).toBe(`${copy.lifeTrips(1)} · ${copy.lifeDays(8)}`);
     expect(life.previousElementSibling!.textContent).toBe(copy.sectionPast);
   });
+
+  // ADR-0240 §7: on the day Lisbon began, two years on, its cover heads the list with the place
+  // it names on the scrim. Noon UTC is the same calendar day in any zone a runner sits in.
+  it("puts a finished trip's anniversary above everything, as its cover", async () => {
+    setSimulatedNow(Date.parse('2026-03-01T12:00:00.000Z'));
+    const { container } = renderTrips();
+    const card = await waitFor(() => {
+      const found = container.querySelector('.trip-anniv');
+      expect(found).not.toBeNull();
+      return found!;
+    });
+    expect(container.querySelector('.trips-body')!.firstElementChild).toBe(card);
+    expect(card.querySelector('figcaption strong')!.textContent).toContain(
+      `${t.shell.allTrips.anniversary(2)} · `,
+    );
+    expect(card.querySelector('figcaption strong')!.textContent).toContain('Belém');
+    expect(card.querySelector('.trip-anniv-foot b')!.textContent).toBe('ליסבון');
+  });
+
+  it('shows no anniversary card on any other day', async () => {
+    const { container } = renderTrips();
+    await screen.findByText('ליסבון');
+    expect(container.querySelector('.trip-anniv')).toBeNull();
+  });
 });
