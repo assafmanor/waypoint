@@ -26,7 +26,10 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  flex: 0 1 auto;
+  /* Short fixed copy in every host, so a long trip name in the chip gives way first: with an
+     action in the bar the title was cut before the chip (86px to 73px, measured in
+     `a-list-leaves-the-trip-v2.html`). */
+  flex: 0 0 auto;
 }
 /* Sits right beside the title, not pushed to the row's far end — it reads as
    a small annotation on "what" you're searching, not a trailing fact like a
@@ -35,6 +38,14 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* The bar's one action, at its far end. A 44px control in a bar its 32px back arrow sizes, so
+   the negative margin keeps the bar's height (ADR-0242 §1, amended 2026-10-04). */
+.search-overlay-action {
+  display: flex;
+  margin-inline-start: auto;
+  margin-block: -6px;
 }
 
 /* Pinned search field, always visible (no cover-in-place animation needed —

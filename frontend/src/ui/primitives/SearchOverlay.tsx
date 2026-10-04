@@ -35,6 +35,7 @@ export function SearchOverlay({
   clearLabel,
   backAria,
   onClose,
+  action,
   children,
 }: {
   /** Compact top-bar label, e.g. "חיפוש הזמנות". */
@@ -51,6 +52,9 @@ export function SearchOverlay({
   clearLabel: string;
   backAria: string;
   onClose: () => void;
+  /** One control at the bar's far end, acting on what the screen shows (the record's list send,
+   *  ADR-0242 §1). Absent leaves the bar as it was. */
+  action?: ReactNode;
   /** The already-filtered, scrollable results list. */
   children: ReactNode;
 }) {
@@ -80,6 +84,7 @@ export function SearchOverlay({
             {contextLabel && (
               <span className="chrome-chip search-overlay-context">{contextLabel}</span>
             )}
+            {action && <div className="search-overlay-action">{action}</div>}
           </div>
 
           <SearchField
