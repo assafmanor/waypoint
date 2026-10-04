@@ -239,4 +239,15 @@ describe('AllTrips sharing entry', () => {
     const past = (await screen.findByText('ליסבון')).closest('button')!;
     expect(past.className).toBe('trip-card');
   });
+
+  // ADR-0240 §7: counted over the finished trips only, so Iceland's and Rome's days are not in
+  // it, and Lisbon names no country, so the line says nothing about countries.
+  it('sums the finished trips under their heading', async () => {
+    const { container } = renderTrips();
+    await screen.findByText('ליסבון');
+    const life = container.querySelector('.trips-life')!;
+    const copy = t.shell.allTrips;
+    expect(life.textContent).toBe(`${copy.lifeTrips(1)} · ${copy.lifeDays(8)}`);
+    expect(life.previousElementSibling!.textContent).toBe(copy.sectionPast);
+  });
 });
