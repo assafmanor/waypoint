@@ -1863,6 +1863,13 @@
   letter-spacing: 0.04em;
   margin: 2px 4px 9px;
 }
+/* The lifetime line sits under `הסתיים`, closer to its heading than to the cards
+   (ADR-0240 §7). */
+.trips-life {
+  font-size: 12px;
+  color: var(--muted);
+  margin: -5px 4px 10px;
+}
 /* The card IS the row again — the share entry that briefly wrapped both in a grid is gone
    (ADR-0033's 2026-08-30 amendment §1), so the section label follows the card itself. */
 .trip-card + .sec,

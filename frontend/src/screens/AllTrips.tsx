@@ -24,6 +24,7 @@ import { formatTripDates } from '../lib/time';
 import { useClock } from '../lib/useClock';
 import { useFailableImage } from '../lib/useFailableImage';
 import { useTripCovers } from '../lib/trip-recap';
+import { tripsLifetime } from '../lib/resurface';
 import type { DayShot } from '../lib/day-photo';
 import { DEFAULT_TRIP_ICON, GLYPH } from '../constants';
 import { NavArrow } from '../ui/NavArrow';
@@ -85,6 +86,16 @@ function TripFlag({ trip, cover }: { trip: Trip; cover?: DayShot }) {
       )}
     </span>
   );
+}
+
+// **What the finished trips add up to** (ADR-0240 §7): the line that makes `הסתיים` read as a
+// record rather than a menu.
+function LifetimeLine({ finished }: { finished: readonly Trip[] }) {
+  const life = tripsLifetime(finished);
+  const copy = t.shell.allTrips;
+  const parts = [copy.lifeTrips(life.trips), copy.lifeDays(life.days)];
+  if (life.countries !== undefined) parts.push(copy.lifeCountries(life.countries));
+  return <div className="trips-life">{parts.join(' · ')}</div>;
 }
 
 export function AllTrips({
@@ -288,6 +299,7 @@ export function AllTrips({
         {buckets.past.length > 0 && (
           <>
             <div className="sec">{t.shell.allTrips.sectionPast}</div>
+            <LifetimeLine finished={buckets.past} />
             {buckets.past.map((trip) => row(trip, 'past'))}
           </>
         )}

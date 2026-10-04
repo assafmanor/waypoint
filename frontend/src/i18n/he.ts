@@ -1855,6 +1855,11 @@ export const t = {
       sectionNow: 'עכשיו',
       sectionSoon: 'בקרוב',
       sectionPast: 'הסתיים',
+      // The lifetime line under `הסתיים` (ADR-0240 §7). Countries drop out, not to zero,
+      // when no finished trip names one.
+      lifeTrips: (n: number) => (n === 1 ? 'טיול אחד' : `${n} טיולים`),
+      lifeDays: (n: number) => (n === 1 ? 'יום אחד בדרך' : `${n} ימים בדרך`),
+      lifeCountries: (n: number) => (n === 1 ? 'מדינה אחת' : `${n} מדינות`),
       chipSoon: (days: number) => countdownText(days),
       create: 'טיול חדש',
       offlineNote: 'מעבר בין טיולים שמורים עובד גם אופליין · יצירה צריכה חיבור',
