@@ -72,6 +72,7 @@ const RECAP: TripRecap = {
   stragglers: [],
   nextTime: { skipped: ['e3'], ideas: ['m1'] },
   cover: { url: '/enrichment/images/cover.jpg', of: 'Gullfoss', credit: 'Wikimedia · CC BY-SA' },
+  memoryPlace: 'Gullfoss',
 };
 
 const RECORD: TripRecord = {

@@ -9,6 +9,7 @@
 // and every share print the same number.
 import { useEffect, useMemo, useState } from 'react';
 import {
+  placeDisplayLabel,
   tripRecap,
   tripRecapLegKeys,
   type Trip,
@@ -78,35 +79,53 @@ export function useTripRecap(): AppTripRecap | undefined {
   }, [input, read, keyId, enrichments]);
 }
 
+/** What `/trips` shows of a finished trip: its cover, and the place its anniversary names. */
+export interface TripMemory {
+  cover?: DayShot;
+  place?: string;
+}
+
 /**
- * **The covers of the trips on `/trips`** (ADR-0240 §7), by trip id: `tripRecap`'s cover over
- * each trip's cached snapshot, so a card shows the same picture its memory Home opens on. No
- * trip is in context here, so the rows come from the device; a trip this device never opened
- * has no snapshot and keeps its flag. Legs are not read: they move figures, never the cover.
+ * **The memories of the trips on `/trips`** (ADR-0240 §7), by trip id: `tripRecap`'s cover and
+ * `memoryPlace` over each trip's cached snapshot, so a card shows the same picture its memory
+ * Home opens on. No trip is in context here, so the rows come from the device; a trip this
+ * device never opened has no snapshot, keeps its flag and has no anniversary card. Places are
+ * labelled by `placeDisplayLabel`, the server's chain, so the card names what the push names.
+ * Legs are not read: they move figures, never the cover or the place.
  */
-export function useTripCovers(trips: readonly Pick<Trip, 'id'>[]): ReadonlyMap<string, DayShot> {
+export function useTripMemories(
+  trips: readonly Pick<Trip, 'id'>[],
+): ReadonlyMap<string, TripMemory> {
   const ids = trips.map((trip) => trip.id).join('|');
-  const [covers, setCovers] = useState<ReadonlyMap<string, DayShot>>(new Map());
+  const [memories, setMemories] = useState<ReadonlyMap<string, TripMemory>>(new Map());
   useEffect(() => {
     let live = true;
     const read = async (tripId: string) => {
       const snapshot = await readCachedSnapshot(tripId);
       if (!snapshot) return undefined;
-      const { cover } = tripRecap({
+      const placeById = new Map(snapshot.places.map((place) => [place.id, place]));
+      const { cover, memoryPlace } = tripRecap({
         ...snapshot,
         maybes: snapshot.maybeItems,
         overrides: snapshot.travelModeOverrides,
         legs: new Map(),
+        placeLabel: (placeId) => {
+          const place = placeById.get(placeId);
+          return place && placeDisplayLabel(place, snapshot.enrichments[placeId]);
+        },
       });
-      const shot = cover && shotOf(cover, snapshot.enrichments);
-      return shot && ([tripId, shot] as const);
+      const memory: TripMemory = {
+        cover: cover && shotOf(cover, snapshot.enrichments),
+        place: memoryPlace,
+      };
+      return [tripId, memory] as const;
     };
     void Promise.all(ids ? ids.split('|').map(read) : []).then((pairs) => {
-      if (live) setCovers(new Map(pairs.filter((pair) => pair !== undefined)));
+      if (live) setMemories(new Map(pairs.filter((pair) => pair !== undefined)));
     });
     return () => {
       live = false;
     };
   }, [ids]);
-  return covers;
+  return memories;
 }

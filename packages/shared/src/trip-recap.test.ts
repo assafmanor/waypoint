@@ -541,3 +541,48 @@ describe('tripRecap cover', () => {
     expect(tripRecap(input({ events })).cover).toBeUndefined();
   });
 });
+
+describe('tripRecap memoryPlace (ADR-0241 §7)', () => {
+  it("is the cover's subject when there is a cover", () => {
+    const events = [
+      ev('1', { placeId: 'a', startsAt: at(DAY1, '01:00'), endsAt: at(DAY1, '02:00') }),
+    ];
+    const enrichments = {
+      a: {
+        image: {
+          url: '/a',
+          mimeType: 'image/jpeg',
+          width: 1,
+          height: 1,
+          sizeBytes: 1,
+          source: 'wikimedia_commons',
+          license: 'CC BY-SA 4.0',
+          confidence: 1,
+          fetchedAt: '',
+        } as DeliveredImageValue,
+      },
+    };
+    expect(
+      tripRecap(input({ events, enrichments, placeLabel: (id) => `label-${id}` })).memoryPlace,
+    ).toBe('label-a');
+  });
+
+  it('is the first counted place by time without one, skipping a bed and a skipped row', () => {
+    const events = [
+      ev('bed', { placeId: 'h', startsAt: at(DAY1, '00:00') }),
+      ev('nope', { placeId: 'c', status: 'skipped', startsAt: at(DAY1, '01:00') }),
+      ev('later', { placeId: 'b', startsAt: at(DAY1, '05:00') }),
+      ev('first', { placeId: 'a', startsAt: at(DAY1, '03:00') }),
+    ];
+    expect(tripRecap(input({ events })).memoryPlace).toBe('first');
+    expect(tripRecap(input({ events, placeLabel: (id) => `label-${id}` })).memoryPlace).toBe(
+      'label-a',
+    );
+  });
+
+  it('is absent when no place happened', () => {
+    expect(
+      tripRecap(input({ events: [ev('x', { status: 'skipped', placeId: 'a' })] })).memoryPlace,
+    ).toBeUndefined();
+  });
+});

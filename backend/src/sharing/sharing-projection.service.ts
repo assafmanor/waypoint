@@ -36,8 +36,7 @@ import {
   type EventCategory,
   type LegTravelMode,
   type SharedDayTitle,
-  derivedPlaceLabel,
-  shortPlaceLabel,
+  placeDisplayLabel,
   placeIataCode,
   ROUTE_ARROW,
   SHARE_OP_KIND,
@@ -137,11 +136,10 @@ export const labelWith =
     if (!place) return undefined;
     // Prisma answers `null` where the shared `Place` says `undefined`; normalised here
     // rather than by widening the shared type for one caller.
-    const derived = derivedPlaceLabel(
+    return placeDisplayLabel(
       { name: place.name, nickname: place.nickname ?? undefined },
       enrichments[place.id],
     );
-    return (derived?.trim() || shortPlaceLabel(place.name)).trim() || undefined;
   };
 
 /**

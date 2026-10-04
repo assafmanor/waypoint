@@ -22,6 +22,7 @@ export * from './subtasks';
 export * from './task-time';
 export * from './travel-time';
 export * from './trip-dates';
+export * from './anniversary';
 export * from './weather';
 export * from './zones';
 export * from './sharing';

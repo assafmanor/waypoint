@@ -1870,6 +1870,54 @@
   color: var(--muted);
   margin: -5px 4px 10px;
 }
+/* **A year ago today** (ADR-0240 §7): the one place `/trips` spends a wide cover, once a year.
+   Its small line is `--memory-deep`, not amber: an anniversary is not a deadline. */
+.trip-anniv {
+  --press-scale: var(--press-scale-lg);
+  display: block;
+  width: 100%;
+  padding: 0;
+  margin-bottom: 14px;
+  font: inherit;
+  color: inherit;
+  text-align: start;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-16);
+  overflow: hidden;
+  background: var(--card);
+  cursor: pointer;
+}
+.trip-anniv .wp-photoband {
+  border-radius: 0;
+}
+/* No cover: the line the scrim would carry heads the card instead. */
+.trip-anniv-line {
+  display: block;
+  padding: 12px 14px 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.trip-anniv-foot {
+  display: grid;
+  gap: 2px;
+  padding: 10px 14px 12px;
+}
+.trip-anniv-line + .trip-anniv-foot {
+  padding-top: 4px;
+}
+.trip-anniv-foot b {
+  font-family: var(--font-head);
+  font-weight: 400;
+  font-size: 16px;
+  color: var(--ink);
+}
+.trip-anniv-dates {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--memory-deep);
+}
 /* The card IS the row again — the share entry that briefly wrapped both in a grid is gone
    (ADR-0033's 2026-08-30 amendment §1), so the section label follows the card itself. */
 .trip-card + .sec,

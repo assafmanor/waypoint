@@ -170,6 +170,19 @@ export function derivedPlaceLabel(
     : undefined;
 }
 
+/** **The whole chain, for a caller holding the place**: `derivedPlaceLabel`'s rungs, else the
+ *  stripped name. The server's labeller and `/trips` read it, so a memory names a place the same
+ *  way wherever it is printed. */
+export function placeDisplayLabel(
+  place: Pick<Place, 'name' | 'nickname'>,
+  enrichment?: DeliveredEnrichmentFields,
+): string | undefined {
+  return (
+    (derivedPlaceLabel(place, enrichment)?.trim() || shortPlaceLabel(place.name)).trim() ||
+    undefined
+  );
+}
+
 /** **The airport's IATA code, for a surface with room for it** (ADR-0166 §18, revised) —
  *  the booking detail's own fact row, where you check it against a ticket. Deliberately not
  *  part of `derivedPlaceLabel`: see this file's header for why no row-shaped surface gets it. */

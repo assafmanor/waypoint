@@ -19,17 +19,19 @@ import { useIsOffline } from '../lib/outbox';
 import { useHoldToOpen } from '../lib/useHoldToOpen';
 import { useTripList } from '../lib/useTripList';
 import { tripChip, type TripChip } from '../lib/active-trip';
-import { daysUntilStartOnDevice } from '../lib/mode';
+import { daysUntilStartOnDevice, deviceToday } from '../lib/mode';
 import { formatTripDates } from '../lib/time';
 import { useClock } from '../lib/useClock';
 import { useFailableImage } from '../lib/useFailableImage';
-import { useTripCovers } from '../lib/trip-recap';
-import { tripsLifetime } from '../lib/resurface';
+import { useTripMemories } from '../lib/trip-recap';
+import { tripAnniversaries, tripsLifetime, type Anniversary } from '../lib/resurface';
+import { autoIsolate } from '../lib/bidi';
 import type { DayShot } from '../lib/day-photo';
 import { DEFAULT_TRIP_ICON, GLYPH } from '../constants';
 import { NavArrow } from '../ui/NavArrow';
 import { t } from '../i18n/he';
 import { Avatar } from '../ui/primitives/Avatar';
+import { BAND_DENSITY, PhotoBand } from '../ui/domain/PhotoBand';
 import { Icon } from '../ui/Icon';
 import { ZeroState } from './ZeroState';
 
@@ -116,7 +118,7 @@ export function AllTrips({
   // Falls back to the cached list offline — and on a link too slow to say so yet — so the
   // all-trips view (and the back route into a live trip) keeps working with no network.
   const trips = useTripList();
-  const covers = useTripCovers((trips ?? []).filter((trip) => tripChip(trip, now) === 'past'));
+  const memories = useTripMemories((trips ?? []).filter((trip) => tripChip(trip, now) === 'past'));
 
   // **THE BACK ARROW AND THE SYSTEM BACK ARE ONE FUNCTION** (owner, session 175). This
   // screen is a declared root (`ROOT_PATHS`), so a structural back here is a no-op and the
@@ -186,6 +188,37 @@ export function AllTrips({
     navigate('/', flying ? { state: { navDir: NAV_DIR.HANDOFF } } : undefined);
   };
 
+  // **A year ago today, above everything** (ADR-0240 §7): the trip as its cover, with the place
+  // on the scrim. A card is a way into the trip, like its row below, so it opens the same way.
+  const anniversaryCard = ({ trip, years, memory }: Anniversary) => {
+    const line = `${t.shell.allTrips.anniversary(years)} · ${memory.place}`;
+    return (
+      <button
+        key={`anniv-${trip.id}`}
+        className="trip-anniv"
+        onClick={(e) => pick(trip, e.currentTarget)}
+      >
+        {memory.cover ? (
+          <PhotoBand
+            shot={{ ...memory.cover, of: line }}
+            density={BAND_DENSITY.COVER}
+            interactive={false}
+          />
+        ) : (
+          <span className="trip-anniv-line">
+            {t.shell.allTrips.anniversary(years)} · {autoIsolate(memory.place)}
+          </span>
+        )}
+        <span className="trip-anniv-foot">
+          <b>{trip.name}</b>
+          <span className="trip-anniv-dates" dir="auto">
+            {formatTripDates(trip.startDate, trip.endDate)}
+          </span>
+        </span>
+      </button>
+    );
+  };
+
   const hero = (trip: Trip) => (
     <button
       key={trip.id}
@@ -216,7 +249,7 @@ export function AllTrips({
       onClick={(e) => pick(trip, e.currentTarget)}
       {...holdProps(trip)}
     >
-      <TripFlag trip={trip} cover={covers.get(trip.id)} />
+      <TripFlag trip={trip} cover={memories.get(trip.id)?.cover} />
       <span className="main">
         <span className="t">{trip.name}</span>
         <TripMeta trip={trip} />
@@ -284,6 +317,7 @@ export function AllTrips({
       </header>
 
       <main className="trips-body">
+        {tripAnniversaries(buckets.past, memories, deviceToday(now)).map(anniversaryCard)}
         {buckets.now.length > 0 && (
           <>
             <div className="sec">{t.shell.allTrips.sectionNow}</div>

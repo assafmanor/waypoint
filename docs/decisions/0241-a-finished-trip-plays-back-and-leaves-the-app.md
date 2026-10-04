@@ -106,7 +106,7 @@ Also on a finished trip, which Phase 0.6 already opens on `רק לצפייה`:
 
 - **Title:** the trip's name (`יפן ׳26`).
 - **Body:** `לפני שנה בדיוק · <place>`, the same line the /trips anniversary card shows that day (ADR-0240 §7). No question, no call to action, no exclamation mark.
-- **The place is the cover's place** (`tripRecap.cover`), so the push and the card it opens show the same place. With no cover, it is the first place by time among those counted in `places` (lodging and transport ends are already excluded). With none, **no send**.
+- **The place is the cover's place** (`tripRecap.cover`), so the push and the card it opens show the same place. _(Built for the card 2026-10-04 as `tripRecap`'s `memoryPlace`, with `anniversaryYears` beside it in `packages/shared/src/anniversary.ts` for the date rules below; 6B.3 reads both.)_ With no cover, it is the first place by time among those counted in `places` (lodging and transport ends are already excluded). With none, **no send**.
 - **"Marked `היינו`" in ADR-0239 §8 reads with §9's rule, `recapHappened`:** a booked dinner nobody skipped is a place we went.
 - **Later years** climb the anchor's ladder (`formatDuration`, ADR-0240 §3): `לפני שנתיים בדיוק`, `לפני 3 שנים בדיוק`. There is no second ladder.
 - **February 29:** a trip whose first day was February 29 fires on February 28 in a common year.

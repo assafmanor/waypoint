@@ -118,5 +118,8 @@ export function daysSinceEnd(trip: TripWindow, today: string): number {
  *  zone is the far side's clock: at 00:34 at home the list said `מחרתיים` for a trip that started
  *  tomorrow (owner, 2026-09-10). Zero on the date itself and negative after it. */
 export function daysUntilStartOnDevice(startDate: string, now: Date): number {
-  return calendarDaysBetween(todayInTz(DEVICE_TIMEZONE, now), startDate);
+  return calendarDaysBetween(deviceToday(now), startDate);
 }
+
+/** The DEVICE's calendar date, for the same screens and for the same reason as above. */
+export const deviceToday = (now: Date): string => todayInTz(DEVICE_TIMEZONE, now);

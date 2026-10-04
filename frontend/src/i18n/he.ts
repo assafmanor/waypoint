@@ -34,6 +34,7 @@ import {
   type LegTravelMode,
 } from '@waypoint/shared';
 import { countdownText } from '../lib/time';
+import { yearPhrase } from '../lib/hebrew';
 import { type OutboxVerb } from '../lib/outbox';
 import { bindPrefix, measure } from '../lib/bidi';
 
@@ -1860,6 +1861,8 @@ export const t = {
       lifeTrips: (n: number) => (n === 1 ? 'טיול אחד' : `${n} טיולים`),
       lifeDays: (n: number) => (n === 1 ? 'יום אחד בדרך' : `${n} ימים בדרך`),
       lifeCountries: (n: number) => (n === 1 ? 'מדינה אחת' : `${n} מדינות`),
+      // The anniversary card (ADR-0240 §7). The push says the same line (ADR-0241 §7).
+      anniversary: (years: number) => `לפני ${yearPhrase(years)} בדיוק`,
       chipSoon: (days: number) => countdownText(days),
       create: 'טיול חדש',
       offlineNote: 'מעבר בין טיולים שמורים עובד גם אופליין · יצירה צריכה חיבור',
