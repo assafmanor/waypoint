@@ -38,6 +38,7 @@ import {
   remainingToday,
   SUBJECT_FIRE_KEY,
 } from './send-policy';
+import { TripRecapService } from '../sharing/trip-recap.service';
 
 /** What one tick did, for the log and for a spec to assert against. */
 export interface SweepReport {
@@ -106,6 +107,7 @@ export class NotificationSweepService {
   constructor(
     private readonly prisma: PrismaService,
     @Inject(NOTIFICATION_DISPATCHER) private readonly dispatcher: NotificationDispatcher,
+    private readonly recaps: TripRecapService,
   ) {}
 
   /**
@@ -122,12 +124,13 @@ export class NotificationSweepService {
 
     const report = { ...EMPTY_REPORT };
     const zonesFor = this.memoizedZones();
+    const recapFor = (tripId: string) => this.recaps.recapFor(tripId);
 
     // Every kind's candidates, gathered before any policy runs — so the caps below can be
     // counted in one grouped query for the whole tick instead of one per candidate.
     const found: { candidate: DueSend; kind: NotificationKind }[] = [];
     for (const kind of NOTIFICATION_KINDS) {
-      const due = await kind.due({ prisma: this.prisma, nowMs, zonesFor });
+      const due = await kind.due({ prisma: this.prisma, nowMs, zonesFor, recapFor });
       for (const candidate of due) found.push({ candidate, kind });
     }
     report.candidates = found.length;
@@ -306,12 +309,16 @@ export class NotificationSweepService {
     if (userIds.length === 0) return new Map();
     const rows = await this.prisma.user.findMany({
       where: { id: { in: userIds } },
-      select: { id: true, notifyTasks: true, notifyObligations: true },
+      select: { id: true, notifyTasks: true, notifyObligations: true, notifyMemories: true },
     });
     return new Map(
       rows.map((row) => [
         row.id,
-        { notifyTasks: row.notifyTasks, notifyObligations: row.notifyObligations },
+        {
+          notifyTasks: row.notifyTasks,
+          notifyObligations: row.notifyObligations,
+          notifyMemories: row.notifyMemories,
+        },
       ]),
     );
   }

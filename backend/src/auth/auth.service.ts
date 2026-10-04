@@ -265,7 +265,11 @@ export class AuthService {
       // The category preferences (ADR-0198 §6). Here rather than on `user`, because that
       // shape is also every co-member's roster row and a preference is nobody else's
       // business.
-      notify: { tasks: user.notifyTasks, obligations: user.notifyObligations },
+      notify: {
+        tasks: user.notifyTasks,
+        obligations: user.notifyObligations,
+        memories: user.notifyMemories,
+      },
       // **Which planet build the live map source is serving** (ADR-0187 §1 amendment). Read
       // here for the same reason `vapidPublicKey` is: only the server knows what it can
       // actually read, and the client needs the answer before its first tile. Synchronous and
@@ -296,6 +300,7 @@ export class AuthService {
         ...(patch.notifyObligations !== undefined && {
           notifyObligations: patch.notifyObligations,
         }),
+        ...(patch.notifyMemories !== undefined && { notifyMemories: patch.notifyMemories }),
       },
     });
     return this.getMe(userId);

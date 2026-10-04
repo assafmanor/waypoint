@@ -9,6 +9,7 @@
 import type { NotificationKind } from './notification-kind';
 import type { DeliveryOptions } from './notification-sender';
 import { eventSoonKind } from './kinds/event-soon.kind';
+import { memoryAnniversaryKind } from './kinds/memory-anniversary.kind';
 import { readinessNudgeKind } from './kinds/readiness-nudge.kind';
 import { spanEdgeKind } from './kinds/span-edge.kind';
 import { taskAssignedKind } from './kinds/task-assigned.kind';
@@ -26,6 +27,7 @@ export const NOTIFICATION_KINDS: readonly NotificationKind[] = [
   spanEdgeKind,
   tripTomorrowKind,
   readinessNudgeKind,
+  memoryAnniversaryKind,
 ];
 
 /**

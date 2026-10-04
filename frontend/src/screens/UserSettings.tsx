@@ -252,6 +252,7 @@ export default function UserSettings() {
             // default, and the safe direction here is "as the server has it".
             notifyTasks: me.notify?.tasks ?? true,
             notifyObligations: me.notify?.obligations ?? true,
+            notifyMemories: me.notify?.memories ?? true,
           }}
           onPatchPrefs={patchMe}
         />

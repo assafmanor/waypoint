@@ -23,6 +23,12 @@ vi.mock('./notification-registry', () => ({ NOTIFICATION_KINDS: hoisted.kinds })
 // is the sort of divergence the second typecheck pass exists to catch.
 import { NotificationSweepService } from './notification-sweep.service';
 import { fireKeyFor } from './send-policy';
+import type { TripRecapService } from '../sharing/trip-recap.service';
+
+/** No kind these specs exercise reads a recap. */
+const NO_RECAPS = {
+  recapFor: () => Promise.reject(new Error('no recap in this spec')),
+} as unknown as TripRecapService;
 
 const HOUR = 60 * 60 * 1000;
 const utc = (iso: string) => Date.parse(iso);
@@ -214,7 +220,7 @@ class RecordingDispatcher implements NotificationDispatcher {
 
 function makeSweep(prisma: PrismaService) {
   const dispatcher = new RecordingDispatcher();
-  return { sweep: new NotificationSweepService(prisma, dispatcher), dispatcher };
+  return { sweep: new NotificationSweepService(prisma, dispatcher, NO_RECAPS), dispatcher };
 }
 
 beforeEach(() => {
@@ -304,7 +310,7 @@ describe('a due candidate', () => {
       },
     };
 
-    await new NotificationSweepService(prisma, dispatcher).sweep(NOON);
+    await new NotificationSweepService(prisma, dispatcher, NO_RECAPS).sweep(NOON);
 
     expect(order).toEqual(['claim', 'claim', 'dispatch']);
   });

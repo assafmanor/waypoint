@@ -4,6 +4,9 @@ import type { PrismaService } from '../../prisma/prisma.service';
 import { DEDUP, NOTIFY_PREF, type DueInput, type TripZones } from '../notification-kind';
 import { MILESTONES, NUDGE_HOUR, readinessNudgeKind } from './readiness-nudge.kind';
 
+/** These kinds read no recap; one that starts to has to say so here. */
+const noRecap = () => Promise.reject(new Error('this kind reads no recap'));
+
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
 const utc = (iso: string) => Date.parse(iso);
@@ -177,7 +180,12 @@ const READY_TRIP: Fixture = {
 const zonesFor = (): Promise<TripZones> =>
   Promise.resolve({ crossings: [], primaryZone: 'Asia/Jerusalem', bookings: [], places: [] });
 
-const input = (prisma: PrismaService, nowMs: number): DueInput => ({ prisma, nowMs, zonesFor });
+const input = (prisma: PrismaService, nowMs: number): DueInput => ({
+  prisma,
+  nowMs,
+  zonesFor,
+  recapFor: noRecap,
+});
 
 describe('readiness.nudge declares its policy', () => {
   it('is not timeCritical — an absence is never worth breaking quiet hours for', () => {

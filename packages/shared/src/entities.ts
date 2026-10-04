@@ -829,6 +829,9 @@ export const notifyPrefsSchema = z.object({
    *  send. A separate switch from `tasks` because they are different registers: one is what
    *  a person wrote down, the other is what the itinerary already committed them to. */
   obligations: z.boolean(),
+  /** A year on, the trip comes back once (ADR-0239 §8). Optional so a cached `/me` from an
+   *  older build still parses. */
+  memories: z.boolean().optional(),
 });
 export type NotifyPrefs = z.infer<typeof notifyPrefsSchema>;
 

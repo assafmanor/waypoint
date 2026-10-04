@@ -286,7 +286,7 @@ Drawn and decided in [ADR-0241](../decisions/0241-a-finished-trip-plays-back-and
 
 - **6B.1** The lifetime line on `/trips` _(spec 6b)_. **Built 2026-10-04** (ADR-0240 §7).
 - **6B.2** The anniversary card on `/trips` _(spec 6a, in-app)_. **Built 2026-10-04** (ADR-0240 §7).
-- **6B.3** The anniversary push (§8):
+- **6B.3** The anniversary push (§8). **Built 2026-10-04** (ADR-0241 §7's build note):
   - a new kind in `notifications/kinds/`;
   - `notifyMemories` beside `NOTIFY_PREF.TASKS` / `OBLIGATIONS` (a column and its settings toggle);
   - the ledger fire key carries the year.

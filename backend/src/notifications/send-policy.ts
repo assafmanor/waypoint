@@ -111,6 +111,10 @@ export const DAILY_CAP = {
   nudge: 1,
   /** The digest replaces sends, so charging it like a nudge would be backwards. */
   digest: 1,
+  /** The anniversary (ADR-0239 §8). The ledger already holds it to once per trip per year; this
+   *  is the ceiling, and it is not 1 because two trips that began on one day are two pushes
+   *  (ADR-0241 §7), and the nudge budget would have let the first silence the second. */
+  memory: 3,
 } as const;
 export type DailySource = keyof typeof DAILY_CAP;
 
@@ -120,6 +124,7 @@ export type DailySource = keyof typeof DAILY_CAP;
 export function dailySource(kind: string): DailySource {
   const prefix = kind.split('.')[0];
   if (prefix === 'task') return kind.endsWith('.digest') ? 'digest' : 'task';
+  if (prefix === 'memory') return 'memory';
   return 'nudge';
 }
 

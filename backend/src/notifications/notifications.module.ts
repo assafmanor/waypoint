@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { SharingModule } from '../sharing/sharing.module';
 import { NotificationsController } from './notifications.controller';
 import { NotificationsService } from './notifications.service';
 import { DirectDispatcher, NOTIFICATION_DISPATCHER } from './notification-dispatcher';
@@ -14,6 +15,8 @@ import { WebPushSender } from './web-push.sender';
  *  the scheduler starts no timer and nothing can reach anybody. Phase 4 registers the first
  *  kind and every line here stays as it is. */
 @Module({
+  // For `TripRecapService`: the anniversary names what the recap says happened (ADR-0241 §7).
+  imports: [SharingModule],
   controllers: [NotificationsController],
   providers: [
     NotificationsService,

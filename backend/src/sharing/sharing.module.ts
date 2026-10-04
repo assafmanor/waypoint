@@ -39,6 +39,6 @@ import { TripRecapService } from './trip-recap.service';
   ],
   // `SpaModule` needs `previewByCode` for `/s/<code>`'s meta tags, and `RenderBrowserService`
   // to draw that link's per-trip cover on the same Chromium the PDF uses (ADR-0220).
-  exports: [SharingService, RenderBrowserService],
+  exports: [SharingService, RenderBrowserService, TripRecapService],
 })
 export class SharingModule {}

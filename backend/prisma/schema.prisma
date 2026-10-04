@@ -154,6 +154,8 @@ model User {
   // the other is what the itinerary already committed them to. Somebody may well want the
   // flight and not the chores.
   notifyObligations Boolean      @default(true)
+  // The anniversary push (ADR-0239 §8): the one send for joy rather than duty, so its own switch.
+  notifyMemories    Boolean      @default(true)
 
   createdAt DateTime @default(now())
 

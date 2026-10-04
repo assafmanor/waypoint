@@ -70,7 +70,7 @@ async function show(props: Partial<Parameters<typeof NotificationSettings>[0]> =
     render(
       <NotificationSettings
         vapidPublicKey={VAPID}
-        prefs={{ notifyTasks: true, notifyObligations: true }}
+        prefs={{ notifyTasks: true, notifyObligations: true, notifyMemories: true }}
         onPatchPrefs={patch}
         {...props}
       />,
@@ -215,7 +215,7 @@ describe('the preferences card', () => {
       render(
         <NotificationSettings
           vapidPublicKey={VAPID}
-          prefs={{ notifyTasks: true, notifyObligations: true }}
+          prefs={{ notifyTasks: true, notifyObligations: true, notifyMemories: true }}
           onPatchPrefs={patch}
         />,
       );
@@ -234,15 +234,26 @@ describe('the preferences card', () => {
     ).toBe('true');
   });
 
-  it('offers TWO categories, not three', async () => {
-    // Phases A and B. `notifyGroup` arrives only if phase D is ever built — a preference for
-    // a feature that may never come is a promise, not a control (ADR-0198 §6).
+  it('offers a switch per category that sends, and no fourth', async () => {
+    // Phases A and B and the anniversary (ADR-0239 §8). `notifyGroup` arrives only if phase D
+    // is ever built — a preference for a feature that may never come is a promise, not a
+    // control (ADR-0198 §6).
     subscription.value = { endpoint: 'https://push/1' };
     await show();
-    expect(switches()).toHaveLength(3); // the device, tasks, obligations
+    expect(switches()).toHaveLength(4); // the device, tasks, obligations, memories
     expect(
       screen.getByRole('switch', { name: t.shell.account.notifyObligationsLabel }),
     ).toBeTruthy();
+    expect(screen.getByRole('switch', { name: t.shell.account.notifyMemoriesLabel })).toBeTruthy();
+  });
+
+  it('turns the anniversary off without touching tasks', async () => {
+    subscription.value = { endpoint: 'https://push/1' };
+    const { patch } = await show();
+    await act(async () => {
+      screen.getByRole('switch', { name: t.shell.account.notifyMemoriesLabel }).click();
+    });
+    expect(patch).toHaveBeenCalledWith({ notifyMemories: false });
   });
 
   it('patches only the switch that was touched', async () => {
