@@ -206,14 +206,7 @@ export function bookBests(input: {
       case 'busiestDay':
         return {
           lead: `${copy.busiestDay}${NARRATIVE_SEPARATOR}${dayName(pick.date)}`,
-          detail: [copy.places(pick.places), pick.walk && copy.walked(copy.km(ltr(pick.walk)))]
-            .filter(Boolean)
-            .join(NARRATIVE_SEPARATOR),
-        };
-      case 'walkDay':
-        return {
-          lead: `${copy.walkDay}${NARRATIVE_SEPARATOR}${dayName(pick.date)}`,
-          detail: copy.km(ltr(pick.walk)),
+          detail: copy.places(pick.places),
         };
     }
   });

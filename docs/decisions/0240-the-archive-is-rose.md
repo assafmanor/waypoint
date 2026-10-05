@@ -73,13 +73,14 @@ Replaces `PlanHome`'s past branch (Phase 4). Top to bottom, from primitives that
 
 - the first and the last thing the trip did, each with its clock in the event's own zone, in `--amber-deep` mono;
 - the longest stop;
-- the fullest day;
-- the day walked furthest.
+- the fullest day.
 
-The three superlatives are `tripRecap`'s, so the shares will name the same ones. A stop is a place the trip was at, never a leg or a bed. Two departures from the drawing:
+The superlatives are `tripRecap`'s, so the shares will name the same ones. A stop is a place the trip was at, never a leg or a bed. Two departures from the drawing:
 
 - **`הערב האחרון בחוץ` became `הדבר האחרון`.** "Evening out" would need a rule for what an evening is, and the last thing that happened needs none.
-- **A row that repeats another's subject is dropped.** The longest stop is often also the first thing. When the fullest day is also the one walked furthest, the walk joins that day's row instead of printing the same title twice.
+- **A row that repeats another's subject is dropped.** The longest stop is often also the first thing.
+
+The day walked furthest was a fifth row until 2026-10-05; it went with the walking figure (ADR-0239 §9).
 
 A place row's badge carries the teal pin and opens the Map. A day row carries none. Every row opens its day.
 
