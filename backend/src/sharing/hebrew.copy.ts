@@ -238,7 +238,6 @@ export const PDF_COPY = {
       air: 'ק״מ בטיסה',
       shift: 'שעות הפרש',
       ground: 'ק״מ בדרכים',
-      foot: 'ק״מ ברגל',
     } satisfies Record<MemoryFigureKey, string>,
   },
   /**
@@ -260,10 +259,7 @@ export const PDF_COPY = {
       last: 'הדבר האחרון',
       longestStop: 'העצירה הארוכה',
       busiestDay: 'היום המלא',
-      walkDay: 'הכי הרבה ברגל',
       places: (n: number) => `${n} מקומות`,
-      walked: (distance: string) => `${distance} ברגל`,
-      km: (value: string) => `${value} ק״מ`,
     },
     nextTime: {
       title: 'בפעם הבאה',
