@@ -57,7 +57,13 @@ function fakePrisma() {
         run: () => where.key.in.forEach((key) => rows.delete(key)),
       }),
       createMany: ({ data }: { data: StoredRow[] }) => ({
-        run: () => data.forEach((row) => rows.set(row.key, row)),
+        run: () => {
+          // `key` is the primary key, so Postgres refuses a batch that repeats one.
+          if (new Set(data.map((row) => row.key)).size !== data.length) {
+            throw new Error('Unique constraint failed on the fields: (`key`)');
+          }
+          data.forEach((row) => rows.set(row.key, row));
+        },
       }),
     },
     $transaction: (ops: { run: () => void }[]) => {
@@ -145,6 +151,22 @@ describe('RoutingService', () => {
     expect(warm.retryAfterSeconds).toBeUndefined();
     // The criterion, stated as a number rather than as a hope.
     expect(matrix.mock.calls.length).toBe(callsAfterWarm);
+  });
+
+  it('warms a day that returns to where it started — the stay at both ends', async () => {
+    // The matrix repeats every pair through the repeated point, so its cells carry the same key
+    // twice; writing both in one `createMany` failed the whole store and the day never warmed.
+    const { prisma } = fakePrisma();
+    const { provider } = fakeProvider();
+    const service = build(TOKYO_TRIP, provider, prisma);
+    const stops = [ASAKUSA, TSUKIJI, SENSO, ASAKUSA];
+
+    await service.batch('trip', { stops, modes: ['walking'] });
+    await service.settled();
+
+    const warm = await service.batch('trip', { stops, modes: ['walking'] });
+    expect(warm.legs.every((leg) => leg.estimates.length === 1)).toBe(true);
+    expect(warm.retryAfterSeconds).toBeUndefined();
   });
 
   it('answers a whole walkable day in ONE upstream call per mode', async () => {

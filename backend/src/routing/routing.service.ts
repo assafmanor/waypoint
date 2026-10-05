@@ -478,10 +478,14 @@ export class RoutingService {
    */
   private async store(rows: readonly RouteLegWrite[]): Promise<void> {
     if (rows.length === 0) return;
-    const keys = rows.map((row) => row.key);
+    // **One row per key.** A matrix over a day that revisits a point (the stay at both ends)
+    // answers every pair through it twice, and a repeated primary key fails the whole
+    // `createMany`, so nothing was ever stored and the day stayed "computing" for good.
+    const unique = [...new Map(rows.map((row) => [row.key, row])).values()];
+    const keys = unique.map((row) => row.key);
     await this.prisma.$transaction([
       this.prisma.routeLeg.deleteMany({ where: { key: { in: keys } } }),
-      this.prisma.routeLeg.createMany({ data: [...rows] }),
+      this.prisma.routeLeg.createMany({ data: unique }),
     ]);
   }
 }
