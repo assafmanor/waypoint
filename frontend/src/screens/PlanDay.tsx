@@ -27,7 +27,6 @@ import {
 import {
   EVENT_KIND,
   EVENT_STATUS,
-  isExactEdge,
   isRoutableMode,
   TRAVEL_FIT,
   type Booking,
@@ -112,6 +111,7 @@ import {
 import {
   dayAirMeters,
   journeyChainFor,
+  legArrival,
   legDepartAfterMs,
   useDayTravelReads,
   useLegModeControl,
@@ -126,7 +126,6 @@ import {
   dayTravelTotal,
   narrowGapForTravel,
   spannedIntervals,
-  windowClosesMs,
   type DayJourney,
 } from '../lib/day-joins';
 import { dayShortfallPhrase, infeasibleLegsPhrase } from '../lib/duration';
@@ -500,6 +499,7 @@ export function PlanDay() {
         to: bookends.sleeps,
         ...(run.tail.spans.length ? { spans: run.tail.spans } : {}),
         ...(isStayRow(run.tail.from) ? { fromIsStay: true } : {}),
+        ...(bookends.sleeps.date < activeDate ? { toIsHeldStay: true } : {}),
       });
     }
     // …and the placeless runs no leg reaches at all (ADR-0232 R5), counted here where `run` is.
@@ -569,12 +569,9 @@ export function PlanDay() {
       // (§AF3), otherwise the origin's end — and two of them wrote it out while the board could
       // not apply it at all. `legDepartAfterMs` carries the reasoning; nothing is re-decided here.
       departAfterMs: legDepartAfterMs(leg),
-      arriveByMs: Date.parse(to.startsAt ?? ''),
-      // Same gate as Trip mode's, and it is here rather than only there because
-      // `frontend/CLAUDE.md` names "changing a day-surface derivation in `DayView` only" as
-      // having cost a release twice (ADR-0206 §AI1).
-      flexibleArrival: !isExactEdge(to, 'start'),
-      windowClosesMs: windowClosesMs(to),
+      // Same gate as Trip mode's, off one function, because `frontend/CLAUDE.md` names "changing
+      // a day-surface derivation in `DayView` only" as having cost a release twice (ADR-0206 §AI1).
+      ...legArrival(leg),
       travelSeconds: estimate?.durationSeconds ?? null,
       // Both of these are Trip mode's, for the reason the comment above names twice: a declared leg
       // keeps a distance it has no estimate for (ADR-0206 §AA4), and it is a journey with no
