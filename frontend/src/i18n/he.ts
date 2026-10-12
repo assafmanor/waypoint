@@ -2762,9 +2762,7 @@ export const t = {
         last: 'הדבר האחרון',
         longestStop: 'העצירה הארוכה',
         busiestDay: 'היום המלא',
-        walkDay: 'הכי הרבה ברגל',
         places: (n: number) => `${n} מקומות`,
-        walked: (distance: string) => `${distance} ברגל`,
       },
       unresolved: (n: number) => `${n} לא סומנו`,
       // **Coming home** (ADR-0241 §3): the beat the first open of a finished trip plays.
@@ -2825,7 +2823,6 @@ export const t = {
         shift: 'שעות הפרש',
         // Not `ברחובות`, the mockup's word: the figure carries trains and drives too.
         ground: 'ק״מ בדרכים',
-        foot: 'ק״מ ברגל',
       },
     },
   },

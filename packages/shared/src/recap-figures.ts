@@ -17,7 +17,7 @@ export const RECAP_ESTIMATE_MARK = '~';
 
 const MINUTES_PER_HOUR = 60;
 
-export type MemoryFigureKey = 'places' | 'air' | 'shift' | 'ground' | 'foot';
+export type MemoryFigureKey = 'places' | 'air' | 'shift' | 'ground';
 
 export interface MemoryFigureValue {
   key: MemoryFigureKey;
@@ -62,6 +62,9 @@ function figureValue(
  * Places first, because a trip is where you went. Then the air, the clock, and the ground.
  * A zero is left out rather than printed: `0 שעות הפרש` is true of a trip that never left its
  * zone, and it is not a memory of anything.
+ *
+ * **There is no walking figure** (ADR-0239 §9, 2026-10-05). The legs between stops miss every
+ * hike and every walk around a site, so on a trip that hiked daily it printed `~1.7`.
  */
 export function memoryFigureValues(recap: TripRecap): MemoryFigureValue[] {
   const { figures } = recap;
@@ -75,7 +78,6 @@ export function memoryFigureValues(recap: TripRecap): MemoryFigureValue[] {
     figureValue('air', nonZero(figures.airMeters), recapKm),
     figureValue('shift', nonZero(figures.zoneShiftMinutes), recapHours),
     figureValue('ground', nonZero(figures.groundMeters), recapKm),
-    figureValue('foot', nonZero(figures.footMeters), recapKm),
   ]
     .filter((figure): figure is MemoryFigureValue => figure !== undefined)
     .slice(0, MEMORY_FIGURES_MAX);
@@ -83,18 +85,15 @@ export function memoryFigureValues(recap: TripRecap): MemoryFigureValue[] {
 
 /**
  * **Which rows `ראשונים וטובים` names** (ADR-0240 §4, moved here for the trip book in 6A.2), so
- * the Home and the book pick the same five. The first and last thing the trip did, the longest
- * stop, the fullest day and the day walked furthest. The three superlatives are `tripRecap`'s own;
- * first and last are the earliest and latest stop that happened. A stop is a place the trip was
- * AT: not a leg (its ends are airports) and not a bed. A row that would repeat another's subject
- * is dropped, and one day that is both the fullest and the one walked furthest is one row.
+ * the Home and the book pick the same ones. The first and last thing the trip did, the longest
+ * stop and the fullest day. The two superlatives are `tripRecap`'s own; first and last are the
+ * earliest and latest stop that happened. A stop is a place the trip was AT: not a leg (its ends
+ * are airports) and not a bed. A row that would repeat another's subject is dropped.
  */
 export type MemoryBestPick =
   | { key: 'first' | 'last'; event: TripEvent }
   | { key: 'longestStop'; event: TripEvent; minutes: number }
-  /** `walk`: the day's walk, when the fullest day is also the one walked furthest. */
-  | { key: 'busiestDay'; date: string; places: number; walk?: string }
-  | { key: 'walkDay'; date: string; walk: string };
+  | { key: 'busiestDay'; date: string; places: number };
 
 export function memoryBestPicks(input: {
   recap: TripRecap;
@@ -123,7 +122,7 @@ export function memoryBestPicks(input: {
     picks.push({ key: 'first', event: first });
     seen.add(first.id);
   }
-  const { longestStop, busiestDay, longestWalkDay } = recap.superlatives;
+  const { longestStop, busiestDay } = recap.superlatives;
   if (longestStop.state === 'present' && !seen.has(longestStop.value.eventId)) {
     const event = events.find((e) => e.id === longestStop.value.eventId);
     if (event) {
@@ -131,24 +130,8 @@ export function memoryBestPicks(input: {
       seen.add(event.id);
     }
   }
-  const walk =
-    longestWalkDay.state === 'present'
-      ? `${longestWalkDay.estimate ? RECAP_ESTIMATE_MARK : ''}${recapKm(longestWalkDay.value.meters)}`
-      : undefined;
-  const sameDay =
-    busiestDay.state === 'present' &&
-    longestWalkDay.state === 'present' &&
-    busiestDay.value.date === longestWalkDay.value.date;
   if (busiestDay.state === 'present') {
-    picks.push({
-      key: 'busiestDay',
-      date: busiestDay.value.date,
-      places: busiestDay.value.places,
-      ...(sameDay && walk ? { walk } : {}),
-    });
-  }
-  if (longestWalkDay.state === 'present' && !sameDay && walk) {
-    picks.push({ key: 'walkDay', date: longestWalkDay.value.date, walk });
+    picks.push({ key: 'busiestDay', date: busiestDay.value.date, places: busiestDay.value.places });
   }
   if (last && !seen.has(last.id)) picks.push({ key: 'last', event: last });
   return picks;

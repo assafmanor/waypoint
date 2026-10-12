@@ -14,7 +14,6 @@ import {
   EVENT_SOURCE,
   EVENT_STATUS,
   isEdgeSettled,
-  isExactEdge,
   isRoutableMode,
   type Booking,
   type EventEdge,
@@ -158,7 +157,6 @@ import {
   holeDepartsMs,
   narrowGapForTravel,
   spannedIntervals,
-  windowClosesMs,
   type DayBlock,
   type DayJoin,
   type DayJourney,
@@ -166,6 +164,7 @@ import {
 import {
   dayAirMeters,
   journeyChainFor,
+  legArrival,
   legDepartAfterMs,
   useDayTravelReads,
   useLegModeControl,
@@ -1007,8 +1006,8 @@ export function DayView() {
     // **This carried `bookend: true` and the line above said why, and the why was right about a
     // hazard the flag never addressed** (ADR-0206 §AS1). _"A stay has no per-day arrival instant,
     // so reading its `startsAt` as this hole's deadline would measure a window from its check-in
-    // day"_ — true, and what handles it is `flexibleArrival`, which asks `isExactEdge(to, 'start')`
-    // and gets `not-before` from any stay. The flag's only reader asks about the ORIGIN, so setting
+    // day"_ — true, and what handles it is `legArrival`: `not-before` from any stay, and no
+    // deadline at all into a bed already held (`toIsHeldStay`). The flag's only reader asks about the ORIGIN, so setting
     // it here suppressed this leg's `departAfterMs` instead — and with no departure instant there
     // was no arrival either, leaving the row silent at every hour of every day while Plan mode,
     // which asked the origin question directly, printed `הגעה ~21:26` all along.
@@ -1024,6 +1023,7 @@ export function DayView() {
             to: bookends.sleeps,
             ...(run.tail.spans.length ? { spans: run.tail.spans } : {}),
             ...(isStayRow(run.tail.from) ? { fromIsStay: true } : {}),
+            ...(bookends.sleeps.date < activeDate ? { toIsHeldStay: true } : {}),
           }
         : undefined;
     const legs = [arrive, wake, ...between, home].filter((l): l is DayLeg => !!l);
@@ -1171,14 +1171,11 @@ export function DayView() {
         // board came to skip §AJ2's clamp entirely and mark a traveller late for a departure this
         // surface was correctly printing as the origin's own end.
         departAfterMs: legDepartAfterMs(leg),
-        arriveByMs: Date.parse(leg.to.startsAt ?? ''),
         // **A destination with no DEADLINE licenses no leave-by** (ADR-0206 §AI1). A check-in's
         // `17:00` is the hour the door opens, and counting back from it told you to leave in time
-        // to arrive the instant it does — then marked you late against it. `isExactEdge` is the
-        // predicate (`@waypoint/shared`), asked here because `dayJourney` holds instants and
-        // cannot see an event.
-        flexibleArrival: !isExactEdge(leg.to, 'start'),
-        windowClosesMs: windowClosesMs(leg.to),
+        // to arrive the instant it does — then marked you late against it. `legArrival` asks it
+        // of the leg because `dayJourney` holds instants and cannot see an event.
+        ...legArrival(leg),
         travelSeconds: estimate?.durationSeconds ?? null,
         // **The distance is the reads' own, not the estimate's** (ADR-0206 §AA4): a declared leg
         // has no estimate to take one from and still keeps a distance, and `distanceFor` is the one

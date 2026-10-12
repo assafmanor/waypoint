@@ -57,7 +57,6 @@ const RECAP: TripRecap = {
     regions: RECAP_ABSENT,
     route: RECAP_ABSENT,
     groundMeters: present(1_240_000),
-    footMeters: RECAP_ABSENT,
     airMeters: present(9_203_024),
     airMinutes: RECAP_ABSENT,
     zonesCrossed: RECAP_ABSENT,
@@ -65,7 +64,6 @@ const RECAP: TripRecap = {
   },
   superlatives: {
     busiestDay: { state: 'present', value: { date: '2026-08-31', places: 3 } },
-    longestWalkDay: RECAP_ABSENT,
     longestFlight: RECAP_ABSENT,
     longestStop: { state: 'present', value: { eventId: 'e2', minutes: 150 } },
   },

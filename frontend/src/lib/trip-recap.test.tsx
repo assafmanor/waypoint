@@ -49,14 +49,14 @@ describe('useTripRecap: the client adapter (ADR-0239 §9)', () => {
     expect(result.current).toBeUndefined();
     await waitFor(() => expect(result.current).toBeDefined());
     expect(readCachedTravelEstimates.mock.calls[0]![0]).toContain(key);
-    expect(result.current!.figures.footMeters).toEqual({ state: 'present', value: 230 });
+    expect(result.current!.figures.groundMeters).toEqual({ state: 'present', value: 230 });
   });
 
   it('a device with nothing cached still recaps, as an estimate', async () => {
     readCachedTravelEstimates.mockRejectedValue(new Error('no idb'));
     const { result } = renderHook(() => useTripRecap());
     await waitFor(() => expect(result.current).toBeDefined());
-    expect(result.current!.figures.footMeters).toEqual({
+    expect(result.current!.figures.groundMeters).toEqual({
       state: 'present',
       value: haversineMeters(A, B),
       estimate: true,

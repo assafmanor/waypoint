@@ -38,7 +38,6 @@ function recap(figures: Partial<TripRecap['figures']>): TripRecap {
       regions: RECAP_ABSENT,
       route: RECAP_ABSENT,
       groundMeters: RECAP_ABSENT,
-      footMeters: RECAP_ABSENT,
       airMeters: RECAP_ABSENT,
       airMinutes: RECAP_ABSENT,
       zonesCrossed: RECAP_ABSENT,
@@ -47,7 +46,6 @@ function recap(figures: Partial<TripRecap['figures']>): TripRecap {
     },
     superlatives: {
       busiestDay: RECAP_ABSENT,
-      longestWalkDay: RECAP_ABSENT,
       longestFlight: RECAP_ABSENT,
       longestStop: RECAP_ABSENT,
     },
@@ -214,20 +212,6 @@ describe('memoryBests: firsts and bests (ADR-0240 §4)', () => {
     expect(day.placeId).toBeUndefined();
     expect(day.title).toContain('Asakusa');
     expect(day.detail).toBe(t.planHome.past.bests.places(5));
-  });
-
-  it('the fullest day that was also the walked-furthest day is one row, not two', () => {
-    const rows = run([ev('a', '09:00')], {
-      busiestDay: { state: 'present', value: { date: '2026-05-02', places: 5 } },
-      longestWalkDay: {
-        state: 'present',
-        value: { date: '2026-05-02', meters: 600 },
-        estimate: true,
-      },
-    });
-    expect(rows.filter((row) => row.date === '2026-05-02' && !row.placeId)).toHaveLength(1);
-    expect(rows.find((row) => row.key === 'busiestDay')!.detail).toContain('0.6');
-    expect(rows.some((row) => row.key === 'walkDay')).toBe(false);
   });
 });
 

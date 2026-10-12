@@ -109,7 +109,7 @@ export function memoryDays(
 
 /** One row of `ראשונים וטובים`, composed. */
 export interface MemoryBest {
-  key: 'first' | 'longestStop' | 'busiestDay' | 'walkDay' | 'last';
+  key: 'first' | 'longestStop' | 'busiestDay' | 'last';
   icon: string;
   title: string;
   /** What makes this row a best (`הדבר הראשון`), then the facts behind it. */
@@ -127,7 +127,6 @@ export interface MemoryBest {
 
 /** The glyph a day row carries in place of a place's. */
 const DAY_GLYPH = '📅';
-const WALK_GLYPH = '🚶';
 
 /**
  * **Firsts and bests** (ADR-0240 §4, epic 4.3): the first and last thing the trip did, the
@@ -184,18 +183,7 @@ export function memoryBests(input: {
           icon: DAY_GLYPH,
           title: dayTitle(pick.date),
           label: copy.busiestDay,
-          detail: [copy.places(pick.places), pick.walk && copy.walked(t.map.near.km(pick.walk))]
-            .filter(Boolean)
-            .join(` ${DOT_SEPARATOR} `),
-          date: pick.date,
-        };
-      case 'walkDay':
-        return {
-          key: pick.key,
-          icon: WALK_GLYPH,
-          title: dayTitle(pick.date),
-          label: copy.walkDay,
-          detail: t.map.near.km(pick.walk),
+          detail: copy.places(pick.places),
           date: pick.date,
         };
     }

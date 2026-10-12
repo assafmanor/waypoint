@@ -195,7 +195,7 @@ describe('tripRecap figures', () => {
     expect(tripRecap(input({ events })).figures.regions).toEqual(RECAP_ABSENT);
   });
 
-  describe('ground and foot distance', () => {
+  describe('ground distance', () => {
     const walkDay = [
       ev('1', { placeId: 'c', startsAt: at(DAY1, '01:00') }),
       ev('2', { placeId: 'h', startsAt: at(DAY1, '02:00'), category: 'lodging' }),
@@ -204,34 +204,22 @@ describe('tripRecap figures', () => {
     it('is absent with fewer than two placed stops', () => {
       const recap = tripRecap(input({ events: [ev('1', { placeId: 'a' })] }));
       expect(recap.figures.groundMeters).toEqual(RECAP_ABSENT);
-      expect(recap.figures.footMeters).toEqual(RECAP_ABSENT);
     });
 
     it('reads the cached leg exactly, with no estimate', () => {
       const key = routeLegKey(C, HOTEL, 'walking');
       const legs = new Map([[key, { distanceMeters: 240, durationSeconds: 180 }]]);
       const { figures } = tripRecap(input({ events: walkDay, legs }));
-      expect(figures.footMeters).toEqual({ state: 'present', value: 240 });
       expect(figures.groundMeters).toEqual({ state: 'present', value: 240 });
     });
 
     it('falls back to the great circle and marks it an estimate', () => {
       const { figures } = tripRecap(input({ events: walkDay }));
-      expect(figures.footMeters).toEqual({
+      expect(figures.groundMeters).toEqual({
         state: 'present',
         value: haversineMeters(C, HOTEL),
         estimate: true,
       });
-    });
-
-    it('a long leg defaults to driving: ground, not foot', () => {
-      const events = [
-        ev('1', { placeId: 'a', startsAt: at(DAY1, '01:00') }),
-        ev('2', { placeId: 'c', startsAt: at(DAY1, '03:00') }),
-      ];
-      const { figures } = tripRecap(input({ events }));
-      expect(value(figures.groundMeters)).toBeCloseTo(haversineMeters(A, C));
-      expect(figures.footMeters).toEqual(RECAP_ABSENT);
     });
 
     it('a per-leg override outranks the default', () => {
@@ -239,15 +227,22 @@ describe('tripRecap figures', () => {
         ev('1', { placeId: 'a', startsAt: at(DAY1, '01:00') }),
         ev('2', { placeId: 'c', startsAt: at(DAY1, '03:00') }),
       ];
+      const legs = new Map([
+        [routeLegKey(A, C, 'walking'), { distanceMeters: 5_000, durationSeconds: 3_600 }],
+      ]);
+      expect(tripRecap(input({ events, legs })).figures.groundMeters).toMatchObject({
+        estimate: true,
+      });
       const overrides = [{ fromPlaceId: 'a', toPlaceId: 'c', mode: 'walking' as const }];
-      expect(value(tripRecap(input({ events, overrides })).figures.footMeters)).toBeCloseTo(
-        haversineMeters(A, C),
-      );
+      expect(tripRecap(input({ events, legs, overrides })).figures.groundMeters).toEqual({
+        state: 'present',
+        value: 5_000,
+      });
     });
 
     it('carries the unresolved count of mapped rows', () => {
       const events = [...walkDay, ev('3', { placeId: 'b', status: 'planned', date: DAY2 })];
-      expect(tripRecap(input({ events })).figures.footMeters).toMatchObject({ unresolved: 1 });
+      expect(tripRecap(input({ events })).figures.groundMeters).toMatchObject({ unresolved: 1 });
     });
 
     it('does not walk the two ends of a flight, or a skipped stop between two done ones', () => {
@@ -466,7 +461,6 @@ describe('tripRecap superlatives', () => {
     const { superlatives } = tripRecap(input({ events }));
     expect(value(superlatives.busiestDay)).toEqual({ date: DAY1, places: 2 });
     expect(value(superlatives.longestStop)).toEqual({ eventId: '1', minutes: 120 });
-    expect(superlatives.longestWalkDay).toEqual(RECAP_ABSENT);
     expect(
       tripRecap(input({ events: [ev('x', { placeId: 'a' })] })).superlatives.busiestDay,
     ).toEqual(RECAP_ABSENT);

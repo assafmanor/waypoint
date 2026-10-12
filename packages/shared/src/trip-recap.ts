@@ -116,7 +116,6 @@ export interface TripRecap {
      *  folded. Absent below two entries, so a one-city trip draws no strip (ADR-0240 §4). */
     route: RecapFigure<string[]>;
     groundMeters: RecapFigure;
-    footMeters: RecapFigure;
     airMeters: RecapFigure;
     airMinutes: RecapFigure;
     zonesCrossed: RecapFigure;
@@ -126,7 +125,6 @@ export interface TripRecap {
   };
   superlatives: {
     busiestDay: RecapFigure<{ date: string; places: number }>;
-    longestWalkDay: RecapFigure<{ date: string; meters: number }>;
     longestFlight: RecapFigure<{ bookingId: string; meters: number }>;
     longestStop: RecapFigure<{ eventId: string; minutes: number }>;
   };
@@ -180,7 +178,6 @@ interface Stop {
 }
 
 interface GroundPair {
-  date: string;
   fromPlaceId: string;
   toPlaceId: string;
   from: LatLng;
@@ -280,7 +277,7 @@ function groundPairs(ctx: Context): GroundPair[] {
     });
   }
   const pairs: GroundPair[] = [];
-  for (const [date, unordered] of byDate) {
+  for (const unordered of byDate.values()) {
     // Stable, so a transport row's two ends and same-clock rows keep schedule order.
     const stops = [...unordered].sort(
       (a, b) =>
@@ -298,7 +295,7 @@ function groundPairs(ctx: Context): GroundPair[] {
       const to = coordOf(ctx.input.places, b.placeId)!;
       if (haversineMeters(from, to) < ROUTE_MIN_CROW_M) continue;
       if (exceedsTravelCeiling(TRAVEL_MODE.DRIVING, from, to)) continue;
-      pairs.push({ date, fromPlaceId: a.placeId!, toPlaceId: b.placeId!, from, to });
+      pairs.push({ fromPlaceId: a.placeId!, toPlaceId: b.placeId!, from, to });
     }
   }
   return pairs;
@@ -417,13 +414,10 @@ export function tripRecap(input: TripRecapInput): TripRecap {
     ),
   );
 
-  // ── Ground and foot, per leg ──
+  // ── Ground, per leg ──
   const tripMode = derivedTravelMode(input.bookings);
   let ground: number | null = null;
-  let foot: number | null = null;
   let groundEstimate = false;
-  let footEstimate = false;
-  const footByDate = new Map<string, { meters: number; estimate: boolean }>();
   for (const pair of groundPairs(ctx)) {
     const mode = legTravelMode(input.overrides, pair.fromPlaceId, pair.toPlaceId, () =>
       defaultLegTravelMode(
@@ -439,15 +433,6 @@ export function tripRecap(input: TripRecapInput): TripRecap {
     const estimate = cached === undefined;
     ground = (ground ?? 0) + meters;
     groundEstimate ||= estimate;
-    if (mode === TRAVEL_MODE.WALKING) {
-      foot = (foot ?? 0) + meters;
-      footEstimate ||= estimate;
-      const day = footByDate.get(pair.date) ?? { meters: 0, estimate: false };
-      footByDate.set(pair.date, {
-        meters: day.meters + meters,
-        estimate: day.estimate || estimate,
-      });
-    }
   }
 
   // ── Carried: flights in the air, everything else in motion on the ground ──
@@ -506,10 +491,6 @@ export function tripRecap(input: TripRecapInput): TripRecap {
     if (set.size >= 2 && (!busiestDay || set.size > busiestDay.places))
       busiestDay = { date, places: set.size };
   }
-  let longestWalkDay: { date: string; meters: number; estimate: boolean } | undefined;
-  for (const [date, day] of footByDate) {
-    if (!longestWalkDay || day.meters > longestWalkDay.meters) longestWalkDay = { date, ...day };
-  }
   let longestStop: { eventId: string; minutes: number } | undefined;
   for (const event of ctx.happened) {
     const placeId = stopPlaceOf(ctx, event);
@@ -564,8 +545,6 @@ export function tripRecap(input: TripRecapInput): TripRecap {
       route: route.length >= 2 ? present(route, unresolvedOpts) : RECAP_ABSENT,
       groundMeters:
         ground === null ? RECAP_ABSENT : present(ground, { estimate: groundEstimate, ...mapped }),
-      footMeters:
-        foot === null ? RECAP_ABSENT : present(foot, { estimate: footEstimate, ...mapped }),
       airMeters: air === null ? RECAP_ABSENT : present(air),
       airMinutes: airMinutes === null ? RECAP_ABSENT : present(airMinutes),
       zonesCrossed: zoneKnown ? present(crossings.length) : RECAP_ABSENT,
@@ -573,12 +552,6 @@ export function tripRecap(input: TripRecapInput): TripRecap {
     },
     superlatives: {
       busiestDay: busiestDay ? present(busiestDay) : RECAP_ABSENT,
-      longestWalkDay: longestWalkDay
-        ? present(
-            { date: longestWalkDay.date, meters: longestWalkDay.meters },
-            { estimate: longestWalkDay.estimate },
-          )
-        : RECAP_ABSENT,
       longestFlight: longestFlight ? present(longestFlight) : RECAP_ABSENT,
       longestStop: longestStop ? present(longestStop) : RECAP_ABSENT,
     },

@@ -2360,13 +2360,14 @@ treats wiring it as the work. It is the wrong source, and the reason is not styl
 stop times, and every rule about whether a leg _can_ be infeasible has since accumulated in
 `dayJourney` (`lib/day-joins.ts`) and nowhere else.
 
-| the gate                               | where it was decided | what raw stops would do                          |
-| -------------------------------------- | -------------------- | ------------------------------------------------ |
-| A flexible arrival has no **deadline** | §AI1 / §AJ1          | measure to a window's **opening**, or to nothing |
-| A declared תחב״צ leg has no estimate   | §AA4                 | read the suppressed walking number               |
-| A leg out of a bed has no window       | §AF3                 | measure from a check-out days away               |
-| A sub-minute hop is not a journey      | 2026-08-26           | draw a verdict on a ⁦24⁩-second walk             |
-| A hole behind you is a **record**      | §AF1 / the PAST arm  | warn about a day nobody can still change         |
+| the gate                               | where it was decided      | what raw stops would do                                                                 |
+| -------------------------------------- | ------------------------- | --------------------------------------------------------------------------------------- |
+| A flexible arrival has no **deadline** | §AI1 / §AJ1               | measure to a window's **opening**, or to nothing                                        |
+| A declared תחב״צ leg has no estimate   | §AA4                      | read the suppressed walking number                                                      |
+| A leg out of a bed has no window       | §AF3                      | measure from a check-out days away                                                      |
+| A bed already held has no deadline     | 2026-10-05 (`legArrival`) | measure tonight's walk home to a check-in window that shut days ago (`חסרות 66:16 שע׳`) |
+| A sub-minute hop is not a journey      | 2026-08-26                | draw a verdict on a ⁦24⁩-second walk                                                    |
+| A hole behind you is a **record**      | §AF1 / the PAST arm       | warn about a day nobody can still change                                                |
 
 A verdict rebuilt from stops therefore re-commits **§AJ1's own bug one scope up** — it calls a day
 impossible over the single leg nobody can be late for, which is the exact field report §AJ1 exists

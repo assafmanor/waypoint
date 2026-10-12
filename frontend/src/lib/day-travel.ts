@@ -23,6 +23,7 @@ import {
   haversineMeters,
   exceedsTravelCeiling,
   isJourney,
+  isExactEdge,
   isRoutableMode,
   legTravelMode,
   spendsSpanInMotion,
@@ -38,7 +39,7 @@ import {
 } from '@waypoint/shared';
 import { eventPlaceId } from './places';
 import { useDayTravel } from './travel';
-import type { JourneyChainContext } from './day-joins';
+import { windowClosesMs, type dayJourney, type JourneyChainContext } from './day-joins';
 
 /** **A leg, as the day's rows name it** — the two rows either side of one hole. */
 export interface DayLeg {
@@ -58,6 +59,10 @@ export interface DayLeg {
    *  it the arrival — silent on Trip mode at every hour of every day (§AS1). The name now states
    *  the fact it encodes, which is the one thing a writer cannot get wrong. */
   fromIsStay?: boolean;
+  /** **The DESTINATION is a bed you already slept in last night** — a middle night of a stay.
+   *  Its `startsAt` is the check-in days ago, so it is no deadline for tonight's walk back
+   *  (`legArrival`); reading it as one put `חסרות 66:16 שע׳` on a Rome day (owner, 2026-10-05). */
+  toIsHeldStay?: boolean;
   /** **Which END of a span this leg leaves from** (2026-08-26) — set only where the origin is a
    *  span EDGE rather than a whole row, which today means the overnight run above the bed: you
    *  collected the car at ⁦00:00⁩ and drove to the hotel.
@@ -97,6 +102,24 @@ export function legDepartAfterMs(leg: DayLeg): number | undefined {
   if (leg.fromIsStay) return undefined;
   const at = Date.parse(leg.from.endsAt ?? leg.from.startsAt ?? '');
   return Number.isFinite(at) ? at : undefined;
+}
+
+/**
+ * **What this leg has to arrive by** — `dayJourney`'s three arrival inputs, read off the leg.
+ *
+ * A bed you already hold has no deadline: you may walk back at any hour, so it reads as an open
+ * floor and the leg gets an arrival and no verdict.
+ */
+export function legArrival(
+  leg: DayLeg,
+): Pick<Parameters<typeof dayJourney>[0], 'arriveByMs' | 'flexibleArrival' | 'windowClosesMs'> {
+  const arriveByMs = Date.parse(leg.to.startsAt ?? '');
+  if (leg.toIsHeldStay) return { arriveByMs, flexibleArrival: true };
+  return {
+    arriveByMs,
+    flexibleArrival: !isExactEdge(leg.to, 'start'),
+    windowClosesMs: windowClosesMs(leg.to),
+  };
 }
 
 export interface DayTravelReads {
