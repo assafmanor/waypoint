@@ -27,12 +27,15 @@
 // order — every layout effect in a commit runs before any passive one. Being called early
 // is still what keeps it first among layout effects, and calling it late would erase those
 // two landings — the same trap `DayView`'s own `aimedAtCard` comment documents one layer in.
-import { useLayoutEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { addDays } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
 import { useDragState } from '../state/drag-state';
 import { useSelectDay } from '../state/map-scope-state';
 import { useIsDayPreview } from '../state/day-preview';
+import { usePlaceLabels } from '../state/place-labels';
+import { tripDayShotUrls } from './day-photo';
+import { warmImages } from './image-warm';
 import { scrollerFor } from './scrollable';
 import { useSwipePager, type SwipeStep } from './useSwipePager';
 
@@ -51,7 +54,8 @@ export interface DaySurface<T extends HTMLElement> {
 }
 
 export function useDaySurface<T extends HTMLElement>(): DaySurface<T> {
-  const { trip, activeDate } = useTrip();
+  const { trip, activeDate, events, bookings, places, enrichments } = useTrip();
+  const placeLabels = usePlaceLabels();
   const selectDay = useSelectDay();
   // A hold-drag and a page step are both pointer gestures over the same rows. The drag owns
   // the pointer once it has it, and its ghost is `position: fixed` — so the pager stands
@@ -107,6 +111,18 @@ export function useDaySurface<T extends HTMLElement>(): DaySurface<T> {
     const scroller = scrollerFor(el, 'block');
     if (scroller) scroller.scrollTop = 0;
   }, [activeDate, ref, preview]);
+
+  // **Every day's photograph, held before its day is asked for**, so a page turn, a pill or a
+  // peek paints its head picture in the same frame as the day (`lib/image-warm.ts`). Here because
+  // both day surfaces call this hook; the peeks skip it, the host already did it for them.
+  const shotUrls = useMemo(
+    () =>
+      preview ? null : tripDayShotUrls(trip, events, bookings, places, placeLabels, enrichments),
+    [preview, trip, events, bookings, places, placeLabels, enrichments],
+  );
+  useEffect(() => {
+    if (shotUrls) warmImages(shotUrls);
+  }, [shotUrls]);
 
   return { ref, live, peek: { prev: neighbour(-1), next: neighbour(1) }, hold, turn };
 }

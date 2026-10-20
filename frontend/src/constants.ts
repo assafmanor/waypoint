@@ -22,6 +22,10 @@ export const MS_PER_DAY = 86_400_000;
 export const MS_PER_SECOND = 1000;
 export const MS_PER_MINUTE = 60_000;
 
+/** **How many pictures `lib/image-warm.ts` holds decoded.** Every day of a long trip, with room
+ *  to spare: a delivered photo is ~840px wide, so this bounds the held set to tens of MB. */
+export const WARM_IMAGE_LIMIT = 32;
+
 /**
  * **How long a landing stays under watch** (`lib/land-at-top.ts`, 2026-08-20).
  *
