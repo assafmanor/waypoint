@@ -76,8 +76,17 @@ export function PhotoBand({
   interactive?: boolean;
   className?: string;
 }) {
+  // **Keyed on the URL, so a new picture is a new element.** Swapping `src` on a kept `<img>`
+  // leaves the browser painting the OLD picture until the new one loads — under a caption that
+  // already names the new stop, so swiping days flashed each previous day's photograph first.
   const img = (
-    <img src={shot.url} alt={shot.of} loading={shot.eager ? 'eager' : 'lazy'} decoding="async" />
+    <img
+      key={shot.url}
+      src={shot.url}
+      alt={shot.of}
+      loading={shot.eager ? 'eager' : 'lazy'}
+      decoding="async"
+    />
   );
   return (
     <figure
