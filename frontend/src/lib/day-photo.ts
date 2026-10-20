@@ -10,8 +10,10 @@
 // the reader's does. That absence is the design: nine days with photos and three without reads
 // as honest; three days showing the wrong mountain destroys trust in the other nine.
 import {
+  addDays,
   dayPhoto,
   eventStopPlaceId,
+  EVENT_STATUS,
   type Booking,
   type DeliveredImageValue,
   type DayPhotoPlace,
@@ -21,6 +23,8 @@ import {
   type TripEvent,
 } from '@waypoint/shared';
 import { apiAssetUrl } from './api-asset';
+import { dayListEvents } from './day-entries';
+import type { TransitionRange } from './glance';
 import { placeLabelOf, type PlaceLabels } from './place-label';
 
 export interface DayShot {
@@ -75,6 +79,30 @@ export function dayShot(
     (place) => placeLabelOf(placeLabels, place.id, byId.get(place.id)?.name),
   );
   return photo && shotOf(photo, enrichments);
+}
+
+/** **Every picture a day head of this trip can show**, for `warmImages` to hold before it is
+ *  asked for. Each day is asked both with and without its skipped events, because Plan keeps a
+ *  past day's skipped rows and Trip drops them — a superset by at most one picture per day,
+ *  rather than a second copy of which surface reads which. */
+export function tripDayShotUrls(
+  range: TransitionRange,
+  events: TripEvent[],
+  bookings: Booking[],
+  places: Place[],
+  placeLabels: PlaceLabels,
+  enrichments: TripEnrichments,
+): Set<string> {
+  const urls = new Set<string>();
+  for (let date = range.startDate; date <= range.endDate; date = addDays(date, 1)) {
+    const all = dayListEvents(events, date, range);
+    const kept = all.filter((e) => e.status !== EVENT_STATUS.SKIPPED);
+    for (const dayEvents of kept.length === all.length ? [all] : [all, kept]) {
+      const shot = dayShot(dayEvents, bookings, places, placeLabels, enrichments);
+      if (shot) urls.add(shot.url);
+    }
+  }
+  return urls;
 }
 
 /** **A shared photo as the app shows it**: the asset URL resolved, and the delivered image behind
