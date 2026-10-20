@@ -35,6 +35,17 @@ describe('PhotoBand', () => {
     expect(caption.querySelector('span')!.textContent).toContain(shot.credit);
   });
 
+  it('mounts a new image for a new picture rather than swapping src on the old one', () => {
+    // A kept <img> paints its previous picture until the new src loads — a day's caption over
+    // the day before's photograph, on every day change.
+    const { container, rerender } = render(<PhotoBand shot={shot} />);
+    const first = container.querySelector('.wp-photoband img');
+    rerender(<PhotoBand shot={{ ...shot, url: 'https://example.test/falls.jpg' }} />);
+    const second = container.querySelector('.wp-photoband img');
+    expect(second).not.toBe(first);
+    expect(second!.getAttribute('src')).toBe('https://example.test/falls.jpg');
+  });
+
   it('makes the picture a control when the host can open it, and names it', () => {
     const onOpen = vi.fn();
     const { container } = render(<PhotoBand shot={{ ...shot, onOpen }} />);
