@@ -15,8 +15,7 @@ import {
   type TripDocument,
   type UpdateDocumentInput,
 } from '@waypoint/shared';
-import { decryptAtRest, encryptAtRest } from '../common/crypto.util';
-import { DOC_ENCRYPTION_KEY, requireEnv } from '../common/env';
+import { decryptAtRest, documentKeys, encryptAtRest } from '../common/crypto.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { ChangeService } from '../sync/change.service';
 import { deleteObject, getObject, putObject } from '../common/storage';
@@ -92,11 +91,8 @@ export class DocumentsService {
     if (existing) return toDocumentDto(existing);
 
     const fileRef = randomUUID();
-    const encrypted = encryptAtRest(
-      file.buffer.toString('base64'),
-      requireEnv(DOC_ENCRYPTION_KEY),
-      DOC_ENCRYPTION_KEY,
-    );
+    const keys = documentKeys();
+    const encrypted = encryptAtRest(file.buffer.toString('base64'), keys.current, keys.name);
     await putObject(fileRef, Buffer.from(encrypted, 'base64'));
 
     try {
@@ -157,11 +153,8 @@ export class DocumentsService {
     if (file) {
       assertAllowedMime(file.mimetype);
       const fileRef = randomUUID();
-      const encrypted = encryptAtRest(
-        file.buffer.toString('base64'),
-        requireEnv(DOC_ENCRYPTION_KEY),
-        DOC_ENCRYPTION_KEY,
-      );
+      const keys = documentKeys();
+      const encrypted = encryptAtRest(file.buffer.toString('base64'), keys.current, keys.name);
       await putObject(fileRef, Buffer.from(encrypted, 'base64'));
       fileFields = { fileRef, mimeType: file.mimetype, sizeBytes: file.size };
     }
@@ -222,10 +215,12 @@ export class DocumentsService {
     } catch {
       throw new NotFoundException('Document content unavailable');
     }
+    const keys = documentKeys();
     const decrypted = decryptAtRest(
       stored.toString('base64'),
-      requireEnv(DOC_ENCRYPTION_KEY),
-      DOC_ENCRYPTION_KEY,
+      keys.current,
+      keys.name,
+      keys.previous,
     );
     return {
       buffer: Buffer.from(decrypted, 'base64'),

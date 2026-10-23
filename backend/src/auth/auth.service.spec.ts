@@ -148,6 +148,29 @@ describe('AuthService', () => {
     expect(identity.refreshTokenEnc).toBeNull();
   });
 
+  it('logout still signs out when no key can open the stored Google token', async () => {
+    const sub = `sub-${randomUUID()}`;
+    const email = `${randomUUID()}@example.com`;
+    vi.mocked(googleClient.fetchGoogleUserinfo).mockResolvedValue(fakeUserinfo(sub, email));
+    const result = await service.handleGoogleCallback('code', 'verifier');
+    const user = await prisma.user.findUniqueOrThrow({ where: { email } });
+    createdUserIds.push(user.id);
+    vi.mocked(googleClient.revokeGoogleToken).mockClear();
+    vi.stubEnv(TOKEN_ENCRYPTION_KEY, Buffer.alloc(32, 9).toString('base64'));
+
+    try {
+      await expect(service.logout(result!.refreshToken)).resolves.toBeUndefined();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+
+    expect(googleClient.revokeGoogleToken).not.toHaveBeenCalled();
+    const identity = await prisma.authIdentity.findUniqueOrThrow({
+      where: { provider_providerAccountId: { provider: 'google', providerAccountId: sub } },
+    });
+    expect(identity.refreshTokenEnc).toBeNull();
+  });
+
   it('logout is idempotent for an unknown/already-invalidated refresh token', async () => {
     await expect(service.logout('not-a-real-token')).resolves.toBeUndefined();
   });
