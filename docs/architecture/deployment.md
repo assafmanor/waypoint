@@ -44,7 +44,7 @@ The pieces in the repo:
 | `DOC_ENCRYPTION_KEY`                        | Documents at rest (ADR-0015). `openssl rand -base64 32` — must decode to exactly 32 bytes                                                                                                  |
 | `S3_ENDPOINT`                               | Railway Storage Bucket endpoint URL (S3-compatible, ADR-0031)                                                                                                                              |
 | `S3_BUCKET`                                 | Railway Storage Bucket name                                                                                                                                                                |
-| `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | Railway Storage Bucket credentials                                                                                                                                                         |
+| `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | `${{S3 Storage.ACCESS_KEY_ID}}` / `${{S3 Storage.SECRET_ACCESS_KEY}}` (references, so a credential reset carries over)                                                                     |
 | `DOC_CACHE_DIR` _(optional)_                | Local-FS blob-cache tier path (ADR-0055). Unset → memory-only; a lost dir on redeploy just re-warms from S3                                                                                |
 | `DOC_CACHE_MAX_BYTES` _(optional)_          | In-memory LRU bound in bytes (ADR-0055). Unset → 64 MB default                                                                                                                             |
 | `DOC_CACHE_DISABLED` _(optional)_           | Any truthy value turns the blob cache off entirely (kill switch, ADR-0055)                                                                                                                 |
@@ -160,6 +160,16 @@ The alternative, recorded only so nobody re-derives it: staying on GoDaddy DNS w
 - Routes (ADR-0205): open a day with two stops close enough to walk and confirm a travel time appears within a few seconds — the first ask answers `202` and warms, the next `200`. **A silence here is indistinguishable from a correct absence** (§D4 is the design), so if nothing ever appears, check the logs for `routing warm failed` rather than the UI: the endpoint answering is not evidence the provider is reachable.
 - Sharing (ADR-0213): open a trip's share sheet, press **Live Link**, and open the resulting `/s/<code>` in a signed-out browser — it must render without redirecting to `/login`, and `curl -sI` on it must carry `cache-control: private, no-store` and `x-robots-tag: noindex...`. Then press **PDF**. **A PDF failure is the deploy-specific one here**: it is the only feature that needs a browser binary inside the image, so a `500` on `/shared-itineraries/<code>/pdf` almost always means `chromium` is missing from the runtime stage or `PDF_CHROMIUM_PATH` points somewhere else — check the logs for a launch error rather than the UI. CI's `pdf-smoke` job renders the reference trip inside the built image and verifies the artifact with pdfjs, so this should already be proven before a deploy.
 - Note: the API connects to Postgres at boot (`PrismaService.onModuleInit`) — the healthcheck failing right after a deploy usually means `DATABASE_URL` is wrong/missing, not app breakage.
+
+## Rotating secrets
+
+Done for real after Railway's 2026-10-21 security incident, where every environment variable had to be treated as leaked.
+
+- **`JWT_SECRET`**: replace it and redeploy. It signs only the 15-minute access tokens (`token.util.ts`); sessions live in the database, so nobody is signed out.
+- **`TOKEN_ENCRYPTION_KEY` / `DOC_ENCRYPTION_KEY`**: never replace these directly, or every stored Google token or document becomes unreadable. Set the new key as **`<NAME>_NEXT`** and redeploy: it encrypts from then on, the plain var still decrypts, and `KeyRotationService` re-encrypts everything at boot. When its log line reads `rotation done`, copy the `_NEXT` value into the plain var and redeploy. A leftover `_NEXT` equal to the plain var is inert. The new key goes in a new var, rather than the old one moving aside, so nobody has to read the old value back out of Railway.
+- **Postgres**: use the Postgres service's **Regenerate password**, then **redeploy the app**. Regenerate redeploys Postgres only; the app keeps the old password until its own next deploy.
+- **Bucket credentials**: `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` are references to `${{S3 Storage.*}}`, so a reset reaches the app on its next deploy.
+- **`VAPID_*`**: a new pair is safe. The client sees the changed public key on its next start and resubscribes (`reconcileThisDevice`, `lib/push.ts`).
 
 ## Staging environment (ADR-0104)
 

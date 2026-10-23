@@ -1,5 +1,6 @@
 import {
   DOC_ENCRYPTION_KEY,
+  DOC_ENCRYPTION_KEY_NEXT,
   FRONTEND_URL,
   GOOGLE_CLIENT_ID,
   GOOGLE_CLIENT_SECRET,
@@ -9,6 +10,7 @@ import {
   ROUTING_BASE_URL,
   ROUTING_FALLBACK_BASE_URL,
   TOKEN_ENCRYPTION_KEY,
+  TOKEN_ENCRYPTION_KEY_NEXT,
   VAPID_PRIVATE_KEY,
   VAPID_PUBLIC_KEY,
   VAPID_SUBJECT,
@@ -70,6 +72,15 @@ export function validateConfig(env: NodeJS.ProcessEnv = process.env): void {
       continue;
     }
     if (!isBase64_32Bytes(value)) {
+      problems.push(`${name} must be base64 that decodes to exactly 32 bytes`);
+    }
+  }
+
+  // Rotation vars: optional, and checked at boot because a malformed one would otherwise
+  // surface as the first upload failing to encrypt.
+  for (const name of [TOKEN_ENCRYPTION_KEY_NEXT, DOC_ENCRYPTION_KEY_NEXT] as const) {
+    const value = env[name];
+    if (value && !isBase64_32Bytes(value)) {
       problems.push(`${name} must be base64 that decodes to exactly 32 bytes`);
     }
   }

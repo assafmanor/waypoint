@@ -16,6 +16,7 @@ import { HealthController } from './health/health.controller';
 import { MaybeItemsModule } from './maybe-items/maybe-items.module';
 import { NotesModule } from './notes/notes.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { KeyRotationModule } from './key-rotation/key-rotation.module';
 import { TasksModule } from './tasks/tasks.module';
 import { DocumentAttachmentsModule } from './document-attachments/document-attachments.module';
 import { TravelModesModule } from './travel-modes/travel-modes.module';
@@ -63,6 +64,7 @@ import { TripsModule } from './trips/trips.module';
     FxModule,
     WeatherModule,
     NotificationsModule,
+    KeyRotationModule,
   ],
   controllers: [HealthController],
   providers: [

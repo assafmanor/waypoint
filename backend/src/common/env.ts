@@ -9,6 +9,13 @@ export const FRONTEND_URL = 'FRONTEND_URL';
 export const DEV_AUTH = 'DEV_AUTH';
 export const DOC_ENCRYPTION_KEY = 'DOC_ENCRYPTION_KEY';
 
+// Set only while rotating an at-rest key: the NEW value. It encrypts from then on, and the
+// plain var keeps decrypting until the boot-time re-encryption (`key-rotation/`) is done.
+// The new key goes in a new var, rather than the old one moving aside, so a rotation never
+// needs anyone to read the old value back out of the host.
+export const TOKEN_ENCRYPTION_KEY_NEXT = 'TOKEN_ENCRYPTION_KEY_NEXT';
+export const DOC_ENCRYPTION_KEY_NEXT = 'DOC_ENCRYPTION_KEY_NEXT';
+
 // Google Maps Platform server key (ADR-0108 §1): Places API (New) + (later) Routes,
 // held only by the backend proxy, never sent to the browser. Read via requireEnv at
 // call time so a dev/test box without the key still boots (the picker routes 500 if hit).

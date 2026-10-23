@@ -7,8 +7,7 @@ import {
   type Me,
   type UpdateMeInput,
 } from '@waypoint/shared';
-import { decryptAtRest, encryptAtRest } from '../common/crypto.util';
-import { requireEnv, TOKEN_ENCRYPTION_KEY } from '../common/env';
+import { decryptAtRest, encryptAtRest, googleTokenKeys } from '../common/crypto.util';
 import { sniffImageMimeType } from '../common/image-sniff';
 import { EnrichmentImagePipeline } from '../enrichment/image-pipeline';
 import { archiveVintage, livePlanetBuild } from '../map/planet';
@@ -85,8 +84,9 @@ export class AuthService {
     if (!tokens.refresh_token && !existingIdentity?.refreshTokenEnc) return null;
 
     const scopes = tokens.scope.split(' ').filter(Boolean);
+    const tokenKeys = googleTokenKeys();
     const refreshTokenEnc = tokens.refresh_token
-      ? encryptAtRest(tokens.refresh_token, requireEnv(TOKEN_ENCRYPTION_KEY), TOKEN_ENCRYPTION_KEY)
+      ? encryptAtRest(tokens.refresh_token, tokenKeys.current, tokenKeys.name)
       : null;
 
     // **What we held BEFORE the upsert overwrites it** — read here because the upsert below
@@ -232,12 +232,21 @@ export class AuthService {
       where: { userId: session.userId, provider: 'google' },
     });
     if (identity?.refreshTokenEnc) {
-      const rawGoogleToken = decryptAtRest(
-        identity.refreshTokenEnc,
-        requireEnv(TOKEN_ENCRYPTION_KEY),
-        TOKEN_ENCRYPTION_KEY,
-      );
-      await revokeGoogleToken(rawGoogleToken);
+      const keys = googleTokenKeys();
+      // A token no key can open (a rotation that dropped its old key) cannot be revoked, but
+      // it must not fail the sign-out: the row is cleared below either way.
+      let rawGoogleToken: string | null = null;
+      try {
+        rawGoogleToken = decryptAtRest(
+          identity.refreshTokenEnc,
+          keys.current,
+          keys.name,
+          keys.previous,
+        );
+      } catch {
+        rawGoogleToken = null;
+      }
+      if (rawGoogleToken) await revokeGoogleToken(rawGoogleToken);
       await this.prisma.authIdentity.update({
         where: { id: identity.id },
         data: { refreshTokenEnc: null },
