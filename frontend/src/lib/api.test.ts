@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { DOCUMENT_TYPE, EVENT_STATUS } from '@waypoint/shared';
+import { DOCUMENT_TYPE, EVENT_STATUS, ROUTE_BATCH_MAX_STOPS } from '@waypoint/shared';
 import {
   ApiError,
   apiFetch,
   fetchChanges,
   fetchInvitePreview,
   fetchMe,
+  fetchRoutes,
   fetchTrips,
   searchPlacesText,
   uploadDocument,
@@ -762,5 +763,38 @@ describe('every API read is bounded (field-report #22)', () => {
       vi.fn(() => Promise.resolve(new Response(JSON.stringify(snapshotBody), { status: 200 }))),
     );
     await expect(fetchSnapshot(TRIP.id)).resolves.toMatchObject({ latestSeq: '0' });
+  });
+});
+
+describe('fetchRoutes', () => {
+  // The server 400s a request past the bound, which blanked every leg of a long day.
+  it('splits a day past the stop bound into overlapping windows and re-indexes their legs', async () => {
+    const stops = Array.from({ length: ROUTE_BATCH_MAX_STOPS + 5 }, (_, i) => ({
+      lat: 41.9 + i / 1000,
+      lng: 12.47,
+    }));
+    const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
+      const sent = JSON.parse(init.body as string) as { stops: unknown[] };
+      expect(sent.stops.length).toBeLessThanOrEqual(ROUTE_BATCH_MAX_STOPS);
+      const first = sent.stops.length === ROUTE_BATCH_MAX_STOPS;
+      const legs = sent.stops.slice(1).map((_, i) => ({
+        fromIndex: i,
+        toIndex: i + 1,
+        estimates: [],
+        refusedModes: [],
+        pendingModes: ['walking'],
+      }));
+      return new Response(JSON.stringify({ legs, retryAfterSeconds: first ? 3 : 7 }), {
+        status: 202,
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const batch = await fetchRoutes('t1', { stops, modes: ['walking'] });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(batch.legs.map((leg) => leg.fromIndex)).toEqual(stops.slice(1).map((_, i) => i));
+    expect(batch.legs.every((leg) => leg.toIndex === leg.fromIndex + 1)).toBe(true);
+    expect(batch.retryAfterSeconds).toBe(7);
   });
 });
