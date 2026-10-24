@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CHANGE_ACTION, ENTITY_TYPE, type Note } from '@waypoint/shared';
-import { dropNotesForHostChange, isHostedBy, noteWhen } from './notes';
+import { dropNotesForHostChange, isHostedBy, noteReadsFullScreen, noteWhen } from './notes';
 import { t } from '../i18n/he';
 
 const note = (id: string, host: Partial<Note> = {}): Note => ({
@@ -118,5 +118,59 @@ describe('noteWhen (never a non-finite duration)', () => {
   it('reads "now" for a note stamped a moment ago, or ahead of this clock', () => {
     expect(noteWhen('2026-08-07T11:59:59Z', NOW)).toBe(t.changeFeed.relTime.now);
     expect(noteWhen('2026-08-07T12:05:00Z', NOW)).toBe(t.changeFeed.relTime.now);
+  });
+});
+
+// ADR-0202 §9c. A tap means "read this" and the app picks the container — so the only thing
+// this has to get right is WHICH notes are documents, and it estimates rather than measures
+// (measuring the rendered box would mean rendering it before deciding whether to).
+describe('noteReadsFullScreen', () => {
+  const body = (text: string) => ({ body: text });
+
+  it('leaves a short note to expand where it sits', () => {
+    expect(noteReadsFullScreen(body('הכניסה מהחניון האחורי, לא מהרחוב'))).toBe(false);
+  });
+
+  // The Iceland note from the report: headings, lists, a quote, a dozen lines.
+  it('sends a document to its own screen', () => {
+    const long = [
+      '## מסעדות שכדאי',
+      '- **Tabelog** · הדירוג האמיתי, לא Google',
+      '- Ichiran רמן, פתוח 24/7',
+      '- הרשימה של יובל',
+      '',
+      '## מה שצריך לזכור',
+      '1. הכניסה מהחניון האחורי, לא מהרחוב',
+      '2. הפיקדון 5000 ין במזומן בלבד',
+      '3. הצ׳ק-אין רק מ-15:00',
+      '',
+      '> ההמלצה של המקומיים: להגיע לפני 11:00',
+    ].join('\n');
+    expect(noteReadsFullScreen(body(long))).toBe(true);
+  });
+
+  // **The case that killed counting characters.** Twelve short lines is twelve lines tall and
+  // barely 150 characters — a character threshold let it expand into exactly the wall this
+  // exists to prevent.
+  it('counts a note of many short lines by its LINES, not its length', () => {
+    const stacked = Array.from({ length: 12 }, (_, i) => `שורה ${i}`).join('\n');
+    expect(stacked.length).toBeLessThan(150);
+    expect(noteReadsFullScreen(body(stacked))).toBe(true);
+  });
+
+  // …and the other half of the same rule: one long paragraph wraps to many lines.
+  it('counts a single long paragraph by its wrapping', () => {
+    expect(noteReadsFullScreen(body('א'.repeat(400)))).toBe(true);
+  });
+
+  // A url-only note's row IS its url; a screen adds nothing the foot does not carry.
+  it('never sends a note with no body to a screen', () => {
+    expect(noteReadsFullScreen(body(''))).toBe(false);
+    expect(noteReadsFullScreen({ body: undefined })).toBe(false);
+  });
+
+  // The markers are peeled before counting, because the row never shows them.
+  it('does not let the markers themselves push a note over', () => {
+    expect(noteReadsFullScreen(body('# כותרת\n- פריט\n- פריט'))).toBe(false);
   });
 });

@@ -30,12 +30,12 @@ export interface CameraWorldPoint {
 }
 
 /**
- * **World space, which is mercator × 256.**
+ * **World space: the renderer's own world, in px, at zoom 0.**
  *
- * That is Google's convention (one 256px tile at zoom 0), and `useMapCamera` does its own
- * power-of-two shifts in it. MapLibre's `project()` is SCREEN pixels and would be the
- * wrong space entirely; `MercatorCoordinate` is normalised [0,1] and is the true
- * equivalent, so the adapter scales it rather than approximating with screen coordinates.
+ * `useMapCamera` does its own power-of-two shifts in it, on the one fact `screenPx =
+ * worldUnits × 2^zoom`. MapLibre's `project()` is SCREEN pixels and would be the wrong space
+ * entirely; `MercatorCoordinate` is normalised [0,1] and is the true equivalent, so the
+ * adapter scales it rather than approximating with screen coordinates.
  */
 export interface CameraProjection {
   fromLatLngToPoint(at: { lat: number; lng: number }): CameraWorldPoint | null;
@@ -60,7 +60,16 @@ export interface CameraMap {
    *  already falls back to `MAP_DRAG_ZOOM.MIN`/`.MAX` for a map that states no limits. */
   getMinZoom(): number | null | undefined;
   getMaxZoom(): number | null | undefined;
-  moveCamera(camera: { center?: { lat: number; lng: number }; zoom?: number }): void;
+  /** **Which way is up** (ADR-0234). The eighth method, and the reason it is here at all is
+   *  that nothing ever read it: MapLibre's `touchZoomRotate` is a default `MapCanvas` never
+   *  switched off, so a two-finger twist has always been able to write this — and with no
+   *  reader there was no control, no cue and no way back to north. */
+  getBearing(): number | undefined;
+  moveCamera(camera: {
+    center?: { lat: number; lng: number };
+    zoom?: number;
+    bearing?: number;
+  }): void;
   fitBounds(
     bounds: { north: number; south: number; east: number; west: number },
     padding?: { top: number; bottom: number; left: number; right: number },
@@ -74,9 +83,21 @@ export interface CameraMap {
   resize(): void;
 }
 
-/** Google's world tile size at zoom 0. The one number that makes mercator and Google's
- *  world space the same coordinate system. */
-const WORLD_TILE_SIZE = 256;
+/**
+ * **MapLibre's world size at zoom 0** — `Transform.worldSize = tileSize × 2^zoom` with
+ * `tileSize = 512`, so this is the one number that ties world space to what is on screen.
+ *
+ * **It shipped as Google's 256 and that was a 2× error in every pixel↔coordinate
+ * conversion the app makes** (2026-08-14): a long press dropped its pin twice as far from
+ * the centre as the finger was, and the pan that lifts a selected place clear of its card
+ * overshot by the same factor, leaving the pin high instead of centred in the visible band.
+ * Neither throws — the port kept Google's convention, and the arithmetic above it is
+ * self-consistent at any scale, so both bugs read as "the camera is a bit off".
+ *
+ * The number belongs to whoever is DRAWING, not to whoever the code was ported from. A
+ * renderer with a different tile size changes this line and nothing else.
+ */
+const WORLD_TILE_SIZE = 512;
 
 const asLatLng = (lat: number, lng: number): CameraLatLng => ({ lat: () => lat, lng: () => lng });
 
@@ -119,6 +140,9 @@ export function cameraMapFor(map: MapLibreMap): CameraMap {
         getSouthWest: () => asLatLng(b.getSouth(), b.getWest()),
       };
     },
+    // MapLibre reports `(-180, 180]`; `normalizeBearing` at the consumer puts it on
+    // `[0, 360)`. Left raw here because the adapter's job is the dialect, not the domain.
+    getBearing: () => map.getBearing(),
     getProjection: () => ({
       fromLatLngToPoint: ({ lat, lng }) => {
         // Off-globe latitudes have no mercator point; `useMapCamera` already treats a
@@ -138,10 +162,14 @@ export function cameraMapFor(map: MapLibreMap): CameraMap {
     // **`jumpTo`, never `easeTo`.** `useMapCamera` owns its own easing and cancellation
     // (ADR-0129 §3's one-eased-driver invariant); a second easer underneath would be two
     // drivers on one map, which is the thing that invariant exists to prevent.
-    moveCamera: ({ center, zoom }) => {
+    moveCamera: ({ center, zoom, bearing }) => {
       map.jumpTo({
         ...(center ? { center: [center.lng, center.lat] } : {}),
         ...(zoom != null ? { zoom } : {}),
+        // Absent rather than `undefined`: `jumpTo` treats a stated `bearing` as a command
+        // and a missing one as "keep", which is exactly the distinction `CameraAt.bearing`
+        // encodes one layer up.
+        ...(bearing != null ? { bearing } : {}),
       });
     },
     fitBounds: (bounds, padding) => {

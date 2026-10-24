@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { EVENT_KIND, EVENT_STATUS, type TripEvent } from '@waypoint/shared';
-import { dayPositions, firstPositionFitting, POSITION_AT } from './day-positions';
+import { dayPositions, firstPositionFitting, POSITION_AT, positionsFromNow } from './day-positions';
 
 const TZ = 'Asia/Tokyo';
 const DATE = '2026-07-07';
@@ -162,5 +162,41 @@ describe('firstPositionFitting', () => {
 
   it('answers null only when there are no positions at all', () => {
     expect(firstPositionFitting([], 60)).toBeNull();
+  });
+});
+
+describe('positionsFromNow — nothing behind the clock, on today (ADR-0231 §1/§3)', () => {
+  const at = (hhmm: string) => Date.parse(`${DATE}T${hhmm}:00+09:00`);
+  const positions = dayPositions(day, DATE, TZ);
+
+  it('drops every position that is entirely behind now', () => {
+    // At 13:51 the hole before A (07:00–09:00) and the one between A and B are gone; the one
+    // between B and C (12:30–15:00) is open, and the tail after C.
+    const live = positionsFromNow(positions, at('13:51'), TZ);
+    expect(live.map((p) => p.at)).toEqual([POSITION_AT.AFTER, POSITION_AT.DAY_END]);
+    expect(live[0].afterEvent?.id).toBe('B');
+  });
+
+  it('opens the hole the moment is inside at now, on the slot grid', () => {
+    const [inside] = positionsFromNow(positions, at('13:51'), TZ);
+    expect(inside.free.fill.start).toBe('13:55');
+    // 13:55 → 15:00, rounded as the strip counts it.
+    expect(inside.free.minutes).toBe(69);
+  });
+
+  it('leaves a position still ahead exactly as it was', () => {
+    const [, tail] = positionsFromNow(positions, at('13:51'), TZ);
+    const raw = positions.find((p) => p.at === POSITION_AT.DAY_END)!;
+    expect(tail.free).toEqual(raw.free);
+  });
+
+  it('is the identity before the day starts', () => {
+    expect(positionsFromNow(positions, at('05:00'), TZ)).toEqual(positions);
+  });
+
+  it('offers only the tail once the last row has passed — the shelf schedule that wrote 09:00 at 13:51', () => {
+    const live = positionsFromNow(positions, at('16:30'), TZ);
+    expect(live.map((p) => p.at)).toEqual([POSITION_AT.DAY_END]);
+    expect(live[0].free.fill.start).toBe('16:30');
   });
 });

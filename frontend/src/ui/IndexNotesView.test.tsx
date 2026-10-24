@@ -3,7 +3,7 @@
 // RESOLVED category, search across title/body/url, and the editor's one refusal.
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { type ReactNode } from 'react';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import {
   BOOKING_SOURCE,
@@ -108,9 +108,20 @@ const created: unknown[] = [];
 const updated: unknown[] = [];
 const deleted: string[] = [];
 
+/** Empty: a trip with no dates, which is never finished. */
+let tripWindow: { startDate?: string; endDate?: string } = {};
 vi.mock('../state/trip-state', () => ({
   useTrip: () => ({
-    trip: { id: 't1', name: 'טוקיו', timezone: 'Asia/Tokyo' },
+    zoneCrossings: [],
+    // Tasks ride the same snapshot since phase 1; the mark and the sections read them.
+    tasks: [],
+    taskVerbs: {
+      createTask: async () => undefined,
+      updateTask: async () => {},
+      deleteTask: async () => {},
+      tickTask: async () => {},
+    },
+    trip: { id: 't1', name: 'טוקיו', timezone: 'Asia/Tokyo', ...tripWindow },
     notes: tripNotes,
     events: [dinner],
     bookings: [hotel],
@@ -150,6 +161,8 @@ import { NavProvider } from '../state/nav-state';
 import { ModeProvider } from '../state/mode-state';
 import { IndexNotesView } from './IndexNotesView';
 import { t } from '../i18n/he';
+import { DRAG_HOLD_MS } from '../constants';
+import { noteTitleText } from '../lib/notes';
 import { buildNoteHosts } from '../lib/notes';
 
 function wrap(node: ReactNode) {
@@ -182,9 +195,44 @@ describe('IndexNotesView (ADR-0153)', () => {
       orphaned,
       withLink,
     ];
+    tripWindow = {};
     created.length = 0;
     updated.length = 0;
     deleted.length = 0;
+  });
+
+  // NOTES STAY FROZEN TOO (ADR-0239 §4, owner). The clock reads 07-19; this trip ended 07-10.
+  describe('a finished trip', () => {
+    const FINISHED = { startDate: '2026-07-01', endDate: '2026-07-10' };
+    const foot = () => document.querySelector('.row-open-foot')!;
+
+    it("offers the add button, the kebab and the foot's edit on a live trip", () => {
+      show();
+      expect(document.querySelector('.addbtn')).not.toBeNull();
+      expect(document.querySelectorAll('.wp-listrow-kebab').length).toBeGreaterThan(0);
+      fireEvent.click(screen.getByRole('button', { name: bodyOnly.body! }));
+      expect(foot().textContent).toContain(t.notes.open.edit);
+    });
+
+    it('lists every note, reads them, and offers no way to add or edit one', () => {
+      tripWindow = FINISHED;
+      show();
+      expect(document.querySelector('.addbtn')).toBeNull();
+      expect(document.querySelectorAll('.wp-listrow-kebab')).toHaveLength(0);
+      expect(visibleRows()).toHaveLength(tripNotes.length);
+
+      fireEvent.click(screen.getByRole('button', { name: bodyOnly.body! }));
+      expect(foot().textContent).toContain(t.notes.open.full);
+      expect(foot().textContent).not.toContain(t.notes.open.edit);
+    });
+
+    it('offers no way in from the empty screen', () => {
+      tripWindow = FINISHED;
+      tripNotes = [];
+      show();
+      expect(screen.getByText(t.notes.empty.title)).toBeTruthy();
+      expect(screen.queryByRole('button', { name: t.notes.empty.action })).toBeNull();
+    });
   });
 
   describe('the row', () => {
@@ -194,15 +242,41 @@ describe('IndexNotesView (ADR-0153)', () => {
       expect(row.classList.contains('note-body-line')).toBe(true);
     });
 
-    // Printing both is the same sentence twice — ADR-0151's tile amendment paid for this.
-    it('shows a titled note’s TITLE and demotes its body to the meta line', () => {
+    // ADR-0153 §4's 2026-08-16 amendment. The body used to drop into the meta line, which
+    // has neither a clamp nor a `white-space` — so a CLOSED row printed the whole thing at
+    // meta size and swallowed the author's newlines. It is still printed once (ADR-0151's
+    // tile amendment stands), just on the line that already knows how to hold it.
+    it('shows a titled note’s TITLE and its body on the body line, not in the meta', () => {
       show();
       const row = rows().find((r) => within(r as HTMLElement).queryByText(titleAndBody.title!));
       expect(row).toBeTruthy();
+      const body = row!.querySelector('.note-body-line');
+      expect(body?.textContent).toBe(titleAndBody.body!);
+      // The meta is the host chip and the provenance again — the body has left it.
       const meta = row!.querySelector('.wp-listrow-meta');
-      expect(meta?.textContent).toContain(titleAndBody.body!);
-      // …and the body is not ALSO the title line.
-      expect(row!.querySelector('.note-body-line')).toBeNull();
+      expect(meta?.textContent).not.toContain(titleAndBody.body!);
+      expect(meta?.textContent).toContain('לפני');
+      // …and the title is still printed exactly once.
+      expect(within(row as HTMLElement).getAllByText(titleAndBody.title!)).toHaveLength(1);
+    });
+
+    // The owner's second report, and the reason the body had to MOVE rather than be clamped
+    // where it was: line breaks are how a long note is made readable, so they are content.
+    // The assertion is the element the body lands in, not its computed `white-space` — the
+    // `pre-wrap` lives in `notes.css`, and this suite does not load CSS, so asserting the
+    // style here would pass on an empty string and prove nothing. That the body sits in
+    // `.note-body-line` with its newlines intact IS the testable half; the rule on that
+    // class is one line above the clamp and shared with every body-only note on the screen.
+    it('keeps a titled note’s newlines, in the element that honours them', () => {
+      const structured = note('n-multiline', {
+        title: 'הזוהר הצפוני',
+        body: 'החלון הטוב: 22:00–02:00\nלא להסתכל רק על KP',
+      });
+      tripNotes = [structured];
+      show();
+      expect(document.querySelector('.note-body-line')?.textContent).toBe(structured.body!);
+      // The meta line has no `white-space` at all, which is what swallowed them.
+      expect(document.querySelector('.wp-listrow-meta')?.textContent).not.toContain('KP');
     });
 
     it('renders a url-only note’s line as an LTR island, never via dir="ltr"', () => {
@@ -290,6 +364,17 @@ describe('IndexNotesView (ADR-0153)', () => {
       show();
       expect(screen.queryByRole('radio', { name: t.iconPicker.categories.nature })).toBeNull();
     });
+
+    // ADR-0153 §3 took this row from the bookings screen "with no change", and `compact`
+    // (ADR-0122 §2) is the density for a strip over the MAP, where the pin already carries the
+    // same glyph. Here the glyph stood alone, which made this the one chip row in the app whose
+    // categories were unnamed (owner, 2026-08-21).
+    it('names its categories rather than drawing the glyph alone', () => {
+      show();
+      const food = screen.getByRole('radio', { name: t.iconPicker.categories.food });
+      expect(food.textContent).toContain(t.iconPicker.categories.food);
+      expect(food.getAttribute('aria-label')).toBeNull();
+    });
   });
 
   describe('search', () => {
@@ -327,7 +412,7 @@ describe('IndexNotesView (ADR-0153)', () => {
     const tap = (note: Note) =>
       fireEvent.click(screen.getByRole('button', { name: note.title ?? note.body ?? '' }));
     const openRow = () => document.querySelector('.wp-listrow.is-open');
-    const foot = () => document.querySelector('.note-open-foot');
+    const foot = () => document.querySelector('.row-open-foot');
 
     it('marks the row open and puts the foot under it — no sheet, no scrim', () => {
       show();
@@ -343,7 +428,7 @@ describe('IndexNotesView (ADR-0153)', () => {
       show();
       tap(bodyOnly);
       tap(titleAndBody);
-      expect(document.querySelectorAll('.note-open-foot')).toHaveLength(1);
+      expect(document.querySelectorAll('.row-open-foot')).toHaveLength(1);
       tap(titleAndBody);
       expect(foot()).toBeNull();
     });
@@ -361,7 +446,86 @@ describe('IndexNotesView (ADR-0153)', () => {
       tap(titleAndBody);
       const link = screen.getByRole('button', { name: t.notes.open.toHost(hotel.title) });
       expect(link.textContent).toContain(hotel.title);
-      expect(link.closest('.note-open-foot')).toBeTruthy();
+      expect(link.closest('.row-open-foot')).toBeTruthy();
+    });
+
+    // ADR-0202 §1. The way in is a third control in the line that already exists, and it is
+    // there on EVERY open note — not only a long one, because a control whose position
+    // depends on the length of the text cannot be learned.
+    it('offers the full screen from the open foot, on every note', () => {
+      show();
+      tap(bodyOnly);
+      expect(foot()?.textContent).toContain(t.notes.open.full);
+      fireEvent.click(screen.getByRole('button', { name: new RegExp(t.notes.open.full) }));
+      expect(document.querySelector('.note-full')).toBeTruthy();
+      // The bar names the kind, and the words read in full below it.
+      expect(document.querySelector('.note-full-t')?.textContent).toBe(t.notes.one);
+      expect(document.querySelector('.note-full-body')?.textContent).toContain(
+        'הכניסה מאחור, ליד חנות הפרחים',
+      );
+    });
+
+    // **jsdom implements no `PointerEvent`**, and a synthetic `pointermove` through `fireEvent`
+    // comes out as a plain `Event` with NO `clientX`/`clientY` at all — so the slop check has
+    // nothing to compare and the scroll guard cannot be exercised that way. A real `MouseEvent`
+    // named `pointermove` carries coordinates and React routes it to `onPointerMove` all the
+    // same, which is what makes the cancel assertable.
+    const pointer = (el: Element, type: string, y: number) =>
+      el.dispatchEvent(new MouseEvent(type, { clientX: 10, clientY: y, bubbles: true }));
+
+    // ADR-0202 §9c. The expansion was measured on notes where lifting a two-line clamp adds a
+    // little; a document-length note turns the row into a wall and puts its verbs at the
+    // bottom of it. So a tap means "read this" and the app picks the container.
+    it('opens a long note on its own screen instead of expanding it', () => {
+      const long = note('n-long', {
+        body: Array.from({ length: 14 }, (_, i) => `שורה מספר ${i} עם עוד קצת טקסט`).join('\n'),
+        createdAt: '2026-07-19T09:20:00Z',
+      });
+      tripNotes = [long];
+      show();
+      fireEvent.click(screen.getByRole('button', { name: noteTitleText(long) }));
+      expect(document.querySelector('.note-full')).toBeTruthy();
+      // …and the row it came from stayed a row.
+      expect(document.querySelector('.wp-listrow.is-open')).toBeNull();
+    });
+
+    // ADR-0202's 2026-08-22 amendment, answering the report that the control was only
+    // reachable by expanding a long note and scrolling past all of it. A hold reaches the
+    // screen from the row AS IT STANDS — this one is collapsed.
+    it('opens the full screen on a hold, without expanding the row first', () => {
+      vi.useFakeTimers();
+      try {
+        show();
+        const body = screen.getByRole('button', { name: bodyOnly.body ?? '' });
+        pointer(body, 'pointerdown', 10);
+        // Inside `act`: the hold's timer opens the screen through a state update, and an
+        // advance outside it leaves React's queue unflushed — the assertion then reads the
+        // tree from before the hold and reports the gesture as broken.
+        act(() => vi.advanceTimersByTime(DRAG_HOLD_MS));
+        expect(document.querySelector('.note-full')).toBeTruthy();
+        // …and the row it came from was never expanded. Asserted on the ROW rather than on
+        // `.row-open-foot`, because the full screen renders a `RowOpenFoot` of its own — the
+        // first version of this line looked for the foot and found the screen's.
+        expect(document.querySelector('.wp-listrow.is-open')).toBeNull();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    // Time arbitrates, not direction (`useHoldToDrag`'s bargain): a finger that moves was
+    // scrolling the list, and a list that opened a screen mid-scroll would be unusable.
+    it('does not open on a hold that turns into a scroll', () => {
+      vi.useFakeTimers();
+      try {
+        show();
+        const body = screen.getByRole('button', { name: bodyOnly.body ?? '' });
+        pointer(body, 'pointerdown', 10);
+        pointer(body, 'pointermove', 90);
+        act(() => vi.advanceTimersByTime(DRAG_HOLD_MS));
+        expect(document.querySelector('.note-full')).toBeNull();
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     // A general note has no host, so there is nothing to go to — the words stay, the
@@ -369,8 +533,8 @@ describe('IndexNotesView (ADR-0153)', () => {
     it('offers no way in for a general note', () => {
       show();
       tap(bodyOnly);
-      expect(foot()?.querySelector('button.note-open-host')).toBeNull();
-      expect(foot()?.querySelector('.note-open-host.plain')).toBeTruthy();
+      expect(foot()?.querySelector('button.row-open-lead')).toBeNull();
+      expect(foot()?.querySelector('.row-open-lead.plain')).toBeTruthy();
     });
 
     // A note's link was readable everywhere and openable nowhere. It opens from the foot,

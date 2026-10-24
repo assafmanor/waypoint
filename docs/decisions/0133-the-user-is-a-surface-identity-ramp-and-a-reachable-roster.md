@@ -116,6 +116,11 @@ every member, with their real name, role and colour, all of it out of the cached
 decoration degrades. Copying the photo server-side at sign-in would fix it and would drag storage into
 Phase 1 to buy an avatar; that trade is refused, and named in Alternatives.
 
+> **Amended 2026-09-12 (§13).** The photo is no longer hotlinked: it is copied into our own storage at
+> sign-in and served same-origin, so the face survives offline too. The initials remain the fallback
+> for everything else, and §13(b) is where the rule above was actually being enforced — and where it
+> was not.
+
 **Default at first sign-in:** `google` when Google gave a photo, else `initials`. A user who has never
 opened this page gets a real face for free — the cheapest half of the whole feature.
 
@@ -413,6 +418,41 @@ we serve an avatar would be a vulnerability.
   copy, the picture page names its own actions and `FilePicker` keeps its generic ones —
   so there is no override to add.
 
+### 13. The Google photo is copied into our own storage, and a failed LOAD falls back too
+
+Added 2026-09-12, on an owner report from a plane: **every avatar in the app drew the browser's
+broken-image glyph** — the chrome's, the task rows', the roster's. Two separate things were wrong,
+and the second is the one §4 above got wrong in writing.
+
+**(a) The hotlink is the wrong place to keep a face.** `googleAvatarUrl` points at Google's CDN, so
+a Google-photo avatar was the one thing on the roster that needed the network. The bytes are now
+**copied at sign-in** into the same byte sink §12 already built, served through the same
+`/users/:userId/avatar/:key` route, and rendered in preference to the hotlink — same-origin and
+`immutable`, which is what puts it in the browser's cache where a third-party URL never was. This
+is ADR-0166 §2's objection to hotlinking a place photo, arriving at the avatar it was first written
+about; the "refused for now" in Alternatives below is now taken, exactly where that entry said it
+would be reconsidered.
+
+Three things it needed decided, and their answers:
+
+| Question                           | Answer                                                                                                                                                                                                                             |
+| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Refresh policy**                 | Whenever Google's `picture` URL differs from the one the copy was made from. Google mints a new URL when a person changes their photo, so this is exact, costs no fetch on an ordinary sign-in, and needs no TTL.                  |
+| **Does `google` become `upload`?** | No. Two columns and two wire fields (`googleAvatarUrl` + `googleAvatarCopyUrl`), because the hotlink is still the answer to _"does this person have a Google photo"_ — which is what §6's **way back** from `initials` depends on. |
+| **What if the copy fails?**        | The sign-in proceeds and the hotlink renders. An avatar is a decoration; failing a login over one would be the worse bug by far. A photo removed at Google retires our copy too, or it becomes a face nobody can delete.           |
+
+The fetch goes through `enrichment/outbound-fetch.ts` — the process's one allowlisted, timeboxed,
+size-capped outbound seat — and the store through `enrichment/image-pipeline.ts`, which ADR-0166
+wrote subject-agnostic for exactly this. Its second consumer cost it an options bag (the byte cap
+and the key prefix), not a fork.
+
+**(b) §4's rule was enforced in the one place the failure never happens.** _"Never render a broken
+image"_ was implemented as _"render initials when the URL is absent"_ — and a URL that resolves and
+then fails to load is the ordinary case, not the exotic one: offline, a revoked Google photo, a
+retired upload. `Avatar` now falls back to the initials **on `onError`** as well, keyed by URL so a
+changed photo gets a fresh attempt. This half is not superseded by (a) and is not redundant with it:
+a copy only exists after that person's next sign-in, and an upload can still go missing.
+
 ## Consequences
 
 - One primitive owns the avatar, so the picture model has exactly one reader and Phase 4 changes one
@@ -455,7 +495,8 @@ we serve an avatar would be a vulnerability.
 - **Copy the Google photo into our own storage at sign-in.** Fixes the offline face and removes a
   third-party request per render, at the cost of dragging `storage.ts`, an encryption trust-class call
   and a refresh policy into Phase 1 to buy a decoration. Refused for now; it is the natural thing to
-  reconsider **with** Phase 4, which brings that infrastructure in anyway.
+  reconsider **with** Phase 4, which brings that infrastructure in anyway. **Taken on 2026-09-12 (§13)**
+  — where this entry said it would be, and on the report that proved the cost of not having it.
 - **A shipped set of illustrated/emoji avatars.** Declined by the owner. It would also be the only
   part of the picker needing artwork, and the ramp already answers "I don't want my face here".
 - **Reuse the five `--cat-*` hues for identity.** Smaller by one ramp, and rejected: the avatars in the

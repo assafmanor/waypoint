@@ -14,10 +14,17 @@ import {
   isJourney,
   isMultiDay,
   EVENT_KIND,
+  TIME_MEANING,
   type TripEvent,
 } from '@waypoint/shared';
-import { bookingTransitionsOnDate, type BookingTransition } from './glance';
-import type { TimeGroup, TimeItem } from './time';
+import {
+  bookingTransitionsOnDate,
+  spanDrawsWholeOn,
+  type BookingTransition,
+  type TransitionRange,
+} from './glance';
+import { broughtInOvernight } from './place-usage';
+import { peerEntry, peerExit, type TimeGroup, type TimeItem } from './time';
 
 /** The events a group holds — one, or a cluster's several (ADR-0041). */
 export const groupMembers = (g: TimeGroup): TimeItem[] =>
@@ -27,15 +34,25 @@ const endMsOf = (e: TripEvent) => Date.parse(e.endsAt ?? e.startsAt!);
 /** The member a group STARTS with, and the one it ENDS with — which is what anything
  *  measuring the space between two groups has to ask (a gap, a connection). Written
  *  once in `PlanDay` while it was the only surface measuring that space; moved here
- *  when the Day view began measuring it too (root rule 8: generalise the one-off). */
+ *  when the Day view began measuring it too (root rule 8: generalise the one-off).
+ *
+ *  **The ties are `peerEntry`/`peerExit`'s** (ADR-0225 §5), the same rule the map's route
+ *  and the hero's leg read — so the journey row above a brace measures into the card
+ *  directly under it, and the row below measures out of the last card, on every surface.
+ *  A `reduce` keeping the FIRST on a tie answered the same peer for both ends of a stop
+ *  whose two members share a span. */
 export const groupStartEvent = (g: TimeGroup): TripEvent =>
-  groupMembers(g).reduce((a, b) => (startMsOf(b.event) < startMsOf(a.event) ? b : a)).event;
+  peerEntry(groupMembers(g).map((item) => item.event));
 export const groupEndEvent = (g: TimeGroup): TripEvent =>
-  groupMembers(g).reduce((a, b) => (endMsOf(b.event) > endMsOf(a.event) ? b : a)).event;
+  peerExit(groupMembers(g).map((item) => item.event));
 
 export type DayEntry =
   | { kind: 'event'; group: TimeGroup; atMs: number }
-  | { kind: 'transition'; event: TripEvent; edge: 'start' | 'end'; atMs: number; labelKey: string };
+  /** **The transition IS a `BookingTransition`**, not a re-declaration of its fields. It was
+   *  the latter, which is how `dayOffset` (ADR-0236 §4) reached `mergeDayEntries` through the
+   *  spread and stopped at the type — a second copy of one shape, drifting on its first new
+   *  member (root rule 8). */
+  | ({ kind: 'transition' } & BookingTransition);
 
 export type TransitionEntry = Extract<DayEntry, { kind: 'transition' }>;
 
@@ -48,9 +65,42 @@ function groupStartMs(g: TimeGroup): number {
 
 /** The transition points to interleave on `activeDate`: the shared derivation
  *  (`bookingTransitionsOnDate`) narrowed to MULTI-DAY brackets. A same-day
- *  bracket keeps its single span row and gets no transition rows (ADR-0064). */
-export function dayTransitions(events: TripEvent[], activeDate: string): BookingTransition[] {
-  return bookingTransitionsOnDate(events, activeDate).filter((tr) => isMultiDay(tr.event));
+ *  bracket keeps its single span row and gets no transition rows (ADR-0064).
+ *
+ *  `range` is the trip's window, and it is what lets an end the trip has no day for be
+ *  hosted by the day its span departed from (ADR-0236 §4) — the flight home landing after
+ *  the last day, or any leg left that way by a date edit. Optional so a caller with no trip
+ *  in hand keeps today's behaviour exactly. */
+export function dayTransitions(
+  events: TripEvent[],
+  activeDate: string,
+  range?: TransitionRange,
+): BookingTransition[] {
+  return bookingTransitionsOnDate(events, activeDate, range).filter(
+    (tr) =>
+      isMultiDay(tr.event) &&
+      // …and NOT one this day draws whole (ADR-0236 §8). Both ends hosted here means one
+      // card, so its two transition points would be the same journey drawn a second time.
+      !spanDrawsWholeOn(tr.event, activeDate, range),
+  );
+}
+
+/** **The day's own events, with a span this day draws WHOLE put back in** (ADR-0236 §8).
+ *
+ *  `isAmbient` is how a span renders ACROSS days, so a span with no days left to cross is not
+ *  ambient for this one: it takes its ordinary card, with the range, the duration, the
+ *  distance and ADR-0037's `+1` — which is what the identical same-day leg already shows.
+ *
+ *  Shared rather than inlined because **both** day screens filter this list, and a day
+ *  derivation changed in `DayView` alone has cost a release twice (`frontend/CLAUDE.md`). */
+export function dayListEvents(
+  events: readonly TripEvent[],
+  activeDate: string,
+  range?: TransitionRange,
+): TripEvent[] {
+  return events.filter(
+    (e) => e.date === activeDate && (!isAmbient(e) || spanDrawsWholeOn(e, activeDate, range)),
+  );
 }
 
 /** The transition entry a given stay has in TODAY's placed list, if any. The ambient strip
@@ -65,6 +115,16 @@ export function edgeEntryOf(
     (e): e is TransitionEntry => e.kind === 'transition' && e.event.id === eventId,
   );
 }
+
+/** **The edge entry for an event wherever the day placed it** — the list, or the overnight run
+ *  above the bed. Two lookups behind one name because the strip's sentence comes from the placed
+ *  entry: without this a midnight pickup silently fell back to `יום 1 מתוך 10`, losing the very
+ *  clock the strip exists to say. */
+export const placedEdgeOf = (
+  placement: Pick<DayPlacement, 'positioned' | 'overnight'>,
+  eventId: string,
+): TransitionEntry | undefined =>
+  edgeEntryOf(placement.positioned, eventId) ?? edgeEntryOf(placement.overnight, eventId);
 
 /** **The ambient-span stays covering `date`, edges INCLUDED** (owner, 2026-08-13, amending
  *  ADR-0064 §C): the strip above the list, on every day of a stay rather than only its
@@ -124,6 +184,22 @@ export interface DayPlacement {
   commitments: UnplacedRow[];
   /** Unpositioned **ideas**: the tail below it, under one line. */
   ideas: UnplacedRow[];
+  /** **The stay edges taken OUT of the list** (ADR-0209 §1), so a stay is named once per day —
+   *  as the row where the day starts or ends, rather than as a row at a bound whose moment the app
+   *  does not know. Returned rather than dropped, because that row still says the bound and this
+   *  is where its sentence comes from (`edgeSentence`). Empty unless the caller names ids. */
+  stayEdges: TransitionEntry[];
+  /** **What brought you in through the night** (ADR-0054's 2026-08-26 amendment) — span edges
+   *  before dawn whose moment the app does not know, taken out of the list so they can read
+   *  ABOVE the row for the stay you woke in. The map has sorted them that way since 2026-08-25
+   *  (`broughtInOvernight`); the list had them below the bed, so a midnight car hire read as a
+   *  ⁦25km⁩ drive out to the counter after breakfast.
+   *
+   *  **Transition entries only, and that bound is what makes this free of side effects.** A
+   *  span edge is never a leg's endpoint and a flexible one is already transparent to
+   *  `prevEnd` (ADR-0171 §5), so moving these out of `positioned` cannot change one gap, one
+   *  journey or one adjacency. Empty unless the caller supplies a `dawnMs`. */
+  overnight: TransitionEntry[];
 }
 
 /** **Where a flexible edge actually sits** (ADR-0171 §10b, both ends since ADR-0184's
@@ -195,8 +271,22 @@ export function placeDayEntries(
   merged: DayEntry[],
   untimed: readonly TripEvent[],
   groups: TimeGroup[],
+  /** **Stays that are named by a row of their own today** (ADR-0209 §1) — their edges leave the
+   *  list rather than sitting in it at a bound. Both day surfaces pass the same set, from the same
+   *  `dayBookendStays`, because ADR-0159 §1 forbids them differing about a fact. */
+  stayRowIds?: ReadonlySet<string>,
+  /** **When the day's window opens** (`dayWindowMs(...).startMs`), for the one question below that
+   *  needs it. An instant rather than a zone, exactly as `map-pins.ts` takes it: the wall-clock
+   *  hour belongs to the screen that owns the zone, and this file owns no clock. */
+  dawnMs?: number,
 ): DayPlacement {
-  const placement: DayPlacement = { positioned: [], commitments: [], ideas: [] };
+  const placement: DayPlacement = {
+    positioned: [],
+    commitments: [],
+    ideas: [],
+    stayEdges: [],
+    overnight: [],
+  };
   const park = (row: UnplacedRow) =>
     (row.event.kind === EVENT_KIND.HARD ? placement.commitments : placement.ideas).push(row);
   // An edge pinned to a hard fact has to read on the near side of it — "be out by then"
@@ -220,10 +310,31 @@ export function placeDayEntries(
     // An `exact` edge IS its instant and is never moved; a floor or a ceiling is placed
     // where `edgeAt` can defend it. The strip now holds only what has no clock at all.
     const atMs =
-      edgeMeaning(entry.event, entry.edge) === 'exact'
+      edgeMeaning(entry.event, entry.edge) === TIME_MEANING.EXACT
         ? entry.atMs
         : edgeAt(entry.atMs, entry.edge, groups);
-    const moved: DayEntry = { ...entry, atMs };
+    // **A stay named by its own row is not also a row at its bound** (ADR-0209 §1). The moment
+    // of checking out or in is not a fact the app holds — a ceiling says "by 09:40" and a window
+    // says "from 17:00" — so positioning it read as coming back to the hotel after driving away.
+    // The edge is kept here for its sentence and nothing else.
+    if (stayRowIds?.has(entry.event.id)) {
+      placement.stayEdges.push(entry);
+      continue;
+    }
+    const moved: TransitionEntry = { ...entry, atMs };
+    // **Asked on the PLACED instant, not the authored one.** `edgeAt` has already bounded the
+    // edge by the day's hard facts, and that is the instant the row prints — so a floor dragged
+    // past dawn by a landing is no longer a night arrival, and asking the raw bound would sort
+    // it by a clock the reader never sees.
+    if (
+      broughtInOvernight(
+        { at: atMs, eventId: entry.event.id, edge: entry.edge },
+        { dawnMs, eventById: () => entry.event },
+      )
+    ) {
+      placement.overnight.push(moved);
+      continue;
+    }
     if (atMs !== entry.atMs) pinned.add(moved);
     placement.positioned.push(moved);
   }

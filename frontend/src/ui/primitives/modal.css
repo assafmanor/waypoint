@@ -148,6 +148,25 @@
   padding: var(--space-4);
   /* Clear the home indicator on the bottom-anchored variant. */
   padding-block-end: calc(var(--space-4) + var(--safe-bottom));
+  /* **A SHEET IS BOUNDED BY THE SCREEN, AND ITS OVERFLOW GOES OFF THE TOP** (owner,
+     2026-09-05: _"when there's too much content the top is cut off"_). The overlay is a flex
+     box with `align-items: flex-end`, so a card taller than the viewport overflows past the
+     START edge — where there is no scrollbar, no gesture and nothing to scroll: the head, the
+     title and the `עריכה` are simply gone. Nothing reported it while every sheet in the app
+     was a FORM, because `form-actions.css`'s `.modal-form` caps its own body at 75dvh; the
+     read surfaces (`DetailSheet`) have no such body, and ADR-0219 §6 put a photograph and a
+     summary at the top of one.
+
+     So the cap belongs to the CARD rather than to a body class each new sheet must remember
+     to wear — the inner cap then never binds, since a 75dvh body cannot overflow a card the
+     screen already bounds. The strip left above is the scrim, which is what keeps a full
+     sheet reading as a sheet over the screen rather than as a page. */
+  max-block-size: calc(100vh - var(--safe-top) - var(--space-6));
+  max-block-size: calc(100dvh - var(--safe-top) - var(--space-6));
+  overflow-y: auto;
+  /* Hitting the end of a sheet must not hand the scroll to the page behind it — the same
+     containment `.body` spends against pull-to-refresh. */
+  overscroll-behavior-y: contain;
 }
 
 .modal-overlay[data-variant='dialog'] .modal-card {

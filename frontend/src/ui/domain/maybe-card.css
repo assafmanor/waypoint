@@ -32,10 +32,12 @@
   color: var(--ink);
   display: block;
 }
-.wp-maybecard:hover {
-  transform: translateY(-2px);
-  /* scheduling is a plan action (design-language color budget) */
-  border-color: var(--plan);
+@media (hover: hover) and (pointer: fine) {
+  .wp-maybecard:hover {
+    transform: translateY(-2px);
+    /* scheduling is a plan action (design-language color budget) */
+    border-color: var(--plan);
+  }
 }
 .wp-maybecard:focus-visible,
 .wp-maybecard:has(.wp-maybecard-body:focus-visible) {
@@ -181,9 +183,11 @@
   gap: 6px;
   color: var(--cta);
 }
-.wp-maybecard.more:hover {
-  border-color: var(--line);
-  transform: none;
+@media (hover: hover) and (pointer: fine) {
+  .wp-maybecard.more:hover {
+    border-color: var(--line);
+    transform: none;
+  }
 }
 .wp-maybecard.more .wp-maybecard-title {
   font-size: 12.5px;
@@ -246,9 +250,11 @@
   line-height: 1;
   cursor: pointer;
 }
-.wp-maybecard-remove:hover {
-  background: var(--miss);
-  color: var(--on-fill);
+@media (hover: hover) and (pointer: fine) {
+  .wp-maybecard-remove:hover {
+    background: var(--miss);
+    color: var(--on-fill);
+  }
 }
 .wp-maybecard-remove:focus-visible {
   outline: 2px solid var(--miss);
@@ -265,11 +271,10 @@
    scrolling itself, only once it has actually armed. */
 .wp-maybecard.draggable {
   cursor: grab;
-  /* A press-and-hold on a button otherwise starts a text selection or the iOS
-     callout menu, both of which fight the drag. */
-  user-select: none;
-  -webkit-user-select: none;
-  -webkit-touch-callout: none;
+  /* The `user-select`/`-webkit-touch-callout` trio that lived here is GONE (ADR-0199 §4) —
+     it is one rule in `styles/tokens.css` now, keyed on being a row rather than on being
+     draggable. This card is covered unconditionally there, which is also more correct: a
+     read-only shelf card was never meant to select either. */
 }
 /* Now that something DOES follow the finger (session-117, `lib/useDragGhost.ts`),
    the two halves of the drag split cleanly:

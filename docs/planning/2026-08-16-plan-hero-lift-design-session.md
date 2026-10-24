@@ -1,0 +1,134 @@
+# 2026-08-16 — Plan Home stops saying "all done", and the prep hero lifts
+
+**Type:** product + design session. **Output:** [ADR-0193](../decisions/0193-what-is-missing-counts-everything-open-and-the-plan-hero-lifts.md), [`mockups/the-plan-hero-lifts-and-the-checklist-counts-everything-v1.html`](../../mockups/the-plan-hero-lifts-and-the-checklist-counts-everything-v1.html), an in-place supersede banner on [ADR-0160](../decisions/0160-the-hero-lifts-and-shows-a-horizon.md) §H. **Designed and then BUILT in the same session**, on the owner's "alright let's do it" — see "Built the same day" below for the four things the running app corrected.
+
+## The report
+
+One owner message, two asks:
+
+> _"The home readiness should also show non automatic tasks. Maybe tasks that aren't due soon could be collapsed idk, but at least show something, because right now it says all done where it isn't true - that's misleading."_
+>
+> _"Also we should create a lifted plan hero for upcoming tasks."_
+
+## What reading the code changed before anything was drawn
+
+Five findings; four of them moved a section, and two are defects the report did not mention.
+
+1. **Plan Home already renders manual tasks.** The report reads as "tasks are missing from this screen" and the truth is narrower and more useful: the screen's list comes from `tasksDueSoon`, whose predicate requires `task.dueAt` and admits only overdue or within `TASK_BAND_LOOKAHEAD_DAYS` (7). Two classes are invisible — **undated**, and **more than a week out**. The window is Trip Home's, and `tasks.ts`' own docstring says why it exists there: _"the right rule for a band you read ON the day."_ Plan Home is the screen whose countdown reads `בעוד 47 ימים`.
+
+2. **The open half and the completed half have never asked the same question.** `completedManual` filters `isManual && isSettled` with no date window at all. So an undated task is invisible while open and appears under `הושלמו` the moment it is ticked. This is what makes widening the window the only _consistent_ repair rather than one option among several — it is the open half that is the outlier.
+
+3. **The reported sentence is `converged.length === 0`.** Not a copy problem: the condition is exactly "no live check and nothing due within a week", which a well-prepared trip with a to-do list satisfies constantly.
+
+4. **`.tsk-more` has no CSS rule.** `TripHomeTaskBand.tsx` renders `<button className="tsk-more">` as its overflow row; nothing in `frontend/src/**/*.css` defines it and `App.css` has no global `button` reset. Trip Home's `עוד N משימות` is a bare UA button, measured at **19px** against the 44px floor. Found while looking for geometry to reuse for §3's row — there was none to reuse.
+
+5. **ADR-0160 §H already contained the answer to the second ask.** §H refused the plan lift on structure (_"what it summarises … is the checklist rendered immediately beneath it"_) and wrote its own revisit condition: _"when Plan's hero summarises something it does not show inline"_. Fixing the first report creates that condition. So the two asks are one change, and §H is superseded by its own clause rather than against it.
+
+## The forks put to the owner, and the answers
+
+| Fork                                     | Answer                                                                                                                                                                                                                                                                                                                                                   |
+| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Does the readiness % count manual tasks? | **Two numbers** — the bar keeps the five checks, a second readout names tasks. _"Let's think of the exact phrasing and the design of this."_                                                                                                                                                                                                             |
+| What does the inline list show?          | **Urgent + checks inline, the rest in a collapsed group** (the owner's own suggestion in the report).                                                                                                                                                                                                                                                    |
+| What does the lift open onto?            | **The full run-up: checks + every open task, banded by deadline.**                                                                                                                                                                                                                                                                                       |
+| The lifted card's skin                   | Initially _"not sure, mockup both options, give your recommendations"_ → after seeing them: **"Definitely all violet. Maybe add some gradient that makes it become darker or something."** → against that drawing: **"Much much much more gradual, and like violet to dark violet"** · **"the gradient should be much more subtle, much more gradual."** |
+
+The skin took **three** rounds and each one changed the technical answer, which is the part worth recording.
+
+1. The session recommended the _other_ option — a violet head over the board's ground — on a measured argument: `--on-dark-dim` is 2.02:1 on light-mode `--plan-surface`, so a violet body appeared to need its own white-alpha ink ramp (four overrides, and a new ink family ADR-0158 §3 would want tokenised).
+2. The owner chose violet and supplied the fix: **take the ground down instead of taking the ink up.** On a flat deep violet the shipped `--on-dark-*` ramp clears AA untouched, and the four overrides vanish. Cost: one surface token. This looked like the end of it.
+3. Then the owner saw the drawing: the darkening resolved in 44px, which is an **edge**, not a gradient — and an edge at the head/body join is the one place a card claiming to be one object cannot have one. Making it gradual **reverses step 2's conclusion**: a ramp's top _is_ bright violet, so a cool grey cannot survive the upper half however deep the bottom gets. White-alpha does, because it composites toward the ground rather than fighting it.
+
+So the ink question was decided by the _shape_ of the gradient, not by the colour of the ground — and neither of the first two rounds could have got there, because both were reasoning about a single flat value. The final cost is one surface token plus **a name for an ink ramp `.prep` has always had**: six white-alpha literals scattered through `screens.css`, which ADR-0158 §3 says should have been tokens all along. Collecting them retires six literals rather than adding four.
+
+## What the render found that reading could not
+
+- **The contrast harness was wrong four times, and every wrong answer was plausible.** (a) Stopping the ancestor walk at the first non-transparent background read a **16%-alpha pill fill as opaque salmon** → 1:1. (b) A gradient ground has no `background-color`, so the walk went past the card to the light page: the _rejected_ skin reported **3.36:1** when it is **5.02** — the measurement was one run away from rejecting the right option for the wrong reason — and near-white ink on deep violet reported **1.06:1**. (c) A translucent ink was read as opaque. (d) Once the ramp became long, **any single stop was the wrong answer too**: the last stop flatters every row near the top, the first flatters none. The harness now composites alpha in both directions and **interpolates a `180deg` gradient at the subject's own vertical position**. That last one is the reusable part — when the ground under a list is not one colour, a single contrast number is a choice about which row to flatter.
+- **Chrome drops `180deg` from the computed `background-image`,** because `to bottom` is the default direction. A regex requiring it matches the authored string and never the resolved one, so the interpolator silently fell back to a single stop.
+- **The gradient's own selector was wrong, and it presented as a design failure.** `[data-skin='b'] .prep-lifted` is a _descendant_ selector and `.prep-lifted` is the element carrying the attribute — so it matched nothing, the card had no background at all, and every ink measured ~1.05:1 (white on the white page). It read as "the design fails contrast", not as "the rule does not apply".
+- **A CSS comment closed early and silently disabled the token.** Prose inserted after a `*/` left the `:root { --plan-surface-3 }` block unparsed. Same class of failure as above: nothing errored, the page rendered, and the symptom was a plausible-looking bad ratio.
+- **`--on-plan-faint` is 0.80 because 0.76 measured _exactly_ 4.5:1** on the top band label. Passing by nothing is not passing — one nudge to a stop position and it fails.
+- **The overdue pill could not be red ink.** On the head's bright violet a tinted chip with `#f0a09b` (7.82:1 on the board, borrowed) measures **1.94:1**. `tokens.css` already prescribes the way out — `--miss` is a **fill**, `--miss-deep` is the ink — so the pill inverts to solid `--miss` with white ink: **5.74 / 13.87**.
+- **Dark mode passes the probe.** `--on-dark-faint`/`-dim` on the _undarkened_ `--plan-surface` measure 4.04 / 5.63 in dark and 1.45 / 2.02 in light. A dark screenshot of the naive violet card is entirely healthy-looking. That is the **third** time this exact pattern has decided a question in this area (ADR-0160 §U's deadline inks, ADR-0158 §15).
+
+## Built the same day, and what the running app corrected
+
+The owner said "alright let's do it" and the build landed in the same PR. Four findings, all from driving the real app on the seeded Iceland trip (26 days out, six tasks spanning every band) — none was reachable from the drawing or from jsdom.
+
+1. **§5's gradient stops were percentages, which makes legibility a function of list length.** A `%` stop stretches the ramp with the card, so where a row sits on it — and its contrast — depends on how much is above it. The mockup's six-row card measured the top band label at 4.8:1; the real 828px card with eleven rows measured the same label at **4.28:1** and the overdue deadline at **2.93:1**. Now in px. **The worst case inverts with the fix**: with fixed stops the _shortest_ card is the dangerous one, since its rows sit nearest the bright top. This is the same class of error as the corner sheen below — a value that silently depends on content.
+2. **The corner sheen.** The first build deleted `.prep::before` on the lifted card, reasoning that a `90% 60%` radial over a 540px box is a smear rather than a highlight. True, and the wrong repair — the glow is part of being the same object, which ADR-0160 §D learned on the trip hero from a device (the promoted card glowed amber over a board glowing teal, visible in the gap mid-flight). Kept, with its painting box pinned to the collapsed hero's height so the gradient renders at the geometry it was tuned at. **Caught by the owner asking**, not by the build.
+3. **The overdue ink needed lightening a second time.** `#f0a09b` is the board's, and this ramp is brighter than the board everywhere → `#ffc4be`.
+4. **A readiness check rendered a CLOCK beside its meta line.** The build mapped a check's `meta` onto `HeroLiftTask.due` because the two share a line — and `due` draws a clock, so every check read as though `חסרות טיסת הלוך וטיסת חזור` were a deadline. A check has no `dueAt` and never can, which is precisely what ADR-0190 §2 turns on, so the glyph asserted what the model forbids. `HeroLiftTask` gained `meta`; a spec pins the icon's absence.
+
+Verified in the real DOM rather than assumed: `.prep` is a `<button>` with **0** interactive descendants (ADR-0160 §4's constraint, which this hero acquired permanently), the collapse row is **44px** (the floor `.tsk-more` never had), and the card is **828px** capped by `--lift-max-h` with its body scrolling inside.
+
+## The e2e, and a latent flake it surfaced
+
+**The build was reported green before the e2e suite had been run at all** — the unit suite was, and "green" was claimed off it. `hero-lift.spec.ts` had a Plan-mode test asserting the retired behaviour verbatim (`expect(tagName).toBe('DIV')`, the rebuff fires, nothing lifts), so it failed immediately. It is replaced rather than repaired, because its subject is now the two things that must **not** be true. The replacement earns its place in a browser: **ADR-0160 §4's no-nested-control rule is a claim about Chrome's parser**, which jsdom does not reproduce — a nested `<button>` makes Chrome close the outer element and reparent every following sibling, so the pieces still exist and a "the pieces render" assertion sails straight through. The test asserts both halves: zero controls, and the hero still _owns_ its readiness bar, dates and task readout.
+
+Two smaller things it taught:
+
+- **The locator had to become `.prep.is-tappable`.** Once lifted, the card is _also_ a `.prep` containing `.prep-dates` — being the same object is the entire claim — so a locator keyed on those two matches both elevations and trips strict mode. The success of the design is what broke the selector.
+- **A pre-existing race in `hero-in-transit.spec.ts`, surfaced by timing.** It waited for `.wp-board` and then read `.wp-board.transit`; `HomeSkeleton` renders its own placeholder `<div className="wp-board">`, so `.first()` could settle on the skeleton, which carries no `transit` class. Intermittent under a full 12-worker run, never in isolation. **This is the identical trap `hero-lift.spec.ts` already documented for `.prep`** — the lesson had simply never been applied to the board. Worth knowing how it was confirmed rather than guessed: the pre-change source was checked out and the suite re-run, it passed once, and that single pass was nearly taken as proof the failure was mine; a second run of the _current_ code then passed too, which is what identified it as flaky rather than deterministic. One run is not a result either way.
+
+## Deliberately not decided here
+
+- **A real phone.** Everything above was measured in a 390×844 desktop viewport with the real webfonts. The numbers are honest and the device pass is still owed.
+- **The lift's motion character** is inherited wholesale from ADR-0160 (measured FLIP off the collapsed box, the swing, the landing beat). Nothing about it is re-opened, and the mockup draws every hero **at rest** for the same reason `hero-horizon-v1` did.
+- **`BEAT.REBUFF`'s fate.** §H put it back for `.prep` and this retires that consumer. Whether the beat itself leaves `lib/one-shot.ts` depends on remaining claimants and is a build-time check, recorded in ADR-0193's Consequences rather than guessed here.
+- **`BEAT.REBUFF`'s fate.** §H put it back for `.prep` and this retires that consumer. Whether the beat leaves `lib/one-shot.ts` depends on remaining claimants — the Trip board still holds one, so it stays.
+
+## Amended the same day, after merge, on four more owner reports
+
+The PR merged and the owner read the built screen. Four corrections, and two of them delete things this session had argued for.
+
+1. **The lift drops its date bands.** _"In the lifted no need to show the during the trip section … no need to separate with and without date, just sort by the same priority order as in the tasks screen."_ So `דחוף / מה חסר / לפני היציאה / בזמן הטיול / ללא תאריך` becomes one list in `orderTaskRows`' order, and `planRunUp` is deleted rather than left unused. **The argument for the bands was real and the cost was larger:** they put `ללא תאריך` last regardless of `important`, so a flagged undated task fell below every readiness check — a second ordering quietly bending the one ADR-0190 §2 set. The lift cutting against the departure was a true statement no other surface could make; it was not worth a second answer to "what comes first".
+2. **The list is capped at 5 with `ועוד N`.** Five and not `HERO_TASK_CAP`'s three, because that cap is per stop on the trip hero and this is a whole run-up.
+3. **The collapse toggle moves into the section head** and wears `.chk-toggle`. It was reported as _"really ugly (what's this font? Sizing?)"_ — and **the diagnosis in this note's first version was wrong**, which is worth keeping rather than editing away. **`.wp-collapse-toggle` sets the `font` SHORTHAND to `inherit`**, and `collapsible.css` loads AFTER `screens.css`/`tasks.css` — so at equal specificity it wipes any `font-size`/`font-weight` a caller declares. `.chk-toggle` has declared `font-size: 11px; font-weight: 700` since it was written and **never once applied them**: it inherited its parent's font and merely looked right in `.sec-title` (12px/700), then rendered at **16px/400** the moment it moved to a section foot. The trap hid because the only other caller, `.index .past-toggle`, is scoped at (0,2,0) and out-specifies the primitive — one of two callers was broken, invisibly, from the start. Fixed at the primitive: `font-family: inherit` instead of the shorthand, which is all that rule ever wanted (stop a `<button>` wearing the UA's Arial). Size and weight belong to the caller. I had written that `.chk-toggle` escaped the trap by re-declaring `font: inherit` first; it does not, and only measuring the element in two positions showed it.
+
+4. **The Hebrew on both toggles is reworked**, since the one this was asked to match was called bad too. `הצג` ⇄ `כווץ` is not a pair (one names the content, the other the mechanism) → `הצג`/`הסתר`. `(3)` in brackets is a UI convention rather than Hebrew → the count reads inline, `הצג 3 שהושלמו`. And `רחוקות` retires: the group stopped being about distance when the bands went, and an undated task was never far, only not urgent → `הצג עוד N`.
+
+**And a fifth thing, found by sweeping rather than by reading.** `.hero-task-more` — the `ועוד N` line — still carried `--on-dark-faint` and measured **3.89:1** on the violet ramp. It had been invisible until (1) made that line load-bearing _and_ deleted the band labels that were the other consumer of the override. The repair is deliberately not the one rule: the e2e now walks **every text-bearing node** in the lifted card, composites its ink over the gradient at that node's own height, and asserts the AA floor — verified to fail at 3.89 by putting the leak back. Listing rungs is how the next one is missed.
+
+### A tooling failure worth recording
+
+Two unit tests failed in a way that had nothing to do with the code: my `python` rewrites of source files wrote **CRLF** on Windows, and `tasks-section-paint.contract.test.ts` reads `tasks.css` off the filesystem and matches `,
+.`. The repo has `.gitattributes` with `* text=auto eol=lf`, so git normalised on commit and neither the merged blobs nor CI were ever affected — but the working tree was, which means **local test runs stopped being trustworthy** while the cause looked like a real regression. Nine files were normalised back. The lesson is narrow and practical: on Windows, a scripted rewrite must write LF explicitly (`newline=''` with LF content, or binary mode), or the next red test is about line endings rather than about the change.
+
+## Third round, same day — and one of the fixes is a deletion
+
+1. **The toggles move from the section head to the section's foot** (_"maybe fit better on the bottom instead of the top"_). They had been moved _into_ the head one round earlier, on the instruction to place the far toggle where `הכול מוכן 🎉` sits — which was right for one toggle and wrong for two: with the completed toggle already there, the head carried a title, a status and two controls. `הכול מוכן` stays, being a statement rather than a control.
+
+2. **`.chk-done-sum` is deleted, not extended.** The report was that the `✅ הושלמו` strip _"shows only automatic tasks"_, with the options left open (_"remove? Add the and X more tasks? not sure"_). The strip's own code comment decides it: it existed "so the count-in-label toggle always has something legible to point at while collapsed", and that stopped being true when the toggle became `הצג 3 שהושלמו` — count and noun included. So it was redundant _and_ wrong, and adding "+X more tasks" would have made an accurate duplicate rather than removing one. **The deletion cascaded through `CHECK_ICON`, `summaryLabels`, `completedSummary`, three CSS rules and two imports, none of which had another consumer** — which is the evidence that it was dead weight rather than a judgement call.
+
+3. **The hero's `משימות פתוחות` counts the readiness checks.** It was manual-only, while ADR-0190 §1 as amended had already settled that a check _is_ an open task and `taskPreview` had been counting them for the Index tile ever since. Two surfaces, one question, two numbers. Fixed by **reusing `taskPreview`** rather than writing `+ liveChecks.length` beside it, so they cannot drift — the same reflex that put `toHeroTask` in `lib/` when the plan hero became a second host. `overdue` stays manual by construction: a check has no `dueAt` to have passed.
+
+The bar and the line now overlap — a live check is counted in both — and that is correct rather than a wrinkle. They answer different questions: the bar is _how ready is the trip_ across five fixed dimensions, the line is _how many things do you still owe_.
+
+## Fourth round — a reported "stripe", and the split that caused it
+
+Three reports, and the clarification is what decided the diagnosis: _"when there are no items there's just a stripe. It should show something nice as in you're ready or something."_
+
+**The stripe is not an ugly empty state. It is a card with nothing in it.** `.checklist` is a 1px-bordered box, and holding only a collapsed `Collapsible` it measures **2px** under the section title — with **0 of 2** open tasks visible, because both were due in 16 days and the near/far split classed both as "far". The trip had two open tasks and showed neither.
+
+So the second report — _"we said limit to 5 and there's two!"_ — reads as a complaint and **is the design**. The fold is a cap now, and the argument is structural rather than a preference: **the first N of a list is never zero, where a predicate can empty it at any length.** It also deletes machinery (`soonIds`, `isNear`, `nearTasks`, `farTasks`, the `tasksDueSoon` import) and finally puts the inline list and the lifted hero on one rule off one derivation — they had been running two.
+
+**The empty state already existed and this section had never used it.** `ui/feedback/EmptyState` is the app's one empty shell (ADR-0078); `הכול מוכן 🎉` was an 11px hint in the title row — 15px of section against 136px of block, which is precisely why the person looking at it asked for an empty state. Rendered **inside** the card, which is not a styling choice: it is what leaves the card no state in which it has nothing in it, closing the stripe from the other side as well as the first.
+
+**And the two controls were never peers.** `עוד N` continues the list you are reading; `N שהושלמו` opens a different one. Two matching pills asserted a peerage that does not exist, which is what "look bad" was picking up. The continuation is the card's last row; the completed half is a quiet link below.
+
+### What the measurement found that nobody reported
+
+**The shipped pills are 22px painted and 22px tappable** — half ADR-0017's 44px floor, and they had been since they were written. Nobody had reported it, and it rules out the "just keep the pills" option that would otherwise have been the cheapest. The replacement row is a real 44px; the quiet link clears the floor through an `::after` overlay (`ValueToken`'s idiom) rather than by growing the line, which is the difference between meeting a floor and paying for it in layout.
+
+The chosen layout costs **+51px** of section against the pills. Stated because it is a real cost and the alternative was cheaper and wrong.
+
+### One more, from the same screenshots: the assignee was half-migrated
+
+ADR-0190 §6's amendment moved the assignee to the **title row as the face alone**, and it reached `IndexTasksView` and stopped there. `TaskBandRow` — the row **both** Home surfaces draw — kept the pre-amendment shape, an avatar plus a name in the meta line behind a `·`.
+
+That is not merely an inconsistency: the meta line then carried a deadline _and_ a name, so it wrapped and the assignee landed on a **third line**. The same task rendered taller on Home than on the screen its row links to, which is what the owner was looking at when they said it _"should look like it is in the task screen"_.
+
+Two things worth keeping: it needed **no new CSS**, because `.tsk-who-row` is scoped to `.wp-listrow-title` rather than to that screen — the same markup simply worked, which is the payoff for scoping a rule to a shape instead of a host. And measured after the move, the face sits on the title line **0px** from the line end and the row grows **1px**, against a whole extra line before.
+
+The general shape of the mistake is worth naming, because this session produced it twice (here and in `.chk-toggle`'s font): **an amendment applied to one call site of a shared component is not applied.** Nothing failed; both surfaces rendered; only a screenshot of the two side by side showed it.

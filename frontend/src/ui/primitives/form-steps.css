@@ -34,11 +34,37 @@
 
 /* The read-out. Quiet by construction — it reports where you are, it is not a
    control, and it spends no hue (rule 4: a step is not time, place or plan). */
+/* **The step's identity, pinned.** Its host is the scroll container (`.booking-sheet` is
+   `max-height: 80vh; overflow-y: auto`), so this is one sticky box and not a second
+   mechanism. One box rather than two sticky siblings: the read-out and the pinned row are
+   separated by the container's own gap, and two of them let the content scroll THROUGH that
+   gap — 24px of it, measured. The background is the sheet's own, so what passes underneath
+   is covered rather than showing between them. */
+.form-steps-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  background: var(--card);
+  padding-block-end: var(--space-2);
+}
 .form-steps-bar {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  margin-block-end: var(--space-3);
+}
+
+/* **A step's own children get the rhythm the sheet around them has.** `.form-step` carried
+   nothing but the entry animation, so every field on every step sat flush against its
+   neighbour and the ones that looked right were relying on a margin somebody remembered to
+   add — reported as "no gap at all" between the type row and the journey block, measured at
+   0px against the 12px the sheet one level up already spends. */
+.form-step {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
 }
 .form-steps-dots {
   display: inline-flex;

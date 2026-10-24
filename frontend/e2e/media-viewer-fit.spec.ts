@@ -27,6 +27,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { bootIntoTrip, shortLiveTripDates, todayAt, TRIP_ID } from './boot';
 import { pngBytes } from './png';
+import { t } from '../src/i18n/he';
 
 const VIEWPORT = { width: 390, height: 844 }; // ADR-0017's primary phone
 const today = () => new Date().toISOString().slice(0, 10);
@@ -202,7 +203,7 @@ test.describe('the media viewer fits its image @390', () => {
     });
     await page.goto('/');
     await page.locator('nav.nav button', { hasText: 'אינדקס' }).click();
-    await page.locator('.wp-idx-tile').nth(1).click(); // the documents tile
+    await page.locator('.wp-idx-tile', { hasText: 'מסמכים' }).click();
     await page.locator('.wp-listrow').first().click();
     await expect(page.locator('.doc-viewer')).toBeVisible();
 
@@ -229,7 +230,7 @@ test.describe('the media viewer fits its image @390', () => {
     await page.locator('nav.nav button', { hasText: 'מפה' }).click();
     await expect(page.locator('.map-screen')).toBeVisible();
     await page.locator('.map-list .place').first().click();
-    await page.getByRole('button', { name: 'עוד', exact: true }).click();
+    await page.getByRole('button', { name: t.map.know.more, exact: true }).click();
     await page.locator('.map-hero').click();
     await expect(page.locator('.doc-viewer')).toBeVisible();
 

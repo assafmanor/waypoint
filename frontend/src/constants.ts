@@ -2,6 +2,7 @@
 // values live in @waypoint/shared. Keep magic numbers/strings out of logic.
 import {
   BOOKING_TYPE,
+  iconForCategory,
   type BookingType,
   type DocumentType,
   type EventCategory,
@@ -18,16 +19,51 @@ export { APP_NAME } from './app-name';
 export const MS_PER_DAY = 86_400_000;
 /** One minute, for the derivations that are minute-grained on a screen whose clock ticks
  *  every second — a memo keyed on this rebuilds 60 times an hour instead of 3,600. */
+export const MS_PER_SECOND = 1000;
 export const MS_PER_MINUTE = 60_000;
 
-/** How many frames `showRowInList` will wait for a row that is not in the DOM yet
- *  (2026-08-06). One frame is enough when the row is already rendered, and it is not when the
- *  same gesture WIDENED the list to find it: an arrival from another day calls `setAllDays`
- *  and the scroll, and whether React has committed the wider list by the next frame is a race
- *  — which is exactly the "sometimes it doesn't land there" that was reported. Bounded rather
- *  than open-ended, because a row that never appears (filtered out, deleted) must cost a
- *  handful of no-op frames and then stop. */
-export const ROW_SCROLL_WAIT_FRAMES = 10;
+/** **How many pictures `lib/image-warm.ts` holds decoded.** Every day of a long trip, with room
+ *  to spare: a delivered photo is ~840px wide, so this bounds the held set to tens of MB. */
+export const WARM_IMAGE_LIMIT = 32;
+
+/**
+ * **How long a landing stays under watch** (`lib/land-at-top.ts`, 2026-08-20).
+ *
+ * It replaces two frame budgets — 10 frames of waiting for a row that was not in the DOM yet
+ * (2026-08-06: an arrival from another day widens the list and the row is a commit behind), and
+ * 36 frames of waiting out that row's reveal (ADR-0168 §3). Both were bounds on ONE cause each,
+ * and the report that retired them is the one neither could see: with the map still loading,
+ * the scroller's extent kept growing for **over a second** after the screen mounted — the row
+ * opening, the list widening, then the offline-map notice above the split taking 25px off the
+ * scrollport a further second later. An aim before the last of those is short.
+ *
+ * **2.5s is that measurement plus headroom, not a feel call.** The last extent change landed at
+ * ~1.8s on a 4×-throttled cold load, and a slower device is slower still; the corrections are
+ * themselves eased scrolls, so a couple of them plus a late change is the span this has to
+ * cover — at 700ms the reveal case alone still fails. It costs nothing in the ordinary case
+ * (two rects a frame, on a screen that already re-renders on the clock), and a person touching
+ * the list ends the watch immediately, so the window is never something the user can be
+ * fighting.
+ */
+export const LANDING_WATCH_MS = 2500;
+
+/**
+ * **How long a landing waits for the thing it is aiming at to EXIST**, as opposed to how long
+ * it keeps the landing true once it does (`LANDING_WATCH_MS` above).
+ *
+ * They were one number until 2026-08-21, and that conflated two different waits. The 2.5s
+ * above is a measurement of a surface *settling*; waiting for one to *arrive* is a different
+ * order of magnitude, because Plan mode's day view is a lazy chunk that `land-at-top.ts`
+ * measured mounting **~5s in under 6× CPU throttling**. Sharing the budget meant a loaded
+ * machine could spend all of it before the row existed and then close the watch, so the
+ * landing never happened at all — an `e2e (preview)` failure that took three PRs to catch,
+ * because every machine fast enough to have the chunk warm passes.
+ *
+ * 10s is that 5s measurement doubled. It is affordable in a way the settle window is not: a
+ * frame of waiting costs one `querySelector` and no layout, and any touch, wheel or key ends
+ * the watch on the spot — so nobody is ever waiting on this, and nothing is fighting it.
+ */
+export const LANDING_WAIT_MS = 10_000;
 
 /** Where the API lives. Empty in production, where the app is served same-origin, so
  *  every consumer must treat it as a prefix rather than a base to `new URL()` against.
@@ -92,10 +128,17 @@ export const DEVICE_REGION: string | undefined = (() => {
     return undefined;
   }
 })();
+export const SECONDS_PER_MINUTE = 60;
 export const MINUTES_PER_HOUR = 60;
 export const MINUTES_PER_DAY = MINUTES_PER_HOUR * 24;
 
 export const DAYS_PER_WEEK = 7;
+
+/** **The wall-clock a date-only deadline resolves to** (tasks brief §5). "By Thursday" is
+ *  discharged any time on Thursday, so the instant is the day's END — storing 00:00 would
+ *  make a task due today read as overdue one minute past midnight. `Task.dueHasTime` is
+ *  what records that this hour was never typed, so no surface prints it. */
+export const DAY_DEADLINE_HHMM = '23:59';
 
 /** Average Gregorian month/year — good enough for rounding far-out countdowns
  *  and the upper rungs of the duration ladder (ADR-0114), where a ±1-day error
@@ -110,6 +153,10 @@ export const COUNTDOWN_MONTHS_THRESHOLD = 2;
 
 /** How far a "delay" verb pushes an event. */
 export const DELAY_STEP_MINUTES = 30;
+/** **The delays `מאחרים` offers the day** (ADR-0231 §5), in minutes. Five, because five chips of
+ *  `+N` are what fit inside a sheet at 360px without scrolling (the mockup's render); the unit is
+ *  said once in the sentence above them. */
+export const DAY_DELAY_STEPS = [15, 30, 45, 60, 90] as const;
 
 /** Toast auto-dismiss. */
 export const TOAST_DURATION_MS = 3600;
@@ -117,12 +164,26 @@ export const TOAST_DURATION_MS = 3600;
 /** Live-clock tick. */
 export const CLOCK_TICK_MS = 1000;
 
+/** **The longest a day surface holds its first paint waiting on the local travel read**
+ *  (ADR-0206 §AT). The hold is an IndexedDB round trip and nothing else — measured at ⁦75–175ms⁩ —
+ *  so this is not a budget for it, it is the floor under the one failure the hold could otherwise
+ *  cause: a Dexie read that never settles (a blocked upgrade from another tab) would leave the day
+ *  laid out and never painted. Past this the day paints with whatever it has, which is exactly
+ *  what it did before the hold existed. */
+export const DAY_TRAVEL_SETTLE_MAX_MS = 700;
+
 /** How often an open tab asks the browser to re-check `sw.js` for a new build
  *  (ADR-0181). The browser only checks on navigation and roughly every 24h, and
  *  this app is a standalone PWA that is left open for days on a trip — without a
  *  poll, a tab opened before a deploy can run the old build for the rest of the
  *  trip. An hour is well under a day and costs one small conditional GET; the
- *  poll is skipped while offline, so a plane costs nothing. */
+ *  poll is skipped while offline, so a plane costs nothing.
+ *
+ *  **The poll is not the only trigger, and on a phone it is not the main one** (2026-08-30).
+ *  The browser re-checks `sw.js` on navigation and this is a SPA, so it never does — which
+ *  left the hourly tick as the only way a running app learned about a deploy. Coming back to
+ *  a backgrounded PWA now checks immediately (`onResume`), which is both the moment a new
+ *  build is most likely to exist and the moment before the one that can quietly apply it. */
 export const SW_UPDATE_CHECK_MS = 60 * 60 * 1000;
 
 /** The three clocks the automatic build swap runs on (ADR-0185). A waiting build
@@ -142,6 +203,33 @@ export const SW_UPDATE_IDLE_APPLY_MS = 5 * 60 * 1000;
 export const SW_UPDATE_RECHECK_MS = 30 * 1000;
 export const SW_UPDATE_NOTICE_AFTER_MS = 10 * 60 * 1000;
 
+/** **How long a posted SKIP_WAITING may go unanswered before it is posted again**
+ *  (2026-08-30). `takeIt` used to ask once and once only, on the reasoning that a page whose
+ *  swap never lands is still whole and still safe — which is true, and still leaves a
+ *  standalone PWA running a build from before the deploy for the rest of the trip, because
+ *  the "next cold load" that reasoning relies on may never come. A swap that has not landed
+ *  after this is treated as unheard rather than as declined, and the next quiet moment asks
+ *  again. */
+export const SW_UPDATE_ASK_RETRY_MS = 60 * 1000;
+
+/** **The install offer's pressure budget** (ADR-0204 §5) — the "not invasive" half, as
+ *  numbers rather than as an intention.
+ *
+ *  `BUDGET` is how many times the app may raise it UNPROMPTED, ever, per install. Two,
+ *  because the two moments worth using say different things: you have just joined a trip,
+ *  and the trip is about to start. After that the settings row is the only way in.
+ *  Deliberately not one — the second ask is the one that lands, since installing is worth
+ *  most when departure is near — and deliberately not three, which reads as pursuit. This
+ *  is the one number here that is a judgement rather than a derivation.
+ *
+ *  `GAP_MS` keeps the two apart: a second ask a day after the first is the same ask.
+ *
+ *  `DEPARTURE_WINDOW_DAYS` is door B — near enough that offline, notifications and a full
+ *  screen are about to matter, far enough to act on before leaving. */
+export const INSTALL_ASK_BUDGET = 2;
+export const INSTALL_ASK_GAP_MS = 7 * MS_PER_DAY;
+export const INSTALL_DEPARTURE_WINDOW_DAYS = 3;
+
 /** How long a self-healing reload suppresses the next one (`lib/lazy-chunk.ts`).
  *  A chunk that 404s because the build swapped underneath the page is cured by
  *  one reload; a chunk that 404s because it was never deployed is not, and
@@ -149,6 +237,32 @@ export const SW_UPDATE_NOTICE_AFTER_MS = 10 * 60 * 1000;
  *  same swap is not read as a loop, short enough that an unrelated failure hours
  *  later still gets its own cure. */
 export const CHUNK_RELOAD_COOLDOWN_MS = 60 * 1000;
+
+/** **The shared reader's first load, re-asked** (ADR-0213's seventeenth amendment).
+ *
+ *  A public link is read once, by somebody who cannot reload the app or ask what went
+ *  wrong, so its first read is the one request in the app with no second chance — and
+ *  every deploy takes the API away for a few seconds while the container swaps. The ladder
+ *  is what turns that into a wait instead of `יכול להיות שהלינק בוטל`.
+ *
+ *  Doubling from a second to sixteen: about half a minute of asking, five extra requests
+ *  against a route that allows twenty a minute per IP, and no burst — a rollout that ends
+ *  at any point inside it is invisible to the reader. Past that the page says so and offers
+ *  the tap, because a spinner that never resolves is the worse failure. */
+export const SHARE_LOAD_RETRY_MS = [1_000, 2_000, 4_000, 8_000, 16_000] as const;
+
+/** How long a stale reader document suppresses its next reload — the chunk cooldown's
+ *  reasoning applied to a projection this build cannot parse (`lib/guarded-reload.ts`).
+ *  One fresh document cures it; a second cannot, and the page must not spin trying. */
+export const SHARE_RELOAD_COOLDOWN_MS = 60 * 1000;
+
+/** **How much room the shared reader's now-line needs below it to count as already on
+ *  screen** (ADR-0213's eleventh amendment §1). The page lands on today's CARD while the
+ *  line fits under its header and on the LINE when it does not, and `48` is the drawing's
+ *  own number (`a-shared-itinerary-knows-what-day-it-is-v1.html`'s `land()`): a line resting
+ *  on the last pixel of the viewport is on screen arithmetically and invisible in a hand, so
+ *  the bound asks for a row's worth of day under it before it counts. */
+export const SHARE_NOW_LINE_ROOM_PX = 48;
 
 /** Realtime socket liveness (F-04, sync-and-offline.md "Realtime channel"). The
  *  client pings on `WS_HEARTBEAT_INTERVAL_MS`; a watchdog forces a reconnect if
@@ -191,6 +305,26 @@ export const LOCAL_READ_TIMEOUT_MS = {
   SNAPSHOT: 10_000,
 } as const;
 
+/** **How long a boot read waits for the network before showing what it already has.**
+ *
+ *  The mirror of `API_TIMEOUT_MS` above, and deliberately sized the other way round. That one
+ *  is a verdict — _"this is dead"_ — and it is why a reception-starved boot still sat on its
+ *  skeleton for twenty seconds before the cache was allowed to answer at all: **every offline
+ *  fallback in this app keys on the live read FAILING, and a slow link never fails.** This is
+ *  the wait after which the cache answers anyway, sized _"this is slow"_, with the live read
+ *  still running underneath it.
+ *
+ *  **Lowering `API_TIMEOUT_MS` instead is the obvious fix and the wrong one:** it buys the same
+ *  seconds by KILLING the live read, so a connection that needed eight would never deliver at
+ *  all. Same trade ADR-0121's map amendment made when expiry stopped tearing the attempt down
+ *  and started changing only what the screen says.
+ *
+ *  Being wrong here costs one frame of cached data and an offline cue that the live answer
+ *  clears a moment later, which is why the number is small. The boot's cached reads are
+ *  **sequential** (identity, then the trip list, then the trip), so a dead-slow link reaches
+ *  its first usable screen in a few of these, not one. */
+export const STAND_IN_AFTER_MS = 3_000;
+
 /** **When the base map's wait stops being silent** (field reports #28/#35). The MapLibre canvas
  *  and our DOM markers can exist before any PMTiles ground paints, so the first-tile signal is
  *  guarded by the `withDeadline` heuristic in `lib/deadline.ts`.
@@ -206,16 +340,19 @@ export const LOCAL_READ_TIMEOUT_MS = {
  *
  *  That inverts the old asymmetry, so the number comes down hard. Session 256's successes:
  *  **~650ms** warm, **0.9–1.5s** cold, **~2.5s** Fast 3G, **8.15s** Slow 3G (bandwidth-bound,
- *  not CPU-bound — 4× CPU moved it ~500ms). 4s sits above every one of those but the Slow-3G
- *  edge, and that edge now resolves itself: the notice shows at 4s and disappears when the
- *  tiles land. Waiting 20s to say something we could say at 4s — and then saying the wrong
- *  thing — was the worst of both.
+ *  not CPU-bound — 4× CPU moved it ~500ms). Waiting 20s to say something we could say in
+ *  single-digit seconds — and then saying the wrong thing — was the worst of both.
+ *
+ *  **8s, raised from 4s (owner's call, 2026-08-15):** at 4s the notice was firing on ordinary
+ *  loads, and a "slower than usual" that shows up in the usual case is noise. 8s still sits
+ *  above every measured success except the Slow-3G edge, which resolves itself anyway — the
+ *  notice disappears when the tiles land.
  *
  *  **The cost of being wrong is now one line of muted text**, which is why this is a cheap
  *  number to move. A renderer/protocol construction failure still takes the hard `ErrorState`;
  *  only the first-tile wait routes through here. */
 export const MAP_LOAD_TIMEOUT_MS = {
-  TILES: 4_000,
+  TILES: 8_000,
 } as const;
 
 /** **How long before the map may reload the app again** (ADR-0121's 2026-08-15 amendment).
@@ -287,6 +424,99 @@ export type PlaceCorpus = (typeof PLACE_CORPUS)[keyof typeof PLACE_CORPUS];
 /** The waking window the day-progress bar spans, in trip-local hours. */
 export const DAY_WINDOW = { START_HOUR: 7, END_HOUR: 23 } as const;
 
+/**
+ * **Where the night stops being the night**, in trip-local hours — the ONE number this
+ * feature adds, and it is named here rather than inlined because it is a feel call.
+ *
+ * `DAY_WINDOW`'s complement is the eight hours the board's rail refuses to draw, and that
+ * complement is what `gapCharacter` stands the `at-the-stay` read on (ADR-0211 §3). But the
+ * owner asked for two messages, not one — _"at night or early in the morning"_ — and the
+ * complement is a single band: ⁦02:40⁩ and ⁦06:40⁩ are both outside `DAY_WINDOW` and are not the
+ * same situation to be in.
+ *
+ * So the band splits once, here. Everything else in that read is derived from something the
+ * app already stores; this is the exception, and it buys the difference between _you should be
+ * asleep_ and _you are up before the day starts_. **It is a claim about the CLOCK, never about
+ * the person** (ADR-0208) — the word says what hour it is, not what you are doing in it.
+ *
+ * ⁦05:00⁩ because it is early enough that nothing before it reads as morning, and late enough
+ * that a ⁦06:00⁩ airport run does. Wants a device pass on a real early start.
+ */
+export const NIGHT_ENDS_HOUR = 5;
+
+/**
+ * **THE DAY TRACK'S FOUR NUMBERS** (ADR-0214), and they answer three different questions —
+ * which is why they are one object with this comment rather than four literals at a render
+ * site. Named for the TRACK rather than for tomorrow: the night board's strip is the first
+ * consumer and the Home glance rail is the second one already asked for, and both are the same
+ * geometry (`lib/day-track.ts`).
+ *
+ * `BLOCK_MIN_PX` is a **visibility** floor and it is not a new value: it is
+ * `glance-card.css`'s own `.seg.point` width. A ⁦15⁩-minute event is ⁦4.5px⁩ of a ⁦290px⁩ track,
+ * so without a floor the short things on a busy day are exactly the ones that vanish — and it
+ * is also what draws a zero-LENGTH event at all, which the shipped rail does not
+ * (`buildDayGlance` returns `endsAt === startsAt` as a zero-width segment with
+ * `point: false`; see `docs/backlog.md`).
+ *
+ * `MARK_MIN_PX` is a **collision** fact: a ⁦13px⁩ emoji's box plus breathing room. Two marks
+ * closer than this overlap, which is the defect the ribbon's whole thinning rule exists to
+ * prevent (`mockups/tomorrow-lookahead-v3.html` §3 asserts it against rendered boxes).
+ *
+ * `NARROWEST_TRACK_PX` is the ⁦360px⁩ phone's measured track, and dividing by it is the
+ * decision, not the arithmetic: the spacing threshold is therefore computed for the SMALLEST
+ * screen, so a wider phone keeps the same marks rather than finding room for more. One day
+ * reads one way on every device.
+ *
+ * `MARK_CAP` is not a collision fact at all — it is the "stay minimalistic" half of the
+ * owner's correction, and the only one of the four that is a matter of taste. It wants a
+ * device pass.
+ */
+/**
+ * **How far apart two places can be and still be "the same place" for the day's
+ * sun** (`dayAnchorCoord`). ⁦11km⁩ is one tenth of a degree of latitude — finer
+ * than any public weather model's own grid, and far finer than daylight needs: a
+ * sunrise moves by well under a minute across it. Two stops in one city must not
+ * read as a mixed day, and two cities must.
+ */
+export const DAY_ANCHOR_AGREE_M = 11_000;
+
+/**
+ * **How many days the forecast strip draws** (ADR-0218, mockup §2).
+ *
+ * Five, and it is a width answer rather than a horizon one: at 62px a tile plus the 6px gap,
+ * five tiles is 334px, which fits inside a 360px card and leaves the sixth visibly cut so the
+ * strip reads as scrollable rather than as finished. The provider reaches ~10 days, so the rest
+ * are there to scroll to — and a day past the horizon draws the dashed placeholder (§5), which
+ * MET's shorter reach makes an ordinary sight rather than an exotic one.
+ */
+export const WEATHER_STRIP_DAYS = 5;
+
+/**
+ * **The daylight widget's arc** (`lib/daylight-view.ts`).
+ *
+ * `SAMPLES` is how many points the sun's altitude is read at across the day.
+ * ⁦144⁩ is one every ⁦10⁩ minutes: below about ⁦96⁩ the curve visibly facets at the
+ * horizon crossing, where it is steepest and where the eye is looking, and above
+ * ⁦144⁩ nothing changes but the path length. `HORIZON_FRAC` is where the horizon
+ * line sits in the box, and the scale is fixed at ⁦±90°⁩ — deliberately NOT
+ * fitted to the day, because a fitted scale would stretch a polar-night curve to
+ * look like an ordinary one and delete the whole point of drawing it.
+ */
+export const SUN_ARC = {
+  SAMPLES: 144,
+  HORIZON_FRAC: 0.62,
+  /** How much of the half-box the ⁦90°⁩ extreme uses, leaving the curve clear of
+   *  the edge at the solstice. */
+  SCALE: 0.92,
+} as const;
+
+export const DAY_TRACK = {
+  BLOCK_MIN_PX: 4,
+  MARK_MIN_PX: 16,
+  NARROWEST_TRACK_PX: 290,
+  MARK_CAP: 5,
+} as const;
+
 /** How many ranked ideas the pool strip keeps (ADR-0116 session-202 §5). This is
  *  what makes the strip's width independent of N: the mockup measured swipes-to-last
  *  going 2 · 10 · 24 at 5 · 18 · 40 ideas, against a constant 3 once capped. The tail
@@ -310,14 +540,8 @@ export const PLACE_REFS_CAP = 3;
 export const SLOT_FILL_CAP = 6;
 export const SLOT_FILL_SEARCH_AT = 8;
 
-/** Where a near-me distance chip changes precision (ADR-0109 §7): sub-kilometre
- *  distances round to a walkable 10 m, then read as one decimal of a kilometre,
- *  then as whole kilometres once the decimal stops meaning anything. */
-export const DISTANCE_STEP = {
-  NEAR_ROUND_M: 10,
-  KM_FROM_M: 1000,
-  WHOLE_KM_FROM: 10,
-} as const;
+// In shared since 6A.0: the recap's figures step at the same thresholds on the server.
+export { DISTANCE_STEP } from '@waypoint/shared';
 
 /** Near-me location fix (lib/useGeolocation.ts): a one-shot read, so it may take a
  *  moment on a cold GPS, and a fix from the last minute is still where you are. */
@@ -337,6 +561,31 @@ export const QUICK_TILE_MAX_COLS = 4;
  *  and a whole booking on save. */
 export const MAX_ROUTE_STOPS = 3;
 
+/** **From how many rail nodes a journey's filled nodes summarise** (ADR-0203 §9, corrected
+ *  2026-08-24) — at or below this, everything stays open.
+ *
+ *  Four nodes is TWO stops, and the number is the fold rather than a taste: §9's own table
+ *  measures a two-stop journey at 718.5px all-open against a 675px sheet (and 894px at three
+ *  stops), while 0–1 stops fit on both a 390×844 and a 360×640 phone with nothing collapsed.
+ *
+ *  **It shipped at 3, which is one stop, and that was the bug.** A one-stop journey compacted
+ *  to fix an overflow it did not have — reported as "the lines collapsing under your fingers
+ *  could be a little confusing… maybe do it only when the form is very long". Compaction trades
+ *  a control for the line it reads as, so it has to be paid for by height that is actually
+ *  there; below the fold threshold it is all cost. */
+export const SUMMARISE_FROM_NODES = 3;
+
+/** **How many days forward a single moment may be resolved to** (ADR-0203 §2). A journey's
+ *  later moments take the nearest forward instant, and this bounds the search.
+ *
+ *  It is not a limit on journeys — it is the line past which the input is a mistyped clock
+ *  rather than a longer leg. Two days covers every real single leg (the longest scheduled
+ *  flight is under 20 hours; a sleeper train or a ferry crosses one night, occasionally
+ *  two), and a genuinely longer one is said with the day token's override, which this
+ *  function takes as given. Raising it would not enable anything a human cannot already
+ *  express; it would only make a typo resolve to something further away in silence. */
+export const MAX_JOURNEY_DAY_SPAN = 2;
+
 /** How far from "now" an event still evidences which zone you are standing in
  *  (ADR-0107 session-100). A booking an hour ago or an hour ahead places you; one
  *  five days out says nothing about the current clock. Half a day either way keeps
@@ -344,11 +593,12 @@ export const MAX_ROUTE_STOPS = 3;
  *  flight's destination. */
 export const LIVE_ZONE_WINDOW_MS = 12 * 60 * 60 * 1000;
 
-/** Noon — the safe wall-clock instant to sample a date at when only the calendar
- *  day matters and never the time: the day's **ambient zone** (ADR-0107, so a
- *  crossing near either boundary can't decide which zone frames the whole day)
- *  and the day's weekday label. Mid-day is far from every DST/midnight edge. */
-export const DAY_NOON = '12:00';
+/** **Both live in `@waypoint/shared`'s `trip-dates.ts` now** (2026-09-03), beside the
+ *  `zonedIso` they are arguments to: the shared day-consensus derivation
+ *  (`dayAmbientZone`, promoted so the sharing projection can answer which zone a day is
+ *  lived in) samples a date at noon, and the server had no name for it. Re-exported here
+ *  because this is where the app's call sites look. */
+export { DAY_NOON, DAY_MIDNIGHT } from '@waypoint/shared';
 
 /** Overnight events (ADR-0037): a regular event may end in the small hours of
  *  the next day, but stays filed under its start night. An end at/before the
@@ -398,6 +648,30 @@ export const DEFAULT_EVENT_ICON = '📌';
  *  event's user-picked icon always wins" was the stated rule and stayed right; the
  *  reading of it was what slipped, because a DEFAULT was counted as a pick. Every
  *  reader of this map goes through `chosenIcon`. */
+/**
+ * **The same eight types as SVG marks, for a surface whose siblings draw SVG** (ADR-0138
+ * §4; the shared page's fixed-commitments block).
+ *
+ * A second table beside `BOOKING_TYPE_ICON` and not a replacement for it, on the same
+ * distinction this file already draws for `hotel` further down: an emoji is a unit inside a
+ * sentence, and a glyph on a control is a control. Every row in that block is a link that
+ * jumps to a day, so it takes marks — and the block sits beside `Icon`-drawn siblings, where
+ * a row of emoji reads as decoration.
+ *
+ * `restaurant` has no food glyph in `Icon.tsx` and takes the ticket, which is what a
+ * reservation IS; adding a sixteenth icon for one row would be the more expensive answer.
+ */
+export const BOOKING_TYPE_MARK = {
+  flight: 'flight',
+  hotel: 'hotel',
+  restaurant: 'ticket',
+  train: 'transit',
+  transit: 'transit',
+  car: 'driving',
+  activity: 'ticket',
+  other: 'documents',
+} as const satisfies Record<BookingType, IconName>;
+
 export const BOOKING_TYPE_ICON = {
   flight: '✈️',
   hotel: '🏨',
@@ -545,6 +819,34 @@ const PLACEHOLDER_ICONS: ReadonlySet<string> = new Set([DEFAULT_EVENT_ICON, DEFA
 export const chosenIcon = (icon?: string): string | undefined =>
   icon && !PLACEHOLDER_ICONS.has(icon) ? icon : undefined;
 
+/**
+ * **Did a PERSON choose this glyph?** — `chosenIcon` with the CATEGORY's own default treated
+ * as the placeholder it is.
+ *
+ * `chosenIcon` knows two placeholders, `📌` and `💡`. But `EventForm` persists
+ * `iconForCategory(category)` on save — its own comment says "the effective default is what
+ * gets persisted" — so a nature event stores `⛰️` that nobody picked, an activity stores `🎫`,
+ * a sight stores `⛩️`. Every one of those reads as a pick.
+ *
+ * That is harmless in the `chosenIcon(x) ?? categoryGlyph` chains, which land on the same
+ * glyph either way, and it is not harmless where the question is used as a GATE: `rowPhoto`
+ * suppresses a place's photograph when a glyph was picked (ADR-0167 §2 — the trip's opinion
+ * beats the world's facts), so every nature row wore `⛰️` while the same place on the Map wore
+ * its photograph. The owner's _"how is it that there's no images as the icons of events"_,
+ * against a day of waterfalls that all have pictures.
+ *
+ * **The test is `EventForm`'s own, generalised rather than copied** (root rule 8): that form
+ * has computed `storedIcon !== derivedIcon` since field report #31 to decide whether a category
+ * change may still move the glyph. One question, one answer, two callers.
+ *
+ * A category default a person deliberately re-picked is treated as unpicked — the same honest,
+ * small cost `chosenIcon` already accepts for someone who genuinely wants `📌`.
+ */
+export const pickedIcon = (icon?: string, category?: EventCategory | null): string | undefined => {
+  const stored = chosenIcon(icon);
+  return stored && category && stored === iconForCategory(category) ? undefined : stored;
+};
+
 /** Drag edge auto-scroll (ADR-0116 §5 amendment): how deep the edge band is, and
  *  the fastest one frame may scroll while the pointer is pinned against it. The
  *  band is generous because a thumb holding a card covers a lot of screen. */
@@ -576,8 +878,34 @@ export const DRAG_SCROLLER_MIN_OVERFLOW_PX = 24;
  *
  *  Shared rather than forked because the justification is the platform's, not the
  *  surface's: a finger is a finger. If the device pass finds the canvas wants its own —
- *  it competes with Google's pan, where the shelf competes with a scroll — that is when
+ *  it competes with the renderer's pan, where the shelf competes with a scroll — that is when
  *  it splits, and not before. */
+/** **When a note stops being something you read in the list** (ADR-0202 §9c's second round;
+ *  owner: _"notes past a certain threshold shouldn't expand at all but open at full screen"_).
+ *
+ *  The expansion was measured on notes where lifting a two-line clamp adds a little — ADR-0153
+ *  §4's +37px short and +89px long. It was never measured on a note that is a document: there,
+ *  expanding produces a screen-height wall inside a list row, which loses your place, pushes
+ *  every other row off, and leaves the verbs at the bottom of it.
+ *
+ *  Both numbers are ESTIMATES and named as such, because the alternative is measuring the
+ *  rendered box before deciding what to do with a tap, which means rendering it first.
+ *  `CHARS_PER_LINE` is `.note-body-line` at 360px and `--text-body` — the design width, so the
+ *  estimate errs on the side of more lines on a wider phone, which is the safe direction.
+ *  `MAX_LINES` is the point where the expansion takes about half the visible list (~8 lines of
+ *  body on top of a ~99px row, against ~540px of list on a 640px screen).
+ *
+ *  Both want a device pass: they decide which of two containers a tap opens, and the boundary
+ *  between them is invisible by construction.
+ *
+ *  **Scope narrowed 2026-09-20** (ADR-0235 §7): these decide the notes SCREEN's tap and
+ *  nothing else. A host's section now clips its body and routes on whether the box actually
+ *  cut anything, which is a measurement rather than an estimate — its own budget is
+ *  `--note-clip-lines` in `ui/notes.css`, stated per surface. Do not re-point that surface at
+ *  these: the two would disagree on any phone wider than the design width. */
+export const NOTE_ROW_CHARS_PER_LINE = 42;
+export const NOTE_INLINE_MAX_LINES = 8;
+
 export const DRAG_HOLD_MS = 500;
 export const DRAG_HOLD_SLOP_PX = 8;
 /** How far the drag clone sits ABOVE the finger (ADR-0161 §8), so the pointer lands just
@@ -597,6 +925,43 @@ export const DRAG_CLICK_SWALLOW_MS = 400;
  *  starts the drag: a drag crosses several pills on its way anywhere, and every one it
  *  merely passes over must not open. */
 export const DRAG_DAY_DWELL_MS = 700;
+/** How near the day surface's inline edge a drag must be held for that rest to mean
+ *  "the day beyond this edge" (ADR-0116 §2's 2026-08-22 amendment; owner: _"you could
+ *  drag from the edge to a different day"_). The header pill was the only way to reach
+ *  another day, and it asks a phone to carry a card up to a ~30px target.
+ *
+ *  Narrow on purpose, and it is the one number here that is not a preference: the band
+ *  has to be somewhere the finger only goes deliberately, because everything else on the
+ *  inline axis at that depth is the surface's own padding. Two of these leave ~286px of
+ *  neutral middle on a 358px column. The dwell is `DRAG_DAY_DWELL_MS`, shared with the
+ *  pill — one answer to "resting somewhere switches the day", wherever you rest. */
+export const DRAG_DAY_EDGE_PX = 36;
+/** **How far the page is lifted when the edge names a day** (ADR-0116 §2d) — the detent it
+ *  stops at, before the dwell decides whether to finish the turn.
+ *
+ *  It has to clear `--swipe-page-gap` before any of the next day is visible at all (the pane
+ *  parks a gutter outside the window), so this is "the gutter, plus a readable sliver": at 48
+ *  the gutter is 24 and the sliver is 24. Lower than ~40 and the lift shows the gap and
+ *  nothing behind it; much higher and the row under the finger has moved further than the
+ *  gesture is worth.
+ *
+ *  A feel number, and the one this section is most likely to want moved — v1's mistake was
+ *  spending the whole dwell travelling this far, which came out at 1.1px per frame and read
+ *  as a static offset rather than a motion. It travels in `--t-base` now (~3.2px/frame),
+ *  measured in `mockups/a-day-turns-under-a-held-card-v2.html` where it is a control. */
+export const DRAG_DAY_LIFT_PX = 48;
+/** **How long after a step the opposite band still reads as UNDOING it** rather than starting
+ *  a new journey (§2d's repair; owner: _"hard to go back"_). Inside this window a reversal pays
+ *  the shortened dwell below; outside it, going back costs what going forward costs.
+ *
+ *  A window rather than "for the rest of the drag" on purpose: five minutes into a long drag,
+ *  a band brushed while aiming should not be a day change with half the warning. */
+export const DRAG_DAY_REVERSE_MS = 2_000;
+/** The dwell a reversal pays — **half**, and derived rather than typed so the two cannot drift
+ *  apart. Undoing a step you can still see is a correction, and `design-language.md` says a
+ *  correction is quicker than the thing it corrects; the lift and the turn are unchanged, so
+ *  what shortens is only the hold. */
+export const DRAG_DAY_REVERSE_DWELL_MS = DRAG_DAY_DWELL_MS / 2;
 
 /** ── AN ANCHORED PANEL'S PLACEMENT (ADR-0144) ────────────────────────────────────────
  *  `IconPicker` opens below its trigger, which is right in a form that scrolls under a
@@ -644,10 +1009,12 @@ export const MAP_CONTROLS_H = 46;
  *  from one constant that also writes the CSS `min-height` (ADR-0122 §3), so a taller
  *  top can never clip. It is also the `map` stop's whole height. */
 export const MAP_SHEET_STRIP_H = 52;
-/** Google draws its logo and terms link at the bottom-inline-start of the map div and
- *  the ToS forbids obscuring them (ADR-0106 §B), so anything floating at the pane's
- *  bottom clears them by their own height — a named clearance, not a hand-tuned
- *  offset (ADR-0122 §7). */
+/** The band the pane reserves for attribution at the bottom-inline-start of the canvas, so
+ *  anything floating there clears it by its own height — a named clearance, not a hand-tuned
+ *  offset (ADR-0122 §7). It was Google's logo and terms link, which its ToS forbade obscuring
+ *  (ADR-0106 §B); since ADR-0186 §2 the band holds `.map-attrib`, which we draw ourselves
+ *  because MapLibre's own control ignores an RTL page — and OSM's ODbL attribution is no more
+ *  optional than Google's was. */
 export const MAP_ATTRIBUTION_H = 22;
 /** The gap the pane's floating furniture leaves below the controls row. Paired with
  *  the `8px` in `map.css` / `map-pane.css`, which is the same offset the re-centre
@@ -712,6 +1079,52 @@ export const SNAP_DRAG_SLOP_PX = 4;
  *  A threshold in px/ms is roughly device-independent on paper and a finger is not a
  *  mouse, so it belongs to Phase 3's device pass along with `MAP_ZOOM`. */
 export const SNAP_FLICK_PX_PER_MS = 0.5;
+
+/** **Stepping a full surface one page with a swipe** (ADR-0200, `lib/useSwipePager.ts`).
+ *  Six numbers, and the first three are the arbitration rather than the feel:
+ *
+ *  - `SLOP_PX` — **the travel below which nothing here is a swipe**, and it answers that
+ *    question twice (§9). It is the MOUSE's claim gate, where there is no browser pan to
+ *    lose and so no reason to decide early; and it is the floor a **flick** still has to
+ *    clear, so a thumb rolling 8px off a tap cannot page the day however fast it rolled.
+ *    The whole day surface is the target and it is nothing but controls (cards that expand,
+ *    rows that hold-drag, ticks), so the floor `SNAP_DRAG_SLOP_PX` sets for a 51px region
+ *    has to be much higher here: 4px would swallow a tap on every one of them.
+ *    **On touch it is no longer the claim gate** — the axis is already forfeited at
+ *    `DECIDE_PX`, so holding the follow back to 24px bought a dead zone and a lurch, not
+ *    safety (§9, measured).
+ *  - `AXIS_RATIO` — how much more horizontal than vertical the travel must be. The surface
+ *    lives inside the body's vertical scroller, so the two gestures share a start point and
+ *    only their direction separates them. Above the ratio it is a page step; below it the
+ *    browser keeps the pan.
+ *  - `DECIDE_PX` — how far the finger travels before that ratio is asked, and it is UNDER
+ *    Chrome's own ~8px touch slop deliberately. The browser claims a touch for scrolling at
+ *    its slop in whatever direction, so the axis has to be answered before then or the
+ *    gesture is cancelled out from under us (measured — see `useSwipePager`'s `touchMove`).
+ *    Low enough to beat the slop, high enough that a still finger's jitter decides nothing.
+ *  - `COMMIT_SHARE` — the share of the surface's width that commits **a deliberate drag**,
+ *    so the gesture asks the same effort of a 360px phone and a 640px desktop column. A
+ *    flick commits under it: that is `SNAP_FLICK_PX_PER_MS`'s job, one flick threshold for
+ *    the whole app (§9, and the owner reported the sheet's version of it first).
+ *  - `EDGE_RESIST` / `EDGE_MAX_PX` — the rebuff. With nowhere to go the surface still
+ *    follows the finger, at a fraction of it and no further than the cap: it strains,
+ *    is arrested, and is pulled back to level on release. Same statement `BEAT.PINNED`
+ *    makes about a row that cannot be dragged (ADR-0199 §2), made continuously by the
+ *    gesture itself rather than played at it — which is why there is no beat here. */
+export const SWIPE_PAGER = {
+  SLOP_PX: 24,
+  AXIS_RATIO: 1.4,
+  DECIDE_PX: 6,
+  COMMIT_SHARE: 0.22,
+  EDGE_RESIST: 0.28,
+  EDGE_MAX_PX: 40,
+  /** **A frame of slack on any wait that has to outlast a transition** (ADR-0116 §2d's third
+   *  repair). `setTimeout` is not the clock a transition runs on: it can fire a millisecond
+   *  before the last frame of one, and giving the surface back one frame early cancels it. The
+   *  wait is anchored to a `requestAnimationFrame` for the same reason — that IS the rendering
+   *  clock — so this only has to cover the timer's own imprecision. */
+  SETTLE_SLACK_MS: 16,
+} as const;
 
 /** Camera zoom bounds (ADR-0121 §7, re-tuned and reorganised by ADR-0127).
  *
@@ -807,7 +1220,7 @@ export const MAP_ZOOM = {
  *  made again. */
 export const MAP_DRAG_ZOOM = {
   /** Raised 300 → 500 and 24 → 44 after the device pass reported the gesture sometimes
-   *  not being recognised at all, leaving Google to pan instead. A double-tap that
+   *  not being recognised at all, leaving the renderer to pan instead. A double-tap that
    *  *keeps its finger down* is slower and sloppier than a double-click: the second press
    *  is deliberate, so it lands later and further away. **44 is ADR-0017's touch floor**,
    *  which makes it the principled number rather than a guessed one — two presses inside
@@ -881,10 +1294,12 @@ export const MAP_FOCUS = {
  *  the owner's own framing of this report was "careful not to pan too much". */
 export const MAP_SEARCH_CAMERA = { SPREAD_CAP_DEG: 2, FITS_AT_ZOOM_SHARE: 0.8 } as const;
 
-/** **The camera's own animation** (ADR-0129 §3). Google animates `fitBounds` "depending
- *  on an internal heuristic" and `panTo` only when the move is shorter than the
- *  viewport, so smooth movement is not something the API can be asked for — it is
- *  something we drive, with `moveCamera` (documented as instant) once per frame.
+/** **The camera's own animation** (ADR-0129 §3). Written when smooth movement was not
+ *  something the API could be asked for — Google animated `fitBounds` "depending on an
+ *  internal heuristic" and `panTo` only for short moves — and kept for a reason that outlived
+ *  that one: MapLibre eases perfectly well, and a second easer underneath ours would be two
+ *  drivers on one map. So the move stays ours, `moveCamera` once per frame, and the adapter
+ *  binds it to `jumpTo` rather than `easeTo` (`map-camera-adapter`).
  *
  *  `DURATION_MS` is one duration for every camera move, so a day change, a chip and an
  *  arrival all read as the same object moving. Under `prefers-reduced-motion` the whole
@@ -963,6 +1378,38 @@ export const MAP_CARD_RESERVE_H = MAP_ATTRIBUTION_H + MAP_FLOAT_GAP + MAP_CARD_B
  * phone, which is one of the two reasons ADR-0142 makes the neutral phase tag day-scoped.
  * The `MAX_H` question above is untouched — that was measured at 40px pins, not at the cap.
  */
+/**
+ * **Orientation: the compass and the heading it can follow** (ADR-0234).
+ *
+ * The two numbers ADR-0234 calls feel calls are in here rather than in the CSS, because the
+ * mockup shipped them as controls and its device pass settles them — a literal buried in a
+ * `calc()` is not a number anyone can find later. The rest are the thresholds that keep a
+ * sensor reading from becoming a spin.
+ */
+export const MAP_ORIENT = {
+  /** Inside this many degrees of north the map counts as north-up: the compass stops
+   *  offering a reset that would move nothing, and a needle a third of a degree off does
+   *  not read as crooked. A twist always lands well outside it. */
+  NORTH_EPSILON_DEG: 0.5,
+  /**
+   * **How much of a new heading sample to believe, per sample.** A phone's compass is noisy
+   * at rest — a few degrees of wander with the device on a table — and writing every sample
+   * straight to the camera is the jitter ADR-0234's device pass is about. A low-pass over
+   * the SHORT arc (never a raw average, which would sweep the wrong way across north).
+   *
+   * 0.15 is a recommendation from the mockup, not a measurement: a real device settles it.
+   */
+  SMOOTHING: 0.15,
+  /** Below this, a sample is noise and the camera is left alone — so a hand held still does
+   *  not produce a continuous stream of one-degree writes, each of which is a re-render's
+   *  worth of work on a surface that re-renders every second anyway. */
+  MIN_STEP_DEG: 1.5,
+  /** The heading cone's reach, as a share of `--pin-base` — so it scales with the canvas
+   *  like every other length on it (ADR-0123). The mockup's ⟨החרוט⟩ control shipped 0.66 ·
+   *  **0.95** · 1.3 and this is its recommendation. */
+  CONE_SHARE: 0.95,
+} as const;
+
 export const MAP_PIN = {
   MIN_H: 34,
   MAX_H: 56,
@@ -1038,6 +1485,106 @@ export const MAP_CONNECTOR = {
    *  is in LINE WIDTHS, not pixels: at `WEIGHT` 2.5 this is a ~5px dash and a ~5px gap, which
    *  is what the symbol version measured out to. */
   DASH: [2, 2],
+  /** **The drawn route** — ADR-0206 §D1's "solid + amber", the treatment the dash above has
+   *  been reserving. One leg at a time (§D8): five solid amber lines on a phone is the fight
+   *  ADR-0121 §9 says the pins must win.
+   *
+   *  **It cannot be one value, and that is measured** (ADR-0206 §Z5 §M3). Solid `--amber`
+   *  (`#e9a63c`) is **1.72:1** on the day ground (`earth #eee8dc`) — under the 3:1 a graphic
+   *  owes what it crosses. So the pair is amber's paper variant on paper and amber itself on
+   *  the night ground: `--amber-deep` **4.50:1** light, dark-theme `--amber` **7.01:1** on
+   *  `earth #343027`. No new hue is minted (ADR-0158 §6). Hex rather than a CSS variable for
+   *  the same reason `COLOR` above is, and it takes the same `scheme` the ground was painted
+   *  from so the two cannot disagree after a theme flip.
+   *
+   *  Heavier than the dash and round-jointed because it is the opposite claim: this IS the
+   *  path, drawn from the provider's own geometry, and a many-vertex line on mitre joins
+   *  spikes at every turn. */
+  ROUTE: {
+    COLOR: {
+      light: '#915e1e',
+      dark: '#f0b254',
+    },
+    WEIGHT: 3.5,
+  },
+  /** **A DECLARED תחב״צ LEG DRAWS ITS OWN STRAIGHT SEGMENT** (ADR-0206 §AA4's 2026-08-27
+   *  amendment, styled in §AL6 and drawn in `mockups/the-mode-set-and-transit-declared-v1.html` §4).
+   *
+   *  **Why it exists at all:** the map was drawing a ROAD ROUTE between a declared leg's two ends
+   *  whenever the pair sat under the mode's ceiling — §Z5's own worked example, Senso-ji → Tokyo
+   *  Station at 4.6 km, well inside walking's 15 km. A road polyline for a rail journey is a false
+   *  claim about the PATH, which is the same failure as the false NUMBER the declaration silences.
+   *  Drawing nothing is also wrong: a declared leg is a journey that happens.
+   *
+   *  **Three channels separate it from the un-routed dashed connector, and it needs all three**,
+   *  because being mistaken for that fallback is its one real failure mode — "this is not a road
+   *  journey" and "we could not route this" are different statements. The shape cannot help:
+   *  `MapDayLeg.path` is documented as either the routed path or the straight segment, so the two
+   *  are the same geometry by construction. So: the ROUTE's amber (time and commitment, the
+   *  strongest channel — 4.50:1 light / 7.01:1 dark on the real ground against the connector's
+   *  3.01/3.25), the ROUTE's weight, and a LONG dash against the connector's 5/5 stipple.
+   *
+   *  **`CAP: 'butt'`, deliberately unlike `ROUTE`'s round, and the measurement is why.** A round cap
+   *  adds half the stroke at each end of EVERY dash — 3.5px at this weight — so a 4.2px gap becomes
+   *  0.7px and the line reads nearly solid, i.e. it asserts the very path it exists to disclaim.
+   *
+   *  **The weight and the rhythm do NOT ride §D8's amber ration**: if they did, a declared leg that
+   *  is not the asked-about one would fall straight back to reading as the fallback. The ration
+   *  governs hue and opacity; the structure is the leg's own. */
+  TRANSIT: {
+    /** In LINE WIDTHS like every `line-dasharray` here: at `ROUTE.WEIGHT` 3.5 this is a 10.5px
+     *  dash and a 4.2px gap. */
+    DASH: [3, 1.2],
+    CAP: 'butt',
+  },
+  /** **The tether between two places that are one stop** (ADR-0225 §3). The connector's own
+   *  neutral ink, so it spends nothing; a finer dash and a lighter weight than the ordered
+   *  connector, so in Plan mode — where every leg is a neutral dash — it still reads as a
+   *  different kind of line. At `WEIGHT` 1.6 this is a ~2px dash and a ~4px gap. */
+  TETHER: {
+    WEIGHT: 1.6,
+    DASH: [1.2, 2.4],
+    OPACITY: 0.85,
+  },
+  /** **A leg not being asked about recedes** (ADR-0206 §AC2). Opacity and weight, never a second
+   *  hue — the budget has none to spare (root rule 4). `NEAR_WEIGHT` is the departing leg of a
+   *  selected stop: prominent without spending amber a second time. */
+  DIM_OPACITY: 0.45,
+  NEAR_WEIGHT: 3.5,
+  /** **Where a leg's end mark sits, in SCREEN pixels** (ADR-0206 §AC3).
+   *
+   *  A plain gap here does nothing — that is measured, not assumed: the dash is 5px on and 5px
+   *  off, so a collar under ~3× that reads as one more dash. What marks the end is `DOT` below;
+   *  this is only how far back from the stop it sits, so the pin's own tip does not cover it.
+   *
+   *  **Pixels, which is why `DayConnector` re-trims on a zoom.** A constant in metres would be
+   *  invisible at country zoom and enormous at street zoom — the collar has to hold its size on
+   *  screen, and that makes the trimmed geometry a function of the camera. */
+  COLLAR_PX: 9,
+  /** **The most of one end SEGMENT the collar may eat.** The setback is cosmetic and the path is
+   *  a claim, so the trim shortens the leg's final straight and is never allowed to reach the
+   *  vertex behind it — a vertex is a turn the route actually makes. Without this the trim spent
+   *  its pixels by deleting points, which is invisible at street zoom and a lie at trip zoom
+   *  where ⁦9px⁩ is hundreds of metres: it erased a route's last turn, and on a leg shorter than
+   *  two collars it erased the leg. A half rather than the whole so a very short leg still reads
+   *  as a line rather than collapsing to a dot. */
+  COLLAR_MAX_SEGMENT: 0.5,
+  /** **How far the zoom must move before the collar is re-derived.** The trim is in screen
+   *  pixels, so a zoom makes it wrong — but re-deriving on every `zoomend` mutates the style
+   *  exactly as the app settles after a camera fit, which measurably starved the main thread
+   *  (`place-know.spec.ts`: ⁦38s⁩ → ⁦1.1m⁩, with its stability assertions failing). Under half a
+   *  level the setback is still visually a setback, so this is the threshold below which the
+   *  redraw is simply not worth its cost. */
+  COLLAR_REDRAW_ZOOM: 0.5,
+  /** The mark itself: a filled dot, the one thing a dashed line cannot accidentally produce. */
+  DOT: { RADIUS: 3, RADIUS_ROUTE: 3.4 },
+  /** **The unrouted tail between a stop and where it meets the network** (ADR-0206 §AC5).
+   *  Dotted rather than dashed (a 0-length dash with round caps IS a dot), thinner, and slightly
+   *  faded: it is the one line on the canvas that is deliberately not a route.
+   *
+   *  `MIN_PX` is the gap below which there is nothing worth drawing — most stops snap within a
+   *  metre, and a 2px tail is noise. Screen pixels for `COLLAR_PX`'s reason. */
+  STUB: { WEIGHT: 2.5, DASH: [0.04, 2], OPACITY: 0.9, MIN_PX: 16 },
 } as const;
 
 /** Per-row reveal stagger for **every** filtered/searched list (ADR-0120,
@@ -1085,6 +1632,40 @@ export const TRIP_HANDOFF = {
   TILE_FADE: 0.6,
 } as const;
 
+/** **The first morning's going-live sequence** (ADR-0221 §4, `state/mode-state.tsx`).
+ *  `HOLD_MS` is how long the shell sits in plan chrome before it warms — long enough for
+ *  the violet to register, short enough not to read as a stall; a feel number the mockup
+ *  put on a control (0 · 250 · 400) and the device pass owns. `BOARD_DELAY_MS` mirrors the
+ *  `0.12s` in `board.css`'s power-on rule, and `TAIL_MS` the Shell's own switch tail. */
+export const GOING_LIVE = {
+  HOLD_MS: 400,
+  /** The hold when the flip happens LIVE at the clock's zero (ADR-0221 §4): the zeros breathe
+   *  before the chrome warms. Longer than `HOLD_MS`, because here the face is already on
+   *  screen and the beat is the payoff of a count someone watched; the mockup's control
+   *  offered 800 · 1200 · 1600. */
+  ZERO_HOLD_MS: 1200,
+  BOARD_DELAY_MS: 120,
+  TAIL_MS: 80,
+} as const;
+
+/** **Coming home** (ADR-0241 §3): the opener's hold, then each figure's card. The settle into the
+ *  cover is `--t-cinematic`, read through `motionDurationMs`, not a number here. */
+export const COMING_HOME = {
+  OPEN_HOLD_MS: 1600,
+  CARD_MS: 1800,
+} as const;
+
+/** **A finished trip replays** (ADR-0241 §2): per day, the camera eases in (`MAP_CAMERA_EASE`),
+ *  the day's stops light one step apart, and the day holds. The step shrinks on a crowded day so
+ *  its lighting never runs past `STOPS_MAX_MS`. The hold is the owner's call (drawn at 700). */
+export const REPLAY = {
+  STOP_STEP_MS: 220,
+  STOPS_MAX_MS: 1320,
+  DAY_HOLD_MS: 1000,
+  /** A leg not reached yet, as a line opacity — the pin's own 0.22 lives in `map-pane.css`. */
+  AHEAD_OPACITY: 0.22,
+} as const;
+
 /** A value that changes should be seen to change (`lib/useCountUp.ts`, ADR-0143).
  *  Steps rather than a duration, because what runs up is an integer count. */
 export const COUNT_UP = {
@@ -1117,8 +1698,10 @@ export const TRIP_BIRTH = {
 } as const;
 
 /** Placeholder row icon on the all-trips list (ADR-0033) — `destination` is
- *  free text, no structured country to derive a real flag from. */
-export const DEFAULT_TRIP_ICON = '🧳';
+ *  free text, no structured country to derive a real flag from. Re-exported rather than
+ *  moved-with-its-call-sites: the backend draws the same glyph on the invitation cover, so
+ *  `@waypoint/shared` owns it now and the eight readers here did not have to churn. */
+export { DEFAULT_TRIP_ICON } from '@waypoint/shared';
 
 /** Prefix shown before confirmation codes (e.g. #4471). */
 export const CODE_PREFIX = '#';
@@ -1210,12 +1793,18 @@ export const STAY_STRIP_DISMISS_STORAGE_KEY = 'wp_stay_strip_dismissed';
 /** The bottom nav. Its glyphs crossed from emoji to `Icon` in ADR-0138 §4 on the
  *  owner's call — navigation is the case design-language names first when it says
  *  controls are icons, and the tab bar is the app's most-seen surface, so the one
- *  place a platform's emoji font showed through loudest was here. */
+ *  place a platform's emoji font showed through loudest was here.
+ *
+ *  **The ORDER is a rule, not a list** (ADR-0233): the three day-anchored surfaces
+ *  come first — Home (today), Day-by-day (a day's sequence), Map (a day's ground) —
+ *  and the trip-wide Index sits at the far end. This array renders RTL, so index 0
+ *  is the rightmost tab. A fifth tab goes next to the group whose question it
+ *  answers; it does not go in the middle of the day block. */
 export const TABS = [
   { id: 'home', icon: 'home' },
+  { id: 'days', icon: 'calendar' },
   { id: 'map', icon: 'map' },
   { id: 'index', icon: 'cards' },
-  { id: 'days', icon: 'calendar' },
 ] as const satisfies readonly { id: string; icon: IconName }[];
 
 export type TabId = (typeof TABS)[number]['id'];
@@ -1260,9 +1849,20 @@ export const GLYPH = {
   boardingPass: '✈️',
   /** The preview API returns a member COUNT and no names, so the avatars stand in
    *  for people the page is not allowed to show. */
-  anonAvatar: '🙂',
   wave: '👋',
-} as const;
+  /** **The parts of a shared day** (ADR-0213). Content, not controls: each marks a section
+   *  of somebody's actual schedule and nothing here is tappable, which is the line ADR-0138
+   *  draws. Named here rather than typed into the reader's JSX so the guard needs no
+   *  exemption — and keyed by `ShareDaypart`, so a seventh part is one line. */
+  daypart: {
+    morning: '🌅',
+    noon: '☀️',
+    afternoon: '🌤️',
+    evening: '🌇',
+    night: '🌙',
+    flexible: '◌',
+  },
+} as const satisfies Record<string, unknown>;
 
 /** Control icons — every one of these is drawn by `<Icon name={…} />`. The value
  *  IS the `IconName`, so a call site cannot accidentally render it as text. */
@@ -1310,4 +1910,75 @@ export const CONTROL_ICON = {
   removeMember: 'userMinus',
   close: 'close',
   clock: 'clock',
+  /** A task's `important` flag (tasks brief §7) — shape and weight, never a hue, because
+   *  rule 4 has no colour left to spend on priority. */
+  star: 'star',
+  /** Dismissing a task: it stopped mattering, which is not the same as doing it. Shares
+   *  the glyph with a skipped event, which is the same idea one surface over. */
+  skip: 'skip',
 } as const satisfies Record<string, IconName>;
+
+/** **How many tasks the Trip Home band shows before it stops** (ADR-0188 §6). Three, drawn
+ *  and measured at 242px — one section's worth of space, not a second screen's. The rest
+ *  arrive through the band's own overflow row, which is one more row in the same card rather
+ *  than a second control. Still owed to the device pass, and two characters to change. */
+export const TRIP_HOME_TASK_BAND_CAP = 3;
+
+/** **How many tasks the LIFTED HERO shows on one stop** (ADR-0160 §U5, amended 2026-08-16 on
+ *  the owner's call: _"it is limited to showing only one task. It should be 3"_). §U5 chose
+ *  ONE on `פתק`'s rule — the hero shows one note and says how many it is not showing — and the
+ *  amendment's point is that the rule was borrowed from the wrong neighbour: a note is prose
+ *  you read, so a second one is a second thing to read, while a task is an OBLIGATION, and
+ *  three of them on the stop you are standing at is the answer to "what do I still owe here".
+ *  Deliberately the same number as the Trip Home band above, so the two task surfaces cap
+ *  alike and neither has to be re-argued; the overflow line (`ועוד N`) is unchanged. */
+export const HERO_TASK_CAP = 3;
+
+/** **How far ahead the Home bands look** (owner, 2026-08-16: tasks should appear "up to 7
+ *  days — good time — before they're due"). ADR-0188 §6 and brief §13 said *due today and
+ *  overdue*, which is the right window for a band you read ON the day and the wrong one for
+ *  anything you have to prepare for: a task due Friday is not actionable on Friday, it is
+ *  actionable now. Overdue is always included regardless. */
+export const TASK_BAND_LOOKAHEAD_DAYS = 7;
+
+/** **How many rows Plan Home shows before folding** — the inline list AND the lifted hero
+ *  (ADR-0193 §3/§4, amended 2026-08-16). Five, not `HERO_TASK_CAP`'s three: the trip hero's
+ *  cap is per STOP — three is "what do I still owe here" — while this is the whole run-up to
+ *  a departure, so it can afford a list. The remainder is always stated, never dropped.
+ *
+ *  ONE constant for both, because it is one question about one list. The inline list reached
+ *  it late: it used to fold by a semantic near/far rule, which could leave zero rows visible
+ *  and did — see `PlanHome`. */
+export const PLAN_TASK_CAP = 5;
+
+/**
+ * **How many times a day re-asks for legs the server is still computing** (ADR-0206 §AU1).
+ *
+ * It was **one**, and that was the defect: a cold day's warm is three matrix calls paced ⁦1/s⁩ by
+ * `PolitenessLimiter`, so the server's own `Retry-After` — derived from the call count, floored at
+ * ⁦2s⁩ — lands the single retry at about the moment the last call is still in flight. Miss it and
+ * the day gave up silently, which is why a stop added at ⁦16:44⁩ had no route until the app was
+ * left and reopened (field report, 2026-08-28).
+ *
+ * **Six, because the wait is the server's number and not ours.** Each pass sleeps the
+ * `retryAfterSeconds` the answer carried (⁦2–30s⁩), so this bounds the *rounds*, not the seconds:
+ * six covers a cold day many times over and still terminates on a provider that is simply down,
+ * where §D4's silence is the right answer. Every re-ask is a DB read plus a deduped no-op warm
+ * (`RoutingService.once`), so the cost of the extra rounds is a request, not provider work.
+ */
+export const DAY_TRAVEL_WARM_ATTEMPTS = 6;
+
+/** How long a shared file's `ירד` / `לא הצליח` stays on the row before it goes back to being
+ *  a plain link. Long enough to be read after the eye returns from the download shelf. */
+export const DOWNLOAD_SETTLE_MS = 4000;
+
+export { MEMORY_FIGURES_MAX } from '@waypoint/shared';
+
+/** **How many glyphs a contact-sheet frame carries** (ADR-0240 §4): enough to say what kind of
+ *  day it was, few enough to stay on one line in a half-width frame at 360. */
+export const MEMORY_DAY_GLYPHS = 4;
+
+/** **How many rows a long memory Home section prints before its continuation row** (owner,
+ *  2026-09-27: the sections were "reallyyyyyy long and not that interesting";
+ *  `mockups/memory-home-shorter-sections-v1.html`). The rest is one tap away, never deleted. */
+export const MEMORY_SECTION_CAP = 3;

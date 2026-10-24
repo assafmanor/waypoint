@@ -5,6 +5,13 @@
    muted for soft; amber `now` ring; the done record is --ok green, never amber
    (ADR-0028). */
 
+/* **The gap above a card an arrival landed on** (2026-08-20): `?event=` brings this card to
+   the top of the day, and `block: 'start'` puts its margin box against the scroller's edge —
+   flush there it reads as clipped. Same property, same 8px, same reasoning as the Map row's
+   (`map.css`'s `.place`), which is where this rule was first written down. */
+.wp-event {
+  scroll-margin-top: 8px;
+}
 .wp-event {
   background: var(--card);
   border: 1px solid var(--line);
@@ -28,6 +35,17 @@
    flattens so it reads settled, not provisional. */
 .wp-event.passed {
   opacity: 0.66;
+}
+/* **AND ITS PHOTOGRAPH RECEDES WITH IT** (ADR-0219 §5). The card is already at 0.66, and a
+   full-colour thumbnail inside it is the one thing on the row still saying "upcoming" — a
+   photograph carries its own contrast, so opacity alone does not take it back.
+
+   **Trip mode only, and `done` keeps its colour.** Plan has no phases (ADR-0043 §5), so nothing
+   there matches; and a record is not a fade — `.wp-event.done` is a positive state (ADR-0044),
+   which is why this keys on `passed` rather than on "settled". The settle variant IS `passed`
+   and greys with the rest. */
+.wp-event.passed .wp-placebadge-photo img {
+  filter: grayscale(1);
 }
 .wp-event.passed.soft {
   background: color-mix(in srgb, var(--muted) 5%, var(--card));
@@ -63,8 +81,9 @@
    "69px of headroom" had measured a route long enough to trip ADR-0059 §3's
    destination-primary fallback, i.e. the short title the fallback makes.
 
-   `check` is the settled ✓ (ADR-0043), present on some rows only; an `auto` track with
-   nothing in it is 0px, so an ordinary card lays out exactly like the builder row.
+   It once carried a `check` track for the settled ✓ as well; ADR-0230 made the done CHIP
+   the undo control, so the circle and its track are both gone and the title has that width
+   back — which is what lets `היינו ✓` sit BESIDE the name instead of wrapping under it.
 
    What stays different from Plan stays different deliberately: this time is a readout
    and Plan's is a button wearing ADR-0161 §7's chip, and the badge is 40px against
@@ -74,15 +93,17 @@
      the control value this reads as collapsing rather than as pressed. */
   --press-scale: var(--press-scale-lg);
   display: grid;
+  /* `menu` joins `check` as an OPTIONAL track (ADR-0228's 2026-09-15 amendment): the `⋯`
+     renders on an editable row and not on a past day's, and an `auto` track with nothing
+     in it is 0px — so a read-only card lays out exactly as it did. */
   grid-template-columns: auto minmax(0, 1fr) auto auto;
   grid-template-areas:
-    'badge title check chev'
-    'badge when  check chev';
+    'badge title menu chev'
+    'badge when  menu chev';
   align-items: center;
   /* THE GUTTER IS A MARGIN, NOT `column-gap`, and that is not a style preference.
-     Two of these four tracks are optional — the ✓ renders only on a settled row and
-     the chevron not at all on the settle variant — and `column-gap` is charged
-     between EMPTY tracks too, so a plain card paid 12px and the settle card 24px of
+     One of these tracks is optional — the `⋯` does not render on a past day — and
+     `column-gap` is charged between EMPTY tracks too, so a card that lacks one paid for
      dead space at its trailing edge. A margin on the item disappears with the item. */
   column-gap: 0;
   row-gap: 2px;
@@ -115,71 +136,6 @@
 }
 .wp-event.soft .wp-event-badge {
   background: color-mix(in srgb, var(--ink) 5%, transparent);
-}
-
-/* Done ✓ as a tap-to-undo control (ADR-0043 revision) — --ok green; hover/focus
-   morphs the ✓ to an undo arrow; a thin persistent ring hints it's tappable. */
-.wp-event-check {
-  grid-area: check;
-  align-self: center;
-  margin-inline-start: var(--space-3);
-  width: 22px;
-  height: 22px;
-  border-radius: var(--radius-999);
-  display: grid;
-  place-items: center;
-  font-size: var(--text-caption);
-  font-weight: 700;
-  color: var(--on-fill);
-  background: var(--ok);
-}
-.wp-event-check.btn {
-  position: relative;
-  cursor: pointer;
-  transition:
-    box-shadow var(--t-quick),
-    transform var(--t-quick);
-}
-.wp-event-check .mark,
-.wp-event-check .undo {
-  grid-area: 1 / 1;
-  transition:
-    opacity var(--t-quick),
-    transform var(--t-quick);
-}
-.wp-event-check .undo {
-  opacity: 0;
-  transform: scale(0.6);
-  font-size: 13px;
-}
-.wp-event-check.btn:hover,
-.wp-event-check.btn:focus-visible {
-  box-shadow: 0 0 0 4px rgba(60, 154, 107, 0.18);
-  transform: scale(1.06);
-}
-.wp-event-check.btn:hover .mark,
-.wp-event-check.btn:focus-visible .mark {
-  opacity: 0;
-  transform: scale(0.6);
-}
-.wp-event-check.btn:hover .undo,
-.wp-event-check.btn:focus-visible .undo {
-  opacity: 1;
-  transform: scale(1);
-}
-.wp-event-check.btn:focus-visible {
-  outline: 2.5px solid var(--teal);
-  outline-offset: 2px;
-}
-.wp-event-check.btn:active {
-  transform: scale(var(--press-scale));
-}
-.wp-event-check.btn::after {
-  content: '';
-  position: absolute;
-  inset: -4px;
-  border-radius: var(--radius-999);
-  box-shadow: 0 0 0 1.5px rgba(60, 154, 107, 0.35);
 }
 
 .wp-event-main {
@@ -271,6 +227,64 @@
 .wp-event.soft .wp-event-time {
   color: var(--muted);
 }
+/* **THE TIME IS THE MOVE** (ADR-0231 §1) — the when line as a control, on a planned row of a
+   day that can be written. `ValueToken`'s box (`value-token.css`: hairline, radius 9, 4px 8px,
+   the target as an inset overlay) at the CARD's ink rather than `.vt-time`'s amber: the two
+   rules above already say what colour this line is (ink hard, muted soft), and the chip only
+   says "you can press this". Amber on every upcoming row would spend rule 4's budget on a hint.
+   Not composed from `.vt` itself: that class is `inline-flex` against this line's `flex`, and
+   the two sheets tie on specificity in an order neither controls.
+
+   **THE ROW DOES NOT GROW.** The chip is 10px taller than the span it replaces (4+4 padding,
+   1+1 border), and the face's height is set by the 40px badge, not by its text — so the chip
+   paints 5px into the face's own 14px padding above and below, and the face measures what it
+   measured (⁦69px⁩ → ⁦69px⁩ in the mockup, against ⁦79⁩ without this). The same trade
+   `button.bld-time` made on the Plan row.
+
+   **THE BOX ALIGNS WITH THE TITLE, NOT THE DIGITS** (owner, 2026-09-16: _"Plan day got it
+   right, day view has it wrong… the right alignment is wrong"_). This shipped with
+   `margin-inline-start: calc(var(--space-3) - 8px)` so the digits stayed where the span had
+   put them — which pushed the chip's border 8px past the title's start edge, into the gutter
+   beside the badge, on every row. `button.bld-time` never did that: its box sits on the
+   title's edge and the digits take the inset. Measured: the box was ⁦8px⁩ past the title on
+   every Trip row and ⁦0⁩ on Plan's; it is ⁦0⁩ here now, digits ⁦9px⁩ in (8px padding + border). */
+.wp-event-time.is-token {
+  position: relative;
+  border: 1px solid var(--soft-line);
+  border-radius: 9px;
+  padding: 4px 8px;
+  margin-block: -5px;
+  cursor: pointer;
+}
+/* **THE 5px ABOVE IS THE EMPTY LINE'S, AND ONLY WHILE THE CELL ABOVE THE CHIP IS EMPTY.** What
+   the chip consumes above is `.wp-event-m`'s 3px margin plus the 2px row gap — a line that
+   renders unconditionally and is 0px tall on an unmarked row (its own comment says so). Two
+   things can stand in that space, and both were reported off the same card: a glyph on the marks
+   line (owner, 2026-09-16, the Stokksnes cluster), and the CONFLICT FLAG — a third line in the
+   title cell, carried by every soft row that overlaps a hard one, which the marks selector alone
+   does not see (owner, 2026-09-18, Selfoss under מפלי דטיפוס). Measured in Chromium against
+   these stylesheets: the flagged row's chip border sat ⁦−3px⁩ INSIDE the amber sentence and now
+   clears it by ⁦2px⁩, the marked row's own figure, at ⁦79⁩ → ⁦84px⁩. The bottom keeps its
+   -5px: below the chip is the face's padding on every row. A two-line title needs nothing — the
+   marks line is still the thing between it and the chip. */
+.wp-event-face:has(.wp-event-m:not(:empty)) .wp-event-time.is-token,
+.wp-event-face:has(.wp-event-conflict-flag) .wp-event-time.is-token {
+  margin-block-start: 0;
+}
+/* -8.5, not -8: the identical overlay on `button.bld-time` reaches ⁦43px⁩ against the 44px floor
+   (ADR-0199's Consequences) — this one measured the same before the half pixel. */
+.wp-event-time.is-token::after {
+  content: '';
+  position: absolute;
+  inset: -8.5px 0;
+}
+.wp-event-time.is-token:active {
+  transform: scale(var(--press-scale));
+}
+.wp-event-time.is-token:focus-visible {
+  outline: 2.5px solid var(--teal);
+  outline-offset: 2px;
+}
 .wp-event-xmid {
   font-size: 9px;
 }
@@ -297,6 +311,34 @@
 .wp-event-dur {
   font-size: 10.5px;
 }
+/* **WHAT IS LEFT, ON THE ONE ROW THE MOMENT IS INSIDE** (ADR-0217 §3). `.wp-event-dur`'s own
+   box — same family, same weight, same width — re-inked from `--muted` to `--amber-deep`,
+   because what changed is which fact it states and not how loud it is. The hue is the clock's
+   (ADR-0028 rule 4), which is what it is: time. `remainingPhrase` (`lib/duration.ts`) carries
+   the measurements that refused the `נותרו` prefix here. */
+.wp-event-left {
+  color: var(--amber-deep);
+}
+/* **HOW FAR A CARRIED LEG GOES** (ADR-0212). `.day-trv-dist`'s standing, at this card's density:
+   `--muted` because a distance is context rather than a commitment, and the amber on this row is
+   already spent on the clock. It never wraps — a grouped four-digit number broken across two
+   lines reads as two numbers. */
+.wp-event-dist {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
+}
+/* **The separator, and only when there is something to separate it FROM.**
+   `.wp-event-timemeta::before` already supplies the dot that opens the group, so a distance
+   standing alone — a carried leg whose booking has no end time, which is the case that makes
+   `duration` optional in the first place — would print two. Hence the sibling selector rather
+   than a bare `::before`: the dot belongs to the JOIN, not to the distance. */
+.wp-event-dur + .wp-event-dist::before {
+  content: '·';
+  margin-inline-end: 5px;
+  opacity: 0.7;
+}
 /* Zone-shift pill (ADR-0107 multi-zone): shows how far the clock jumps
    (destination vs origin on a crossing, else vs the day's ambient zone), only
    when the shift is non-zero. Amber — a time concept (design-language.md). */
@@ -312,6 +354,48 @@
 }
 .wp-event.open .wp-event-chev {
   transform: rotate(180deg);
+}
+
+/* THE `⋯`, on the face (ADR-0228's 2026-09-15 amendment). Quiet until touched, like the
+   band's version it replaces — but it is a real target now rather than a 33px pill: the
+   glyph stays 30px so it does not crowd the when line, and an `::after` overlay carries
+   ADR-0017's 44px floor without growing the row, which is `ValueToken`'s recipe
+   (ADR-0177) applied to a control that had to shrink to fit here. */
+.wp-event-menu {
+  grid-area: menu;
+  position: relative;
+  align-self: center;
+  margin-inline-start: var(--space-2);
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-999);
+  color: var(--muted);
+  font-size: var(--text-h3);
+  cursor: pointer;
+  transition:
+    background var(--t-quick),
+    color var(--t-quick);
+}
+.wp-event-menu::after {
+  content: '';
+  position: absolute;
+  inset: -7px;
+}
+@media (hover: hover) and (pointer: fine) {
+  .wp-event-menu:hover {
+    background: var(--paper);
+    color: var(--ink);
+  }
+}
+.wp-event-menu:focus-visible {
+  outline: 2.5px solid var(--teal);
+  outline-offset: 2px;
+  color: var(--ink);
+}
+.wp-event-menu:active {
+  transform: scale(var(--press-scale));
 }
 
 /* ONE LOCK, BESIDE THE THING IT LOCKS (ADR-0178 §4) — the hard mark left the
@@ -349,18 +433,6 @@
   padding: 2px 6px;
   border-radius: 6px;
 }
-.wp-event-tag-done {
-  font-size: 10px;
-  font-weight: 700;
-  color: var(--ok);
-  background: rgba(60, 154, 107, 0.13);
-  padding: 2px 6px;
-  border-radius: 6px;
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-}
-
 .wp-event-nest-note {
   font-size: var(--text-caption);
   font-weight: 700;
@@ -420,88 +492,10 @@
   padding: var(--space-3) 14px;
   border-top: 1px solid var(--line);
 }
-.wp-event-act-row {
-  display: flex;
-  gap: 7px;
-  padding: var(--space-3) 14px;
-  flex-wrap: wrap;
-}
-.wp-event-act {
-  font: inherit;
-  font-size: var(--text-secondary);
-  font-weight: 600;
-  border: 1px solid var(--line);
-  background: var(--card);
-  color: var(--ink);
-  border-radius: 9px;
-  padding: 7px 11px;
-  cursor: pointer;
-  transition:
-    background var(--t-quick),
-    color var(--t-quick);
-}
-.wp-event-act:hover {
-  background: var(--cta);
-  color: var(--cta-text);
-  border-color: var(--ink);
-}
-.wp-event-act.go {
-  border-color: var(--teal);
-  color: var(--teal);
-}
-.wp-event-act.go:hover {
-  background: var(--teal);
-  color: var(--on-fill);
-}
-.wp-event-act:focus-visible {
-  outline: 2.5px solid var(--teal);
-  outline-offset: 2px;
-}
-.wp-event-act-row-end {
-  display: flex;
-  gap: 7px;
-  margin-inline-start: auto;
-}
-.wp-event-act.icon-only {
-  padding: 7px 10px;
-  font-size: var(--text-body);
-  line-height: 1;
-}
-/* The quiet "more" ⋯ — no border until touched. */
-.wp-event-act.icon-only.more {
-  border-color: transparent;
-  color: var(--muted);
-  font-size: var(--text-h3);
-  padding: 6px 9px;
-}
-.wp-event-act.icon-only.more:hover {
-  background: var(--paper);
-  color: var(--ink);
-  border-color: var(--line);
-}
-.wp-event-act.stepper {
-  display: flex;
-  align-items: stretch;
-  padding: 0;
-}
-.wp-event-act.stepper .step {
-  font: inherit;
-  font-size: var(--text-body);
-  font-weight: 700;
-  line-height: 1;
-  border: none;
-  background: transparent;
-  color: inherit;
-  padding: 7px 10px;
-  cursor: pointer;
-}
-.wp-event-act.stepper .step-label {
-  display: flex;
-  align-items: center;
-  padding: 7px 6px;
-  border-inline: 1px solid var(--line);
-  color: var(--muted);
-  font-size: var(--text-caption);
+/* The band above it may not render at all now (a row on another day carries no quick
+   action), and this rule's `0` top padding assumed it always did. */
+.wp-event-actions-in > .wp-event-hard-warn:first-child {
+  padding-top: var(--space-3);
 }
 .wp-event-hard-warn {
   font-size: var(--text-caption);
@@ -512,13 +506,15 @@
   gap: 6px;
 }
 
-/* Settle strip (a passed-but-unmarked soft event). The card owns only where the strip
-   SITS — aligned to the title's gutter, clear of the soft tag; the verbs themselves are
-   the shared control's (`ui/domain/settle-control.css`, ADR-0139's Consequences). */
+/* Settle strip (a passed-but-unmarked event, either kind — ADR-0228 §2). The card owns
+   only where the strip SITS — aligned to the title's gutter, clear of the `לא סומן` chip;
+   the verbs themselves are the shared control's (`ui/domain/settle-control.css`,
+   ADR-0139's Consequences).
+
+   The clearance used to be keyed on `.soft`, which was the only kind that ever reached
+   this strip; the chip it clears is now on both, so it folds into the one rule rather
+   than gaining a hard twin. */
 .wp-event .wp-settle.prompt {
-  padding: 0 15px 12px 66px;
+  padding: 0 15px 12px 62px;
   margin-top: -2px;
-}
-.wp-event.soft .wp-settle.prompt {
-  padding-inline-end: 62px;
 }

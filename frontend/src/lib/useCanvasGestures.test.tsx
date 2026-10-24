@@ -35,7 +35,7 @@ function fakeMap(zoom = 14) {
     getMinZoom: () => undefined,
     getMaxZoom: () => undefined,
     // A projection that is linear on purpose: this file asserts plumbing, not arithmetic.
-    // The geography is `canvas-gestures.test.ts`'s job, against Google's real Mercator.
+    // The geography is `canvas-gestures.test.ts`'s job, against a real Mercator.
     getProjection: () => ({
       fromLatLngToPoint: (ll: LatLng) => ({ x: ll.lng, y: ll.lat }),
       fromPointToLatLng: (pt: { x: number; y: number }) => ({
@@ -50,8 +50,9 @@ let root: Root;
 let host: HTMLDivElement;
 let pane: HTMLDivElement;
 const holds: LatLng[] = [];
-/** The pane's own half of the guard: Google reports a tap as a callback, which no
- *  `stopPropagation` can reach, so the pane refuses one while this reads true. */
+/** The pane's own half of the guard: it refuses a canvas tap while this reads true. Written
+ *  when the tap arrived as a vendor callback no `stopPropagation` could reach; since
+ *  ADR-0186 §2 it is the pane's own DOM click, and the flag still gates it. */
 let gestureTapRef: RefObject<boolean>;
 
 function Harness({
@@ -132,6 +133,26 @@ describe('the long press', () => {
     act(() => void vi.advanceTimersByTime(DRAG_HOLD_MS * 3));
     expect(holds).toHaveLength(1);
   });
+
+  // A second finger means this is a pinch or a two-finger tap — the renderer's gestures, and
+  // neither is a long press. The timer the first finger armed has to go with it, because both
+  // clocks are 500ms: a two-finger tap held a hair too long fell past MapLibre's own
+  // `MAX_TOUCH_TIME`, so it missed the zoom-out AND dropped a pin at the first finger.
+  it('cancels the hold when a second finger lands, so a two-finger tap drops nothing', () => {
+    press(250);
+    pane.dispatchEvent(
+      new PointerEvent('pointerdown', {
+        clientX: 180,
+        clientY: 300,
+        bubbles: true,
+        button: 0,
+        isPrimary: false,
+        pointerId: 2,
+      }),
+    );
+    act(() => void vi.advanceTimersByTime(DRAG_HOLD_MS * 3));
+    expect(holds).toHaveLength(0);
+  });
 });
 
 describe('the click swallow', () => {
@@ -162,9 +183,9 @@ describe('the click swallow', () => {
     expect(tapReaches()).toBe(false);
   });
 
-  it("tells the pane to refuse Google's own tap for the same window, and only that window", () => {
-    // The second channel: what reaches `onCanvasTap` is a callback Google dispatches, not an
-    // event, so the listener above cannot cover it. One arm, one disarm, two channels.
+  it('tells the pane to refuse a canvas tap for the same window, and only that window', () => {
+    // The second channel, kept on one arm and one disarm with the swallow above so the two
+    // cannot drift apart.
     press(250);
     act(() => void vi.advanceTimersByTime(DRAG_HOLD_MS));
     expect(gestureTapRef.current).toBe(false);

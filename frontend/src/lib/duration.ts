@@ -15,9 +15,32 @@ import {
   DAYS_PER_YEAR,
   MINUTES_PER_DAY,
   MINUTES_PER_HOUR,
+  MS_PER_MINUTE,
+  SECONDS_PER_MINUTE,
 } from '../constants';
+import { ltrIsolate } from './bidi';
 import { dayPhrase, monthPhrase, weekPhrase, yearPhrase } from './hebrew';
 import { t } from '../i18n/he';
+
+/**
+ * **"How long ago", for anything with a timestamp** — `לפני 4 ד׳`, `לפני 3 ימים`,
+ * `לפני שבועיים`, and `עכשיו` under a minute.
+ *
+ * Lifted out of `notes.ts`'s `noteWhen` when the public shared reader needed the same
+ * sentence for its freshness line (ADR-0213's eleventh amendment §4): the two lines that
+ * make it are the ladder plus the prefix, and neither is a note's business. `noteWhen` is
+ * now its first caller rather than its owner.
+ *
+ * Under a minute is `עכשיו`, and so is a timestamp that will not parse — through
+ * {@link formatDuration}'s own non-finite guard. For a note that is a row this device has
+ * just written and not yet had stamped, so "now" is the truth rather than a fallback; for a
+ * projection it is a body that failed the schema long before reaching here.
+ */
+export function agoLabel(iso: string, nowMs: number): string {
+  const minutes = Math.floor((nowMs - Date.parse(iso)) / MS_PER_MINUTE);
+  const elapsed = formatDuration(minutes);
+  return elapsed ? t.changeFeed.relTime.agoPrefix(elapsed) : t.changeFeed.relTime.now;
+}
 
 /** Hours+minutes as a phrase ("5:45 שע׳" / "שעתיים" / "45 דק׳"), reusing the
  *  event picker's duration wording so it never drifts between surfaces. Reads in
@@ -34,6 +57,148 @@ export function hoursPhrase(minutes: number): string {
         ? t.eventForm.durTwoHours
         : t.eventForm.durHours(h);
   return t.eventForm.durMinutes(m);
+}
+
+/**
+ * **What is LEFT of something that is running** (ADR-0217 §3) — the read-out on the one row
+ * the moment is inside, in `hoursPhrase`'s own ladder because this app has ONE duration ladder
+ * (ADR-0114) and a second wording for the same fact is how they drift.
+ *
+ * **No `נותרו` prefix, and both reasons are measurements** taken off the drawing: the word is
+ * ⁦14.5px⁩ wider than the total it replaces, which wraps `.wp-event-time`'s grid cell and costs
+ * the card ⁦19px⁩ at ⁦360px⁩; and it prints a whole Hebrew word inside `--font-mono`, which
+ * `board.css` forbids ("mono is for their numeric run, never for Hebrew beside it"). The bare
+ * rung is `.when-dur`'s exact width, so the row is unchanged and the amber says what the word
+ * would have. `t.travel.remaining` is still the phrase where there IS room for it.
+ *
+ * Floored at one minute rather than rounded to zero: a row with ⁦20⁩ seconds left is still
+ * running, and `0 דק׳` on a row you are inside is the one thing it cannot say. `null` once
+ * nothing is left, which is the same absence `formatDuration` answers with.
+ */
+export function remainingPhrase(msLeft: number): string | null {
+  if (!Number.isFinite(msLeft) || msLeft <= 0) return null;
+  return hoursPhrase(Math.max(1, Math.round(msLeft / MS_PER_MINUTE)));
+}
+
+/**
+ * **A travel time, hedged** (ADR-0206 §D5 over §D3) — `~23 דק׳`, `~1:13 שע׳`, `כשעה`.
+ *
+ * The ladder is `hoursPhrase`'s, untouched: an estimate is a duration and this app has one
+ * duration ladder (ADR-0114, read a second way). A route that answers 1,268 s is `~21 דק׳` and
+ * one that answers 4,355 s is `~1:13 שע׳`, never `~72 דק׳`. What this adds is the `~`, because an
+ * OSM pedestrian estimate is an estimate and §D5 refuses a number that claims otherwise.
+ *
+ * **The `~` goes INSIDE the isolate, with the digits.** It is bidi-neutral, so beside a numeral
+ * in an RTL flow it resolves right and lands on the far side of the number: `~40` renders `40~`.
+ * ADR-0206 §Z5 found it by rendering the first routes mockup and it reached the second one
+ * anyway, which is why it is stated here rather than left to each caller.
+ *
+ * **The exact-hour rungs are words, so they take the Hebrew prefix instead.** `שעה` hedged is
+ * `כשעה`; a tilde in front of a Hebrew word means nothing and is a second bidi trap. That is
+ * also why the number-led rungs are rebuilt here rather than sliced out of the phrase — the head
+ * is computed, so nothing depends on parsing `hoursPhrase`'s output back apart.
+ *
+ * `null` for nothing to measure, exactly as `formatDuration` answers it — a zero-second leg is
+ * two stops that are one place (`ROUTE_MIN_CROW_M`), which is §D4's absence and not a `0 דק׳`.
+ */
+export function approxDuration(minutes: number): string | null {
+  if (!Number.isFinite(minutes) || minutes <= 0) return null;
+  const total = Math.round(minutes);
+  // **Nothing the ladder can say is nothing to say** (2026-08-26). A ⁦20m⁩ hop is ⁦24⁩ seconds, which
+  // rounded onto ADR-0114's minutes rung is zero — and `~0 דק׳` is not a hedged duration, it is a
+  // row about nothing. The guard above only caught a non-positive input, so anything under half a
+  // minute walked straight through it and printed the zero.
+  if (total <= 0) return null;
+  const h = Math.floor(total / MINUTES_PER_HOUR);
+  const m = total % MINUTES_PER_HOUR;
+  if (h && !m) return `${t.common.about}${hoursPhrase(total)}`;
+  const head = h ? `${h}:${String(m).padStart(2, '0')}` : String(m);
+  const phrase = hoursPhrase(total);
+  return `${ltrIsolate(`~${head}`)}${phrase.slice(head.length)}`;
+}
+
+/** **The same hedge, from the unit a route answers in.** Every consumer in the routes epic holds
+ *  SECONDS — `TravelEstimate.durationSeconds`, `remainingTravelSeconds`, `DayJourney` — and each
+ *  of them was dividing by a bare `60` at its own call site, which is the literal
+ *  `frontend/CLAUDE.md` asks to name once it has a second reader. The rounding stays
+ *  `approxDuration`'s, so the hero's `~40 דק׳` and the day's are one number. */
+export const approxTravelTime = (seconds: number): string | null =>
+  approxDuration(seconds / SECONDS_PER_MINUTE);
+
+/**
+ * **What is free, as a phrase that agrees with itself** (ADR-0206 §AH1) — `46 דק׳ פנויות`,
+ * `שעתיים פנויות`, `שעה פנויה`.
+ *
+ * The ladder above is noun-led everywhere else (`פנוי · 2:40 שע׳`) precisely so nothing has to
+ * agree with a number it does not expose. Here the natural word order puts the number first, and
+ * the shipped dodge for that was `פנוי לפני 46 דק׳` — which the owner read as bad Hebrew and was
+ * right to (2026-08-26). So the agreement is composed instead, and it is cheap: `hoursPhrase` has
+ * exactly two singular rungs, an exact hour and one minute.
+ *
+ * `null` below a minute, which is the same answer `approxDuration` gives for the same reason —
+ * `0 דק׳ פנויות` is a sentence about nothing. **Whether a small-but-real length is worth stating
+ * is a different question and not this function's**: that is `statesFreeTime` (`lib/gaps.ts`),
+ * asked by the caller, because it is a judgement about the day rather than about the words.
+ */
+export function freeTimePhrase(minutes: number): string | null {
+  if (!Number.isFinite(minutes)) return null;
+  const total = Math.round(minutes);
+  if (total <= 0) return null;
+  if (total === 1) return t.travel.freeTimeOneMinute;
+  if (total === MINUTES_PER_HOUR) return t.travel.freeTimeOneHour;
+  return t.travel.freeTime(hoursPhrase(total));
+}
+
+/**
+ * **By how much a journey misses the hole it sits in** — `חסרות 18 דק׳ לדרך`.
+ *
+ * The number to act on, and the only one: how much has to move. Agreement is the exact hour's
+ * alone, because `TRAVEL_FIT_TOLERANCE_SECONDS` means a reported shortfall never rounds below two
+ * minutes — so there is no singular-minute rung to reach.
+ */
+export function shortfallPhrase(minutes: number): string | null {
+  if (!Number.isFinite(minutes)) return null;
+  const total = Math.round(minutes);
+  if (total <= 0) return null;
+  if (total === MINUTES_PER_HOUR) return t.travel.shortfallOneHour;
+  return t.travel.shortfall(hoursPhrase(total));
+}
+
+/**
+ * **How many of the day's journeys do not fit** — `שתי דרכים לא נכנסות` (ADR-0206 §V1.7 / §AN).
+ *
+ * Composed here, beside `shortfallPhrase` above, because it is the same fact one scope up and
+ * the two must not drift into two vocabularies. `null` at zero, which is the ordinary day: the
+ * caller has nothing to render and there is deliberately no positive phrase to reach for — a day
+ * that fits says nothing at all, so `daySequenceFits`-style `true` can never become a `✓` on a
+ * day nobody measured (§D4).
+ *
+ * The three rungs are Hebrew agreement, not a style: `דרך אחת לא נכנסת` / `שתי דרכים לא נכנסות` /
+ * `3 דרכים לא נכנסות`. The count is a numeral run inside Hebrew prose from the third rung on, so
+ * it takes `ltrIsolate` (ADR-0118) — the first two spell the number as a word and need none.
+ */
+export function infeasibleLegsPhrase(count: number): string | null {
+  if (!Number.isFinite(count)) return null;
+  const total = Math.round(count);
+  if (total <= 0) return null;
+  if (total === 1) return t.travel.dayInfeasibleOne;
+  if (total === 2) return t.travel.dayInfeasibleTwo;
+  return t.travel.dayInfeasible(ltrIsolate(String(total)));
+}
+
+/**
+ * **By how much the day is over, added up** — `חסרות 35 דק׳`.
+ *
+ * `shortfallPhrase`'s sibling and its agreement rule is the same one: only the exact hour has a
+ * singular rung, because `TRAVEL_FIT_TOLERANCE_SECONDS` keeps any reported shortfall above a
+ * minute and a SUM of such shortfalls is larger still.
+ */
+export function dayShortfallPhrase(minutes: number): string | null {
+  if (!Number.isFinite(minutes)) return null;
+  const total = Math.round(minutes);
+  if (total <= 0) return null;
+  if (total === MINUTES_PER_HOUR) return t.travel.dayShortfallOneHour;
+  return t.travel.dayShortfall(hoursPhrase(total));
 }
 
 /** **The clock jump, as a sentence** (session 215) — `מזיזים את השעון שעה קדימה`.

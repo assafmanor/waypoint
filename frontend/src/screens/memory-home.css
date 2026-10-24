@@ -1,0 +1,112 @@
+/* **The memory Home** — `screens/MemoryHome.tsx` (ADR-0240 §4). The cover is
+   `ui/domain/memory-cover.css`; this is the page's own layout. */
+
+/* Three in a row, four as 2×2, five as 3 + 2 — the ADR's rule, so no tile is ever alone on a
+   line and none is narrower than a third. A trip with fewer figures (a short one with no
+   flight) splits the row between them rather than leaving an empty column. */
+.mem-figs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.mem-figs[data-n='1'] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.mem-figs[data-n='2'],
+.mem-figs[data-n='4'] {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.mem-figs[data-n='5'] {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.mem-figs[data-n='5'] > :nth-child(-n + 3) {
+  grid-column: span 2;
+}
+
+.mem-figs[data-n='5'] > :nth-child(n + 4) {
+  grid-column: span 3;
+}
+
+/* A figure rows still unmarked could move says so on its second line (ADR-0239 §9). */
+.mem-fig-open {
+  display: block;
+}
+
+/* The days the sheet does not draw, counted under it. */
+.mem-foot {
+  margin: 8px 2px 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* **The way into every day, at the page's own section rhythm.** `.addbtn`'s own 2px is the
+   builder's, where it closes a list; here it followed the figures with nothing between them
+   (owner, on a phone: the button touched the tiles). */
+.mem-all-days {
+  margin-top: 18px;
+}
+
+/* Firsts and bests, and next time: rows with no manage menu, a hairline apart. */
+.mem-bests,
+.mem-next {
+  display: grid;
+  gap: 8px;
+}
+
+/* **A time is still amber** on a finished trip (ADR-0240 §4): amber marks the clock, and a
+   memory's `21:30` is a clock. Mono, as every time in the app. */
+.mem-clock {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--amber-deep);
+}
+
+/* The journal: a day's heading, then its notes in the Home's card. */
+.mem-journal-day + .mem-journal-day {
+  margin-top: 12px;
+}
+
+.mem-journal-head {
+  margin: 0 2px 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+/* Lists by kind: the chips over one card of rows. A finished trip selects in the archive's rose,
+   as the Index's chips do there (ADR-0240 §3). */
+.mem-kinds .choice-grid.pills {
+  margin-bottom: 10px;
+}
+
+.mem-kinds .choice-pill.on {
+  background: var(--memory);
+  border-color: var(--memory);
+  color: var(--on-fill);
+}
+
+/* The kinds on the Home are a way into the search, so they close the section themselves. */
+.mem-kinds-entry .choice-grid.pills {
+  margin-bottom: 0;
+}
+
+/* **The continuation row of a long section** (owner, 2026-09-27): Plan Home's `.tsk-more`, the
+   last row of a card there. Next time's rows are separate cards, so here it wears one of its own. */
+.mem-more {
+  margin-top: 8px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--card);
+}
+
+.mem-next-rest {
+  margin-top: 8px;
+}
+
+.mem-journal-rest .mem-journal-day:first-child {
+  margin-top: 12px;
+}

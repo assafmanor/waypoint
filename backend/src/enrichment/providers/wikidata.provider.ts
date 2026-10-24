@@ -61,6 +61,12 @@ const CLAIM_COORDINATE = 'P625';
 const CLAIM_INSTANCE_OF = 'P31';
 const CLAIM_IATA = 'P238';
 const CLAIM_PLACE_SERVED = 'P931';
+/** **"Located in the administrative territorial entity"** — the region a place is in, and
+ *  free: `ENTITY_PROPS` already asks for `claims` wholesale, so this is a key in a payload
+ *  we were parsing anyway. It answers structurally what parsing `Place.address` would only
+ *  guess at, and it carries a Hebrew label wherever Wikidata has one. */
+const CLAIM_LOCATED_IN = 'P131';
+const CLAIM_COUNTRY = 'P17';
 
 /** Wikipedia editions we ask for sitelinks from — the two languages the summary provider
  *  reads (`he` → `en`, §11.5). Filtered rather than fetched wholesale: an item like Tokyo has
@@ -90,6 +96,19 @@ const CLASS_NOUN_MEMO_MAX = 256;
 const ENTITY_IDS_PER_CALL = 50;
 
 const ENTITY_PROPS = 'labels|aliases|claims|sitelinks';
+
+/**
+ * **The languages a candidate's names are read in** — Hebrew and English, `mul` (Wikidata's
+ * language-neutral label, which increasingly replaces a per-language copy of the same proper
+ * name), and the languages Google answers in where a place has no Hebrew name: the local ones.
+ *
+ * It used to be `he|en` alone, and a place saved under its local name then met only the item's
+ * English label: `Chiesa di Sant'Ignazio di Loyola`, 18m from its item, scored 0.35 against
+ * `Sant'Ignazio Church` while the item's own Italian alias `Chiesa di Sant'Ignazio` scores 0.89.
+ * Every extra name is additive (the scorer keeps the best), so this can only find more.
+ */
+const NAME_LANGUAGES =
+  'he|en|mul|it|fr|es|de|pt|nl|ca|el|is|no|sv|da|fi|pl|cs|hu|hr|tr|ja|zh|ko|th|ar|ru';
 
 /**
  * **The id is all this response is read for now** (§22).
@@ -237,25 +256,70 @@ export class WikidataProvider implements EnrichmentProvider {
     match: ProviderMatch,
     fields: readonly EnrichmentField[],
   ): Promise<ProviderFieldValues> {
-    const wanted = fields.filter(
+    // **Two families, and only one of them is about airports.** `iata`/`servedCity` are
+    // gated on the class because a café with a three-letter name is not an airport; `kind`
+    // and `region` are questions every place can answer, and gating them the same way was
+    // the first draft's bug.
+    const airportPair = fields.filter(
       (field) => field === ENRICHMENT_FIELD.IATA || field === ENRICHMENT_FIELD.SERVED_CITY,
     );
-    if (wanted.length === 0) return {};
-    if (!isAirportEntity(match.evidence.instanceOf ?? [])) return {};
+    const placeFacts = fields.filter(
+      (field) => field === ENRICHMENT_FIELD.KIND || field === ENRICHMENT_FIELD.REGION,
+    );
+    // **The class guard runs BEFORE the read, and that is not an optimisation.** The airport
+    // pair is refused for a city on evidence the match already carried, without spending a
+    // request — `wikidata.provider.spec.ts` asserts the request count, and the first draft
+    // of this change read the entity first and broke it.
+    const airportWanted =
+      airportPair.length > 0 && isAirportEntity(match.evidence.instanceOf ?? []);
+    if (!airportWanted && placeFacts.length === 0) return {};
 
-    const entity = await this.airportEntity(match.ref);
+    const entity = await this.memoizedEntity(match.ref);
     if (!entity) return {};
 
     const values: ProviderFieldValues = {};
-    if (wanted.includes(ENRICHMENT_FIELD.IATA)) {
-      const code = stringClaim(entity, CLAIM_IATA)?.trim().toUpperCase();
-      if (code) values[ENRICHMENT_FIELD.IATA] = { value: code };
+    if (airportWanted) {
+      if (airportPair.includes(ENRICHMENT_FIELD.IATA)) {
+        const code = stringClaim(entity, CLAIM_IATA)?.trim().toUpperCase();
+        if (code) values[ENRICHMENT_FIELD.IATA] = { value: code };
+      }
+      if (airportPair.includes(ENRICHMENT_FIELD.SERVED_CITY)) {
+        const city = await this.servedCity(entity);
+        if (city) values[ENRICHMENT_FIELD.SERVED_CITY] = city;
+      }
     }
-    if (wanted.includes(ENRICHMENT_FIELD.SERVED_CITY)) {
-      const city = await this.servedCity(entity);
-      if (city) values[ENRICHMENT_FIELD.SERVED_CITY] = city;
+    // **What the matcher already resolves and throws away** (ADR-0166's 2026-08-30
+    // amendment). `classNouns` reads `P31` labels to decide whether a candidate is the
+    // right KIND of thing and keeps none of them; this stores the answer, which is what
+    // lets a day of four waterfalls be named for what they are.
+    if (placeFacts.includes(ENRICHMENT_FIELD.KIND)) {
+      const kind = await this.claimLabel(entity, CLAIM_INSTANCE_OF);
+      if (kind) values[ENRICHMENT_FIELD.KIND] = kind;
+    }
+    if (placeFacts.includes(ENRICHMENT_FIELD.REGION)) {
+      const region = await this.claimLabel(entity, CLAIM_LOCATED_IN);
+      if (region) values[ENRICHMENT_FIELD.REGION] = region;
     }
     return values;
+  }
+
+  /**
+   * The label of whatever item a claim points at, in the reader's language.
+   *
+   * `servedCity` below is this shape plus `commonName`, and the two stayed separate on
+   * purpose: a city's label wants its shortest common alias (`תל אביב`, not
+   * `תל אביב-יפו`), and a class noun or a region does not — `Suðurland` is not improved by
+   * being aliased, and a waterfall's noun has no alias worth preferring.
+   */
+  private async claimLabel(entity: WbEntity, claim: string): Promise<ProviderValue | undefined> {
+    const qid = bestRankedItemClaim(entity, claim);
+    if (!qid) return undefined;
+    const target = await this.memoizedEntity(qid);
+    for (const lang of CITY_LANG_PREFERENCE) {
+      const label = target?.labels?.[lang]?.value?.trim();
+      if (label) return { value: label, lang };
+    }
+    return undefined;
   }
 
   /** The city `P931` names, as a value in the reader's language.
@@ -267,7 +331,7 @@ export class WikidataProvider implements EnrichmentProvider {
   private async servedCity(airport: WbEntity): Promise<ProviderValue | undefined> {
     const qid = bestRankedItemClaim(airport, CLAIM_PLACE_SERVED);
     if (!qid) return undefined;
-    const city = await this.airportEntity(qid);
+    const city = await this.memoizedEntity(qid);
     for (const lang of CITY_LANG_PREFERENCE) {
       const label = city?.labels?.[lang]?.value;
       if (!label) continue;
@@ -281,12 +345,12 @@ export class WikidataProvider implements EnrichmentProvider {
    *
    * Not a cache tier and deliberately not shaped like one (`blob-cache.ts` is the template for
    * those): the orchestrator resolves fields one at a time, so a single pass asks this provider
-   * for `iata` and then for `servedCity` **off the same QID** — without this, one airport is
+   * for `iata`, then `servedCity`, then `kind`, then `region` **off the same QID** — without this, one airport is
    * two identical reads of the same item plus two of its city's. Tiny, evict-oldest, and
    * expiring in a minute, because the only hit it is built for happens seconds apart. A miss
    * costs one more request and nothing else, which is why it needs no invalidation story.
    */
-  private async airportEntity(qid: string): Promise<WbEntity | null> {
+  private async memoizedEntity(qid: string): Promise<WbEntity | null> {
     const held = this.entityMemo.get(qid);
     if (held && Date.now() - held.at < ENTITY_MEMO_TTL_MS) return held.entity;
     const entity = await this.entity(qid);
@@ -326,10 +390,13 @@ export class WikidataProvider implements EnrichmentProvider {
     if (ids.length === 0) return null;
 
     const entities = await this.entities(ids);
-    const classNouns = await this.classNouns(identity, entities);
+    const contexts = await this.candidateContexts(identity, entities);
 
-    let best: { entity: WbEntity; scored: ReturnType<typeof nameProximityConfidence> } | null =
-      null;
+    let best: {
+      entity: WbEntity;
+      scored: ReturnType<typeof nameProximityConfidence>;
+      primary: number;
+    } | null = null;
     for (const entity of entities) {
       // Against ALL of the names the entity offers — labels, aliases and article titles — for
       // the cross-script reason below, and with the entity's own coordinate, which the search
@@ -338,11 +405,14 @@ export class WikidataProvider implements EnrichmentProvider {
         identity,
         namesOfEntity(entity),
         coordinateOf(entity),
-        classNouns.get(entity.id ?? ''),
+        contexts.get(entity.id ?? ''),
       );
       if (!scored) continue;
       seen(entity, scored);
-      if (!best || scored.confidence > best.scored.confidence) best = { entity, scored };
+      const primary = primaryAgreement(identity.name, entity);
+      if (!best || outranks(scored.confidence, primary, best.scored.confidence, best.primary)) {
+        best = { entity, scored, primary };
+      }
     }
     if (!best || !isMatchConfident(best.scored.confidence)) return null;
 
@@ -367,12 +437,14 @@ export class WikidataProvider implements EnrichmentProvider {
    * does not change. Same evict-oldest shape as `airportEntity`'s memo, with no TTL — a class
    * label is not a fact that goes stale within a process's life.
    */
-  private async classNouns(
+  private async candidateContexts(
     identity: PlaceIdentity,
     entities: readonly WbEntity[],
-  ): Promise<Map<string, string[]>> {
-    const relevant = entities.filter((entity) => descriptorCouldRescue(identity.name, entity));
-    const wanted = new Set(relevant.flatMap(instanceOfOf));
+  ): Promise<Map<string, CandidateContext>> {
+    const relevant = entities.filter((entity) => contextCouldRescue(identity.name, entity));
+    const wanted = new Set(
+      relevant.flatMap((entity) => [...instanceOfOf(entity), ...placesOf(entity)]),
+    );
     const missing = [...wanted].filter((qid) => !this.classNounMemo.has(qid));
     // In batches of what one call takes, rather than one truncated call: a class we never asked
     // about must not be remembered as having no label, which is what a silent `slice` would do.
@@ -384,10 +456,14 @@ export class WikidataProvider implements EnrichmentProvider {
       // Remembered as "no label" too, so an unlabelled class is asked about once, not per pass.
       for (const qid of batch) if (!this.classNounMemo.has(qid)) this.remember(qid, []);
     }
-    const byEntity = new Map<string, string[]>();
+    const byEntity = new Map<string, CandidateContext>();
+    const labelsFor = (qids: string[]) => qids.flatMap((qid) => this.classNounMemo.get(qid) ?? []);
     for (const entity of relevant) {
-      const nouns = instanceOfOf(entity).flatMap((qid) => this.classNounMemo.get(qid) ?? []);
-      if (entity.id && nouns.length > 0) byEntity.set(entity.id, nouns);
+      if (!entity.id) continue;
+      byEntity.set(entity.id, {
+        classNouns: labelsFor(instanceOfOf(entity)),
+        placeNouns: labelsFor(placesOf(entity)),
+      });
     }
     return byEntity;
   }
@@ -437,13 +513,14 @@ export class WikidataProvider implements EnrichmentProvider {
     // One call for every candidate: `wbgetentities` takes several ids, so the fallback route
     // costs two requests in total however many articles the point had.
     const entities = await this.entities(nearby.map((item) => item.qid));
-    const classNouns = await this.classNouns(identity, entities);
+    const contexts = await this.candidateContexts(identity, entities);
 
     let best: {
       entity: WbEntity;
       confidence: number;
       nameSimilarity: number;
       corroborated: boolean;
+      primary: number;
     } | null = null;
     // How far away each candidate we were willing to score is — the input to the ambiguity
     // check below, and deliberately measured AFTER the broader-subject skip: a district we
@@ -451,10 +528,10 @@ export class WikidataProvider implements EnrichmentProvider {
     const scoreable: number[] = [];
     for (const entity of entities) {
       const labels = namesOfEntity(entity);
-      const nouns = classNouns.get(entity.id ?? '');
+      const nouns = contexts.get(entity.id ?? '');
       const point = coordinateOf(entity);
       const corroborated = labels.some((label) =>
-        nameCanRefuse(identity.name, { name: label, classNouns: nouns }),
+        nameCanRefuse(identity.name, { name: label, ...nouns }),
       );
 
       // Rule 2: with no name able to check it, a broader entity is the wrong subject rather
@@ -478,7 +555,7 @@ export class WikidataProvider implements EnrichmentProvider {
           ? bestNameMatch(identity, labels, point, nouns)
           : geoProximityConfidence(identity, {
               name: labels[0] ?? '',
-              classNouns: nouns,
+              ...nouns,
               ...point,
               // **An airport is allowed to be kilometres from its own door** (§20). Earned by
               // the candidate's `P31`, so nothing that is not an airport gets the allowance.
@@ -487,12 +564,14 @@ export class WikidataProvider implements EnrichmentProvider {
       if (!scored) continue;
       seen(entity, scored, corroborated ? undefined : 'distance only');
       if (scored.distanceMeters != null) scoreable.push(scored.distanceMeters);
-      if (!best || scored.confidence > best.confidence) {
+      const primary = primaryAgreement(identity.name, entity);
+      if (!best || outranks(scored.confidence, primary, best.confidence, best.primary)) {
         best = {
           entity,
           confidence: scored.confidence,
           nameSimilarity: scored.nameSimilarity,
           corroborated,
+          primary,
         };
       }
     }
@@ -538,16 +617,21 @@ export class WikidataProvider implements EnrichmentProvider {
     const seen = note(trace, MATCH_METHOD.WIKI_SEARCH);
     if (hits.length === 0) return null;
     const entities = await this.entities(hits.map((hit) => hit.qid));
-    const classNouns = await this.classNouns(identity, entities);
+    const contexts = await this.candidateContexts(identity, entities);
 
-    let best: { entity: WbEntity; confidence: number; nameSimilarity: number } | null = null;
+    let best: {
+      entity: WbEntity;
+      confidence: number;
+      nameSimilarity: number;
+      primary: number;
+    } | null = null;
     for (const entity of entities) {
       const labels = namesOfEntity(entity);
-      const nouns = classNouns.get(entity.id ?? '');
+      const nouns = contexts.get(entity.id ?? '');
       const point = coordinateOf(entity);
       const airport = isAirportEntity(instanceOfOf(entity));
       const corroborated = labels.some((label) =>
-        nameCanRefuse(identity.name, { name: label, classNouns: nouns }),
+        nameCanRefuse(identity.name, { name: label, ...nouns }),
       );
 
       // Same rule the coordinate route follows: with no name able to check it, a broader
@@ -570,15 +654,16 @@ export class WikidataProvider implements EnrichmentProvider {
           ? bestNameMatch(identity, labels, point, nouns)
           : geoProximityConfidence(identity, {
               name: labels[0] ?? '',
-              classNouns: nouns,
+              ...nouns,
               ...point,
               isAirport: airport,
             });
       if (!scored) continue;
       const capped = Math.min(scored.confidence, MATCH_METHOD_CONFIDENCE.wiki_search);
       seen(entity, { ...scored, confidence: capped });
-      if (!best || capped > best.confidence) {
-        best = { entity, confidence: capped, nameSimilarity: scored.nameSimilarity };
+      const primary = primaryAgreement(identity.name, entity);
+      if (!best || outranks(capped, primary, best.confidence, best.primary)) {
+        best = { entity, confidence: capped, nameSimilarity: scored.nameSimilarity, primary };
       }
     }
     if (!best || !isMatchConfident(best.confidence)) return null;
@@ -663,7 +748,7 @@ export class WikidataProvider implements EnrichmentProvider {
     url.searchParams.set('ids', qids.slice(0, ENTITY_IDS_PER_CALL).join('|'));
     url.searchParams.set('props', props);
     url.searchParams.set('sitefilter', SITE_FILTER);
-    url.searchParams.set('languages', 'he|en');
+    url.searchParams.set('languages', NAME_LANGUAGES);
     const body = await this.fetcher.fetchJson<WbEntitiesResponse>(url.toString());
     return Object.values(body.entities ?? {});
   }
@@ -783,6 +868,39 @@ const labelOf = (entity: WbEntity): string | undefined =>
    own, and the distance veto still applies to whichever name won. What changes is that the
    right name is among the ones tried. */
 
+/**
+ * **How well our name agrees with what the item is called in Hebrew and English** — the tie-break
+ * that keeps `NAME_LANGUAGES` from reopening §16.
+ *
+ * Reading names in two dozen languages found `Chiesa di Sant'Ignazio`, and it also handed
+ * Piccadilly Circus's Underground station the bare label `Piccadilly Circus` (its `mul`, `it`,
+ * `fr`, `de`… labels): station and square then tied at the fuzzy ceiling and the list order
+ * chose the station, measured on the recall probe. A station named after a square is named after
+ * it in every language. The languages the app reads (`he`/`en`, the article titles among them)
+ * are where the two differ, so on a tie that is the evidence that decides.
+ */
+function primaryAgreement(ourName: string, entity: WbEntity): number {
+  const primary = (['he', 'en'] as const).flatMap((lang) => [
+    entity.labels?.[lang]?.value,
+    ...aliasesOf(entity, lang),
+  ]);
+  const titles = Object.values(entity.sitelinks ?? {}).map((link) => link?.title);
+  let best = 0;
+  for (const name of [...primary, ...titles]) {
+    if (name) best = Math.max(best, nameSimilarity(ourName, name));
+  }
+  return best;
+}
+
+/** Higher confidence wins; on a tie, the closer Hebrew/English name (`primaryAgreement`). */
+const outranks = (
+  confidence: number,
+  primary: number,
+  bestConfidence: number,
+  bestPrimary: number,
+): boolean =>
+  confidence > bestConfidence || (confidence === bestConfidence && primary > bestPrimary);
+
 /** Every label the entity read returned — `wbgetentities` is asked for `he|en`. */
 function labelsOf(entity: WbEntity): string[] {
   return Object.values(entity.labels ?? {})
@@ -825,12 +943,28 @@ function namesOfEntity(entity: WbEntity): string[] {
  * MORE words than it, and does not already clear the floor. Anything else is answered without
  * knowing what the candidate is.
  */
-function descriptorCouldRescue(ourName: string, entity: WbEntity): boolean {
+function contextCouldRescue(ourName: string, entity: WbEntity): boolean {
   return namesOfEntity(entity).some(
     (name) =>
       namesComparable(ourName, name) &&
       nameSimilarity(ourName, name) < MATCH_MIN_NAME_SIMILARITY &&
-      countWords(ourName) > countWords(name),
+      countWords(ourName) !== countWords(name),
+  );
+}
+
+/** What a candidate is and where it says it is, in words — the two label sets the matcher may
+ *  read a name against (§22's class nouns; the location qualifier of 2026-09-28). */
+interface CandidateContext {
+  classNouns: readonly string[];
+  placeNouns: readonly string[];
+}
+
+/** The places an item says it is in: `P131`, one level, plus the country. */
+function placesOf(entity: WbEntity): string[] {
+  return [CLAIM_LOCATED_IN, CLAIM_COUNTRY].flatMap((property) =>
+    (entity.claims?.[property] ?? [])
+      .map((claim) => (claim.mainsnak?.datavalue?.value as { id?: string } | undefined)?.id)
+      .filter((id): id is string => typeof id === 'string'),
   );
 }
 
@@ -841,12 +975,20 @@ function bestNameMatch(
   identity: PlaceIdentity,
   names: readonly string[],
   point: { lat?: number; lng?: number },
-  classNouns?: readonly string[],
+  context?: CandidateContext,
 ): ReturnType<typeof nameProximityConfidence> | undefined {
   let best: ReturnType<typeof nameProximityConfidence> | undefined;
   for (const name of names) {
-    const scored = nameProximityConfidence(identity, { name, classNouns, ...point });
-    if (!best || scored.confidence > best.confidence) best = scored;
+    const scored = nameProximityConfidence(identity, { name, ...context, ...point });
+    // Ties go to the closer name, so a miss's trace reports the nearest thing we compared
+    // rather than whichever label happened to come first.
+    if (
+      !best ||
+      scored.confidence > best.confidence ||
+      (scored.confidence === best.confidence && scored.nameSimilarity > best.nameSimilarity)
+    ) {
+      best = scored;
+    }
   }
   return best;
 }

@@ -20,11 +20,17 @@
 // children left inside). So the expander is gone, replaced by a READOUT — the
 // count must stay legible without a tap — and its rows move to the lifted hero in
 // phase 3. This was the board's only interactive child, so it now has none.
-import type { ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
+import { FlapClock } from './FlapClock';
 import { Icon } from '../Icon';
 import { TitleLabel } from '../TitleLabel';
 import { ZoneShiftPill } from '../ZoneShiftPill';
 import { transitionLabel } from '../../lib/transitions';
+import { gapIsLocative, gapWords, type GapRead } from '../../lib/gap-character';
+import { trackBlockClass, trackBlockStyle } from '../../lib/day-track';
+import { timeFacts, type StatedTime, type TimeFactClaim } from '../../lib/time-claim';
+import type { TomorrowRibbon } from '../../lib/tomorrow';
+import '../../styles/day-track.css';
 import { t } from '../../i18n/he';
 import './board.css';
 
@@ -46,6 +52,83 @@ export interface BoardRow {
   until?: string;
   hard?: boolean;
   shift?: ZoneShift;
+}
+
+/** **What the now-slot says when nothing is running** (ADR-0211).
+ *
+ *  The board no longer decides this: `זמן חופשי` was its final `else`, which is how it came to
+ *  print a claim on a bus, in bed and on a day nobody planned. The screen derives the character
+ *  and the board draws it, exactly as it already does for every other slot.
+ *
+ *  Absent → the board is not in a gap at all (`now`, `in-transit`, `group-split` all supply
+ *  their own words), so nothing here fires. */
+export interface BoardGap {
+  read: GapRead;
+  /** The stay's resolved display name, for `at-the-stay`. */
+  stayName?: string;
+  /** The instant the gap runs to, for `open` — the fact the `free` branch never said while
+   *  `GlanceCard` said it two inches lower (ADR-0211 §5). Times arrive formatted; the board
+   *  reads no zone.
+   *
+   *  **It is a `StatedTime` rather than a string** (ADR-0226): the gap ends at the DEPARTURE,
+   *  not at the next point (ADR-0206 §AJ4.1/§BF), and a bare `HH:MM` is exactly what let this
+   *  slot print a ceiling ⁦15 minutes⁩ later than the tile below it with nothing able to notice. */
+  until?: StatedTime;
+  /** **The journey you are on, for `on-the-way`** (2026-09-20). See {@link BoardGapJourney}. */
+  journey?: BoardGapJourney;
+}
+
+/**
+ * **WHAT THE BOARD SAYS WHILE YOU ARE DRIVING** — the slot ADR-0211 §5 opened and never spent.
+ *
+ * `on-the-way` has always rendered a label and a title and nothing under them, because the only
+ * thing that could reach it was a device MARK, which carries no numbers. A fix does: scaled by
+ * the remaining crow fraction, `remainingTravelSeconds` answers how much road is left, and the
+ * clock plus that answers when you get there. Both were already computed on the screen and spent
+ * only on the LIFTED hero's journey line (`HeroLiftTravel`), so the collapsed card — the one you
+ * are actually looking at from a moving car — said neither.
+ *
+ * **Every string arrives formatted, isolated and hedged**, like every other datum on this card,
+ * and both are approximations of an approximation (ADR-0207 §6): the `~` is not modesty, it is
+ * the honest size of a routed estimate multiplied by a crow ratio.
+ *
+ * Absent is the ordinary answer (§D4) and it is what a `בדרך` mark with no fix behind it
+ * produces: somebody who says they are moving has told the app where they are and not how far
+ * along, so the board says what it knows and stops.
+ */
+export interface BoardGapJourney {
+  /** `נותרו ⁦~1:12⁩ שע׳` — what is left of the leg. */
+  remaining?: string;
+  /** `הגעה ⁦~18:19⁩` — when you get there, in the point's own zone. */
+  arrival?: StatedTime;
+  /** **The arrival lands after the point's own start**, and only where that start is a deadline
+   *  worth being late for (ADR-0206 §AI1's gate, read the same way `arrivalIsDeadline` reads it:
+   *  a check-in's ⁦17:00⁩ is the hour the door opens, so nothing arrives late to it). Ink, and the
+   *  ink is on the ARRIVAL alone — what is late is where you land, not how much driving is left,
+   *  and painting the whole line red said the second. */
+  late?: boolean;
+}
+
+/** **WHAT THE NIGHT BOARD SAYS INSTEAD OF `סוף היום`** (ADR-0214).
+ *
+ *  Present → the day's plan is finished and tomorrow is the board's subject, which changes
+ *  three things at once: the slot holding tomorrow takes **rank 1** (the amber label,
+ *  `--text-h2`, `--on-dark-strong`), the day's-closure words are not drawn at all, and the day
+ *  rail's slot carries tomorrow's shape instead of a progress bar with nothing left to measure.
+ *
+ *  The board decides none of that: the SCREEN decides there is a tomorrow worth drawing and
+ *  hands it over, exactly as it already hands over the gap's character. Absent → every state
+ *  renders as it shipped. */
+export interface BoardTomorrow {
+  /** `מחר` — resolved by the screen through `dayLabel`, never a literal here, so a board that
+   *  ever points two days out says `מחרתיים` rather than lying by one day. */
+  label: string;
+  /** `tomorrowRibbon`'s answer: the blocks, and the marks that survived thinning. */
+  ribbon: TomorrowRibbon;
+  /** Where tomorrow ends up, and **only when it is not where you already are** — the screen
+   *  applies ADR-0209's rule ("a stay is named once") before this arrives, because the same
+   *  bed is already on the stay strip one surface up. */
+  sleeps?: string;
 }
 
 export interface BoardTransit {
@@ -72,7 +155,10 @@ export interface BoardTransit {
    *  landing at 06:00 reads as this morning, and the zone jump breaks the arithmetic you
    *  would use to check. Absent on every same-day journey, which is nearly all of them. */
   endDay?: string;
-  code?: string;
+  /** **The service's own name, mid-journey** (ADR-0223 §2). What replaced the confirmation
+   *  code here: `LY315` is what a departure board, a crew member and a gate agent all answer
+   *  to, and it is the fact that stays true for the whole flight. */
+  flightNumber?: string;
   /** Flight progress 0..1 (drives the fill + plane). */
   progress: number;
   /** Departure time (pre-formatted) — in the **origin's** zone. */
@@ -113,14 +199,93 @@ export interface BoardNext {
   labelKey?: string;
   /** Instant (pre-formatted) — in the zone that instant happens in. */
   time?: string;
+  /** **Which day that instant falls on, when it is not today** (ADR-0211 §6) — `מחר`,
+   *  `מחרתיים`, `עוד 3 ימים`, from `relativeDayLabel`.
+   *
+   *  `deriveNow` has no date filter (`lib/time.ts:312`), so this slot has ALWAYS crossed
+   *  midnight: at ⁦22:40⁩ it is already showing tomorrow's ⁦07:00⁩ flight, and `07:00` alone
+   *  reads as this morning. That is the ambiguity ADR-0160 §M named for the in-transit
+   *  landing — _"a red-eye landing at 06:00 reads as this morning"_ — and solved with
+   *  `BoardTransit.endDay`. The same fact, the same words, the sibling meta row that never
+   *  got them.
+   *
+   *  **It rides WITH the time it qualifies**, never on the countdown — §M's own rule, for
+   *  §M's own reason: what is ambiguous is `07:00`, not `בעוד 8 שעות`. */
+  day?: string;
+  /** **The other places of the same stop** (ADR-0225 §6) — the titles of `nextAll` past its
+   *  primary. The title stays one loud element; this rides the meta line in its own ink as
+   *  `בו-זמנית · <peer>`, or `בו-זמנית · ועוד N` past one, so a stop that is two places is
+   *  never printed as one. Empty is the common case. */
+  peers?: ReactNode[];
   hard?: boolean;
-  code?: string;
+  /** **The gate, when it is due** (ADR-0222 §4/§5, as amended by ADR-0223 §3). It no longer
+   *  INHERITS the code's slot, because the code no longer has one — it simply occupies a slot
+   *  nothing else uses now. The caller resolves the window (`gateIsDue`), so this component
+   *  never asks what time it is. There is no gate on the in-transit slot: a gate says nothing
+   *  once you are aboard. */
+  gate?: string;
   /** That zone vs where you are now → the pill beside the time. */
   shift?: ZoneShift;
   /** **This edge's window shut and nobody answered** (ADR-0184 §6). The transition word
    *  wears `--miss` instead of amber — the app's existing failure hue, spent on the first
    *  lodging edge that can actually fail. No new word and no new row shape. */
   missed?: boolean;
+}
+
+/** **The tile under `הבא בתור`** — one number, and the words that say what it is a number OF.
+ *
+ *  Named here and imported by `HeroLift`, which renders the same tile one elevation up: the two
+ *  copies of this markup predate the lift, and a field added to one and not the other is exactly
+ *  how the collapsed board and the hero start saying different things about one leave-by.
+ *
+ *  `unitBelow` is a **second unit line**, and only the passed-leave arm uses it (ADR-0208 §1).
+ *  Three parts will not fit on one line inside the tile's own ⁦48px⁩ — measured — and the row has
+ *  the height to spare, so the sentence wraps rather than the number losing a word. */
+export interface BoardCountdown {
+  value?: string;
+  unit: string;
+  unitBelow?: string;
+  missed?: boolean;
+  /** **The morning of departure** (ADR-0221 §3): until the first timed thing starts, the
+   *  tile is the same split-flap clock the prep hero showed the evening before — one
+   *  component, so the clock hands over from one hero to the other without a gap. */
+  flap?: { targetMs: number; nowMs: number };
+  /** **What this tile is counting TO** (ADR-0226). The tile states a duration, the day row
+   *  states a clock, and ADR-0159 §1 lets them: the posture differs, the moment must not. So
+   *  the instant rides with the number and the agreement suite compares it against every other
+   *  surface's answer for the same subject. Absent while the tile counts to the event itself,
+   *  which is the datum rather than a derivation. */
+  fact?: TimeFactClaim;
+}
+
+/** **The board's ONE countdown tile, drawn by both elevations** (ADR-0160 §M, ADR-0221 §3/§7).
+ *  The collapsed board and the lifted hero used to carry two copies of this markup, and the
+ *  departure morning's flap clock landed in one and not the other — the lift kept reading the
+ *  `H:MM` ladder while the board under it read `HH:MM:SS`. One component, so a field added to the
+ *  tile reaches both by construction. */
+export function CountdownTile({ countdown }: { countdown: BoardCountdown }) {
+  return (
+    <div
+      className={'wp-board-countdown' + (countdown.missed ? ' missed' : '')}
+      {...timeFacts(countdown.fact)}
+    >
+      {countdown.flap ? (
+        <FlapClock
+          className="wp-board-flaps"
+          nowMs={countdown.flap.nowMs}
+          targetMs={countdown.flap.targetMs}
+        />
+      ) : (
+        countdown.value && (
+          <div className="t" dir="auto">
+            {countdown.value}
+          </div>
+        )
+      )}
+      <div className="u">{countdown.unit}</div>
+      {countdown.unitBelow && <div className="u">{countdown.unitBelow}</div>}
+    </div>
+  );
 }
 
 export interface BoardProps {
@@ -148,11 +313,35 @@ export interface BoardProps {
 
   // NEXT slot + progress (hidden in transit).
   next?: BoardNext | null;
-  countdown?: { value?: string; unit: string } | null;
+  /** **The board's ONE countdown, and it changes what it counts to** (ADR-0206 §Z1). The `unit`
+   *  slot has said what the minutes are left OF since ADR-0184 §6's `לסגירה`; a live leave-by is
+   *  the same fact pointed one step earlier, so it is a third arm on that ternary and not a
+   *  second element — `עוד 45 · דקות` is not merely less useful once you should be leaving, it
+   *  is wrong, and drawing both would state a contradiction the reader has to resolve.
+   *
+   *  `missed` paints the tile in the board's own `--miss` recipe (§D7) for a leave-by that has
+   *  gone by. **It is a swap, not a second live mark** (§D6): `.now-here` is still the app's
+   *  only one, and re-pointing a countdown is not another. */
+  countdown?: BoardCountdown | null;
+  /** **What the now-slot says when nothing is running** (ADR-0211). Absent on every
+   *  variant that supplies its own words. */
+  gap?: BoardGap | null;
+  /** **Tomorrow, when the day's plan is finished** (ADR-0214) — see {@link BoardTomorrow}.
+   *  Present → the board re-ranks its slots around it and its foot carries the shape instead
+   *  of the day rail. */
+  tomorrow?: BoardTomorrow | null;
   /** Day progress 0..100. */
   progress?: number;
   windowStartHour?: string;
   windowEndHour?: string;
+  /** **Whether the day rail still describes the frame you are in** (`gapDrawsDayRail`).
+   *
+   *  Generalised from the `in-transit` gate that was already here for exactly this reason
+   *  (ADR-0059 §2: the flight IS the day's current activity). The night is the same case from
+   *  the other end — `dayProgress` clamps, so at ⁦02:40⁩ the rail drew a knob at ⁦0%⁩ labelled
+   *  `עכשיו`, telling somebody in bed they were standing at ⁦07:00⁩. One boolean, two callers,
+   *  rather than a second bespoke condition beside the first. */
+  showRail?: boolean;
 
   /** Press the whole board to lift it (ADR-0160 §1). Present → the board renders
    *  as a `<button>` and takes the large press step; absent → a plain `<div>`, as
@@ -196,6 +385,119 @@ export interface BoardProps {
  * the one-off rather than add a second one beside it, so the copy is gone and there is one
  * of each.
  */
+/**
+ * **The now-slot in a gap**, rendered once and read at both elevations (ADR-0211 §2).
+ *
+ * Exported for `HeroLift`, which draws the same two lines one elevation up — the same reason
+ * `DayRail` and `BoardCountdown` are exported from here. ADR-0160 §S had to repair this exact
+ * drift once already, when `free` was `Board`'s `else` and an empty array in the hero, so the
+ * words vanished on the way up; a second copy of these lines is how that comes back.
+ *
+ * The markup is the board's own `.wp-board-now-label` / `.wp-board-now-title` / `.wp-board-now-meta`
+ * trio, unchanged. What is new is that the `meta` line now fires in a gap at all: the `free`
+ * branch never rendered one, so the board left a slot empty for a fact `GlanceCard` was carrying
+ * two inches lower (§5).
+ */
+export function BoardGapSlot({ gap }: { gap: BoardGap }) {
+  const { label, title } = gapWords(gap.read, gap.stayName);
+  const loc = gapIsLocative(gap.read.kind);
+  const { journey } = gap;
+  return (
+    <>
+      <div className={loc ? 'wp-board-now-label loc' : 'wp-board-now-label'}>{label}</div>
+      <div className="wp-board-now-title" dir="auto">
+        {title}
+      </div>
+      {gap.until && (
+        <div className="wp-board-now-meta" {...timeFacts(gap.until.fact)}>
+          {t.board.until} <span dir="auto">{gap.until.text}</span>
+        </div>
+      )}
+      {/* **The journey, in the meta line's own slot** — the same `.wp-board-now-meta` the `open`
+          arm fills, so the card costs nothing it did not already spend (measured at ⁦292px⁩ either
+          way in `the-board-says-where-you-are-v1`). The two runs are separated by the app's `·`
+          as a NODE rather than as part of a string, which is `TravelBetween`'s own rule one
+          elevation up: a dimmed dot needs no second copy of the runs around it. */}
+      {journey && (journey.remaining || journey.arrival) && (
+        <div
+          className="wp-board-now-meta"
+          {...(journey.arrival ? timeFacts(journey.arrival.fact) : {})}
+        >
+          {journey.remaining && <span dir="auto">{t.travel.remaining(journey.remaining)}</span>}
+          {journey.remaining && journey.arrival && <span className="sep">·</span>}
+          {journey.arrival && (
+            <span className={journey.late ? 'eta miss' : 'eta'} dir="auto">
+              {t.travel.arriveAt(journey.arrival.text)}
+            </span>
+          )}
+        </div>
+      )}
+    </>
+  );
+}
+
+/**
+ * **TOMORROW'S SHAPE, IN THE DAY RAIL'S OWN SLOT** (ADR-0214).
+ *
+ * It IS `.wp-board-progress` — the same ⁦3px⁩ track in the same place, which is the whole
+ * argument for it: on a finished day the rail is measuring a day that is over (`dayProgress`
+ * clamps, so it draws a knob at ~⁦98%⁩ under the word `עכשיו`), and what the traveller wants
+ * from that band at ⁦22:40⁩ is the shape of the morning. Measured: on a day the bed does not
+ * move the strip is ⁦23px⁩, which is the rail's own height to the pixel.
+ *
+ * **It carries no caption, no day number and no count**, and that is what keeps it minimal:
+ * the rank-1 label above it already says `מחר` and the meta row already says when tomorrow
+ * starts, so a header here would print the subject twice. What it does carry is the one thing
+ * no other slot can say — where tomorrow ends up — and only when the bed actually moves.
+ *
+ * **Nothing in here is pressable.** The board is a `<button>`, and ADR-0160 §4 is the record
+ * of what a nested one does to it: Chrome closes the board at the inner button and reparents
+ * everything after it (⁦1 of 4⁩ children left inside, measured). So this is a readout, exactly
+ * as `ועוד N עכשיו` became one, and the way through to the day lives in the lifted hero.
+ */
+export function TomorrowStrip({ tomorrow }: { tomorrow: BoardTomorrow }) {
+  const { ribbon, sleeps } = tomorrow;
+  return (
+    // `.wp-board-progress` for the slot's own spacing, `.wp-track` for the geometry, and
+    // `.wp-board-tmr` for the two things only the BOARD supplies: the `--track-*` inks and the
+    // sleeps line. A glance rail reusing this sets its own inks and skips the middle class.
+    <div className="wp-board-progress wp-track wp-board-tmr">
+      {ribbon.marks.length > 0 && (
+        <div className="wp-track-marks" aria-hidden="true">
+          {ribbon.marks.map((mark) => (
+            <span
+              key={mark.key}
+              className="wp-track-mark"
+              style={{ '--s': `${mark.frac * 100}%` } as CSSProperties}
+            >
+              {mark.icon}
+            </span>
+          ))}
+        </div>
+      )}
+      {ribbon.blocks.length === 0 ? (
+        <div className="wp-track-empty" aria-hidden="true" />
+      ) : (
+        <div className="track" aria-hidden="true">
+          {ribbon.blocks.map((block) => (
+            <div
+              key={block.key}
+              className={trackBlockClass(block)}
+              style={trackBlockStyle(block) as CSSProperties}
+            />
+          ))}
+        </div>
+      )}
+      {sleeps && (
+        <div className="wp-board-tmr-sleep">
+          <Icon name="hotel" />
+          <span dir="auto">{t.board.tomorrowSleeps(sleeps)}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function DayRail({
   progress,
   startHour,
@@ -301,19 +603,60 @@ export function Board(props: BoardProps) {
     alsoNow,
     next,
     countdown,
+    gap,
+    tomorrow,
     progress = 0,
     windowStartHour,
     windowEndHour,
+    // The rail is drawn unless the caller says the day is not the frame you are in. Defaulting
+    // to `true` keeps every existing caller (and every test) rendering exactly what it did.
+    showRail = true,
     onLift,
     onRebuff,
     lifted,
   } = props;
   const inTransit = variant === 'in-transit';
+  /** **A branch that draws nothing, named** — and the name is not decoration.
+   *
+   *  Two slots go silent once tomorrow is the subject: the day's-closure words, and the day
+   *  rail. One reason serves both, ADR-0211 §4's "absence beats a pinned lie" — a board whose
+   *  whole subject is tomorrow has said the day is over by not talking about it, and a progress
+   *  bar for a day that is over measures nothing. `סוף היום` in the largest type and brightest
+   *  ink on the app's loudest surface is a statement about what is NOT happening, and rank 1 is
+   *  needed by the one thing on the card anybody can act on.
+   *
+   *  It is a named `const` rather than a `null` with a comment above it because **Prettier
+   *  mangles a `//` comment that leads a bare `null` ternary branch, and does it
+   *  non-idempotently**: it hoists the lines onto the `?` line and reorders them on every run,
+   *  so `format` and `format:check` disagree and CI goes red on a file the pre-commit hook has
+   *  just written. Cost one red `ci` on this PR; recorded in `frontend/CLAUDE.md`. */
+  const nothing = null;
+  /** **Whether tomorrow is the board's subject** (ADR-0214 §2): it is, when the screen handed
+   *  over a tomorrow that actually has blocks. Then the slot holding tomorrow takes rank 1, the
+   *  day's-closure words are not drawn, and the foot carries the shape. A tomorrow with NO
+   *  blocks is a different state — the words move to the now-slot and the far point keeps rank
+   *  2 with its countdown — so this is not simply `!!tomorrow`. */
+  const tomorrowRanked = !!tomorrow && tomorrow.ribbon.blocks.length > 0;
+  /** The gap that speaks in teal — only `on-the-way` (`gapIsLocative`). */
+  const gapLoc = !!gap && gapIsLocative(gap.read.kind);
 
   const body = (
     <>
       <div className="wp-board-top">
-        <div className={'wp-board-live' + (inTransit ? ' loc' : '')}>
+        {/* **A journey somebody asserted wears the same costume as one the plan brackets**
+            (ADR-0211 §3). `in-transit` already swaps this badge to the mode's own teal word;
+            `בדרך` is the same fact from a person rather than from a bracket, so it takes the
+            same swap rather than printing amber `עכשיו` over a teal label two lines down —
+            which is the contradiction, one register over, that this ADR is about. */}
+        {/* **The blip is the live mark; the WORD is the title's** (amending ADR-0211's build
+            log §1, 2026-09-20). That log kept `on-the-way` swapping this badge to the gap's own
+            title _"because there the swap is the shipped transit costume rather than a
+            repetition"_ — true while the title had nothing under it, and false the moment the
+            journey's numbers landed below it: rendered, `בדרך` printed in the badge and again in
+            the title ⁦85px⁩ apart, which is the duplication the same log removed when it refused
+            `לילה` in both slots. `in-transit` keeps its word because there the badge says the
+            MODE (`בטיסה`) and the title says the flight — two facts, not one twice. */}
+        <div className={'wp-board-live' + (inTransit || gapLoc ? ' loc' : '')}>
           <span className="blip" />
           {inTransit && transit ? transit.liveWord : t.common.now}
         </div>
@@ -351,9 +694,13 @@ export function Board(props: BoardProps) {
             {transit.kind === 'held' && transit.remaining && (
               <span dir="auto">{t.board.inPhrase(transit.remaining)}</span>
             )}
-            {transit.code && (
-              <span className="code" dir="auto">
-                {transit.code}
+            {/* **The flight's name, where its ticket number used to be** (ADR-0223 §2). A
+                confirmation code mid-flight decides nothing — it is a lookup key for a desk
+                you have already left — while the number is what every screen and announcement
+                around you is using. Same neutral register as the `הבא בתור` line's. */}
+            {transit.flightNumber && (
+              <span className="ident" dir="auto">
+                {transit.flightNumber}
               </span>
             )}
           </div>
@@ -414,22 +761,45 @@ export function Board(props: BoardProps) {
             </div>
           )}
         </>
-      ) : (
+      ) : tomorrowRanked ? (
+        nothing
+      ) : tomorrow ? (
+        // Tomorrow exists and nobody has filled it in. Then tomorrow IS the now-slot's
+        // subject — no swap needed, since the point at rank 2 is a day or more out — and the
+        // words are `emptyDay`'s own, with the day word coming from the screen.
         <>
-          <div className="wp-board-now-label">{t.board.freeLabel}</div>
-          <div className="wp-board-now-title">{t.board.freeTitle}</div>
+          <div className="wp-board-now-label">{tomorrow.label}</div>
+          <div className="wp-board-now-title" dir="auto">
+            {t.board.gap.emptyDay.title}
+          </div>
         </>
+      ) : (
+        gap && <BoardGapSlot gap={gap} />
       )}
+
+      {/* An unplanned tomorrow draws its dashed strip directly under those words, above the
+          divider: the shape belongs to the subject it describes, not to the point below it. */}
+      {tomorrow && !tomorrowRanked && <TomorrowStrip tomorrow={tomorrow} />}
 
       {/* In transit the progress bar replaces the next-row + day rail (the flight
           IS the current activity). */}
       {!inTransit && (
         <>
-          <div className="wp-board-divider" />
+          {/* No divider when the next row is the board's FIRST slot — there is nothing above
+              it to divide from, and the label takes the now-label's own top margin instead. */}
+          {!tomorrowRanked && <div className="wp-board-divider" />}
           <div className="wp-board-next-row">
             <div>
-              <div className="wp-board-next-label">{t.board.nextLabel}</div>
-              <div className="wp-board-next-title">
+              <div
+                className="wp-board-next-label"
+                {...(tomorrowRanked ? { 'data-rank': '1' } : {})}
+              >
+                {tomorrowRanked ? tomorrow!.label : t.board.nextLabel}
+              </div>
+              <div
+                className="wp-board-next-title"
+                {...(tomorrowRanked ? { 'data-rank': '1' } : {})}
+              >
                 {next?.icon && <span className="wp-board-ic">{next.icon}</span>}
                 {next?.title ?? t.board.endOfDay}
               </div>
@@ -441,33 +811,75 @@ export function Board(props: BoardProps) {
                     </span>
                   )}
                   {next.time && <span dir="auto">{next.time}</span>}
+                  {/* WITH the time, never on the countdown (ADR-0160 §M / ADR-0211 §6): what
+                      is ambiguous is `07:00`, not `בעוד 8 שעות`.
+
+                      **And it comes OFF at rank 1** (ADR-0214 §3), which is the one removal
+                      here that depends on another: the label above now says `מחר` itself, so
+                      keeping this prints one word twice ⁦20px⁩ apart — the same duplication
+                      ADR-0211's build log removed when it refused `לילה` in the badge AND the
+                      label. Where the label still reads `הבא בתור`, the day token stays. */}
+                  {next.day && !tomorrowRanked && <span>{next.day}</span>}
+                  {/* The peer, in the meta line's own ink (ADR-0225 §6) — the day's word for
+                      the brace, and the name when there is one. Measured: the line does not
+                      wrap at 360 and the board does not grow. */}
+                  {next.peers && next.peers.length > 0 && (
+                    <span className="peer">
+                      {t.day.concurrent} ·{' '}
+                      {next.peers.length === 1
+                        ? next.peers[0]
+                        : t.board.peersMore(next.peers.length)}
+                    </span>
+                  )}
                   {next.shift != null && <ZoneShiftPill minutes={next.shift} className="on-dark" />}
-                  {next.hard && (
+                  {/* **The lock and the code come off at rank 1 too**, and neither is a
+                      preference. The code is a measured duplication: the `הכרטיס הבא` quick
+                      tile carries the same string ⁦240px⁩ lower on the same screen, which is
+                      the surface ADR-0050 built for it. And a commitment you cannot act on for
+                      eight hours decides nothing at ⁦22:40⁩ — the lock is on the point in the
+                      lifted hero, one press away. */}
+                  {next.hard && !tomorrowRanked && (
                     <span className="lockmini">
                       <Icon name="lock" /> {t.event.hard}
                     </span>
                   )}
-                  {next.code && (
-                    <span className="code" dir="auto">
-                      {next.code}
+                  {/* **The gate, inside its window** (ADR-0222 §4/§5). It used to INHERIT
+                      the confirmation code's slot here; ADR-0223 took the code off this
+                      surface entirely, so there is nothing left to inherit and the branch
+                      is gone with it. Teal because a gate is a place (rule 4), on
+                      `.tlabel.loc`'s existing recipe. */}
+                  {next.gate && !tomorrowRanked && (
+                    <span className="tlabel loc" dir="auto">
+                      {next.gate}
                     </span>
                   )}
                 </div>
               )}
             </div>
-            {countdown && (
-              <div className="wp-board-countdown">
-                {countdown.value && (
-                  <div className="t" dir="auto">
-                    {countdown.value}
-                  </div>
-                )}
-                <div className="u">{countdown.unit}</div>
-              </div>
-            )}
+            {countdown && <CountdownTile countdown={countdown} />}
           </div>
 
-          <DayRail progress={progress} startHour={windowStartHour} endHour={windowEndHour} />
+          {/* **The rail's slot, re-spent.** On a finished day `dayProgress` clamps, so the
+              rail draws a knob at ~⁦98%⁩ under the word `עכשיו` — a band with nothing left to
+              measure — and the strip is the same ⁦3px⁩ track in the same place saying what the
+              morning looks like instead. Measured: ⁦23px⁩ against the rail's ⁦23px⁩ on a day the
+              bed does not move.
+
+              **An unplanned tomorrow drops the rail as well**, and the running app is what
+              asked: its dashed strip sits above the divider, so keeping the rail below drew
+              BOTH a tomorrow with nothing on it and a progress bar pinned at ~⁦98%⁩ — two bands
+              for two things neither of which has anything left to measure. The board's
+              `:last-child` padding rule, added by ADR-0211 §4 for exactly this shape, is what
+              keeps the card's bottom edge right without one. */}
+          {tomorrowRanked ? (
+            <TomorrowStrip tomorrow={tomorrow!} />
+          ) : tomorrow ? (
+            nothing
+          ) : (
+            showRail && (
+              <DayRail progress={progress} startHour={windowStartHour} endHour={windowEndHour} />
+            )
+          )}
         </>
       )}
     </>

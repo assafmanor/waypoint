@@ -3,6 +3,7 @@ import { afterEach, describe, it, expect, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { wrapNav } from '../../test/nav-harness';
 import { WhenField } from './WhenField';
+import { t } from '../../i18n/he';
 
 const spanProps = {
   variant: 'span' as const,
@@ -119,7 +120,7 @@ describe('WhenField — span variant', () => {
     const onChange = vi.fn();
     render(wrapNav(<WhenField {...spanProps} start="2026-07-26" end="" onChange={onChange} />));
     // Open the departure time panel (the first leg).
-    fireEvent.click(screen.getAllByText('הוסף שעה')[0]);
+    fireEvent.click(screen.getAllByText(t.whenField.addTime)[0]);
     expect(document.querySelector('.tp-panel')).toBeTruthy();
     // Pick 09:00 from the list → combines with the seeded date and closes the panel.
     const list = document.querySelector('.tp-list') as HTMLElement;
@@ -149,7 +150,7 @@ describe('WhenField — span variant', () => {
           />,
         ),
       );
-      const list = openEndTimes('הוסף שעה');
+      const list = openEndTimes(t.whenField.addTime);
       expect(within(list).queryByText('15:15')).toBeNull();
       expect(within(list).queryByText('15:30')).toBeNull();
       expect(within(list).getByText('15:45')).toBeTruthy();
@@ -169,7 +170,7 @@ describe('WhenField — span variant', () => {
           />,
         ),
       );
-      const list = openEndTimes('הוסף שעה');
+      const list = openEndTimes(t.whenField.addTime);
       expect(within(list).getByText('00:00')).toBeTruthy();
       expect(within(list).getByText('06:15')).toBeTruthy();
       expect(document.querySelector('.tp-time-input')?.getAttribute('min')).toBeNull();
@@ -179,7 +180,7 @@ describe('WhenField — span variant', () => {
       render(
         wrapNav(<WhenField {...spanProps} start="2026-07-26T15:30" end="" onChange={() => {}} />),
       );
-      const list = openEndTimes('הוסף שעה');
+      const list = openEndTimes(t.whenField.addTime);
       expect(within(list).getByText('00:00')).toBeTruthy();
     });
 
@@ -207,9 +208,77 @@ describe('WhenField — span variant', () => {
         <WhenField {...spanProps} start="" end="" defaultDate="2026-07-26" onChange={onChange} />,
       ),
     );
-    fireEvent.click(screen.getAllByText('הוסף שעה')[0]);
+    fireEvent.click(screen.getAllByText(t.whenField.addTime)[0]);
     const list = document.querySelector('.tp-list') as HTMLElement;
     fireEvent.click(within(list).getByText('08:30'));
     expect(onChange).toHaveBeenCalledWith({ start: '2026-07-26T08:30', end: '' });
+  });
+});
+
+/* ── A window reads as ONE sentence, at both edges (ADR-0184 §2, corrected) ─────────────
+   Reported from the field, on a car hire's return: "on the return we have to times מ- which
+   doesn't make sense at all. What is it? Do we need a מ- at all? Not just an עד?" */
+describe('WhenField — a window reads chronologically', () => {
+  afterEach(() => cleanup());
+
+  const openWindow = (over: Record<string, unknown> = {}) =>
+    render(
+      wrapNav(
+        <WhenField
+          {...spanProps}
+          labels={{ start: '🔑 איסוף', end: '🏁 החזרה' }}
+          start="2026-07-24T10:00"
+          end="2026-07-26T08:00"
+          onChange={vi.fn()}
+          windows={{
+            start: { value: '11:00', onChange: vi.fn() },
+            end: { value: '01:15', onChange: vi.fn() },
+          }}
+          {...over}
+        />,
+      ),
+    );
+
+  /** The words and the values of one leg's line, in render order — the only honest way to
+   *  assert a copy fix whose two halves are the same size on screen. */
+  const runOf = (index: number) =>
+    [...document.querySelectorAll('.wf-leg')[index].querySelectorAll('.wf-line > *')]
+      .map((el) => {
+        // A `ValueToken` carries its caption as hidden text inside the button so the
+        // accessible name stays "שעה 08:00" (ADR-0177) — `textContent` sees it, a reader
+        // does not, and this assertion is about what a reader sees.
+        const hidden = el.querySelector('.visually-hidden')?.textContent ?? '';
+        return el.textContent!.replace(hidden, '').trim();
+      })
+      .filter(Boolean);
+
+  it('reads מ־ … עד at the START edge, where the leg’s own time is the floor', () => {
+    openWindow();
+    expect(runOf(0)).toEqual(['יום ו׳, 24 ביולי', 'מ־', '10:00', 'עד', '11:00']);
+  });
+
+  /** **The reported defect.** The leading `מ־` printed before this leg's own time whatever
+   *  edge it was on, so an end edge — whose own time IS the deadline — printed `מ־` twice.
+   *  The fix is the ORDER: put the floor first either way and one sentence serves both. */
+  it('reads מ־ … עד at the END edge too, with the floor first and the deadline second', () => {
+    openWindow();
+    expect(runOf(1)).toEqual(['יום א׳, 26 ביולי', 'מ־', '01:15', 'עד', '08:00']);
+    // And never twice the same word, which is what was on screen.
+    const words = runOf(1).filter((w) => w === 'מ־');
+    expect(words.length).toBe(1);
+  });
+
+  /** While the bound is EMPTY the `＋ מ־` token is an affordance, not a clock — so it stays
+   *  after the value it extends. Ordering it first would print `＋מ־ 08:00`, which reads as
+   *  "from 08:00" about a deadline. The pair becomes a sentence at the moment it is a pair. */
+  it('leaves an unfilled bound after the time, and prints no words at all', () => {
+    openWindow({
+      windows: { start: undefined, end: { value: '', onChange: vi.fn() } },
+    });
+    const run = runOf(1);
+    expect(run.filter((w) => w === 'מ־' || w === 'עד')).toEqual([]);
+    // The stored deadline first, then the affordance.
+    expect(run[1]).toBe('08:00');
+    expect(run[2]).toContain('מ־');
   });
 });

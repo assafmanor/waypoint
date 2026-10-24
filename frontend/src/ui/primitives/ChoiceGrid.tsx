@@ -3,8 +3,9 @@
 // tappable icon/label cards with one selected — this folds that pattern into one
 // controlled primitive so it stops being copy-pasted markup. Neutral chrome only
 // (selected = --cta ring), never a semantic hue (design-language color budget).
-import type { CSSProperties } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { useCenterSelected } from '../../lib/useCenterSelected';
+import { edgeFadeRef } from '../../lib/edge-fade';
 import './choice-grid.css';
 
 export interface Choice<T extends string> {
@@ -12,7 +13,50 @@ export interface Choice<T extends string> {
   /** Leading glyph (emoji or short symbol); decorative, hidden from a11y. An
    *  empty string omits the icon slot entirely (e.g. a plain "all" option). */
   icon: string;
+  /** A rendered mark rather than a glyph — in `pills` at the LEADING edge (where `icon` is
+   *  a trailing glyph), in `grid` in the card's own icon slot, where it REPLACES `icon`.
+   *
+   *  Two reasons a card wants it, and the second is a rule rather than a convenience. It
+   *  exists for an axis whose options are PEOPLE (the task editor's `מי אחראי`, ADR-0189):
+   *  the host passes `<Avatar>`, the app's one renderer for a person (ADR-0133 §3), and
+   *  the scroll, the snap, the edge mask, `useCenterSelected` and the radiogroup ARIA all
+   *  keep arriving from here instead of from a second grid.
+   *
+   *  A `ReactNode` rather than an `AvatarPerson`, which is what the design proposed: the
+   *  unassigned option is a **person-shaped absence** and there is no person to pass for
+   *  it, so a typed field would have forced it to be a differently-shaped chip beside the
+   *  people — saying "this is a different kind of answer" about the same question's
+   *  default one. Decorative: the label beside it is the option's accessible name.
+   *
+   *  And it is how a card draws an `Icon` instead of an emoji. `icon` is a **string**, so
+   *  every card that wanted a mark used to have to be content — which is fine for an event
+   *  category and wrong for a control (design-language: "emoji are content, icons are UI",
+   *  and a glyph with a sibling control drawing an icon IS a control). The share sheet's
+   *  audience fork is the first such card; passing `<Icon>` here is the whole fix, and it
+   *  needed no second card shape. */
+  lead?: ReactNode;
   label: string;
+  /** An out-of-flow STATE marker painted on the card, `grid` layout only.
+   *
+   *  Deliberately not the icon slot: `.choice-card` is a flex column that the grid
+   *  stretches to its tallest sibling, so a mark in the slot raises every card in the row
+   *  and leaves the unmarked labels floating (ADR-0213's tenth amendment §4). The host
+   *  positions it absolutely against the card, which is why this is a slot rather than a
+   *  boolean — the meaning and the hue are the host's, and rule 4 governs them there.
+   *
+   *  Decorative: it is `aria-hidden`, so an option that carries one owes `ariaLabel`. */
+  mark?: ReactNode;
+  /** The option's accessible name, when the card carries a MARK the label does not say.
+   *
+   *  The share sheet's level cards are the first: a live link shows as a dot, the dot is
+   *  `aria-hidden` paint, and without this a screen reader hears three identically-named
+   *  cards and cannot tell which levels are already published (ADR-0213's tenth amendment
+   *  §4). Deliberately one field on this primitive rather than a second grid — the
+   *  conditional `aria-label` below already existed for compact pills, and this is the
+   *  same line reached by a second condition.
+   *
+   *  Omit it whenever the label alone is the whole name, which is every other host. */
+  ariaLabel?: string;
   /** Trailing count badge, `pills` layout only (the Index category filter,
    *  ADR-0100 §2 — each chip carries label+icon+count). Decorative/aria-hidden
    *  like the icon, so it never changes the option's accessible name.
@@ -29,6 +73,7 @@ export function ChoiceGrid<T extends string>({
   ariaLabel,
   layout = 'grid',
   compact = false,
+  className = '',
 }: {
   options: Choice<T>[];
   /** The selected value, or `undefined` for no selection yet (a single-select
@@ -54,6 +99,10 @@ export function ChoiceGrid<T extends string>({
    *  visually would leave a pill named by its count alone. An option with no glyph
    *  (`הכל`) keeps its word — there is nothing to stand in for it. */
   compact?: boolean;
+  /** A modifier for the HOST's own rule about this instance — the share sheet's audience
+   *  fork sizes its two cards differently from the detail levels below them. Deliberately
+   *  a modifier and not a style prop: the geometry stays in the stylesheet. */
+  className?: string;
 }) {
   const pills = layout === 'pills';
   // The selected pill centres itself in the row (`lib/useCenterSelected`) — only in `pills`,
@@ -61,7 +110,15 @@ export function ChoiceGrid<T extends string>({
   const selectedRef = useCenterSelected<HTMLButtonElement>(value, { active: pills });
   return (
     <div
-      className={'choice-grid' + (pills ? ' pills' : '') + (pills && compact ? ' compact' : '')}
+      // `edge-fade` only in `pills`: the grid doesn't scroll, so it has no edge to fade
+      // and nothing behind one (`lib/edge-fade.ts`, ADR-0100 §6).
+      className={
+        'choice-grid' +
+        (pills ? ' pills edge-fade' : '') +
+        (pills && compact ? ' compact' : '') +
+        (className ? ` ${className}` : '')
+      }
+      ref={pills ? edgeFadeRef : undefined}
       role="radiogroup"
       aria-label={ariaLabel}
       style={pills ? undefined : ({ '--choice-cols': columns } as CSSProperties)}
@@ -77,13 +134,14 @@ export function ChoiceGrid<T extends string>({
             type="button"
             role="radio"
             aria-checked={o.value === value}
-            aria-label={glyphOnly ? o.label : undefined}
+            aria-label={o.ariaLabel ?? (glyphOnly ? o.label : undefined)}
             className={(pills ? 'choice-pill' : 'choice-card') + (o.value === value ? ' on' : '')}
             onClick={() => onChange(o.value)}
             disabled={disabled}
           >
             {pills ? (
               <>
+                {o.lead !== undefined && <span aria-hidden="true">{o.lead}</span>}
                 {!glyphOnly && <span>{o.label}</span>}
                 {o.icon !== '' && <span aria-hidden="true">{o.icon}</span>}
                 {o.count !== undefined && (
@@ -94,12 +152,13 @@ export function ChoiceGrid<T extends string>({
               </>
             ) : (
               <>
-                {o.icon !== '' && (
+                {(o.lead !== undefined || o.icon !== '') && (
                   <span className="choice-card-ic" aria-hidden="true">
-                    {o.icon}
+                    {o.lead ?? o.icon}
                   </span>
                 )}
                 <span className="choice-card-lbl">{o.label}</span>
+                {o.mark}
               </>
             )}
           </button>

@@ -17,12 +17,14 @@ import {
   BOOKING_TYPE,
   BOOKING_TYPE_TO_CATEGORY,
   edgeMeaning,
-  PLACE_SEARCH_KIND,
+  placeSearchKindFor,
   EVENT_KIND,
   carriesRoute,
   defaultKindForBookingType,
   hasSpanSchedule,
   titlesFromRoute,
+  MAX_GATE_LENGTH,
+  MAX_SERVICE_NUMBER_LENGTH,
   type Booking,
   type BookingType,
 } from '@waypoint/shared';
@@ -45,11 +47,23 @@ import { IconPicker } from './IconPicker';
 import { Icon } from './Icon';
 import { RouteLabel } from './RouteLabel';
 import { RouteField } from './domain';
+import { JourneyField, type JourneyNode } from './domain/JourneyField';
+import { resolveJourneyDays } from '../lib/journey-days';
+import {
+  journeyViewOf,
+  withJourneyDate,
+  withMomentDayOffset,
+  withMomentTime,
+  withResolvedDays,
+} from '../lib/journey-legs';
+import { DATE_SOURCES, suggest, type KnownLeg } from '../lib/form-suggest';
+import { destinationRefOf } from '@waypoint/shared';
 import { Field } from './primitives/Field';
 import { PlacePicker } from './primitives/PlacePicker';
 import { NoteComposer, useNoteComposer } from './NoteComposer';
 import { DocumentAttachField, useDocumentAttach, writeStagedAttachments } from './DocumentAttach';
 import { HostNotes, useHostNoteCount } from './HostNotes';
+import { HostTasks, useTaskStaging, writeStagedTasks } from './HostTasks';
 import { ChoiceDisclosure } from './primitives/ChoiceDisclosure';
 import { FormStepActions, FormStepPanel, useFormSteps } from './primitives/FormSteps';
 import { FormError } from './primitives/FormError';
@@ -80,7 +94,7 @@ import { withChangeGroup } from '../lib/outbox';
 import { zoneOffsetMinutes, zonedIso } from '../lib/time';
 import { hoursPhrase } from '../lib/duration';
 import { bookingDurationUnit, timingLabels } from '../lib/booking-timing';
-import { BOOKING_TYPE_ICON, DOT_SEPARATOR } from '../constants';
+import { BOOKING_TYPE_ICON, DOT_SEPARATOR, SUMMARISE_FROM_NODES } from '../constants';
 import { useStartPlaceErrand, type PlaceErrandField } from '../state/map-scope-state';
 import { useDerivedField } from '../lib/useDerivedField';
 import { t } from '../i18n/he';
@@ -154,7 +168,8 @@ export function BookingSheet({
   focus?: 'when';
   onClose: () => void;
 }) {
-  const { trip, events, places, indexVerbs, noteVerbs, attachmentVerbs } = useTrip();
+  const { trip, events, places, bookings, indexVerbs, noteVerbs, attachmentVerbs, taskVerbs } =
+    useTrip();
   const startErrand = useStartPlaceErrand();
   const isCreate = !booking;
 
@@ -204,6 +219,13 @@ export function BookingSheet({
   // airline and a hotel chain were as unenterable as a rental company. Collected for
   // EVERY type: the column and the read-out are not car-specific, and only the LABEL is.
   const [provider, setProvider] = useState(draft ? draft.provider : initial.provider);
+  // **The service's number and where you board it** (ADR-0222 §1/§2). Collected for the
+  // transport types only — a restaurant has neither — and the WORD comes from a `Record`
+  // over the enum, the shape `providerLabel` above already uses.
+  const [flightNumber, setFlightNumber] = useState(
+    draft ? draft.flightNumber : initial.flightNumber,
+  );
+  const [gate, setGate] = useState(draft ? draft.gate : initial.gate);
   const [fromPlaceId, setFromPlaceId] = useState<string | undefined>(
     draft ? draft.fromPlaceId : initial.fromPlaceId,
   );
@@ -221,6 +243,11 @@ export function BookingSheet({
   );
   const [room, setRoom] = useState(draft ? draft.room : initial.room);
   const composer = useNoteComposer();
+  /** Whether the notes section's inline box is showing anything — open, or holding notes
+   *  typed and not yet saved. The section reads its empty line off this (ADR-0192 §2). */
+  const composerActive = composer.open || composer.drafts.length > 0;
+  // Tasks typed before the booking exists, held until it does (ADR-0191 §7).
+  const taskStaging = useTaskStaging();
   const attach = useDocumentAttach();
   const [wifiNetwork, setWifiNetwork] = useState(draft ? draft.wifiNetwork : initial.wifiNetwork);
   const [wifiPassword, setWifiPassword] = useState(
@@ -244,6 +271,15 @@ export function BookingSheet({
   // second leg still costs what it costed; nobody is now told they chose not to buy it.
   const [roundTrip, setRoundTrip] = useState(draft ? draft.roundTrip : initial.roundTrip);
   const [returnLegs, setReturnLegs] = useState(draft ? draft.returnLegs : initial.returnLegs);
+  /** **The way home's own stops** (ADR-0203 §6), `null` while it mirrors the outbound. The
+   *  draft beside it holds what was typed, so leaving "a different way" and coming back is
+   *  free — see `bookingSheetDraft`'s note on why they are two fields. */
+  const [returnStops, setReturnStops] = useState(
+    draft ? draft.returnStopPlaceIds : initial.returnStopPlaceIds,
+  );
+  const [returnStopsDraft, setReturnStopsDraft] = useState(
+    draft ? draft.returnStopsDraft : initial.returnStopsDraft,
+  );
   // **The end stops following the start once it is answered** (field report #11) — the
   // same latch `useDerivedField` puts on the icon and the kind, kept as plain state
   // because what it gates lives in `legs`/`end` rather than in a value of its own.
@@ -264,6 +300,14 @@ export function BookingSheet({
   // The two note counts the delete confirm owes (ADR-0152 §2) come from the same place for
   // the same reason.
   const pair = useRoundTripPartner(booking);
+  /** **Which node of the journey you have OPENED; the rest summarise** (ADR-0203 §9). Per
+   *  side, so stepping to the return does not inherit the outbound's place in the rail.
+   *  `null` means you have not picked one, and `journeyOf` derives which node that opens —
+   *  the state holds the choice, not the answer. */
+  const [openNode, setOpenNode] = useState<{ out: number | null; back: number | null }>({
+    out: null,
+    back: null,
+  });
   const bookingNotes = useHostNoteCount('booking', booking?.id);
   const linkedEventNotes = useHostNoteCount('event', linkedEvent?.id);
 
@@ -274,13 +318,17 @@ export function BookingSheet({
   const findPlace = (field: PlaceErrandField, side?: string, index?: number) => () =>
     startErrand?.({
       target: { kind: 'booking', id: booking?.id, field, index },
-      // **A flight's ROUTE fields want airports** (field report #6): searching `נתב"ג` on the
-      // tab otherwise answers with the terminal, the car park and the hotel beside it, and the
-      // one you need is not reliably among them. Only the route fields, and only for a flight
-      // — a hotel's `placeId` is a hotel, and a train's stop is a station this restriction has
-      // no type for yet.
-      ...(type === BOOKING_TYPE.FLIGHT &&
-        field !== 'placeId' && { kind: PLACE_SEARCH_KIND.AIRPORT }),
+      // **A route field wants the kind of place its type is boarded at** (field report #6,
+      // widened by ADR-0203 §8): searching `נתב"ג` unrestricted answers with the terminal, the
+      // car park and the hotel beside it, and the one you need is not reliably among them.
+      //
+      // The type no longer decides that here. `placeSearchKindFor` reads it off
+      // `BOOKING_TYPE_PROFILE`, which closes the gap this comment used to name itself — "a
+      // train's stop is a station this restriction has no type for yet" — so a train, a bus
+      // and a ferry stopped searching the whole corpus, and a fifth transport mode answers by
+      // existing. Route fields only, still: a hotel's `placeId` is a hotel, and a hire's two
+      // counters are counters, so its profile restricts nothing on purpose.
+      ...(field === 'placeId' ? undefined : { kind: placeSearchKindFor(type) }),
       label: [title.value.trim() || t.map.errand.untitledBooking, side]
         .filter(Boolean)
         .join(` ${DOT_SEPARATOR} `),
@@ -292,6 +340,8 @@ export function BookingSheet({
         titleTouched: title.touched,
         code,
         provider,
+        flightNumber,
+        gate,
         fromPlaceId,
         toPlaceId,
         placeId,
@@ -309,6 +359,8 @@ export function BookingSheet({
         endWindow,
         roundTrip,
         returnLegs,
+        returnStopPlaceIds: returnStops,
+        returnStopsDraft,
         endTouched,
         kind: kind.value,
         kindTouched: kind.touched,
@@ -319,6 +371,10 @@ export function BookingSheet({
    *  INDEX, because a stop is an element of a list rather than a `Booking` column
    *  (ADR-0159 extends ADR-0134 §2's channel by exactly that much). */
   const findStop = (index: number, side: string) => findPlace('stopPlaceIds', side, index)();
+  /** The way back's stops are their OWN errand target (ADR-0203 §6): the two lists can be
+   *  different lengths, so an index into one is not an index into the other. */
+  const findReturnStop = (index: number, side: string) =>
+    findPlace('returnStopPlaceIds', side, index)();
 
   const suggestedZones = useMemo(
     () =>
@@ -334,8 +390,22 @@ export function BookingSheet({
   // **What the provider is CALLED, per type** (ADR-0163 §2) — a `Record` over the enum, so
   // a new booking type has to answer rather than silently inheriting "ספק".
   const providerLabel = t.index.sheet.providerLabel[type];
+  const numberLabel = t.index.sheet.numberLabel[type];
+  const gateLabel = t.index.sheet.gateLabel[type];
   const providerPlaceholder = t.index.sheet.providerPlaceholder[type];
   const isSpan = hasSpanSchedule(type);
+  /** **A JOURNEY, which is not the same set as "has a span"** (ADR-0203 §3, corrected in the
+   *  build after the first attempt drew a rail for a car hire).
+   *
+   *  `isSpan && isTransport` is true for `car`, because a hire carries a route — so the rail
+   *  claimed it, and dropped ADR-0184 §2's `＋ עד` window, which a HELD edge offers and a
+   *  journey never has. ADR-0163's own title is the sentence the design needed first: a hire
+   *  is not a journey. A hotel is not one either, and it genuinely has two calendar dates —
+   *  a stay spans them — so both keep `WhenField`'s span, its two dates and its windows.
+   *
+   *  `titlesFromRoute` is the discriminant rather than a fifth predicate, for the reason
+   *  ADR-0163 §3 separated it: a journey is the thing the route NAMES. */
+  const isJourney = isSpan && isTransport && titlesFromRoute(type);
   // Offered only where there is a route to mirror, and only on a create: editing a leg
   // opens ADR-0047 §2's merged surface unchanged, and turning a saved single leg into a
   // pair is a different action (§4, out of scope).
@@ -356,17 +426,51 @@ export function BookingSheet({
   /** The journey's points in travel order: origin, every stop, destination. Legs run
    *  between consecutive points, so `legCount` is one less than this. */
   const routePoints = [fromPlaceId, ...stops, hireReturnId];
+  /** **The OUTBOUND's leg count.** Kept as a plain name because three readers genuinely mean
+   *  that journey — the outbound resize, the "is this a sequence" display flag, and the day a
+   *  return's first leg opens on. Every reader that depends on WHICH side asks
+   *  `legCountFor(side)` instead; the two stopped being the same number when a return got its
+   *  own stops (§6). */
   const legCount = isSpan ? routePoints.length - 1 : 1;
-  // Read through a resize rather than kept in sync by a setter: state can lag the
-  // number of stops for one render, and normalising on READ makes that unrepresentable
-  // instead of a bug that only appears when a stop is added mid-edit.
-  const outLegs = resizeLegs(legs, legCount);
-  const backLegs = twoLegs ? resizeLegs(returnLegs, legCount) : EMPTY_LEGS;
+  const reversed = [...routePoints].reverse();
+  /** **The way home's own points, when it has them** (ADR-0203 §6). Reported from the field:
+   *  a round trip's stops "could be different stops and/or a different number of stops".
+   *
+   *  **The ENDS stay mirrored and that is what keeps this small** — you fly home from where
+   *  you landed, so what varies is the middle. An open-jaw trip (in to Tbilisi, out of
+   *  Kutaisi) is a different feature and is deliberately not half-built here.
+   *
+   *  `null` means the whole way back is still `reversed`, which is the common case and costs
+   *  nothing: no second list, no second leg count. */
+  const backPoints = returnStops === null ? reversed : [hireReturnId, ...returnStops, fromPlaceId];
+  /** **The points a SIDE walks**, which five call sites spelled out inline before a sixth
+   *  read `routePoints` directly and told the flight home it was the flight out. A journey's
+   *  side is the only thing that decides the direction, so it is one function. */
+  function pointsFor(side: LegSide) {
+    return side === 'out' ? routePoints : backPoints;
+  }
+  /** **How many legs a SIDE has, which used to be one number for both journeys.** That single
+   *  `legCount` is the reason §6 was never a small change: nine call sites read it, and each
+   *  had to learn which side it was talking about before a return could have a different
+   *  number of stops.
+   *
+   *  **Declared ABOVE the leg resize that reads it**, which the first attempt was not: a
+   *  hoisted `function` is reachable early but the `const backPoints` it closes over is not,
+   *  so `legCountFor('back')` threw "cannot access before initialization" on every round trip.
+   *  Caught by eight specs at once, and the reason this block sits here rather than beside
+   *  `legZones` where it reads more naturally. */
+  function legCountFor(side: LegSide) {
+    return isSpan ? pointsFor(side).length - 1 : 1;
+  }
   const setLeg = (side: 'out' | 'back', index: number, next: LegTimes) => {
     const write = side === 'out' ? setLegs : setReturnLegs;
     const current = side === 'out' ? outLegs : backLegs;
     write(current.map((leg, i) => (i === index ? next : leg)));
   };
+  /** The whole side at once — the rail edits a JOURNEY, and one moment can move more than
+   *  one leg (the date moves all of them, keeping every offset). */
+  const setSideLegs = (side: 'out' | 'back', next: LegTimes[]) =>
+    (side === 'out' ? setLegs : setReturnLegs)(next);
   // The LIVE zone resolver — same rule as the draft's, over the CURRENT picks rather than
   // the ones the sheet opened with (`lib/booking-draft.ts` owns the opening ones).
   const zoneOf = (id: string | undefined, override: string | null) =>
@@ -382,17 +486,35 @@ export function BookingSheet({
   /** **A leg reads in the zones of ITS OWN two points** (ADR-0107, extended over a
    *  sequence). Only the journey's outer ends can carry a pinned override — an interior
    *  stop has a picked place, which is what the chip exists to stand in for when nothing
-   *  else can answer. `back` walks the same points in reverse. */
-  const reversed = [...routePoints].reverse();
+   *  else can answer. `back` walks its own points, which since §6 may not be the outbound's
+   *  reversed at all. */
   const legZones = (side: 'out' | 'back', index: number) => {
-    const points = side === 'out' ? routePoints : reversed;
+    const points = pointsFor(side);
     const outerStart = side === 'out' ? startZone : endZone;
     const outerEnd = side === 'out' ? endZone : startZone;
     return {
       start: index === 0 ? outerStart : zoneOf(points[index], null),
-      end: index === legCount - 1 ? outerEnd : zoneOf(points[index + 1], null),
+      end: index === legCountFor(side) - 1 ? outerEnd : zoneOf(points[index + 1], null),
     };
   };
+  /** **The legs a side actually has, normalised on READ** — its leg COUNT against the route
+   *  (state can lag the stops by a render), and on a journey its DAYS against ADR-0203 §2's
+   *  forward resolution. Both for the same reason: a mismatch nobody can represent beats one
+   *  that only appears when something upstream moves. The days need the zones, which is why
+   *  this sits below `legZones` rather than beside the state it reads.
+   *
+   *  **A journey's days are not a per-moment fact.** `withMomentTime` settles the clock being
+   *  typed; every moment after it keeps the day it was first resolved onto, so moving a
+   *  departure past its own arrival left the rail drawing `למחרת` over a leg still stored as
+   *  same-day — displayed forwards, stored backwards, and caught by `endBeforeStart` on a
+   *  journey where §2 makes that state unreachable. A per-leg form (a hire, a stay) is not a
+   *  journey and keeps its own absolute dates, which is what `isJourney` gates. */
+  const sideLegs = (side: LegSide, list: LegTimes[]) => {
+    const sized = resizeLegs(list, legCountFor(side));
+    return isJourney ? withResolvedDays(sized, (leg, edge) => legZones(side, leg)[edge]) : sized;
+  };
+  const outLegs = sideLegs('out', legs);
+  const backLegs = twoLegs ? sideLegs('back', returnLegs) : EMPTY_LEGS;
   // A chip per time field (ADR-0107 §6). It is **editable only when no place
   // answers the zone** — a picked place with coordinates carries its own zone, and
   // correcting it there is the honest edit (§3); a coordless Place-lite (offline, or
@@ -413,6 +535,132 @@ export function BookingSheet({
   // A stable instant (trip-start noon) to read the zones' offsets at, for the
   // shift the note shows — exact enough for a "how far apart" figure.
   const zoneRefMs = Date.parse(zonedIso(trip.startDate, '12:00', trip.timezone));
+
+  /** **The rail's own view of one side of the journey** (ADR-0203 §1/§3). Everything here is
+   *  derived from `LegTimes[]` through `lib/journey-legs`, which is what keeps the save path,
+   *  the per-end zones, the note host and every refusal name working on the shape they
+   *  already read (see that module's header for the 32-spec version of this mistake).
+   *
+   *  A node's zone is its own place's; only the journey's OUTER ends carry a chip, because an
+   *  interior stop has a picked place and that is what an override stands in for (ADR-0107
+   *  §6). On the return the two outer ends swap, which is the same rule `legZones` follows. */
+  const journeyOf = (side: LegSide) => {
+    const legs = side === 'out' ? outLegs : backLegs;
+    const points = pointsFor(side);
+    const view = journeyViewOf(legs);
+    const zoneAt = (i: number) =>
+      i === 0
+        ? side === 'out'
+          ? startZone
+          : endZone
+        : i === legCountFor(side)
+          ? side === 'out'
+            ? endZone
+            : startZone
+          : zoneOf(points[i], null);
+    /** Which node a moment belongs to, in the rail's order: node 0 departs, then each later
+     *  node arrives and (if interior) departs. */
+    const nodeOfMoment = (m: number) => (m === 0 ? 0 : Math.floor((m + 1) / 2));
+    const moments = view.moments.map((moment, m) => ({
+      time: moment.time,
+      timeZone: zoneAt(nodeOfMoment(m)),
+      dayOffset: moment.time ? moment.dayOffset : undefined,
+    }));
+    const resolved = resolveJourneyDays(view.date, moments);
+    const labels = spanLabels(type);
+    const nodes: JourneyNode[] = points.map((pointId, i) => ({
+      placeName: placeName(places, pointId),
+      arriveLabel: labels.end,
+      departLabel: labels.start,
+      timeZone: zoneAt(i),
+      zone:
+        i === 0
+          ? zoneChip(
+              side === 'out' ? (fromPlaceId ?? placeId) : toPlaceId,
+              zoneAt(0),
+              side === 'out' ? startOverride : endOverride,
+              side === 'out' ? setStartOverride : setEndOverride,
+            )
+          : i === legCountFor(side)
+            ? zoneChip(
+                side === 'out' ? toPlaceId : (fromPlaceId ?? placeId),
+                zoneAt(legCountFor(side)),
+                side === 'out' ? endOverride : startOverride,
+                side === 'out' ? setEndOverride : setStartOverride,
+              )
+            : undefined,
+      arrive: i > 0 ? { time: view.moments[2 * i - 1]?.time ?? '' } : undefined,
+      depart:
+        i < legCountFor(side) ? { time: view.moments[i === 0 ? 0 : 2 * i]?.time ?? '' } : undefined,
+      marks: {
+        /** **The journey's date wears the first departure's refusal**, because that field IS
+         *  the journey's date: `legField(side, 0, 'start')` holds the day every later moment
+         *  is derived from. It is also the box the two controls that fix it live in — the
+         *  date and the first clock share one `Field` in the rail — so a `returnBeforeArrival`
+         *  lands on exactly what you would edit (ADR-0150). Reading `errors.field('date')`
+         *  here marked nothing at all: `allProblems` guards that name behind `!isSpan`. */
+        date: i === 0 ? errors.field(legField(side, 0, 'start')) : undefined,
+        arrive: i > 0 ? errors.field(legField(side, i - 1, 'end')) : undefined,
+        // Node 0's departure is inside the date's box above, so a second mark for the same
+        // field would render the same message twice.
+        depart:
+          i > 0 && i < legCountFor(side) ? errors.field(legField(side, i, 'start')) : undefined,
+      },
+    }));
+    /** **Which node is open when nobody has picked one** (ADR-0203 §9, threshold corrected
+     *  2026-08-24). The first whose moments are not all filled, so filling the rail walks it
+     *  and the nodes behind you summarise as you go; the LAST once the journey is complete, so
+     *  a finished rail is reviewed at one screen rather than at the 708px §7 measured.
+     *
+     *  **`null` — nothing summarises — up to and including ONE stop, because up to one stop
+     *  there is nothing to buy.** §9's own fold table says a journey with 0–1 stops is inside
+     *  the fold on both a 390×844 and a 360×640 phone; the cases it was written for are two
+     *  stops (718.5px all-open against a 675px fold) and three (894px). The threshold shipped
+     *  at `<= 2` nodes, which is ZERO stops — so a one-stop journey compacted to fix an
+     *  overflow it never had, and reported back as exactly that: "the lines collapsing under
+     *  your fingers could be a little confusing… maybe do it only when the form is very long."
+     *
+     *  Confirmed on a device rather than only against that table, which matters because the
+     *  rail grew since it was measured (per-moment captions, the 44px time rows): the owner's
+     *  own screenshot of a one-stop train journey shows the whole step — dots, type row, rail,
+     *  zone note, commitment toggle and footer — with no scrolling.
+     *
+     *  So the number is `<= 3`: nothing summarises at one stop or fewer. Above it the height
+     *  is real and compaction is the cheaper of the two costs. */
+    const filled = (node: JourneyNode, i: number) =>
+      (i > 0 || !!view.date) &&
+      (!node.arrive || !!node.arrive.time) &&
+      (!node.depart || !!node.depart.time);
+    const unfilled = nodes.findIndex((node, i) => !filled(node, i));
+    /** **The threshold gates the explicit pick too, and that ordering is the fix for a hole
+     *  found re-reading this change.** `openNode[side]` used to short-circuit it: tap a
+     *  summarised row at two stops, go back to `מה ואיפה`, remove a stop, and the pick came
+     *  back with you — so a one-stop journey compacted again, and a pick left pointing past
+     *  the shortened rail (index 3 of 3 nodes) matched no node at all and collapsed EVERY
+     *  summarisable one. Below the threshold the answer is `null` whatever was tapped, because
+     *  the threshold is a fact about the form's height and not about the last tap. */
+    const openIndex =
+      nodes.length <= SUMMARISE_FROM_NODES
+        ? null
+        : (openNode[side] ?? (unfilled === -1 ? nodes.length - 1 : unfilled));
+    return { legs, view, resolved, nodes, openIndex };
+  };
+
+  /** **The legs the TRIP already holds**, for §8's place suggestion and §5's date one. Read
+   *  off the snapshot rather than this form, so a return authored weeks after its outbound
+   *  still finds it (ADR-0203 §8). */
+  const knownLegs: KnownLeg[] = useMemo(
+    () =>
+      bookings
+        .filter(
+          (b: Booking) => b.id !== booking?.id && carriesRoute(b.type) && titlesFromRoute(b.type),
+        )
+        .map((b: Booking) => ({
+          from: places.find((p) => p.id === b.fromPlaceId),
+          to: places.find((p) => p.id === b.toPlaceId),
+        })),
+    [bookings, booking?.id, places],
+  );
   // A booked event's category is its booking type's — canonical (ADR-0038), not
   // the picked glyph. The IconPicker only sets the badge icon; a ⭐ on a hotel
   // stays lodging, so nights/check-in-out/ambient behaviour all follow the type.
@@ -440,6 +688,8 @@ export function BookingSheet({
     icon.value !== initial.icon ||
     title.value !== initial.title ||
     code !== initial.code ||
+    flightNumber !== initial.flightNumber ||
+    gate !== initial.gate ||
     fromPlaceId !== initial.fromPlaceId ||
     toPlaceId !== initial.toPlaceId ||
     placeId !== initial.placeId ||
@@ -453,6 +703,7 @@ export function BookingSheet({
     !sameLegs(legs, initial.legs) ||
     roundTrip !== initial.roundTrip ||
     !sameLegs(returnLegs, initial.returnLegs) ||
+    (returnStops ?? []).join() !== (initial.returnStopPlaceIds ?? []).join() ||
     startOverride !== initial.startOverride ||
     endOverride !== initial.endOverride ||
     kind.value !== initial.kind;
@@ -563,6 +814,11 @@ export function BookingSheet({
       if (stops.some((id) => !id)) {
         problems.push({ field: 'route', message: t.index.form.stopRequired });
       }
+      // The way back's own stops answer the same rule, in their own words so the message
+      // says which journey is short a place (ADR-0203 §6).
+      if (twoLegs && returnStops?.some((id) => !id)) {
+        problems.push({ field: 'route', message: t.index.form.returnStopRequired });
+      }
     }
     // **A direction is refused, never assumed** (field report #8). This is the price of
     // opening unanswered and it is the point of it: the app would rather ask twice than
@@ -592,17 +848,32 @@ export function BookingSheet({
      *  wrong rather than on the three fields around it that are fine. */
     const walk = (side: LegSide, list: LegTimes[], arrivedAt: number | null) => {
       let previousArrival = arrivedAt;
+      /** **A journey reports out-of-range ONCE, at the earliest moment that is out** (ADR-0203
+       *  §2). Its days all descend from one date, so a date past the trip's end puts every
+       *  later moment out with it, and marking four fields for one wrong fact is the refusal
+       *  naming things that are not wrong (ADR-0150). The earliest one is also the only one
+       *  you can act on. A per-leg form keeps every mark, because there each date is its own
+       *  answer and any of them can be the wrong one on its own. */
+      let rangeReported = false;
+      const outsideTrip = (field: BookingField) => {
+        if (isJourney && rangeReported) return;
+        rangeReported = true;
+        problems.push({ field, message: t.index.form.dateOutOfRange });
+      };
       list.forEach((leg, i) => {
         const zones = legZones(side, i);
-        if (outOfRange(leg.start)) {
-          problems.push({
-            field: legField(side, i, 'start'),
-            message: t.index.form.dateOutOfRange,
-          });
-        }
-        if (outOfRange(leg.end)) {
-          problems.push({ field: legField(side, i, 'end'), message: t.index.form.dateOutOfRange });
-        }
+        // **A moment that DATES a booking is bounded; one that only ENDS one is not.** A leg
+        // is filed under the day it DEPARTS (ADR-0037 §1: nothing lives in two day-buckets),
+        // so a start outside the trip is a booking on a day no surface can show — and an
+        // arrival outside it places nothing at all. Refusing the arrival made the ordinary
+        // flight home unenterable: leave at ⁦22:10⁩ on the last day, land at ⁦02:30⁩, and the form
+        // marked a day nobody typed and no control can move. `EventForm` has always read it
+        // this way in so many words — "an overnight event on the last day still files under
+        // that day" — and bounds the DATE alone, so a night out ending at ⁦02:00⁩ saved while
+        // the flight did not. ADR-0037 §3 named transport as the looser case in advance.
+        // A per-leg form's end is a date a person PICKED, so it keeps ADR-0083's bound.
+        if (outOfRange(leg.start)) outsideTrip(legField(side, i, 'start'));
+        if (!isJourney && outOfRange(leg.end)) outsideTrip(legField(side, i, 'end'));
         const departure = instantAt(leg.start, zones.start);
         const arrival = instantAt(leg.end, zones.end);
         if (departure != null && arrival != null && arrival <= departure) {
@@ -616,9 +887,7 @@ export function BookingSheet({
             field: legField(side, i, 'start'),
             message: isReturnStart
               ? t.index.form.returnBeforeArrival
-              : t.index.form.legBeforeArrival(
-                  placeName(places, (side === 'out' ? routePoints : reversed)[i]),
-                ),
+              : t.index.form.legBeforeArrival(placeName(places, pointsFor(side)[i])),
           });
         }
         previousArrival = arrival ?? previousArrival;
@@ -638,10 +907,21 @@ export function BookingSheet({
    *
    *  A type with no span keeps its single day step, so a restaurant's form is the three
    *  it has always been. */
-  const legSteps: StepId[] = [
-    ...outLegs.map((_, i) => `out-${i}` as StepId),
-    ...backLegs.map((_, i) => `back-${i}` as StepId),
-  ];
+  /** **A JOURNEY is one step; anything else keeps a step per leg** (ADR-0203 §7, reversing
+   *  ADR-0159 §5). That reversal is not a preference: §5 chose per-leg out of the 492px a
+   *  span schedule cost, and a rail leg is two lines. What it buys is that the layover's wait
+   *  is stated while you type it — two steps can never show that, because the legs are never
+   *  on screen together — and that a hard commitment can be reviewed whole before it is
+   *  signed, which ADR-0155 §1 lists as chunking's unmitigated third cost.
+   *
+   *  Keyed `out-0`/`back-0` rather than a new id shape, so `StepId`, `FIRST_LEG_STEP` and
+   *  every refusal name below keep working: a journey collapses the INDEX, not the scheme. */
+  const legSteps: StepId[] = isJourney
+    ? (['out-0' as StepId, ...(twoLegs ? ['back-0' as StepId] : [])] as StepId[])
+    : [
+        ...outLegs.map((_, i) => `out-${i}` as StepId),
+        ...backLegs.map((_, i) => `back-${i}` as StepId),
+      ];
   type StepId = 'type' | 'what' | 'more' | `${LegSide}-${number}`;
   /** **The type is the first question, and only when it is a question** (field report #2).
    *  It shapes every step after it — span vs point, how many legs, whether a return can be
@@ -670,7 +950,9 @@ export function BookingSheet({
     if (field === 'title' || field === 'route' || field === 'direction') return 'what';
     if (field === 'date') return 'out-0';
     const [side, , index] = field.split('-');
-    return `${side as LegSide}-${index}` as StepId;
+    // A journey has one step per SIDE, so every leg's refusal lands on it — which is what
+    // turns the cross-leg dependency into an in-step one (ADR-0150, ADR-0203 §7).
+    return `${side as LegSide}-${isJourney ? 0 : index}` as StepId;
   };
   const problemsIn = (step: StepId) =>
     allProblems().filter((p) => p.field != null && stepOf(p.field) === step);
@@ -712,6 +994,11 @@ export function BookingSheet({
           // explicit "clear it", where `undefined` would be dropped and read as
           // "leave unchanged" (ADR-0163 §2).
           provider: provider.trim(),
+          // Same empty-is-a-clear rule again (ADR-0222 §1). Both are sent for every type
+          // rather than gated on the label: switching a flight to a restaurant must CLEAR
+          // a gate that the new type has no field for, not orphan it in the row.
+          flightNumber: flightNumber.trim(),
+          gate: gate.trim(),
           details,
         };
 
@@ -722,7 +1009,7 @@ export function BookingSheet({
          *  unless the type names itself, which since ADR-0163 §3 is the car hire) and its
          *  two zones. Only the journey's OUTER ends carry a zone override. */
         const legBooking = (side: LegSide, index: number, times: LegTimes) => {
-          const points = side === 'out' ? routePoints : reversed;
+          const points = pointsFor(side);
           const from = points[index];
           const to = points[index + 1];
           const zones = legZones(side, index);
@@ -738,7 +1025,7 @@ export function BookingSheet({
             zones.end,
           );
           const firstOfJourney = index === 0;
-          const lastOfJourney = index === legCount - 1;
+          const lastOfJourney = index === legCountFor(side) - 1;
           // The overrides ride with the END they belong to: on the way out the start's
           // is the journey's start; on the way back it departs from the destination, so
           // the two swap. Same "only when the chip was used" rule as a single leg's.
@@ -895,6 +1182,9 @@ export function BookingSheet({
           await writeStagedAttachments(attach, attachmentVerbs.attachDocument, {
             bookingId: hostId,
           });
+          // **And the tasks** (ADR-0191 §7a), reading `hostId` for the same reason: the
+          // outbound leg owns the row, and the ordering above is theirs too.
+          await writeStagedTasks(taskStaging, taskVerbs.createTask, { bookingId: hostId });
         }
       });
       onClose();
@@ -928,21 +1218,51 @@ export function BookingSheet({
     errors,
     onCommit: () => void commit(),
   });
+
+  /** **The step's identity, for the panel's pinned header** (field report, 2026-08-23).
+   *
+   *  Unchanged in what it renders — a create jumps to the type STEP, an edit reveals the grid
+   *  in place (ADR-0192's `ChoiceDisclosure`) — and moved out of the step body so it survives
+   *  a scroll. On its own step there is nothing to pin: the grid IS the question.
+   *
+   *  An edit's disclosure can open inside the pinned box, and a sticky element taller than
+   *  its scrollport simply stops sticking — so the tall case degrades to scrolling rather
+   *  than pinning most of the sheet. Left as that: it collapses on the next tap. */
+  const typeRow =
+    steps.step === 'type' ? null : isCreate ? (
+      <BookingTypeRow type={type} onChange={() => steps.goTo('type')} />
+    ) : (
+      <ChoiceDisclosure
+        glyph={BOOKING_TYPE_ICON[type]}
+        label={typeLabel}
+        open={typeOpen}
+        onToggle={() => setTypeOpen((v) => !v)}
+        ariaLabel={t.index.form.stepType}
+      >
+        {typeGrid}
+      </ChoiceDisclosure>
+    );
   /** The labels name what each step ASKS. A one-way single leg keeps today's three words
    *  exactly; a journey that has more than one leg has to say WHICH leg, because with
    *  four schedules on four steps "מתי" alone leaves you counting. */
-  const multiLeg = legCount > 1;
+  /** **Either journey being a sequence makes this a multi-leg booking.** A return with its
+   *  own stops can be a chain while the outbound is a single hop (§6), and the readers of this
+   *  flag — the shared-code hint, the leg headings — are about the booking as a whole. */
+  const multiLeg = legCount > 1 || legCountFor('back') > 1;
   const stepLabels = STEP_IDS.map((id) => {
     if (id === 'type') return t.index.form.stepType;
     if (id === 'what') return t.index.form.stepWhat;
     if (id === 'more') return t.index.form.stepDetails;
     const [side, index] = id.split('-');
     const n = Number(index) + 1;
+    // **A journey's step names the JOURNEY, never a leg** (ADR-0203 §7): its legs are all on
+    // this one step, so "קטע 2" would be counting something that is not a step any more.
+    const countsLegs = multiLeg && !isJourney;
     if (side === 'out') {
-      if (multiLeg) return t.index.form.stepLeg(n);
+      if (countsLegs) return t.index.form.stepLeg(n);
       return twoLegs ? t.index.form.stepWhenOut : t.index.form.stepWhen;
     }
-    return multiLeg ? t.index.form.stepBackLeg(n) : t.index.form.legBack;
+    return countsLegs ? t.index.form.stepBackLeg(n) : t.index.form.legBack;
   });
 
   /** **The leg the current step is asking about**, or null when the step is not a leg.
@@ -955,7 +1275,7 @@ export function BookingSheet({
     const side = rawSide as LegSide;
     const index = Number(rawIndex);
     const list = side === 'out' ? outLegs : backLegs;
-    const points = side === 'out' ? routePoints : reversed;
+    const points = pointsFor(side);
     // Where the previous leg landed — the day this one opens on, since a connection
     // almost always departs the same day it arrived. Falls back to the trip's start.
     const previous = index > 0 ? list[index - 1] : side === 'back' ? outLegs[legCount - 1] : null;
@@ -1023,7 +1343,17 @@ export function BookingSheet({
               e.target.scrollIntoView({ block: 'center', behavior: 'smooth' });
           }}
         >
-          <FormStepPanel steps={steps} labels={stepLabels}>
+          <FormStepPanel
+            steps={steps}
+            labels={stepLabels}
+            /* **Pinned, because the rail scrolls further than a screen** (field report,
+               2026-08-23). The type row is the step's identity and it left with the content:
+               once it and the read-out were gone there was nothing on screen saying which
+               step this was. It goes in the primitive's header slot rather than growing a
+               sticky rule of its own — see `FormStepPanel.header` for why it has to be one
+               box and not two sticky siblings. */
+            header={typeRow}
+          >
             {/* **The picked type, on every step but its own** (field report #2). Collapsed to
                 the one card that was chosen, with the way back to the grid on the row itself —
                 so the eight-option grid is paid for once, at the moment it is being answered,
@@ -1042,21 +1372,6 @@ export function BookingSheet({
                 for. Note that the row being a `<button>` is what makes the revealed grid
                 scroll itself into view — the body's own `onFocusCapture` above catches a
                 focusable row where the old `<div>` was invisible to it. */}
-            {steps.step !== 'type' &&
-              (isCreate ? (
-                <BookingTypeRow type={type} onChange={() => steps.goTo('type')} />
-              ) : (
-                <ChoiceDisclosure
-                  glyph={BOOKING_TYPE_ICON[type]}
-                  label={typeLabel}
-                  open={typeOpen}
-                  onToggle={() => setTypeOpen((v) => !v)}
-                  ariaLabel={t.index.form.stepType}
-                >
-                  {typeGrid}
-                </ChoiceDisclosure>
-              ))}
-
             {steps.step === 'type' && typeGrid}
 
             {steps.step === 'what' && (
@@ -1197,6 +1512,42 @@ export function BookingSheet({
                       stops={offersStops ? stopPlaceIds : undefined}
                       onStopsChange={offersStops ? setStopPlaceIds : undefined}
                       onFindStop={(index, side) => findStop(index, side)}
+                      /* **The way back's own route, offered only where there IS one**
+                         (ADR-0203 §6) — a round trip, on a type that can hold a sequence, on
+                         a create. Same terms as the stops above and the direction control,
+                         and for the same reason: turning a saved leg into a journey is a
+                         different action. `undefined` here is "this host authors no return",
+                         which is what `EventForm` and a one-way both are. */
+                      returnStops={offersStops && twoLegs ? returnStops : undefined}
+                      onReturnStopsChange={
+                        offersStops && twoLegs
+                          ? (next) => {
+                              // A LIST edit, taken as given — including an empty one, which is
+                              // "the way home is direct". Remembered so leaving and coming
+                              // back is free.
+                              setReturnStops(next);
+                              if (next !== null) setReturnStopsDraft(next);
+                              // `null` (back to a mirror) deliberately leaves the draft alone
+                              // — that is the whole point of keeping two fields.
+                            }
+                          : undefined
+                      }
+                      /* **The list and the flag are separate, and this is where that pays.**
+                         Going back to `אותה דרך` keeps what was typed, and `דרך אחרת` RESTORES
+                         it rather than re-seeding — so a change of mind inside one form costs
+                         nothing and no confirm dialog has to ask. The outbound reversed is the
+                         seed only the first time, when nothing is remembered yet.
+
+                         A callback of its own, because the first attempt folded this into the
+                         list write and could not tell "give me my own route" from "I cleared
+                         the last stop" — so emptying the list restored the very stop that had
+                         just been removed. Two intents, two callbacks. */
+                      onReturnDiverge={
+                        offersStops && twoLegs
+                          ? () => setReturnStops(returnStopsDraft ?? [...stopPlaceIds].reverse())
+                          : undefined
+                      }
+                      onFindReturnStop={(index, side) => findReturnStop(index, side)}
                       // **A hire asks about counters, not a direction** (ADR-0163 §1).
                       shape={isHire ? 'hire' : 'journey'}
                     />
@@ -1231,7 +1582,115 @@ export function BookingSheet({
               that knows which is rendered. */}
             {legStep && (
               <div ref={whenRef}>
-                {isSpan ? (
+                {isJourney ? (
+                  (() => {
+                    /* **THE JOURNEY, AS ONE OBJECT WITH PARTS** (ADR-0203 §1/§3). The two
+                       identical date+time blocks are gone: this side of the journey carries
+                       ONE calendar date and every later moment is a clock plus a derived
+                       relative day, so a return flight would need a second date and there is
+                       exactly one on screen. That is what makes the reported misread
+                       impossible rather than merely less likely. */
+                    const side = legStep.side;
+                    const { legs, view, resolved, nodes, openIndex } = journeyOf(side);
+                    const write = (next: LegTimes[]) => setSideLegs(side, next);
+                    /** **Each side reads its OWN endpoints.** `routePoints` is the outbound's,
+                     *  so passing it on both sides told `tripEdgeFor` that the return also
+                     *  flies TOWARDS the destination — and it offered the trip's first day for
+                     *  the flight home. `reversed` is the same array the refusals already walk
+                     *  with (`side === 'out' ? routePoints : reversed`); this was the one call
+                     *  site still reading past it. */
+                    const sidePoints = pointsFor(side);
+                    const dateSug =
+                      !view.date && isCreate
+                        ? suggest(DATE_SOURCES, {
+                            from: places.find((p) => p.id === sidePoints[0]),
+                            to: places.find((p) => p.id === sidePoints[legCountFor(side)]),
+                            destination: destinationRefOf(trip),
+                            trip: { startDate: trip.startDate, endDate: trip.endDate },
+                            legs: knownLegs,
+                            words: t.journey.suggest,
+                          })
+                        : null;
+                    return (
+                      <>
+                        <JourneyField
+                          nodes={nodes}
+                          date={view.date}
+                          onDateChange={(d) => write(withJourneyDate(legs, d))}
+                          minDate={trip.startDate}
+                          maxDate={trip.endDate}
+                          resolved={resolved}
+                          /* **The day a candidate clock would land on**, so the time list can
+                             show where the day turns while you choose (§10). The same probe
+                             the writer below builds, asked without writing: one moment's clock
+                             replaced, the whole journey re-resolved on INSTANTS, and the
+                             answer read off that moment. Which is why the divider is correct
+                             across a westward crossing, where local midnight is not the
+                             turn. */
+                          dayOffsetOf={(m, hhmm) =>
+                            resolveJourneyDays(
+                              view.date,
+                              view.moments.map((moment, i) => ({
+                                time: i === m ? hhmm : moment.time,
+                                timeZone: nodes[i === 0 ? 0 : Math.floor((i + 1) / 2)].timeZone,
+                                dayOffset: i === m ? undefined : moment.dayOffset,
+                              })),
+                            )[m]?.dayOffset ?? 0
+                          }
+                          /* The clock lands on the journey's own date and the DAY is
+                             settled by `sideLegs`, which resolves the whole journey rather
+                             than the one moment being typed (§2). A probe here settled this
+                             moment and left the ones after it on yesterday. */
+                          onTimeChange={(node, which, time) =>
+                            write(withMomentTime(legs, node, which, time))
+                          }
+                          onDayOffsetChange={(node, which, offset) =>
+                            write(withMomentDayOffset(legs, node, which, offset))
+                          }
+                          openNodeIndex={openIndex}
+                          onOpenNode={(i) => setOpenNode((o) => ({ ...o, [side]: i }))}
+                          heading={
+                            twoLegs
+                              ? side === 'out'
+                                ? t.index.form.legOut
+                                : t.index.form.legBack
+                              : undefined
+                          }
+                          connection={
+                            connectionWindow(type)
+                              ? {
+                                  word: t.day.join.word[type] ?? t.index.form.addStop,
+                                  tightMinutes: connectionWindow(type)!.tightMinutes,
+                                }
+                              : undefined
+                          }
+                          alwaysShowDay
+                          dateSuggestion={
+                            dateSug
+                              ? {
+                                  label: dateSug.label,
+                                  detail: dateSug.detail,
+                                  mono: dateSug.mono,
+                                  onAccept: () => write(withJourneyDate(legs, dateSug.value)),
+                                }
+                              : undefined
+                          }
+                        />
+                        <ZoneNote
+                          startZone={legStep.zones.start}
+                          endZone={legStep.zones.end}
+                          tripZone={trip.timezone}
+                          refMs={zoneRefMs}
+                        />
+                        {/* The commitment is the JOURNEY's, so it is asked once, on the side
+                            that starts it. */}
+                        {side === 'out' && view.date && (
+                          <KindToggle kind={kind.value} onPick={pickKind} />
+                        )}
+                      </>
+                    );
+                  })()
+                ) : isSpan ? (
                   <>
                     {/* **Leg headings arrive in PAIRS or not at all** (ADR-0154 §4,
                     extended over a sequence). One journey of one leg needs no name and
@@ -1389,6 +1848,22 @@ export function BookingSheet({
                   />
                 </Field>
 
+                {/* **Between the company and the code, because it is half of each**
+                    (ADR-0222 §2): `LY` is the airline and `315` is the lookup. Same
+                    `dir="ltr"` as both of its neighbours, for the reason stated above them. */}
+                {numberLabel && (
+                  <Field label={numberLabel} htmlFor="bs-flight-number">
+                    <input
+                      id="bs-flight-number"
+                      dir="ltr"
+                      value={flightNumber}
+                      onChange={(e) => setFlightNumber(e.target.value)}
+                      placeholder={t.index.sheet.numberPlaceholder[type]}
+                      maxLength={MAX_SERVICE_NUMBER_LENGTH}
+                    />
+                  </Field>
+                )}
+
                 <Field
                   label={t.index.sheet.codeLabel}
                   htmlFor="bs-code"
@@ -1401,6 +1876,24 @@ export function BookingSheet({
                     onChange={(e) => setCode(e.target.value)}
                   />
                 </Field>
+
+                {/* **Last on this step, and that is not tidiness** (ADR-0222 §2): it is the
+                    one field here nobody fills in while booking — it is filled at the gate,
+                    on an edit. The `hint` says what leaving it empty costs, which is what
+                    that slot is for (ADR-0109 §6's anti-nag rule), and ADR-0222 §7 is the
+                    reason you rarely have to come back here at all. */}
+                {gateLabel && (
+                  <Field label={gateLabel} htmlFor="bs-gate" hint={t.index.sheet.gateHint}>
+                    <input
+                      id="bs-gate"
+                      dir="ltr"
+                      value={gate}
+                      onChange={(e) => setGate(e.target.value)}
+                      placeholder={t.index.sheet.gatePlaceholder[type]}
+                      maxLength={MAX_GATE_LENGTH}
+                    />
+                  </Field>
+                )}
 
                 {isHotel && (
                   <>
@@ -1457,19 +1950,29 @@ export function BookingSheet({
                   host={booking ? { kind: 'booking', id: booking.id } : undefined}
                 />
 
-                {booking && (
-                  <HostNotes
-                    host={{ kind: 'booking', id: booking.id, name: booking.title }}
-                    canAdd={false}
-                  />
-                )}
-                <Field
-                  label={booking ? t.notes.composer.labelMore : t.notes.composer.label}
-                  htmlFor="bs-notes"
-                  hint={t.notes.composer.hint}
-                >
-                  <NoteComposer state={composer} id="bs-notes" />
-                </Field>
+                {/* **On a CREATE too** (owner: _"why not on creation?"_) — staged until the
+                    booking has an id, exactly as the notes composer and the document picker
+                    on this form already are. `quiet`, because a form is not the main add
+                    point. */}
+                <HostTasks
+                  host={
+                    booking
+                      ? { kind: 'booking', id: booking.id, name: booking.title }
+                      : { kind: 'booking', name: title.value }
+                  }
+                  staging={taskStaging}
+                  quiet
+                />
+                {/* **ONE section, whose last row is the composer** (ADR-0192 §2) — the same
+                    collapse `EventForm` takes, and for the same reason: this was a section
+                    plus a `Field`, so an edit headed `פתקים` twice. */}
+                <HostNotes
+                  host={{ kind: 'booking', id: booking?.id, name: booking?.title ?? title.value }}
+                  onAdd={composer.openNew}
+                  composeActive={composerActive}
+                  composeHint={t.notes.composer.hint}
+                  compose={<NoteComposer state={composer} id="bs-notes" />}
+                />
               </>
             )}
           </FormStepPanel>

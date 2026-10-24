@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { FilePicker } from './FilePicker';
+import { t } from '../../i18n/he';
 import { wrapNav } from '../../test/nav-harness';
 
 // The full view is `MediaViewer`, which imports the document read — a picked file must never
@@ -96,7 +97,7 @@ describe('FilePicker', () => {
     expect(screen.getByText('insurance-harel.pdf')).toBeTruthy();
     expect(screen.getByText('4B')).toBeTruthy(); // "%PDF" = 4 bytes
     expect(screen.getByText('PDF')).toBeTruthy(); // extension chip on the file tile
-    screen.getByRole('button', { name: 'הסר' }).click();
+    screen.getByRole('button', { name: t.filePicker.remove }).click();
     expect(onClear).toHaveBeenCalled();
   });
 

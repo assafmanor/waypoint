@@ -1,6 +1,6 @@
 # 0116 — The shelf becomes day-aware: an idea's optional target day, one union in both modes, and skip vs. park
 
-**Status:** Accepted (design + build)
+**Status:** Accepted (design + build) — **amended 2026-08-22** (§2b: the surface's inline edge is a second route to another day; §2c: that turn is drawn rather than teleported; §2d: it is lifted to a detent and completed by staying, superseding §2c's approach — and repaired the same day, seven times: the ghost's containing block, the interrupted turn, the band's hysteresis, the cheaper reversal, the wait that outlasts its own transition, the offset itself (the lift is spent once per approach and the surface rests at level between days), the band a drag drifts into while a page travels, a release that animated a page on the detent's curve, and the undo that has to be asked for rather than crossed into)
 **Date:** 2026-07-25
 **Refines:** [0027](0027-soft-item-lifecycle-shelf-slip.md) (the parking-lot model: an idea is parked _or_ placed; the shelf renders unplaced ideas **and** skipped soft events "uniformly" — a promise only Trip mode ever kept), [0025](0025-trip-mode-edit-capability-tiers.md)/[0029](0029-trip-mode-day-scope-gating.md) (which verbs are reachable on which day — the gate the new day picker obeys), [0038](0038-icons-and-canonical-category.md)/[0109](0109-map-tab-design.md) §11 (an idea is created uncategorised; category is captured when it's scheduled — now also when it's parked), [0083](0083-whenfield-datetime-standard.md) (the one date/time entry primitive the schedule sheet finally uses), [0085](0085-relative-day-phrasing.md) (how an idea states its day)
 
@@ -70,7 +70,7 @@ Two corrections to `park` while it is being surfaced:
 
 The tile's tap went straight to the schedule sheet. It now opens a `RowManageSheet` for the idea, whose first action is `שיבוץ ליום` — so scheduling moves **one tap deeper** and is named where it used to be implied. This is a behaviour change to a shipped gesture, which is why it is here rather than in a session note.
 
-**Why it had to change.** [ADR-0152](0152-a-note-is-one-entity-with-an-optional-host.md) §6 gives every note host a surface where the note's **body** lives, and [ADR-0153](0153-the-notes-surface-the-mark-and-no-mode-gate.md) §8 closed the idea's gap with "the sheet the tile already opens". There was no such sheet: the tile's only tap was `onSchedule`, so nowhere in the app said _"here is this idea"_ — and a note section above a **scheduling form** is the wrong room, because the form's whole question is "which day and what time", not "what do we know about this". Building the sheet also collects the idea's scattered verbs (a tap that scheduled, a Plan-only `✕`) onto the one surface ADR-0138 §1 says a row's actions belong on. The idea was the last shelf citizen with no such surface; a **skipped** event still restores on tap, because it has one — its own day row.
+**Why it had to change.** [ADR-0152](0152-a-note-is-one-entity-with-an-optional-host.md) §6 gives every note host a surface where the note's **body** lives, and [ADR-0153](0153-the-notes-surface-the-mark-and-no-mode-gate.md) §8 closed the idea's gap with "the sheet the tile already opens". There was no such sheet: the tile's only tap was `onSchedule`, so nowhere in the app said _"here is this idea"_ — and a note section above a **scheduling form** is the wrong room, because the form's whole question is "which day and what time", not "what do we know about this". Building the sheet also collects the idea's scattered verbs (a tap that scheduled, a Plan-only `✕`) onto the one surface ADR-0138 §1 says a row's actions belong on. The idea was the last shelf citizen with no such surface; a **skipped** event still restores on tap, because it has one — its own day row. _Amended 2026-09-16 ([ADR-0231](0231-the-day-is-changed-where-you-stand.md) §2, fork F2): that reason stopped holding — a **parked** event has no day row, that is what parked means — and on a cancelled booking a tap that restores is the wrong verb for the tap made looking for the code. A parked card now opens its own sheet too (`ParkedEventSheet`), `שחזור ליום` first and the read second, in both modes; and its tag says `לא מתקיים` on a commitment (`parkedTag`)._
 
 **What makes the extra tap affordable:** in Plan mode **hold-to-drag onto a gap chip (§5 above) is the fast path** for slotting, and it is untouched. Trip mode keeps one tap to the sheet and one to the day picker, on the surface where writing a note matters most (ADR-0153 §9 — authoring is ungated and most valuable on the ground).
 
@@ -240,6 +240,236 @@ The drag could only reach the day already on screen. Now, while a drag is in fli
 - A **skipped** card is not accepted by a pill: it belongs to the day it was skipped on, and moving it elsewhere is a reschedule rather than a pencil mark.
 
 **Cancelling puts the day back.** A drop that resolves to nothing — or a cancelled gesture — returns to the day the drag was lifted from, however many days it dwelled through. A committed drop keeps the new day, because you just put something there and want to see it. The asymmetry is the point: the day switch is **scaffolding for the drag**, and day changes are `replace` navigation with no back step (ADR-0035/0090), so a switch left behind by an abandoned gesture would have no reverse gear at all.
+
+### 2b. The surface's own inline edge is a second route to the same day (amended 2026-08-22)
+
+Owner, after the day gained a swipe: _"Regarding event/shelf drag, it should behave differently now. Swipe should be disabled when dragging and you could drag from the edge to a different day."_
+
+§2 gave the drag one way to reach a day that is not on screen, and it is the right way for a mouse and the wrong shape for a thumb: the pills are ~30px targets at the **top** of the screen, and what you are usually aiming at afterwards is a gap chip further down. So **holding the drag near the day surface's inline edge names the day beyond it**, and the dwell that switches to it is `useSpringLoadedDay` — the same hook, the same `DRAG_DAY_DWELL_MS`. One answer to "resting somewhere switches the day", wherever you rest.
+
+Almost nothing here is new, and that is the design rather than an accident:
+
+- **The band arithmetic and the latch are the edge auto-scroll's** (`edgeDepth`, `gateEdgeStep`), shared rather than copied — and the latch is the reason the sharing matters rather than being tidy. Its scar transposes exactly. Vertically it was _"you pressed, held, and the list took off"_; on the inline axis an event row spans the whole surface, so a card or row lifted by its trailing end starts **inside** a band and the days would begin flipping under a finger that had not moved. The gate makes the drag ASK for the band first — by leaving it, or by pushing deeper into it than it was lifted at.
+- **The neighbouring dates are the swipe's**, read straight off `useDaySurface`'s peek pair (ADR-0200 §7). Two ways of reaching tomorrow that computed "tomorrow" separately would eventually disagree about it; and `null` at the trip's ends is what makes the edge do nothing there, with no label, exactly as the swipe's rebuff does.
+- **The mirror is the peek's.** In RTL the next day's pane sits to the LEFT (`--peek-dir`), so dragging a card left is dragging it toward tomorrow. Read off the element rather than the document, because direction is a CSS variant.
+- **Cancelling still puts the day back**, however many days the drag walked through — §2's asymmetry, inherited by feeding the same dwell rather than restated.
+
+**Holding still has to keep stepping, and that is the one thing the dwell could not give for free.** The edge's target is computed from a pointer position, so once the day has switched, a finger that does not move produces no further move event — and the day it named is now the day you are standing on, which `useSpringLoadedDay` correctly refuses as "not a switch". Recomputing when the **neighbours** change is what turns one step into a queue of them, 700ms apart, ending itself where the neighbour is `null`.
+
+**The edge navigates and is deliberately not a drop target.** Feeding it into `overDate` would have been one character of code and a real defect: `resolveShelfDrop` checks `overDate` **before** the gap chip, which is safe only because a pill and a chip can never be under one pointer. An edge band and a chip can — a chip spans the surface, so its last 36px lie inside one — and a drop meant for that slot would have silently become "aim at another day". So a release at the edge means what a release over the surface's margin already meant, and the pill keeps its `drop-over` mark to itself: marking the edge's target the same way would promise a landing that releasing there does not deliver.
+
+**What this leaves open, and it is the one thing worth a device's opinion:** there is no pre-dwell affordance. Nothing says "hold here and the day will turn" — the turn itself is the only feedback, 700ms in. That is exactly how the pill behaved before it had `drop-over`, and it may read as unresponsive on glass. The candidate answer is already in the app's vocabulary rather than new: ADR-0200 §7's peek, a sliver of the neighbouring day at the edge, which is the same claim ADR-0182 §5 made for the Map track — the edge of the next thing is the affordance. Not drawn here, because a pre-dwell hint is a visual decision and this amendment introduces no pixels at all.
+
+### 2c. The turn is drawn, not teleported (amended 2026-08-22)
+
+> **Superseded in approach by §2d the same day** — the claim "the turn is drawn rather than teleported" holds and is what §2d builds on; the pane-only lean this section chose was rejected on sight and is not the shipped motion. Kept because its measurements (the gutter, the clone's coverage, the `--peek-dir` defect) are what §2d stands on.
+
+Owner, on §2b as shipped: _"I think that we need some kind of an animation or something for dragging between pages. Something that looks polished."_
+
+Drawn and measured in [`mockups/a-day-turns-under-a-held-card-v1.html`](../../mockups/a-day-turns-under-a-held-card-v1.html) before any of it was built.
+
+**The finding that made this small.** The app already owns a page turn — ADR-0200 §7 draws both neighbours as real day surfaces one page plus a gutter away, rides them on `--swipe-dx`, and lands them with a `--t-base` / `--ease-standard` settle. The edge-drag is **the one day change that does not use it**. So this is not "add an animation", it is "stop being the exception", and the whole CSS delta is one term in an existing `transform`.
+
+**1 · The hint is the beginning of the turn, not a separate indicator.** While the drag rests in the band with a neighbour to reach, the **incoming pane** comes to meet the finger — `gap + reveal` of travel, `linear`, over exactly the dwell. That single motion says four things with no new vocabulary: something is happening, which direction, which day (its own content is what appears), and **how long is left** — the lean's progress _is_ the dwell's progress.
+
+`linear` is load-bearing twice. It makes the remaining time readable (any curve would lie about it), and it makes the motion **samplable**: a sampled position is a sampled time, which is why the mockup's four frames are the real motion at 0 · 233 · 467 · 700ms rather than an illustration of it. `beats.css` sets the same precedent — _"`linear` because the keyframe offset IS the timing"_.
+
+**2 · The day you are aiming at does not move.** Measured, both models at the same instant: the whole-strip lean displaces the row under the finger by **48px**, the pane-only lean by **0px**. A drag is a targeting gesture, and moving the target while someone aims at it is a cost with nothing on the other side. This is the section's one departure from §7's "the strip moves as one thing", and it is deliberate: during a swipe the finger _is_ dragging the strip, and here nothing is — the day is offering to turn.
+
+**3 · The gutter has to be crossed before any of tomorrow is visible**, which killed the first design. `.day-peek`'s parked offset is `dx ± (page + gap)`, so at rest the incoming pane's near edge sits `--swipe-page-gap` (24px) _outside_ the window: a "12px lean" reveals 12px of page background and **0px** of the day it is promising. A legible reveal therefore costs `24 + N` px — affordable when only the pane pays it, unaffordable when the surface under the finger does.
+
+**4 · The duration is the dwell, and cannot be a motion token.** 700ms is longer than every token except `--t-cinematic` (600ms), which `design-language.md` budgets to exactly one moment in the product. And a token would _lie_: the motion has to end when the day changes, or it promises the wrong time. So it reads `DRAG_DAY_DWELL_MS`, published as `--swipe-dwell` — the mirror of `--swipe-page-gap`, which the pager reads out of CSS so the two cannot disagree.
+
+**5 · The trip's end stays silent, and the abort is asymmetric.** No neighbour, nothing moves — ADR-0182 §5's argument, and the swipe's. `BEAT.REBUFF` was considered and refused on two grounds: its axis is vertical (`translateY(-7px)`) where the absence here is horizontal, and a drag crosses the band many times in normal use, so a beat per crossing is noise. Leaving the band before the dwell unwinds the lean on `--t-quick` / `--ease-exit`, declared on the destination state — the turn is deliberate, giving up is a correction, and `design-language.md` says a mechanism that plays both the same says they are the same.
+
+**What the render answered that reasoning could not.** The dragged clone is a full-width row under the finger, so it **always** covers the revealed strip horizontally — 24 of 24px. That looked fatal until the measurement was taken in the dimension that decides it: the reveal is the body's whole visible height, and the clone is one row, so **89%** of it is never covered at all (24 × 638px revealed, 68px of height crossed), and the crossed part still reads through `--drag-ghost-opacity` 0.78. A width could not see that, exactly as `frontend/CLAUDE.md`'s "a height cannot see a clip" predicts in reverse.
+
+**Built 2026-08-22, as drawn.** Three things the build found that the drawing could not, all of them consequences of the same fact — **the peeks now mount DURING a drag, so a day screen exists three times over while one is in flight**, where §7 only ever mounted them during a swipe (when no drag is running):
+
+- **A global side effect in a component-scoped teardown is now owned three times.** `useSelectionGuard`'s `release` removes `body.wp-dragging` and runs from an unmount cleanup, so a preview pane going away took the class the REAL drag was using — and the lean's own stylesheet keys off exactly that class. Measured, not reasoned: the probe read the class present at the arm and gone one move later. Both it and `useSpringLoadedDay` now stand down inside a preview, which is `state/day-preview.tsx`'s existing rule (_"suppress anything that reaches OUT of the pane"_) reaching two more hooks. Without the second guard, every mounted pane arms a dwell of its own against the shared `overDate` — three timers for one gesture.
+- **`:not([data-preview])` on an ancestor does not exclude preview descendants**, which is a sharper version of §7's own warning and cost two green-looking specs. The panes live INSIDE the non-preview host, so `closest('.day-swipe:not([data-preview])')` finds it from a pane as readily as from the real surface: a `[data-shelf-drop="pool"]` query matched three strips, `.first()` resolved to the pane parked off the far edge, and the finger it placed there walked the day back to the trip's first day. Anything scoping to the surface you are ON needs `:not(.day-peek *)`, or a direct-child path from the host.
+- **The peeks' mount condition is `live || leaning`, and `leaning` cannot be the pager's `live`** — the pager stands down for a drag by design, so its flag is false in exactly the case the lean needs a pane to animate. That is the one-line reason the shipped §2b step was silent.
+
+**And one thing an e2e cannot read the obvious way:** an unregistered custom property computes to its **token stream**, so `--peek-lean` reads back as `calc(24px + 24px)` and `parseFloat` gives 0 — an assertion that then passes as `0 === 0`. The spec resolves it through a probe element's `width` instead, which makes the number one the browser computed rather than one the test parsed, and needs no timing.
+
+**Still open, and it is a device question rather than a drawing one:** whether the 36px band wants any mark of its own. After §1 the question looks different — the arriving neighbour _is_ the mark — but only glass can say whether a first-time user finds the band at all.
+
+**A shipped defect the drawing found, unrelated to motion.** `screens.css`'s `.day-peek` declares `--peek-dir: -1` / `1` for "which way the inline axis runs" — which is `tokens.css`'s `--dir`, a shipped token four other stylesheets already spend (`modal.css`, `form-steps.css`, `App.css` twice) and which `design-language.md` documents as exactly that. It was introduced by ADR-0200 §7 the day before by a session that did not look. The proposal's rule spends `--dir` and the two `--peek-dir` declarations go with it.
+
+### 2d. The page is lifted, it stops, and staying finishes the turn (amended 2026-08-22, supersedes §2c's approach)
+
+Owner, on §2c as shipped: _"No you got this all wrong. Your design is very ugly, no I don't like the static 'peek' into the next/prev day."_ And then the model to build: _"We should maybe get a peek but in a more fluent way, like it starts dragging to the next day and stops and then if your finger stays then it completes the motion."_
+
+Drawn and measured in [`mockups/a-day-turns-under-a-held-card-v2.html`](../../mockups/a-day-turns-under-a-held-card-v2.html), which has a **play control** — §2c was approved off a filmstrip and rejected on a device, and a filmstrip cannot answer "is this fluent".
+
+**Why §2c read as static, as a number the session had and did not interrogate.** Its lean travels 48px over the 700ms dwell: 1.1px per 16ms frame. A surface moving one pixel per frame is not slow motion, it is a static offset with a timer attached — so _"static peek"_ was a precise description rather than a matter of taste. §2c's own argument (the motion **is** the progress indicator) was sound and unaffordable at that speed. The session checked that the duration matched the dwell and never checked that the result was **perceptible**, which is why the v2 mockup prints **px per frame** for every phase and why that unit is the one to reach for the next time a duration is chosen by what it has to agree with.
+
+**The mechanism, and it is a mechanism rather than a restyling.** Three phases with a **detent** in the middle:
+
+1. **The lift** — the whole strip moves `DRAG_DAY_LIFT_PX` (48px) toward the named day over `--t-base` / `--ease-arrive`, and **stops**. 3.2px/frame, 2.9× §2c's lean.
+2. **The hold** — it rests there for the remainder of the dwell (~460ms). Nothing moves.
+3. **The completion** — the finger stayed, so the turn finishes on the swipe's own settle and the day changes. 350px over `--t-base` at 360px wide: 23px/frame.
+
+The affordance is no longer "how much is left", it is **"the page is cocked"** — legible at a glance, where a 1px/frame creep was not. Total cost from reaching the edge to the day changing: 940ms, of which the dwell is still `DRAG_DAY_DWELL_MS`.
+
+**1 · Phase ③ is not new code, and that is the whole build.** `useSwipePager` already owns the offset channel, both settle attributes, the timer and §8's wait-for-the-arriving-page. So the pager gained a **commanded** API — `hold(step, px)` and `turn(step)` — and the edge calls it. "A page turn can be **commanded**, not only dragged" is an extraction, not a second turn beside the first; the two ways of reaching tomorrow now share the mechanism as well as the date. `--peek-lean` and the extra `transform` term it added are deleted: the strip's own `--swipe-dx` is the channel, and the panes ride it for free (ADR-0200 §7).
+
+**2 · The whole strip moves, which §2c refused.** §2c measured that model's cost — the row under the finger displaces by the lift — and rejected it on that number. **That rejection was over-weighted.** The displacement exists only while the finger is _in_ the band, and leaving the band unwinds it, so it is never present at the moment anyone is aiming at a chip: 48px during the hold, **0px** once the band is left. And moving the strip restores §7's "the strip moves as one thing", which §2c had to depart from.
+
+**3 · The lift has to clear the gutter, and 48px is the smallest number that does.** `.day-peek` parks at `dx ± (page + gap)`, so the incoming pane's near edge sits 24px (`--swipe-page-gap`) outside the window: a 24px lift reveals 24px of page background and **nothing** of the day it is promising. 48px reveals 24px of tomorrow. The distance stays a `constants.ts` tunable with the mockup's control shipped as its recommendation — it is a feel call, and glass gets the final say.
+
+**4 · Easings, and the abort.** `--ease-arrive` on the lift (its overshoot is weight on 48px and a wobble on 382px) and the pager's own `--ease-standard` on the completion. Leaving the band before the dwell unwinds on `--t-quick` / `--ease-exit`, declared on the destination state — §2c's asymmetry, kept for its reason: the turn is deliberate, giving up is a correction. The trip's end still lifts nothing at all, because a lift with no page behind it shows the gutter and a hole.
+
+**Rejected, and each is a thing that could reasonably be proposed again:**
+
+- **§2c itself** (only the pane moves). Right in argument, unaffordable at 1.1px/frame.
+- **Spending the whole dwell on the lift** (§2c's timing with the whole strip). Same 1.1px/frame, with more things moving.
+- **A slow creep during the hold**, to keep the "how long is left" reading. The owner said _"stops"_, and motion that continues without arriving is what was rejected.
+- **Shortening the dwell** so the total is under 940ms. 700ms is shared with the day pill's route (§2), so changing it moves two mechanisms; the visible lift already answers "nothing is happening".
+
+**Built 2026-08-22, and two things the build found.**
+
+- **`useEffect(() => stop, [stop])` means "on unmount" only while `stop` never changes identity.** The moment it depended on the caller's command callback, that cleanup ran on **every render** and gave the lift back the instant it was taken — one `resolve` and five commands, ending on "let go". The app survived it by luck (the pager's `hold` happens to be stable) and a unit harness passing an inline arrow did not. The command is read through a latest-ref, which removes the luck.
+- **An e2e that waits for a stepped day has to poll faster than the step.** §2d puts `--t-base` between a turn being _commanded_ and its day arriving, so the repeat cadence is 940ms and the next turn is committed 240ms before the previous day appears. `expect.poll`'s default ladder (0, 100, 250, 500, 1000ms) then reports an arrival up to a second late — measured: 2026-08-23 reported at 1850ms, 2026-08-24 landing at 1880 — and a test that acts on what it saw is acting on the day before last. A flat 50ms interval hands the caller the whole dwell to move out of the band in. This is a general hazard for any assertion about a **repeating** state, not a quirk of one spec.
+
+**Repaired the same day, after five reports against one gesture.** Owner: _"it doesn't work as expected at all"_ — (1) after moving to a day the card is no longer under the finger, (2) it doesn't always move to the next or previous day, (3) it is hard to go back, (4) the ghost disappears sometimes, (5) a weird stutter that looks like it tries to complete the swipe but out of place. **Two defects and two missing rules**, and the pairing is the useful part: 1/3/4 are one bug, 2/5 are another.
+
+**1 · A transform re-parents every `position: fixed` descendant, and the drag ghost was one.** The clone renders inside `.day-page` — the element §2d translates. So the instant the lift wrote `--swipe-dx`, the ghost stopped being positioned against the viewport and took on the page's own offset. Measured, with the finger never leaving `y=353`:
+
+|                       | finger  | ghost   | `offsetParent` |
+| --------------------- | ------- | ------- | -------------- |
+| before the lift       | 195,353 | 125,303 | `null`         |
+| lifted 48px           | 25,353  | 19,420  | `day-page`     |
+| after the day changed | 25,353  | 19,459  | `day-page`     |
+
+117px out, then 156px — which is _"no longer under the finger"_, and off the bottom of a short screen is _"the ghost disappears"_, and aiming with a clone that far from your finger is _"hard to go back"_. **This hook's own docblock warned about it** (`enabled: !dragging` exists because "the drag's ghost is `position: fixed` and this host would become its containing block the moment we set a transform on it") and §2d then drove that transform from a channel `enabled` does not gate. Moving the transform to the inner page is what makes the fixed PANES work; what nobody checked is what else lived inside that page. The ghost is one level out now, a direct child of `.day-swipe`, which is never transformed. The e2e asserts `offsetParent === null` rather than a rect, because that is the mechanism rather than a symptom of it.
+
+**2 · One pixel of jitter cancelled the turn.** `hold` and `turn` share one channel, and the edge re-issues `hold(step)` on **every** move it sees — every pointer twitch, and every frame the auto-scroll scrolls. `hold` cleared the settle timer and re-parked the page at the detent, so: `dx 382px` / `settling=turn`, one 1px move, `dx 48px`, and the day never changed. Two rules now:
+
+- **A commanded turn is uninterruptible by a lift.** The dwell fired; `--t-base` is not a window for a change of mind, and re-parking mid-flight is exactly the snap-back that read as a stutter.
+- **`hold(null)` still cancels it**, which is the asymmetry worth stating: a re-lift is jitter, but "there is no day being aimed at any more" is the gesture withdrawing — the finger left the band, or let go over a target. Committing anyway would move the day out from under a drop that had already landed on the day before it.
+
+And the channel is **idempotent**: a command that rewrites the value it already holds is a no-op, asked of the DOM rather than of a second copy of the state, so the arriving page's own `clear()` correctly reads as "not held" and the next cycle lifts again. A command channel whose caller is a stream needs that property whether or not it is currently load-bearing.
+
+**3 · The band had an entry threshold and no exit threshold.** Nothing about cancelling was wrong in principle — leaving unwinds on `--t-quick`/`--ease-exit`, and the drag coming to nothing takes the whole walk back (§2b) — but a finger resting near the boundary chattered: lift, unwind, lift, at whatever rate the pointer reported. Entering still costs `DRAG_DAY_EDGE_PX`; leaving costs that **plus `DRAG_EDGE_SCROLL_RELEASE_PX`**, which is the same distance the latch already spends on this axis for the same question — how much movement counts as intent. Asked as two calls to `edgeDepth` rather than arithmetic of its own, so a short box still shrinks both bands. The **opposite** band is untouched: it starts where it always did, so reaching across stays as easy as it was.
+
+**4 · Undoing a step is cheaper than making one** (owner's call, on _"hard to go back"_: half dwell when reversing). Reversing cost a fresh 940ms with nothing to say it was an undo. The opposite band, within `DRAG_DAY_REVERSE_MS` (2s) of a step, now pays `DRAG_DAY_REVERSE_DWELL_MS` — half, **derived** from the dwell rather than typed so the two cannot drift. The lift and the turn are unchanged; only the hold shortens, because `design-language.md` already says a correction is quicker than the thing it corrects. A window rather than "for the rest of the drag": five minutes into a long drag, a band brushed while aiming should not be a day change with half the warning. The dwell is therefore a property of the **target** and is computed by `useEdgeDayStep` — a pill always pays full.
+
+**And the abort stays silent** (owner's call). The 140ms unwind is the whole statement; a drag crosses the band many times in normal use, so a beat per crossing is noise — the same argument §2c made when it refused `BEAT.REBUFF`, and it survives the change of what moves.
+
+**Repaired again the same day, and this one was a design gap rather than a defect.** Owner: _"after landing on the new day there's like a second animation for switching days"_, and _"moving multiple days by holding on the edge is not looking good — perhaps related to the first issue"_. It was the same issue, once per day.
+
+**Recorded rather than reasoned about, because "there's like a second animation" is a claim about how many there are.** A `transitionrun` listener over a hold that stepped two days, before the fix:
+
+```
+ 946ms  transform on .day-page                 ← the lift
+1677ms  transform on .day-page + both peeks    ← the turn
+1904ms  URL ?day=2026-08-23                    ← the day lands
+1995ms  transform on .day-page + both peeks    ← a THIRD run, 91ms later
+2710ms  … turn        2920ms  URL 08-24        2993ms  … and again
+```
+
+The third run is the **re-lift**. §8's reset hands back the whole offset when a turn commits, so the surface went to level — and the finger was still in the band, so the edge immediately commanded its lift again: 48px over `--t-base`, starting ~90ms after the day changed. Per day that is a page turn followed by a smaller second animation, which is exactly what a day switch looks like; across a hold it is one of those every second, which is _"not looking good"_.
+
+**So a turn that began at a detent lands back at the detent.** The travel becomes `page + gutter + detent`, and at the commit the offset is rebased to the detent rather than to zero — a jump of exactly one page, over the page that was swapped underneath it in the same paint, so the picture either side is identical. The finger is still where it was; the surface is still held; nothing is left for the next cycle to animate. Holding at the edge is now **one motion per day**, and the strip never returns to level until the drag lets go.
+
+Three things this needed, each small and each load-bearing:
+
+- **The landing is read off the element, not passed in.** `turn()` asks what offset it is currently holding, because the caller would only be repeating what its own last `hold` already said. That also means a **dragged** turn still lands level with no branch anywhere: no detent was held, so there is nothing to land at.
+- **A one-frame transition suppression** (`data-swipe-rebase`). The offset changes and nothing moves, which is the one combination a transition gets wrong — it would slide the arriving day in from off screen over `--t-base`. Removed on the next frame, so the detent's own transition is back before anything asks it to move; the edge's re-commanded lift in between writes the value already there and its idempotence makes that a no-op.
+- **A completed turn implies the finger stayed**, which is what makes landing-at-the-detent safe rather than a guess: a withdrawal cancels the turn (the rule above), so there is no path where the surface lands held while nothing is holding it.
+
+**And two e2e cases that assert a COUNT rather than a magnitude.** "Nothing animates a second time after a landing" is `transitionrun` events on the day page: unchanged across the 400ms after the day arrives, where the old behaviour started one at 91ms. The multi-day case counts three runs for two days — the lift and a turn each — where the old behaviour ran five. A first version of that test sampled `--swipe-dx` a frame after each landing instead, which is a magnitude at a moment, and it duly failed under two workers for reasons the app had nothing to do with; the same round moved the abort case's `boundingBox` read out of the 240ms window it was racing.
+
+**Repaired a third time, and the defect was in the CLOCK.** Owner: _"still some jittering… I think but not sure that when dragging to the next day and then moving the finger quickly to not drag to the next day again then this jitter is happening."_ The hunch was exact.
+
+**`setTimeout` is not the clock a transition runs on**, and the recording shows the cost:
+
+```
+2031  hold(null): dx → 0px, the lift released     painted=48
+2061  transitionrun                                painted=47   ← the browser starts it, 30ms late
+2164  data-swiping REMOVED (the surface given back) painted=12   ← 103ms into a 140ms unwind
+2178  transitioncancel, then a second transitionrun painted=12
+2311  transitionend                                painted=0
+```
+
+The wait was `motionDurationMs('--t-quick')` measured from the JS call, but the browser did not create the transition until a style flush 30ms later — the main thread was busy, the day had just changed. So the timer fired **inside** the unwind, dropping the rule mid-flight: the transition was cancelled at 12px and a second one carried the rest. One unwind became two, 250ms with a velocity break at the seam. That is the jitter, and it appears on **every** withdrawal now precisely because the previous repair made the surface rest at the detent between days.
+
+**The fix is to anchor the wait to the rendering clock.** `requestAnimationFrame`, then the duration: the transition is created in the same rendering pass, so a frame that arrives late takes the wait with it, and `SWIPE_PAGER.SETTLE_SLACK_MS` (one frame) only has to cover the timer's own imprecision. Every wait in the pager that outlasts a transition moved onto it — the unwind, the commanded turn's commit, and the dragged release's — because they are all the same statement: _do this once the motion has finished_. Zero duration (reduced motion, an unreadable token) still defers by a **task**, never inline: a commit landing synchronously inside the event that asked for it is a different contract from the one every caller was written against, and six unit cases said so.
+
+**And a phantom animation the recording also caught**, unrelated to the jitter but on the same surface: the quick-unwind rule was not scoped to `[data-swiping]`, so it outlived the offset. The moment the pager gave the surface back, `transform` went from `translateX(0px)` to none with a transition still declared — a 140ms animation over zero distance, invisible and real, after every gesture. There is nothing to move when there is no offset.
+
+**What the guard asserts is a count and an order**, both of which survive a loaded machine: exactly `transitionrun · transitionend · given-back` on the withdrawal after a landing, with nothing cancelled, and the surface given back no earlier than the motion ends.
+
+**Repaired a fourth time, and this one undoes a decision rather than a defect.** Owner: _"dragging to another day and then backing away still does this weird 'going back' animation, but stays on the same day, and it comes across as super confusing."_ Sampled every frame, that gesture at two timings:
+
+| backing away                       | the page travels | the day   |
+| ---------------------------------- | ---------------- | --------- |
+| just after a landing               | 48 → 0           | unchanged |
+| ~800ms later, inside the next turn | **247 → 0**      | unchanged |
+
+Both are the same wrongness at two scales: **there was an offset to give back, and giving it back looks like a page turn in reverse** — the peeks moving with it, ending where it started. The second is over half a page of it.
+
+Both offsets exist because of decisions made two repairs ago, and both are now withdrawn:
+
+- **The lift is spent once per stay in the band, not once per day.** It is what says _the page is cocked_, and that is worth paying for on approach. Paying it again after every turn was wrong in both directions: kept at the detent it was a second animation on the heels of each day (the second repair), and given back on the way out it is this report. So after a turn the edge stays armed at **zero** — still claimed, panes still mounted for the next turn, nothing offset. Leaving the band ends the stay, so a fresh approach lifts again.
+- **A committed turn is never rewound.** The dwell has fired and the page is most of the way there; finishing is shorter than reversing and it is what the motion has already promised. What a withdrawal decides is where the turn **lands**: nothing is holding the surface any more, so it is given back rather than kept claimed. This reverses the abort rule the second repair introduced — that rule was there so a day could not arrive after a drop had landed on the day before it, and the case it was protecting cannot arise: the edge is deliberately not a drop target, so a release inside the band resolves to nothing and §2b's asymmetry takes the whole walk back regardless.
+
+**What the surface does now, end to end:** approach the band and it lifts 48px and stops. Hold and it turns a full page, landing at level, still claimed. Hold again and it turns again — one motion per day, and nothing between them. Back away at any point after a landing and **nothing moves at all**; back away mid-turn and the turn finishes forward. The only reverse motion left in the feature is the pre-dwell abort, where 48px going back is the honest statement that the turn did not happen.
+
+**Three repairs on one gesture in one day, and the through-line is worth naming.** Each one removed a motion whose meaning did not match what it looked like — a lift too slow to read as motion, a second animation with no cause, a reverse with no consequence. The lesson is not about any of the numbers: **a motion has to mean the thing it resembles**, and a horizontal slide of a day surface resembles exactly one thing. Every offset held between days is a promise to move it back, so the surface should hold one only while a finger is asking it to.
+
+**Repaired a fifth time, and the fourth repair had fixed the wrong reverse.** Owner: _"the problem still exists! What did you fix? The problem is that we 'turn back' during the animation, then it does a full animation of going back, but stays in the new day."_ The fourth repair removed a reverse that ended on the **same** day; this is a different one, and the log — the pager's commands, in order — says it plainly:
+
+```
+6229  turn(1)                       the forward turn is commanded
+6260  hold(-1, 48) turning=true     the finger reaches the OPPOSITE band while the page travels
+6501  COMMIT step=1                 the new day arrives, correctly
+7300  turn(-1)                      a full page backwards, unasked
+8372  turn(-1)                      and again, walking back a day at a time
+```
+
+**A band the drag drifted into while the page was travelling is a band it never asked for.** The hand was retreating from the edge it had just used, which is where a hand goes next — and the edge read the far band as _go back_ and began walking. Nothing about the gesture said that.
+
+**The mechanism already existed, at two moments out of three.** `gateEdgeStep` was written for a drag that ARMS inside a band (_"you pressed, held, and the list took off"_) and §2b transposed it to the inline axis for a row lifted by its end. A page arriving under a wandering finger is the same shape: geometry the drag did not choose. So the band the pointer is in when a turn lands is **latched** — it means something again once the drag leaves it, or pushes deeper into it than it drifted to. The band that produced the turn is exempt, because holding still there has to keep stepping, which is §2b's whole promise.
+
+**And the request is captured at the command, not at the arrival.** The page takes `--t-base` to travel, so "which step turned" and "which band asked for it" are both facts about the moment the dwell fired. Reading them at the arrival read them against wherever the hand had wandered to — which also silently mis-recorded the reversal window's step, so a subsequent forward step could have been charged the half dwell as an "undo". `useEdgeDayStep` gains a `turning()` that the caller invokes at the command; that is one line at the only call site, and it is the caller's to say because the caller is what decides to turn.
+
+**Five repairs, and the pattern in the last two is the one worth carrying forward.** Both were cases where **the drag's geometry changed without the hand doing anything** — the surface moving under a finger, then a day arriving under one. Every rule in this feature that reads a position has to ask whether the position was _chosen_, and this ADR now contains three answers to that question written at three different times. A fourth surface with an edge gesture should reach for `gateEdgeStep` at every moment its own geometry can shift, not only at the press.
+
+**A sixth repair, and the lesson is about the PROBE rather than the code.** Owner, after the fifth: _"Merged and still nothing! What have you done?! Do you understand the issue?"_ — and they were right to ask, because four rounds of measurement had reported clean while the screen was doing what they described.
+
+**Every probe had sampled `--swipe-dx`. That variable is a transition's DESTINATION, not the picture.** It reads `0px` the instant the offset is released, while the paint is still a page away and travelling. Sampling the computed transform instead — `new DOMMatrixReadOnly(getComputedStyle(page).transform).m41` — found it in one run:
+
+```
+6229  paint=382  says=יום 4  day=08-23      the day has committed
+6248  paint=347  says=יום 4                 …and the page is animating BACK
+6271  paint=312  says=יום 5                 …now showing the day it arrived at
+6308  paint=159  says=יום 5
+```
+
+**The defect:** `hold(null)` writes the offset to `0px`, and the unwind rule — `--t-quick` / `--ease-exit`, written to give back a **48px detent** — animates whatever distance it is given. When the release lands after a committed turn, that distance is a whole **page**, so the day you just arrived at slides backwards into place. The window is the gap between the turn committing and React drawing the arriving day, which is a full render of the heaviest screen in the app.
+
+**The rule, in one line: a page is not a detent, and only a detent is worth animating back.** So the pager tracks what it last wrote and what it parked at, and a release from further away than the detent is a **swap** — `clear()` in this paint, which is §8's invisible hand-off — rather than an unwind. The same guard sits on the parking path, because arming at zero over a page-away paint animates the same distance on the detent's own curve.
+
+**And what this round did NOT establish, which the next session must not assume.** The owner's own description is _"if you move your finger back fast enough — even a little — it happens every time"_, and **a fast reverse does not reproduce this defect**: it leaves the band while the turn is still travelling, where the command channel correctly does nothing. Measured, with the fix and without it, on a desktop runner and again with the main thread throttled 6× to phone speed, over eight variants (both edges · card and row · one day and two): clean every time. So this repair removes a real full-page reverse that produces exactly the reported words, and **the report may still be open.** The gap is not knowledge, it is a reproduction: what would close it is a recording of the gesture, or an instrumented build on the device.
+
+**Closed by the recording, and the answer was not a variant of the same defect** (see the seventh repair, below). Eight sweep variants failed to reproduce it because every one of them was looking for a reverse **animation** on the same day; the owner's screen shows the day itself going back — a step made, then unmade. The instrument that would have found it in one run is the one this repair's own paragraph asks for, so the note stands as written: what closed the gap was a recording, not another sweep.
+
+**A seventh repair — an undo is asked for, not arrived at.** Owner, supplying the spec themselves after the sixth landed: _"once the moving animation starts for dragging, moving the opposite direction shouldn't cancel the operation, undo, or do any other animation. It should complete the day move and animation. Only after you're on the next day you should be able to go back, ok?"_ — and then the recording, read frame by frame: a step forward from day 2 of 12 to day 3, and then, as the hand crossed to the other edge, **a full page travelling back to day 2**. Not a reverse animation on the same day, which is what the four previous repairs were about. A step being undone.
+
+**Two consecutive windows leaked, and the second is the one the sweeps missed.**
+
+- **While the page travels** (`--t-base`), the pager has refused offset commands since the second repair — but the EDGE kept resolving underneath it. So a hand crossing to the far band mid-flight named the day behind, and `useSpringLoadedDay` armed on it at **half** rest (the third repair's cheaper reversal), firing barely after the step landed. That is why the report is about moving back _fast_: fast is exactly what reaching the far band inside 240ms means.
+- **After the day arrives**, the far band was simply live. The sixth repair latched a band the drag had **drifted** into, but it made that statement once, at the arrival — so a hand that crossed a frame later read as a fresh request, priced at half a dwell, and walked the day back.
+
+**The rule: the first time a drag reaches the band opposite the one that just turned, while the step it made is still on screen, that band is latched** — exactly as if the drag had been lifted there. Being there does nothing; leaving it or pushing deeper into it is what means it, which is the sentence every other band in this app answers to (`gateEdgeStep`). Going back stays possible, which is the second half of the owner's sentence — it just has to be asked for. Outside the window the far band is ordinary again: a retreat two seconds later was never the undo this is about, and gating it would be the _"hard to go back"_ the third repair already answered.
+
+**One window, two consequences, which is why this is a repair and not a feature.** `DRAG_DAY_REVERSE_MS` already said "the step you just made is still on screen" in order to price the undo at half a dwell; it now also says the undo has to be **asked for**. The cheap undo and the gate on it are the same statement about the same window, and the sixth repair's special case at the arrival is deleted — it was this rule, made at one moment instead of for as long as it holds.
+
+**Measured both ways, in the browser** (`e2e/shelf-drag.spec.ts`, _"crossing to the far edge after a landing does not walk back"_): with the gate removed, the same gesture fires **two** reverse page turns in three dwells and ends two days behind where the drag put it; with it, zero, and the day stays. That is the recording, reproduced — and the lesson for the probe is the mirror of the sixth repair's: **four sweeps asserted that nothing MOVED wrongly, and the defect was that the wrong thing moved correctly.** When a report says a step came undone, the assertion is about the step, not about the animation that carried it.
+
+**What this round is really about, as a lesson rather than a fix.** Both defects were in the same class: **a fact about the surrounding DOM that the change assumed instead of counting.** The ghost's containing block is one `grep` for what renders inside `.day-page`; the jitter is one reading of who calls `hold` and how often. Root `CLAUDE.md` has the rule already — _count the call sites before claiming what a derivation does_ — and this is its shape for a gesture: **count the callers of a command channel, and the fixed descendants of anything you transform.**
 
 ### Three things this required, each a bug if missed
 
@@ -468,3 +698,44 @@ screen's own `useState` can promise.
 ordinary tile with its own ranking reason (`recently-added` takes no line, ADR-0151), so
 it leads the strip with nothing marking it as pinned. Whether that wants a mark is a
 drawing question, and it is on the backlog rather than guessed at here.
+
+## Amendment (2026-09-02) — a day turn takes the drag's target with it
+
+**The defect.** Every drop target but one lives on the day **surface** — a row, a seam, a gap chip,
+a shelf group, the empty day's zone — and §2b/§2d made that surface turn under a live drag. The
+hit-test never re-asked. So: rest at the edge with a gap chip under the finger, let the day arrive,
+let go without moving, and the drop committed into a slot on the day you had just left. Measured on
+`e2e/shelf-drag.spec.ts`: the schedule sheet opened on `יום ד׳, 2 בספט׳`'s 20:00–21:00 with **day 5**
+on screen, and the day switch stayed behind because a committed drop keeps it.
+
+**Why the band and the chip overlap at all, and why that is not the thing to fix.** §2b decided the
+edge feeds navigation and is deliberately **not** written into `overDate`, precisely because a gap
+chip spans the surface and its last `DRAG_DAY_EDGE_PX` therefore lie inside a band: fencing the band
+off from the surface's targets would turn a drop meant for that slot into "aim at another day". The
+chip winning under the finger is correct. What was missing is that the chip stops being under the
+finger when the surface it is on turns away.
+
+**The rule.** A day change discards whatever the drag had resolved on the surface. The day **pill**
+is the one target kept — the header strip is not what turned, and `overDate` is also what
+`useSpringLoadedDay` is aiming at, so clearing it would cancel the pill's own drop the instant its
+dwell landed. Discarded rather than re-resolved: the turn is animated, so a target read at the
+moment the day arrives is a target read mid-motion and then never read again. The next move resolves
+one on the day now under the finger, and a release before that comes to nothing — which is exactly
+what §2b's day-restore is for.
+
+**Where it has to happen, and it is not an effect.** `PlanDay` keeps everything a drop reads in a
+ref assigned **during render** (a drag outlives the render it began in). Both `useEffect` and
+`useLayoutEffect` were tried and both fire too late: the release beat the effect to the drop, with
+the new day already in `live.current` and the old day's slot still in the target — logged in that
+order. The invalidation is therefore a render-phase check against a ref, beside the assignment it
+has to stay in step with; a ref written during render belongs to the render that wrote it whether or
+not that render ever commits, which is the pairing wanted here.
+
+**How this surfaced, which is the part worth keeping.** Nothing about the drag changed. ADR-0217
+took Plan's now-reference **row** out of the day list, every gap chip moved ~30px up, and the
+release point of a spec that had asserted "released over the edge, which accepts nothing" landed on
+a chip. The spec's own comment gave a reason that had not been true since §2b — the premise was
+inherited, not asserted. So the case that reproduces this now **aims at a chip on purpose** and
+asserts the chip is lit before releasing (`a target resolved before the turn is not committed after
+it`), and the old case says plainly that its height merely happens to have nothing on it. A
+geometric premise that is not asserted is a test that stops testing what it is named for, silently.

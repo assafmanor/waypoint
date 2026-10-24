@@ -1,7 +1,22 @@
 // Hermetic boot for the nav e2e: route-mock the handful of endpoints the app
-// hits on start so it lands in a live trip's Home with no backend/DB. The trip's
-// date range is deliberately huge so `resolveLanding` treats it as "now"
-// whatever the box clock reads (lib/active-trip.ts).
+// hits on start so it lands in a live trip's Home with no backend/DB.
+//
+// **The trip's window is DERIVED from the clock the spec is using, and it is short.** What
+// `resolveLanding` needs is `today` inside `[startDate, endDate]` (`lib/active-trip.ts`), and
+// this file used to buy that with a sixteen-year range — 2020-01-01 to 2035-12-31 — so it
+// held whatever the box clock read. It worked, and it cost more than anyone had measured: the
+// day strip renders one pill per trip day, so the default fixture drew **5,844 pills** and a
+// **1.45 MB** document where a live trip needs seven pills and 632 KB. Every Playwright action
+// that scrolls or queries pays for that DOM, and on the Vite dev server the bill intermittently
+// crossed the 30 s test timeout — which is why `e2e (preview)`, on a production bundle fast
+// enough to squeak in, stayed green on the same commit. `subtask-ring.spec.ts:407` was the
+// first to fail on it, dying inside `scrolling into view if needed` on a `{ force: true }`
+// click, where actionability is skipped and the scroll is all that is left.
+//
+// So the range is `shortLiveTripDates(now)` by default and `dates` is the opt-in. Note what
+// that fixes beyond the timeout: the workaround had been spreading spec by spec — 30 of the
+// 34 specs already passed a short range, and the four that had not were the four that failed.
+// A default nobody wants is a trap that arms itself for spec thirty-five.
 import type { Page } from '@playwright/test';
 import { tripSnapshotSchema } from '@waypoint/shared';
 
@@ -12,6 +27,7 @@ const USER = {
   avatarHue: 'denim',
   avatarChoice: 'initials',
   googleAvatarUrl: null,
+  googleAvatarCopyUrl: null,
   uploadedAvatarUrl: null,
   preferredCurrency: null,
   createdAt: '2024-01-01T00:00:00.000Z',
@@ -28,6 +44,11 @@ const TRIP = {
   id: 't1',
   name: 'טוקיו',
   destination: 'Tokyo',
+  // **Placeholders. `bootIntoTrip` replaces both, every time.** They exist because
+  // `tripSnapshotSchema` validates `SNAPSHOT` at module load (below) and the fields are
+  // required — nothing reads these values. Do NOT widen them back to a multi-year range to
+  // make a trip "live whatever the clock reads": that is what this file did until 2026-08-31,
+  // and the header explains what it cost. The window is derived at boot instead.
   startDate: '2020-01-01',
   endDate: '2035-12-31',
   timezone: 'UTC',
@@ -46,17 +67,24 @@ const SNAPSHOT = {
   maybeItems: [],
   places: [],
   notes: [],
-  // The two fields below are required by `tripSnapshotSchema` (ADR-0166 §6, ADR-0173 §1),
-  // so the absence of either fails the zod parse in `fetchSnapshot` and the app never boots
-  // at all — which surfaces as every spec here timing out rather than as a readable error.
-  // `e2e/` is outside `tsconfig.json`'s `include`, so nothing but a run catches a missing
-  // field in this fixture. **This has now happened three times**: `enrichments` wrote the
-  // warning, `documentAttachments` walked into it anyway, and `preferredCurrency` showed the
-  // warning was read too narrowly — it counts for a new required field on any entity NESTED
-  // in the snapshot (`USER`, `TRIP`, `MEMBERSHIP` above), not only on the snapshot itself.
-  // Either way it belongs here in the same commit that adds it.
+  // The three fields below are required by `tripSnapshotSchema` (ADR-0166 §6, ADR-0173 §1,
+  // tasks brief §5), so the absence of any of them fails the zod parse in `fetchSnapshot` and
+  // the app never boots at all — which surfaces as every spec here timing out rather than as
+  // a readable error. `e2e/` is outside `tsconfig.json`'s `include`, so nothing but a run
+  // catches a missing field in this fixture. **This has now happened four times**:
+  // `enrichments` wrote the warning, `documentAttachments` walked into it anyway,
+  // `preferredCurrency` showed the warning was read too narrowly — it counts for a new
+  // required field on any entity NESTED in the snapshot (`USER`, `TRIP`, `MEMBERSHIP` above),
+  // not only on the snapshot itself — and `tasks` walked into it a second time, from a
+  // session that had already updated all five unit fixtures and did not think of this one.
+  //
+  // **So the guard below is now load-bearing rather than a nicety**: it turns the timeout
+  // into the sentence you are reading. Any new snapshot field belongs here in the same
+  // commit that adds it, and the run that proves it is `pnpm --filter @waypoint/frontend e2e`
+  // — the unit suite cannot see this file.
   enrichments: {},
   documentAttachments: [],
+  tasks: [],
   latestSeq: '0',
 };
 
@@ -73,7 +101,20 @@ if (!invalid.success) {
       .join(', ')}`,
   );
 }
-const ME = { user: USER, memberships: [MEMBERSHIP] };
+/** The live planet build `/me` states (ADR-0187 §1 amendment). **Any daily id will do here and
+ *  that is the point** — every archive read in this suite is intercepted, so this only has to make
+ *  the app ask for a `planet-<build>.pmtiles` URL at all. Without it the detail source falls back
+ *  to the world archive and the specs test one layer where production reads two. */
+export const E2E_LIVE_MAP_BUILD = '20260821';
+/** And which vintage of the offline archives it is cutting (ADR-0186 §6 amendment). Nothing here
+ *  downloads one, so this only has to be present and stable — a device with no stored archive has
+ *  nothing to compare it against. */
+export const E2E_MAP_ARCHIVE_VINTAGE = 'v7';
+const ME = {
+  user: USER,
+  memberships: [MEMBERSHIP],
+  map: { liveBuild: E2E_LIVE_MAP_BUILD, archiveVintage: E2E_MAP_ARCHIVE_VINTAGE },
+};
 
 /** Two unlinked bookings of DIFFERENT types, so the Index bookings screen shows
  *  category filter chips (one per type with count > 0, ADR-0101) — the fixture
@@ -138,6 +179,9 @@ export async function bootIntoTrip(
     places?: unknown[];
     /** Trip notes, so a host row can carry the mark (ADR-0152 §6c). */
     notes?: unknown[];
+    /** Trip tasks, so a point can carry the hero's fourth content block (ADR-0160 §U) and a
+     *  host row its mark (ADR-0191 §2). */
+    tasks?: unknown[];
     /** Trip documents, so the Index's documents rows exist to be measured. */
     documents?: unknown[];
     /** **The attachment links** (ADR-0173 §1), so a host row can carry the DOCUMENT mark and
@@ -168,11 +212,22 @@ export async function bootIntoTrip(
      * debug hook surviving into a build.
      */
     now?: number;
-    /** Override the trip's date range (see `shortLiveTripDates`). */
+    /** Override the trip's date range. The default is already `shortLiveTripDates` around
+     *  this spec's own clock, so this is for a spec that needs a SPECIFIC window — a single
+     *  day (`{ startDate: DAY, endDate: DAY }`), or a range whose day numbers it asserts. */
     dates?: { startDate: string; endDate: string };
+    /** **Play the coming-home beat** (ADR-0241 §3). Off by default: a finished trip's first Home
+     *  would otherwise open under a full-screen beat, and every spec but the beat's own is about
+     *  the Home beneath it. */
+    comingHome?: boolean;
   } = {},
 ): Promise<void> {
-  const trip = { ...TRIP, ...opts.dates };
+  // **The window and `now` come out of the same number**, which is `shortLiveTripDates`'s own
+  // warning and the reason this lives here rather than in the constant: only `bootIntoTrip`
+  // knows which clock the spec pinned. A fixed short range plus a real clock is how
+  // `hero-in-transit` shipped green and went red four days later with every assertion still
+  // correct — the trip had simply stopped being live.
+  const trip = { ...TRIP, ...shortLiveTripDates(opts.now ?? Date.now()), ...opts.dates };
   const snapshot = {
     ...SNAPSHOT,
     trip,
@@ -181,6 +236,7 @@ export async function bootIntoTrip(
     maybeItems: opts.maybeItems ?? SNAPSHOT.maybeItems,
     places: opts.places ?? SNAPSHOT.places,
     notes: opts.notes ?? SNAPSHOT.notes,
+    tasks: opts.tasks ?? SNAPSHOT.tasks,
     documents: opts.documents ?? SNAPSHOT.documents,
     documentAttachments: opts.documentAttachments ?? SNAPSHOT.documentAttachments,
     enrichments: opts.enrichments ?? SNAPSHOT.enrichments,
@@ -223,6 +279,17 @@ export async function bootIntoTrip(
     (u) => u.pathname === '/trips/t1/changes',
     (r) => r.fulfill({ json: [] }),
   );
+  // **The trip's route pack** (ADR-0206 §AZ5). Fetched once per trip from the shell now rather
+  // than behind the Map's archive prompt, so EVERY boot asks for it — and an unmocked asset
+  // request is not hermetic: the dev server answers `index.html` for an unknown path, which this
+  // harness would then store as a pack, and `boot-cross-tabs` asserts a clean console.
+  //
+  // Empty rather than absent, so the real path runs (stored, hydrated, nothing written) instead
+  // of the error branch. A spec that wants legs in it can `page.route` over this one.
+  await page.route(
+    (u) => u.pathname === '/trips/t1/routes/pack',
+    (r) => r.fulfill({ json: { signature: 'e2e-empty', legs: [] } }),
+  );
   // Event edits are answered, not just reads. Without this the optimistic update
   // lands, the real PATCH 404s against the dev server, and the app correctly rolls
   // itself back — so any test asserting what a write PRODUCED would be testing the
@@ -239,6 +306,29 @@ export async function bootIntoTrip(
       const before = seeded.find((e) => e.id === id) ?? { id };
       await route.fulfill({
         json: { ...before, ...(request.postDataJSON() ?? {}), updatedAt: new Date().toISOString() },
+      });
+    },
+  );
+  // **The status write, answered for the same reason** (ADR-0230's chip, ADR-0228's settle).
+  // `POST …/status` was the one event write this file left to the dev server's 404, so a spec
+  // asserting a restore or a settle was really racing the optimistic flip against its own
+  // rollback — and won only while the poll happened to land inside that window. It lost the
+  // day the Trip day surface grew heavier (ADR-0231). Echoes the seeded event with the status
+  // written, which is the contract's shape (`setEventStatus` parses a `TripEvent`); an `'end'`
+  // edge writes `endStatus`, as the server does (ADR-0224 §1).
+  await page.route(
+    (u) => /^\/trips\/t1\/events\/[^/]+\/status$/.test(u.pathname),
+    async (route, request) => {
+      if (request.method() !== 'POST') return route.fallback();
+      const id = new URL(request.url()).pathname.split('/').at(-2);
+      const before = seeded.find((e) => e.id === id) ?? { id };
+      const { status, edge } = (request.postDataJSON() ?? {}) as { status: string; edge?: string };
+      await route.fulfill({
+        json: {
+          ...before,
+          ...(edge === 'end' ? { endStatus: status } : { status }),
+          updatedAt: new Date().toISOString(),
+        },
       });
     },
   );
@@ -319,14 +409,15 @@ export async function bootIntoTrip(
   // Seed the cached identity + active-trip id the app reads on boot, so auth
   // resolves as "authed" and the landing picks our trip without a race.
   await page.addInitScript(
-    ([me, tripId, now]) => {
+    ([me, tripId, now, cameHome]) => {
       localStorage.setItem('wp_me', me as string);
       localStorage.setItem('wp_active_trip_id', tripId as string);
+      if (cameHome) localStorage.setItem(`waypoint:came-home:${tripId}`, '1');
       // `waypoint:dev-now` — `lib/useClock.ts` reads it at module load, so it has to be set
       // before the app's first script, which is exactly what `addInitScript` guarantees.
       if (now) localStorage.setItem('waypoint:dev-now', now as string);
     },
-    [JSON.stringify(ME), 't1', opts.now ? String(opts.now) : ''],
+    [JSON.stringify(ME), 't1', opts.now ? String(opts.now) : '', opts.comingHome ? '' : '1'],
   );
   // The half that survives a production build (see `now` above). `setFixedTime` rather than
   // `install()`: it fixes what the clock READS and leaves timers alone, which is what the
@@ -363,12 +454,23 @@ async function mockAuth(page: Page, memberships: unknown[] = []): Promise<void> 
 }
 
 /** The trip a creation run produces. Dates fixed so the board's flapped row is assertable. */
+/** A trip that starts TOMORROW on the box clock and runs twelve days. `CreateTrip` refuses a
+ *  start before device-local today (`startInPast`, so the CTA never arms), which makes a literal
+ *  date a fuse: this fixture read `2026-09-12` and every run from the 13th on failed the born
+ *  screen on both e2e legs while nothing in the app had changed. Same lesson as
+ *  `shortLiveTripDates`, one screen earlier. */
+function upcomingTripDates(): { startDate: string; endDate: string } {
+  const day = 24 * 60 * 60 * 1000;
+  const iso = (t: number) => new Date(t).toISOString().slice(0, 10);
+  const today = Date.parse(`${new Date().toISOString().slice(0, 10)}T00:00:00.000Z`);
+  return { startDate: iso(today + day), endDate: iso(today + 12 * day) };
+}
+
 export const CREATED_TRIP = {
   ...TRIP,
   name: 'יפן · ספטמבר',
   destination: 'יפן',
-  startDate: '2026-09-12',
-  endDate: '2026-09-23',
+  ...upcomingTripDates(),
   icon: '🇯🇵',
 };
 

@@ -94,6 +94,7 @@ const createNote = vi.fn(() => Promise.resolve(undefined));
 let tripBookings: Booking[] = [];
 let tripEnrichments: Record<string, DeliveredEnrichmentFields> = {};
 let currentMode = 'trip';
+let currentPhase = 'live';
 let isOffline = false;
 
 // The index write layer, stubbed at module scope so it is BOTH assertable and stable: the
@@ -106,8 +107,25 @@ const indexVerbs = {
 };
 const updatePlace = indexVerbs.updatePlace;
 
+/** Declared legs, per spec. A mutable module-level fixture like `tripEvents` beside it — the mock
+ *  factory reads it when `useTrip()` is CALLED, so a spec can set it before rendering. */
+let tripOverrides: { fromPlaceId: string; toPlaceId: string; mode: string }[] = [];
+
 vi.mock('../state/trip-state', () => ({
   useTrip: () => ({
+    zoneCrossings: [],
+    // The declared legs, mutable so a spec can override one (ADR-0206 §AM). Empty is the ordinary
+    // trip — every leg takes the derivation. Stated rather than omitted: the context field is not
+    // optional, and `legTravelMode` is right to refuse a non-array rather than defend a stale mock.
+    travelModeOverrides: tripOverrides,
+    // Tasks ride the same snapshot since phase 1; the mark and the sections read them.
+    tasks: [],
+    taskVerbs: {
+      createTask: async () => undefined,
+      updateTask: async () => {},
+      deleteTask: async () => {},
+      tickTask: async () => {},
+    },
     // The one context index every note surface resolves through (ADR-0172 §1);
     // built from this file's own fixtures so pairing is real rather than stubbed.
     hostContexts: buildHostContextIndex(tripEvents, tripBookings),
@@ -123,6 +141,7 @@ vi.mock('../state/trip-state', () => ({
     trip: {
       id: 't1',
       name: 'טיול',
+      destination: 'טוקיו',
       timezone: 'Asia/Tokyo',
       startDate: '2026-07-19',
       endDate: '2026-07-25',
@@ -156,7 +175,9 @@ vi.mock('../state/trip-state', () => ({
     attachmentVerbs: { attachDocument: vi.fn(), detachDocument: vi.fn() },
   }),
 }));
-vi.mock('../state/mode-state', () => ({ useMode: () => ({ mode: currentMode }) }));
+vi.mock('../state/mode-state', () => ({
+  useMode: () => ({ mode: currentMode, phase: currentPhase, isFinished: currentPhase === 'past' }),
+}));
 const addMaybe = vi.fn();
 // The Map hosts `EventForm` since ADR-0135 §3, so the stub covers the verbs that form calls.
 // `done`/`skip`/`restore` are the SHIPPED verbs the settle cluster calls (ADR-0139). This
@@ -181,7 +202,12 @@ const verbs = {
   removePlace: vi.fn(),
 };
 vi.mock('../state/verbs', () => ({ useVerbs: () => verbs }));
-vi.mock('../state/auth-state', () => ({ useAuth: () => ({ me: { user: { id: 'u1' } } }) }));
+vi.mock('../state/auth-state', () => {
+  // `/me` carries which live planet build the server is serving (ADR-0187 §1 amendment) —
+  // the Map screen reads it from here rather than from a build id pinned in the bundle.
+  const me = { user: { id: 'u1' }, map: { liveBuild: '20260821' } };
+  return { useAuth: () => ({ me }), useMaybeAuth: () => ({ me }) };
+});
 vi.mock('../lib/outbox', () => ({
   useIsOffline: () => isOffline,
   withChangeGroup: (run: () => Promise<unknown>) => run(),
@@ -288,6 +314,38 @@ vi.mock('../lib/useMapArchives', () => ({
     status: 'ready',
     download: vi.fn(),
     dismiss: vi.fn(),
+  }),
+}));
+
+/** **Which leg the amber line was asked for** (ADR-0206 §D8/§AB2). The shape itself is a fetch
+ *  and a decode, both of which are `lib/travel.ts`'s own spec; what belongs HERE is the rule
+ *  that picks the leg, which is the screen's. */
+const askedModes: { current: readonly unknown[] } = { current: [] };
+/** A leg's drawn path, keyed the way the real hook keys it — so a spec can hand the screen a
+ *  routed path for one leg and assert that the straight segment is what the others fall back to. */
+const stubShapes = new Map<string, { lat: number; lng: number }[]>();
+/** Keyed by MODE as well as by the pair, because that is the bug §AM8 fixed: the screen used to
+ *  read one mode's line for every leg, and a stub that ignored the mode could not tell. */
+const legId = (from: { lat: number }, to: { lat: number }, mode: unknown) =>
+  `${from.lat}>${to.lat}:${String(mode)}`;
+/** The walking seconds this screen's mode derivation reads (ADR-0206 §AV1), per test. `null` is
+ *  the ordinary case here — a day whose matrix has not answered — and the crow floor decides. */
+const stubWalkSeconds: { current: number | null } = { current: null };
+vi.mock('../lib/travel', () => ({
+  useDayShapes: ({ modes }: { modes: readonly unknown[] }) => {
+    askedModes.current = modes;
+    return {
+      pathFor: (from: { lat: number }, to: { lat: number }, mode: unknown) =>
+        stubShapes.get(legId(from, to, mode)) ?? null,
+    };
+  },
+  useDayTravel: () => ({
+    estimateFor: (_from: unknown, _to: unknown, mode: unknown) =>
+      mode === 'walking' && stubWalkSeconds.current !== null
+        ? { mode, durationSeconds: stubWalkSeconds.current, distanceMeters: 0 }
+        : null,
+    warmingFor: () => false,
+    settled: true,
   }),
 }));
 
@@ -580,6 +638,9 @@ describe('the embedded map’s shell (ADR-0121)', () => {
     // Most tests here are about the map, not about location: a standing refusal is
     // the branch that offers nothing, so the on-open offer stays out of their way.
     permissionState = 'denied';
+    // No walking estimate by default (ADR-0206 §AV1), so the crow floor decides and every spec
+    // written before durations reached this screen still reads the same.
+    stubWalkSeconds.current = null;
   });
   afterEach(() => {
     cleanup();
@@ -589,8 +650,11 @@ describe('the embedded map’s shell (ADR-0121)', () => {
     tripPlaces = [];
     tripNotes = [];
     tripBookings = [];
+    tripOverrides = [];
+    stubShapes.clear();
     tripEnrichments = {};
     currentMode = 'trip';
+    currentPhase = 'live';
     isOffline = false;
     paneProps.current = {};
     permissionState = 'prompt';
@@ -770,7 +834,7 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       render(wrap(<MapView />));
       fireEvent.click(row('lunch')!);
 
-      const section = row('lunch')!.querySelector('.note-sec') as HTMLElement;
+      const section = row('lunch')!.querySelector('.note-sec:not(.tsk-sec)') as HTMLElement;
       expect(section).toBeTruthy();
       // Selecting sends the camera a FRESH arrival object every time (a frame is spent once,
       // so the same row may be tapped twice) — which is exactly what a re-select triggered by
@@ -781,7 +845,7 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       expect(paneProps.current.arrival).toBe(before);
       // …and the tap still did its own job: the note opened where it is (ADR-0153 §4's
       // amendment, round two — no sheet, so nothing to look for over the map either).
-      expect(section.querySelector('.note-open-foot')).toBeTruthy();
+      expect(section.querySelector('.row-open-foot')).toBeTruthy();
     });
   });
 
@@ -798,7 +862,12 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       it(`selecting a row reveals the footer and opens the form over the map, in ${label} scope`, () => {
         seed();
         render(wrap(<MapView />));
-        if (allDays) fireEvent.click(listButton(t.map.allDays));
+        // **All-days for both variants now.** A place already slotted on the day in scope no
+        // longer offers `שיבוץ ליום` (ADR-0191 §7's amendment), and every place in this seed
+        // has an event on the active date — so day scope has no subject for a spec that is
+        // about the block HAVING the action. The hide itself is covered by its own spec below.
+        fireEvent.click(listButton(t.map.allDays));
+        if (allDays) void 0;
         expect(document.querySelector('.map-refs-foot')).toBeNull();
 
         fireEvent.click(row('lunch')!);
@@ -829,9 +898,27 @@ describe('the embedded map’s shell (ADR-0121)', () => {
 
     // §7 / ADR-0134 §3: under an errand the tab is answering ONE question, so the verb
     // CHANGES rather than accumulating — exactly as `נווט` gives its slot to `בחירה`.
+    // **ADR-0191 §7's amendment**, and the reason it is narrowed to day scope: unscoped, this
+    // would hide the verb almost always, because this list is BUILT from places that events
+    // and bookings already use.
+    it('is absent for a place already slotted on the day in scope, and stands in all-days', () => {
+      seed();
+      render(wrap(<MapView />));
+      // Day scope: `lunch` has an event on the active date, so it is already placed.
+      fireEvent.click(row('lunch')!);
+      expect(scheduleBtn()).toBeNull();
+
+      // All-days: "already scheduled" has no meaning without a day to be scheduled on, and a
+      // place visited today is a fine thing to schedule for another day.
+      fireEvent.click(listButton(t.map.allDays));
+      expect(scheduleBtn()).toBeTruthy();
+    });
+
     it('is ABSENT while a place errand is live, and returns when the errand ends', () => {
       seed();
       render(wrap(<MapView />));
+      // All-days, for the reason above: day-scoped, `lunch` is already slotted today.
+      fireEvent.click(listButton(t.map.allDays));
       fireEvent.click(row('lunch')!);
       expect(scheduleBtn()).toBeTruthy();
 
@@ -1265,16 +1352,21 @@ describe('the embedded map’s shell (ADR-0121)', () => {
     // Each end reads its own word, in the per-mode wording a flight earns.
     expect(pin('origin')!.getAttribute('data-transition')).toBe('המראה');
     expect(pin('dest')!.getAttribute('data-transition')).toBe('נחיתה');
-    expect(pin('origin')!.getAttribute('data-amber')).toBe('now');
+    // **`עכשיו` is where the journey is TAKING you** (owner report, 2026-09-12). This used
+    // to sit on `origin`, because the authority rule answers a booking's origin — which
+    // mid-flight is the airport you have already left, so after a layover the tab read as
+    // the layover. The board settled the same question in session 215 (`midSpanEventId`).
+    expect(pin('dest')!.getAttribute('data-amber')).toBe('now');
+    expect(pin('origin')!.getAttribute('data-amber')).toBe('');
 
     fireEvent.click(listButton(t.map.allDays));
     // The scope gate is on the NEUTRAL tag only — an amber pin is a claim about the clock,
     // not about which day you are looking at, so it survives all-days with its word.
-    expect(pin('origin')!.getAttribute('data-amber')).toBe('now');
-    expect(pin('origin')!.getAttribute('data-transition')).toBe('המראה');
+    expect(pin('dest')!.getAttribute('data-amber')).toBe('now');
+    expect(pin('dest')!.getAttribute('data-transition')).toBe('נחיתה');
     // …and the pin beside it, which carries no cue, loses its word with the scope.
-    expect(pin('dest')!.getAttribute('data-amber')).toBe('');
-    expect(pin('dest')!.getAttribute('data-transition')).toBe('');
+    expect(pin('origin')!.getAttribute('data-amber')).toBe('');
+    expect(pin('origin')!.getAttribute('data-transition')).toBe('');
   });
 
   // A mid-stay night is pinned at full strength now (ADR-0109's 2026-07-27
@@ -1573,6 +1665,73 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       expect(placeCard()).toBeNull();
       // Still at the map extreme: closing the card is not leaving the surface it sat on.
       expect(screenEl().dataset.view).toBe(MAP_SHEET_VIEW.map);
+    });
+
+    // **THE OTHER HALF OF THE SAME OWNER ASK** (_"a way to close the card and/or collapse
+    // it"_), reopened 2026-08-27: _"clicking on a stop highlights the route to it, but the place
+    // details pops up and hides most of the path … sometimes you only want to see the path"_.
+    // Folding is not hiding: the place stays selected, its pin stays ringed and its leg stays
+    // amber — what goes is the card's CONTENT, leaving the identity row every list already
+    // draws (ADR-0122 §7's 2026-08-27 amendment).
+    it('the card folds to its identity row, keeping the selection', () => {
+      seed();
+      render(wrap(<MapView />));
+      fireEvent.click(toggle(t.map.view.map));
+      fireEvent.click(pin('lunch')!);
+      expect(cardSlide()!.querySelector('.map-refs')).toBeTruthy();
+
+      fireEvent.click(placeCard()!.querySelector('.map-cardfold') as HTMLElement);
+      // The card is still there and still names the place: this is a fold, not a dismissal.
+      expect(cardName()).toBe('lunch');
+      expect(cardSlide()!.querySelector('.map-refs')).toBeNull();
+      expect(screenEl().dataset.view).toBe(MAP_SHEET_VIEW.map);
+
+      // And the same one control brings it back — the caret turns, it does not swap places.
+      fireEvent.click(placeCard()!.querySelector('.map-cardfold') as HTMLElement);
+      expect(cardSlide()!.querySelector('.map-refs')).toBeTruthy();
+    });
+
+    // **STICKY FOR THE SESSION** (owner, 2026-08-27). Folding is a state of the READER — "I am
+    // reading the map, not the cards" — where the research expansion right beside it is a state
+    // of a PLACE. So it deliberately survives selecting another stop, which is the whole of what
+    // makes it useful: you fold once and the tab stops covering the canvas.
+    it('stays folded when the selection moves to another stop', () => {
+      seed();
+      render(wrap(<MapView />));
+      fireEvent.click(toggle(t.map.view.map));
+      fireEvent.click(pin('lunch')!);
+      fireEvent.click(placeCard()!.querySelector('.map-cardfold') as HTMLElement);
+
+      fireEvent.click(pin('museum')!);
+      expect(cardName()).toBe('museum');
+      expect(cardSlide()!.querySelector('.map-refs')).toBeNull();
+    });
+
+    // The same reading of the same gesture the ring's own commit takes: the first tap already
+    // said "this one", so a second on the SAME pin cannot mean that again. A shortcut for a
+    // thumb already there — never the only way in, since nothing about it is discoverable.
+    it('a second tap on the same pin folds the card, and a third opens it', () => {
+      seed();
+      render(wrap(<MapView />));
+      fireEvent.click(toggle(t.map.view.map));
+      fireEvent.click(pin('lunch')!);
+      expect(cardSlide()!.querySelector('.map-refs')).toBeTruthy();
+
+      fireEvent.click(pin('lunch')!);
+      expect(cardName()).toBe('lunch');
+      expect(cardSlide()!.querySelector('.map-refs')).toBeNull();
+
+      fireEvent.click(pin('lunch')!);
+      expect(cardSlide()!.querySelector('.map-refs')).toBeTruthy();
+    });
+
+    // The LIST is not a card, so it has nothing to fold: at `half` and `full` the row is in the
+    // list and a repeat tap already means `onDeselect` there (ADR-0168 §4).
+    it('the list’s rows carry no fold', () => {
+      seed();
+      render(wrap(<MapView />));
+      fireEvent.click(row('lunch')!);
+      expect(document.querySelector('.map-cardfold')).toBeNull();
     });
 
     it('the LIST’s rows carry no close: a second tap is already their answer', () => {
@@ -2022,7 +2181,8 @@ describe('the embedded map’s shell (ADR-0121)', () => {
         currentMode = 'plan';
         seed();
         render(wrap(<MapView />));
-        expect(paneProps.current.connector).toHaveLength(2);
+        // Two STOPS is one leg (ADR-0206 §Z5 §M3: the prop is a leg per leg now).
+        expect(paneProps.current.connector).toHaveLength(1);
 
         // The connector follows the FILTERED set, exactly as it does for a category chip,
         // so a query that leaves one ghost leaves no route — and the point is that the
@@ -2715,6 +2875,9 @@ describe('the embedded map’s shell (ADR-0121)', () => {
         render(wrap(<MapView />));
         fireEvent.click(row('רמן נאגי')!);
         fireEvent.click(pencil());
+        // The place already exists, so its form carries the notes SECTION, whose `＋ פתק`
+        // reveals the box — the host forms' shape, not the add sources' always-open box.
+        fireEvent.click(within(draftForm()!).getByRole('button', { name: t.notes.section.add }));
         fireEvent.change(draftForm()!.querySelector('.note-compose-in')!, {
           target: { value: 'סוגרים ב-17:00' },
         });
@@ -2722,6 +2885,17 @@ describe('the embedded map’s shell (ADR-0121)', () => {
 
         await vi.waitFor(() => expect(createNote).toHaveBeenCalledTimes(1));
         expect(createNote).toHaveBeenCalledWith({ body: 'סוגרים ב-17:00', placeId: 'museum' });
+      });
+
+      // Owner's report: the rename form opened on an empty box, as if nothing had ever been
+      // written about the place.
+      it('shows the notes the place already carries in the rename form', () => {
+        seedNamed();
+        tripNotes = [note('n1', 'museum', 'כרטיסים רק באתר')];
+        render(wrap(<MapView />));
+        fireEvent.click(row('רמן נאגי')!);
+        fireEvent.click(pencil());
+        expect(within(draftForm()!).getByText('כרטיסים רק באתר')).toBeTruthy();
       });
 
       // ── ONE COMPOSITION, THREE DESTINATIONS (ADR-0131 §11) ──────────────────────
@@ -2753,7 +2927,41 @@ describe('the embedded map’s shell (ADR-0121)', () => {
         expect(addMaybe).not.toHaveBeenCalled();
       });
 
+      // ── REPLAY (ADR-0241 §2) ───────────────────────────────────────────────────
+      it('a finished trip hands the pane its days with a record, and none under reduced motion', () => {
+        currentPhase = 'past';
+        seed();
+        tripEvents = tripEvents.map((e) =>
+          e.id === 'e1' ? { ...e, status: EVENT_STATUS.DONE } : e,
+        );
+        const { unmount } = render(wrap(<MapView />));
+        const days = paneProps.current.replay as {
+          caption: string;
+          stops: { placeId: string }[];
+        }[];
+        expect(days).toHaveLength(1);
+        expect(days[0]!.stops.map((stop) => stop.placeId)).toContain('museum');
+        unmount();
+        vi.stubGlobal('matchMedia', (q: string) => ({
+          matches: q.includes('prefers-reduced-motion'),
+          media: q,
+          addEventListener: () => {},
+          removeEventListener: () => {},
+        }));
+        render(wrap(<MapView />));
+        expect(paneProps.current.replay).toBeUndefined();
+        vi.unstubAllGlobals();
+      });
+
       // ── 6b: THE FREE GESTURE ────────────────────────────────────────────────────
+      it('on a finished trip a long press on blank canvas makes nothing (ADR-0239 §4)', () => {
+        currentPhase = 'past';
+        seed();
+        render(wrap(<MapView />));
+        holdCanvas();
+        expect(draftForm()).toBeNull();
+      });
+
       it('a long press opens the form on an empty name and spends nothing', () => {
         seed();
         render(wrap(<MapView />));
@@ -3931,10 +4139,13 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       ];
     };
 
-    it('Trip mode draws no connector: you are living the day, not auditing its shape', () => {
+    it('Trip mode draws no dashed order: you are living the day, not auditing its shape', () => {
       seedDay();
       render(wrap(<MapView />));
-      expect(paneProps.current.connector).toBeUndefined();
+      // Trip mode is handed the AMBER leg only — the day's shape is a planning question, so the
+      // dashed order stays out of it (ADR-0121 §10 / ADR-0206 §AB1).
+      const drawn = (paneProps.current.connector ?? []) as { emphasis?: string }[];
+      expect(drawn.every((leg) => leg.emphasis === 'route')).toBe(true);
       expect(screen.queryByRole('link', { name: new RegExp(t.map.dayRoute) })).toBeNull();
     });
 
@@ -3944,17 +4155,348 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       render(wrap(<MapView />));
       // Plan now OPENS day-scoped (ADR-0109's 2026-07-27 amendment), so the day's
       // shape is on screen without a chip tap.
-      expect(paneProps.current.connector).toEqual([
-        { lat: 35.6, lng: 139.6 },
-        { lat: 35.7, lng: 139.7 },
+      expect((paneProps.current.connector as { path: unknown }[]).map((leg) => leg.path)).toEqual([
+        [
+          { lat: 35.6, lng: 139.6 },
+          { lat: 35.7, lng: 139.7 },
+        ],
       ]);
       const link = screen.getByRole('link', { name: new RegExp(t.map.dayRoute) });
       expect(link.getAttribute('href')).toContain('/maps/dir/?api=1&origin=35.6%2C139.6');
 
       // Widening to all days drops it: connecting every day would be spaghetti.
       fireEvent.click(listButton(t.map.allDays));
-      expect(paneProps.current.connector).toBeUndefined();
+      expect(paneProps.current.connector).toEqual([]);
       expect(screen.queryByRole('link', { name: new RegExp(t.map.dayRoute) })).toBeNull();
+    });
+  });
+
+  // ADR-0206 §D8 rations the solid amber to ONE leg and §AB2 says which: the journey INTO the
+  // stop you asked about. What picks that stop is `selected → next → the day's first leg`, and
+  // the last of the three is what makes Plan mode draw at all.
+  describe('which leg the route line is spent on (§D8/§AB2)', () => {
+    // **Walkable spacing, and since ADR-0206 §AU2 that is load-bearing rather than incidental.**
+    // These were ⁦0.1°⁩ apart — ⁦14 km⁩ a leg — which the distance-aware default correctly calls a
+    // DRIVE, and then ⁦0.01°⁩ (~⁦1.4 km⁩), which §AV1's tighter crow floor also calls a drive. Every
+    // assertion in this block is about which leg takes the line and which mode is asked for, never
+    // about how far apart the stops are, so the spacing is ~⁦570 m⁩ — inside `WALK_DEFAULT_MAX_M`,
+    // so the day stays the walking day these specs were written around. The rule's own cases are
+    // below, and the shared unit specs own its arithmetic.
+    const A = { lat: 35.6, lng: 139.6 };
+    const B = { lat: 35.604, lng: 139.604 };
+    const C = { lat: 35.608, lng: 139.608 };
+    const seedThreeStopDay = () => {
+      tripPlaces = [place('a', true, A), place('b', true, B), place('c', true, C)];
+      tripEvents = [
+        event({ id: 'e1', placeId: 'a', startsAt: `${ACTIVE_DATE}T09:00:00Z` }),
+        event({ id: 'e2', placeId: 'b', startsAt: `${ACTIVE_DATE}T13:00:00Z` }),
+        event({ id: 'e3', placeId: 'c', startsAt: `${ACTIVE_DATE}T17:00:00Z` }),
+      ];
+    };
+    type Leg = { path: unknown[]; emphasis?: string; unrouted?: boolean };
+    const legs = () => (paneProps.current.connector ?? []) as Leg[];
+    /** The one leg §D8 rations the amber to, or `undefined` when none is marked. */
+    const amber = () => legs().find((leg) => leg.emphasis === 'route')?.path;
+
+    // **The owner's report, and the spec that used to assert the bug.** `nextStopId` is
+    // Trip-mode only — a live "next" says nothing while you are planning — so a Plan day with
+    // nothing tapped has no stop to pick. It used to fall back to the day's FIRST leg, which
+    // painted amber nobody asked for: "in plan mode it still shows an amber poly line for the
+    // first leg of the day which is not needed". §AC1 deletes that arm, and §AB5 is why it can
+    // go — every leg draws its real path now, so the day is not empty without it.
+    it('Plan mode with nothing selected spends NO amber, and still draws every leg', () => {
+      seedThreeStopDay();
+      currentMode = 'plan';
+      render(wrap(<MapView />));
+
+      expect(amber()).toBeUndefined();
+      expect(legs()).toHaveLength(2);
+      // And nothing is dimmed either: with no leg to recede FROM, the day reads as one even set.
+      expect(legs().every((leg) => leg.emphasis === undefined)).toBe(true);
+    });
+
+    // Trip mode has no dashed ORDER (ADR-0121 §10 — the day's shape is a planning question), but
+    // it DOES get the one amber leg, because that answers "where is next" (§AB1). So the pane is
+    // handed exactly one leg, and it is the marked one.
+    it('Trip mode is handed the amber leg alone, never the dashed order', () => {
+      seedThreeStopDay();
+      currentMode = 'trip';
+      render(wrap(<MapView />));
+
+      expect(legs()).toHaveLength(1);
+      expect(legs()[0]!.emphasis).toBe('route');
+    });
+
+    // ── THE LEG YOU ARE FLYING (owner report, 2026-09-12) ────────────────────────────────
+    //
+    // _"After a layover, i.e. on the second flight, the map doesn't show the route and it
+    // looks like we're still on the layover."_ Trip mode is handed the amber leg alone, and
+    // the stop that picks it was `next` — which mid-flight is whatever waits PAST the
+    // landing, so on a day of two legs there was nothing upcoming at all and the canvas drew
+    // nothing. `currentDestination`'s `inTransit` names where the journey is taking you, and
+    // the leg arriving there is the one you are on.
+    it('draws the leg you are in the air on, after a layover', () => {
+      const TLV = { lat: 32.0, lng: 34.88 };
+      const VIE = { lat: 48.11, lng: 16.57 };
+      const KEF = { lat: 63.98, lng: -22.6 };
+      const flight = (id: string, fromPlaceId: string, toPlaceId: string): Booking =>
+        ({
+          id,
+          tripId: 't1',
+          type: 'flight',
+          title: id,
+          source: 'manual',
+          fromPlaceId,
+          toPlaceId,
+          createdAt: '',
+          updatedAt: '',
+          updatedBy: 'u1',
+        }) as Booking;
+      tripPlaces = [place('tlv', true, TLV), place('vie', true, VIE), place('kef', true, KEF)];
+      tripBookings = [flight('bk1', 'tlv', 'vie'), flight('bk2', 'vie', 'kef')];
+      tripEvents = [
+        event({
+          id: 'f1',
+          bookingId: 'bk1',
+          icon: '✈️',
+          category: 'transport',
+          startsAt: `${ACTIVE_DATE}T06:00:00Z`,
+          endsAt: `${ACTIVE_DATE}T09:00:00Z`,
+        }),
+        event({
+          id: 'f2',
+          bookingId: 'bk2',
+          icon: '✈️',
+          category: 'transport',
+          startsAt: `${ACTIVE_DATE}T12:00:00Z`,
+          endsAt: `${ACTIVE_DATE}T15:00:00Z`,
+        }),
+      ];
+      currentMode = 'trip';
+      setSimulatedNow(Date.parse(`${ACTIVE_DATE}T13:00:00Z`));
+      render(wrap(<MapView />));
+
+      // The second leg, not the first and not nothing. Straight and disclaiming, because no
+      // road crosses the Atlantic and §AM10 refuses to draw one (`unrouted`).
+      expect(amber()).toEqual([VIE, KEF]);
+      expect(legs()[0]!.unrouted).toBe(true);
+    });
+
+    it('a tapped stop takes the line, and it is the leg ARRIVING there', () => {
+      seedThreeStopDay();
+      currentMode = 'plan';
+      render(wrap(<MapView />));
+
+      fireEvent.click(pin('c')!);
+
+      expect(amber()).toEqual([B, C]);
+    });
+
+    // The one stop with no leg arriving at it takes the one departing it instead (§AB2).
+    it('the day’s first stop, tapped, takes the leg departing it', () => {
+      seedThreeStopDay();
+      currentMode = 'plan';
+      render(wrap(<MapView />));
+
+      fireEvent.click(pin('a')!);
+
+      expect(amber()).toEqual([A, B]);
+    });
+
+    // **The mode is derived, never assumed** (ADR-0206 §Z2). It was a hardcoded `walking`, so the
+    // canvas drew a `pedestrian` route — through alleys and parks — over legs the trip drives.
+    //
+    // **And since §AU2 the DISTANCE is what derives it**, which is what these two cases now assert:
+    // a ⁦1.2 km⁩ hop is a walk on a trip that hired a car (you park, then you walk), and a ⁦127 km⁩
+    // one is a drive on a trip that booked nothing but flights. The canvas has to make both reads
+    // exactly as the day list does — the same defect §AM8 reported from the other side, where one
+    // leg was a drive in the list and a walk on this canvas.
+    const carHire = () => [
+      {
+        id: 'bk-car',
+        tripId: 't1',
+        type: 'car',
+        title: 'hire',
+        source: 'manual',
+        createdAt: '',
+        updatedAt: '',
+        updatedBy: 'u1',
+      },
+    ];
+
+    it('walks a short hop even where the trip hired a car (§AU2)', () => {
+      seedThreeStopDay();
+      currentMode = 'plan';
+      const { unmount } = render(wrap(<MapView />));
+      expect(askedModes.current).toEqual(['walking']);
+      unmount();
+
+      seedThreeStopDay();
+      tripBookings = carHire() as typeof tripBookings;
+      render(wrap(<MapView />));
+      expect(askedModes.current).toEqual(['walking']);
+    });
+
+    /** **§AV1's own case, on the canvas.** Bjólfur is crow-close to Seyðisfjörður and a ⁦4:18⁩ walk;
+     *  the crow floor alone would have this screen asking for PEDESTRIAN geometry while the day
+     *  list, holding the estimate, correctly draws a drive. That is §AM8's divergence with a new
+     *  cause, and it is why this screen reads the durations at all. */
+    it('drives a mountain the crow calls a stroll, exactly as the day list does (§AV1)', () => {
+      seedThreeStopDay();
+      stubWalkSeconds.current = 4 * 3600 + 18 * 60;
+      currentMode = 'plan';
+      render(wrap(<MapView />));
+
+      expect(askedModes.current).toEqual(['driving']);
+    });
+
+    /** …and the same stops with a short walk stay a walk, so the assertion above is about the
+     *  duration rather than about the fixture. */
+    it('keeps a ten-minute walk a walk (§AV1)', () => {
+      seedThreeStopDay();
+      stubWalkSeconds.current = 9 * 60;
+      currentMode = 'plan';
+      render(wrap(<MapView />));
+
+      expect(askedModes.current).toEqual(['walking']);
+    });
+
+    it('drives a leg no one would walk even where the trip hired nothing (§AU2)', () => {
+      // ⁦127 km⁩ north — the field report's own leg, Tel Aviv to the Galilee.
+      const FAR = { lat: 32.8, lng: 35.5 };
+      tripPlaces = [place('a', true, { lat: 32.0853, lng: 34.7818 }), place('b', true, FAR)];
+      tripEvents = [
+        event({ id: 'e1', placeId: 'a', startsAt: `${ACTIVE_DATE}T09:00:00Z` }),
+        event({ id: 'e2', placeId: 'b', startsAt: `${ACTIVE_DATE}T17:00:00Z` }),
+      ];
+      currentMode = 'plan';
+      render(wrap(<MapView />));
+
+      expect(askedModes.current).toEqual(['driving']);
+    });
+
+    // All-days has no "the day's legs" to ration one from, so there is nothing to draw.
+    it('draws no route line at all-days scope', () => {
+      seedThreeStopDay();
+      currentMode = 'plan';
+      render(wrap(<MapView />));
+
+      fireEvent.click(listButton(t.map.allDays));
+
+      expect(amber()).toBeUndefined();
+    });
+  });
+
+  // **Every leg draws its REAL path** (ADR-0206 §Z5 §M3, the owner's review): the routed lines
+  // REPLACE the straight dashed segments rather than sitting beside them. §D8 rations the solid
+  // amber, not the truth of the line.
+  describe('the day’s legs are drawn along their routes (§Z5 §M3)', () => {
+    // **Walkable spacing, and since ADR-0206 §AU2 that is load-bearing rather than incidental.**
+    // These were ⁦0.1°⁩ apart — ⁦14 km⁩ a leg — which the distance-aware default correctly calls a
+    // DRIVE, and then ⁦0.01°⁩ (~⁦1.4 km⁩), which §AV1's tighter crow floor also calls a drive. Every
+    // assertion in this block is about which leg takes the line and which mode is asked for, never
+    // about how far apart the stops are, so the spacing is ~⁦570 m⁩ — inside `WALK_DEFAULT_MAX_M`,
+    // so the day stays the walking day these specs were written around. The rule's own cases are
+    // below, and the shared unit specs own its arithmetic.
+    const A = { lat: 35.6, lng: 139.6 };
+    const B = { lat: 35.604, lng: 139.604 };
+    const C = { lat: 35.608, lng: 139.608 };
+    const BEND = { lat: 35.602, lng: 139.6032 };
+
+    const legPaths = () =>
+      ((paneProps.current.connector ?? []) as { path: unknown }[]).map((leg) => leg.path);
+
+    beforeEach(() => {
+      stubShapes.clear();
+      tripPlaces = [place('a', true, A), place('b', true, B), place('c', true, C)];
+      tripEvents = [
+        event({ id: 'e1', placeId: 'a', startsAt: `${ACTIVE_DATE}T09:00:00Z` }),
+        event({ id: 'e2', placeId: 'b', startsAt: `${ACTIVE_DATE}T13:00:00Z` }),
+        event({ id: 'e3', placeId: 'c', startsAt: `${ACTIVE_DATE}T17:00:00Z` }),
+      ];
+      currentMode = 'plan';
+    });
+
+    // One entry per leg, not one polyline through every stop — that is what lets each leg carry
+    // its own geometry.
+    it('hands the pane one line per leg, in day order', () => {
+      render(wrap(<MapView />));
+
+      expect(legPaths()).toEqual([
+        [A, B],
+        [B, C],
+      ]);
+    });
+
+    it('draws a leg along its routed path once one has arrived', () => {
+      stubShapes.set(legId(A, B, 'walking'), [A, BEND, B]);
+      render(wrap(<MapView />));
+
+      // The routed leg keeps its bend; the one with no shape yet keeps its straight segment,
+      // which is §D4's floor rather than an error.
+      expect(legPaths()).toEqual([
+        [A, BEND, B],
+        [B, C],
+      ]);
+    });
+
+    /**
+     * **THE REPORTED DEFECT** (ADR-0206 §AM8, off the M8b deploy): _"I changed a walk to a drive to
+     * my home and I know for certain that the drive route is wrong because it enters my street
+     * (which is one way only) from the wrong direction."_
+     *
+     * M8b made the mode per LEG and left the geometry asking in ONE — the trip's derived mode — so
+     * an overridden leg was drawn with the WALK's shape. A footpath route legitimately goes the
+     * wrong way up a one-way street; a car following it does not. Neither the duration nor the
+     * distance was wrong, which is why only the canvas showed it.
+     */
+    it('asks for the OVERRIDDEN leg’s mode too, and draws that mode’s road', () => {
+      tripOverrides = [{ fromPlaceId: 'a', toPlaceId: 'b', mode: 'driving' }];
+      // Two different roads between the same two stops. The walk is the one the bug drew.
+      stubShapes.set(legId(A, B, 'driving'), [A, BEND, B]);
+      stubShapes.set(legId(A, B, 'walking'), [A, C, B]);
+      render(wrap(<MapView />));
+
+      // Both modes are asked for in one request: the overridden leg's and the rest of the day's.
+      expect([...askedModes.current].sort()).toEqual(['driving', 'walking']);
+      // …and the leg is drawn along the DRIVE, not the walk it used to borrow.
+      expect(legPaths()[0]).toEqual([A, BEND, B]);
+    });
+
+    // The other half of the same rule: a leg nobody overrode is untouched by the one that was.
+    it('leaves the day’s other legs on the derived mode', () => {
+      tripOverrides = [{ fromPlaceId: 'a', toPlaceId: 'b', mode: 'driving' }];
+      stubShapes.set(legId(B, C, 'walking'), [B, BEND, C]);
+      stubShapes.set(legId(B, C, 'driving'), [B, A, C]);
+      render(wrap(<MapView />));
+
+      expect(legPaths()[1]).toEqual([B, BEND, C]);
+    });
+
+    // A declared תחב״צ leg is not asked about at all (§AA4), so its mode must not reach the request
+    // — `TRAVEL_GATE` has no rule for it and a provider has no costing.
+    it('never asks for a declared leg’s mode, and draws it straight', () => {
+      tripOverrides = [{ fromPlaceId: 'a', toPlaceId: 'b', mode: 'transit' }];
+      stubShapes.set(legId(A, B, 'walking'), [A, C, B]);
+      render(wrap(<MapView />));
+
+      expect(askedModes.current).not.toContain('transit');
+      expect(legPaths()[0]).toEqual([A, B]);
+    });
+
+    // The solid line and the dash beneath it must come from the SAME geometry, or the map would
+    // state two different paths for one leg.
+    it('spends the amber on the same geometry the dash under it uses', () => {
+      stubShapes.set(legId(A, B, 'walking'), [A, BEND, B]);
+      render(wrap(<MapView />));
+      // A selection is what marks a leg now (§AC1) — tapping stop 2 makes the leg arriving at it
+      // the amber one, and it must be the SAME geometry, or the map would state two paths for
+      // one leg.
+      fireEvent.click(pin('b')!);
+
+      const drawn = (paneProps.current.connector ?? []) as { path: unknown; emphasis?: string }[];
+      expect(drawn.find((leg) => leg.emphasis === 'route')?.path).toEqual([A, BEND, B]);
+      expect(drawn[0]!.path).toEqual([A, BEND, B]);
     });
   });
 
@@ -4316,8 +4858,12 @@ describe('the embedded map’s shell (ADR-0121)', () => {
 
     it('swaps the card into the research card, and takes the itinerary blocks off', () => {
       seedKnown();
+      // All-days, so the schedule verb is on screen to be taken OFF: day-scoped it is already
+      // absent for a place slotted on that day (ADR-0191 §7's amendment), which would make
+      // the assertion below pass for the wrong reason.
+      fireEvent.click(listButton(t.map.allDays));
       // Collapsed: the group's own material is what is on screen.
-      expect(knowRow().querySelector('.note-sec')).toBeTruthy();
+      expect(knowRow().querySelector('.note-sec:not(.tsk-sec)')).toBeTruthy();
       expect(screen.queryByRole('button', { name: t.map.scheduleToDay })).toBeTruthy();
       expect(knowRow().querySelector('.map-hero')).toBeNull();
 
@@ -4329,7 +4875,7 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       expect(knowRow().querySelector('.map-sum')?.className).toContain('is-open');
       expect(screen.getByRole('button', { name: t.map.know.back })).toBeTruthy();
       // **Not on screen at the same time** — that is the whole difference from growth.
-      expect(knowRow().querySelector('.note-sec')).toBeNull();
+      expect(knowRow().querySelector('.note-sec:not(.tsk-sec)')).toBeNull();
       expect(knowRow().querySelector('.map-refs')).toBeNull();
       expect(screen.queryByRole('button', { name: t.map.scheduleToDay })).toBeNull();
       // The one Google exit stays, beside the way back (§11.1's `.backrow`).
@@ -4342,7 +4888,7 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       fireEvent.click(screen.getByRole('button', { name: t.map.know.back }));
 
       expect(knowRow().querySelector('.map-hero')).toBeNull();
-      expect(knowRow().querySelector('.note-sec')).toBeTruthy();
+      expect(knowRow().querySelector('.note-sec:not(.tsk-sec)')).toBeTruthy();
       expect(knowRow().className).toContain('selected');
     });
 

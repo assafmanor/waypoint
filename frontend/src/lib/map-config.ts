@@ -1,5 +1,5 @@
 // The rendered map's configuration: which ground to read, and which face of it to paint.
-import { MAP_PLANET_BUILD } from '@waypoint/shared';
+import { mapPlanetArchivePath } from '@waypoint/shared';
 import { apiAssetUrl } from './api-asset';
 import { documentTheme, THEME, type Theme } from './theme';
 
@@ -17,15 +17,37 @@ export interface MapTileUrls {
  * the live URL so a new planet archive cannot reuse cached directory offsets from an old one. */
 const MAP_ARCHIVE_PATH = {
   world: '/map/world.pmtiles',
-  live: `/map/planet-${MAP_PLANET_BUILD}.pmtiles`,
+  live: mapPlanetArchivePath,
   extract: (tripId: string) => `/trips/${tripId}/map/extract.pmtiles`,
+  /** **The offline route pack** (ADR-0206 §V1.8) — the trip's travel times, downloaded beside the
+   *  archive and stored in the same byte cache, so one size readout counts them and one delete
+   *  removes them. Named here with the other archive routes for ADR-0095's reason. */
+  routes: (tripId: string) => `/trips/${tripId}/routes/pack`,
 } as const;
 
-/** The archives this build reads, always through our backend rather than a vendor URL. */
-export function mapTileUrls(tripId?: string | null): MapTileUrls {
+/** Where this trip's route pack is fetched from. Separate from `mapTileUrls` because it is not a
+ *  tile source: nothing renders it, `useMapArchives` downloads it and `route-pack.ts` reads it. */
+export function routePackUrl(tripId: string): string {
+  return apiAssetUrl(MAP_ARCHIVE_PATH.routes(tripId));
+}
+
+/**
+ * The archives this build reads, always through our backend rather than a vendor URL.
+ *
+ * **`liveBuild` comes from the server** (`Me['map'].liveBuild`) and is not a constant, which is
+ * the 2026-08-21 fix: upstream keeps roughly a week of daily builds, so a build id compiled into
+ * the bundle stops existing — every live range read 404s, the detail source draws nothing, and
+ * what is left on screen is the world layer's fills. A map of coastlines with no city on it.
+ *
+ * **No live build is a real state, and its answer is the world layer.** The coarse archive as the
+ * detail source is exactly what a plane with no extract already falls back to: labels and borders
+ * to z6 rather than none at all, and never blank (ADR-0186 §4).
+ */
+export function mapTileUrls(tripId?: string | null, liveBuild?: string | null): MapTileUrls {
+  const world = apiAssetUrl(MAP_ARCHIVE_PATH.world);
   return {
-    world: apiAssetUrl(MAP_ARCHIVE_PATH.world),
-    detail: apiAssetUrl(MAP_ARCHIVE_PATH.live),
+    world,
+    detail: liveBuild ? apiAssetUrl(MAP_ARCHIVE_PATH.live(liveBuild)) : world,
     ...(tripId ? { extract: apiAssetUrl(MAP_ARCHIVE_PATH.extract(tripId)) } : {}),
   };
 }

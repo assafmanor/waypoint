@@ -8,6 +8,9 @@ import {
   invitePreviewSchema,
   destinationResultSchema,
   documentAttachmentSchema,
+  travelModeOverrideSchema,
+  type SetTravelModeOverride,
+  type TravelModeOverride,
   fxRefreshResultSchema,
   type FxRates,
   maybeItemSchema,
@@ -18,6 +21,8 @@ import {
   placeResultSchema,
   placeSchema,
   removedMemberSchema,
+  routeBatchSchema,
+  taskSchema,
   tripDocumentSchema,
   tripEventSchema,
   tripSchema,
@@ -31,8 +36,13 @@ import {
   type CreateEventInput,
   type CreateMaybeItemInput,
   type CreateNoteInput,
+  pushDeviceSchema,
+  type CreatePushSubscriptionInput,
+  type PushDevice,
+  type CreateTaskInput,
   type UpdateMaybeItemInput,
   type UpdateNoteInput,
+  type UpdateTaskInput,
   type CreatePlaceInput,
   type CreateTripInput,
   type DeliveredEnrichmentFields,
@@ -40,6 +50,7 @@ import {
   type DocumentAttachment,
   type DocumentType,
   type EnrichmentLookupInput,
+  type EventEdge,
   type EventStatus,
   type MaybeItem,
   type Note,
@@ -57,6 +68,9 @@ import {
   type PlacePrediction,
   type ResolvePlaceInput,
   type RemovedMember,
+  type RouteBatch,
+  type RouteBatchRequest,
+  type Task,
   type Trip,
   type TripEvent,
   type TripSnapshot,
@@ -65,10 +79,16 @@ import {
   type UpdatePlaceInput,
   type UpdateMeInput,
   type UpdateTripInput,
+  tripShareConfigSchema,
+  tripWithMembersSchema,
+  type TripWithMembers,
+  type TripShareConfig,
+  type UpsertTripShareInput,
 } from '@waypoint/shared';
 import { API_BASE_URL, API_PHASE, API_TIMEOUT_MS, AVATAR_UPLOAD_FILENAME } from '../constants';
 import type { MapBounds } from './map-camera';
 import { withDeadline } from './deadline';
+import { sharedItineraryPdfUrl, sharedTripBookUrl } from './share-itinerary';
 import { evictCachedDocument, readCachedBlob, writeCachedBlob } from './doc-cache';
 
 // Defined in `constants.ts` (a primitive needs it without importing this module) and
@@ -80,6 +100,7 @@ export { API_BASE_URL };
  *  rather than at compile time. GET is the fetch default and left implicit. */
 export const HTTP_METHOD = {
   POST: 'POST',
+  PUT: 'PUT',
   PATCH: 'PATCH',
   DELETE: 'DELETE',
 } as const;
@@ -240,6 +261,55 @@ export async function deleteAvatar(): Promise<Me> {
   return meSchema.parse(await readJson(res));
 }
 
+// ── PUSH SUBSCRIPTIONS (ADR-0197 §2) ───────────────────────────────────────────────────
+// Control plane, beside `/me` rather than under a trip: a subscription belongs to a person
+// and a device, and one device is reached about every trip that person is in.
+
+/** Register (or refresh) this device. Idempotent server-side — the row is upserted on the
+ *  endpoint — so a caller that is unsure whether it already registered may just call it. */
+export async function registerPushSubscription(
+  input: CreatePushSubscriptionInput,
+): Promise<{ id: string }> {
+  const res = await apiFetch(`${API_BASE_URL}/notifications/subscription`, {
+    method: HTTP_METHOD.POST,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) return throwApiError(res);
+  // The row's id, which the caller stores so the device list can mark "this device" without
+  // an endpoint ever appearing in a list response (ADR-0197 §2).
+  return (await readJson(res)) as { id: string };
+}
+
+/** This person's registered devices, for the notifications settings surface. Carries neither
+ *  the endpoint nor the raw user-agent — the server derives a label and keeps the rest. */
+export async function fetchPushDevices(): Promise<PushDevice[]> {
+  const res = await apiFetch(`${API_BASE_URL}/notifications/subscriptions`);
+  if (!res.ok) return throwApiError(res);
+  return pushDeviceSchema.array().parse(await readJson(res));
+}
+
+/** Revoke a device by id — "I lost that phone". A 404 is tolerated for the same reason
+ *  `deletePushSubscription`'s is: a missing row already means the desired state. */
+export async function deletePushDevice(id: string): Promise<void> {
+  const res = await apiFetch(
+    `${API_BASE_URL}/notifications/subscriptions/${encodeURIComponent(id)}`,
+    { method: HTTP_METHOD.DELETE },
+  );
+  if (!res.ok && res.status !== 404) return throwApiError(res);
+}
+
+/** Drop this device. A 404 is tolerated for the same reason `removeMember`'s is: the
+ *  desired state is "this endpoint is not registered", and a missing row already means it. */
+export async function deletePushSubscription(endpoint: string): Promise<void> {
+  const res = await apiFetch(`${API_BASE_URL}/notifications/subscription`, {
+    method: HTTP_METHOD.DELETE,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ endpoint }),
+  });
+  if (!res.ok && res.status !== 404) return throwApiError(res);
+}
+
 export async function fetchTrips(): Promise<Trip[]> {
   const res = await apiFetch(`${API_BASE_URL}/trips`);
   if (!res.ok) return throwApiError(res);
@@ -371,9 +441,14 @@ const restoreMaybeItemUrl = (tripId: string, maybeItemId: string) =>
   `${maybeItemUrl(tripId, maybeItemId)}/restore`;
 const notesUrl = (tripId: string) => `${API_BASE_URL}/trips/${tripId}/notes`;
 const noteUrl = (tripId: string, noteId: string) => `${notesUrl(tripId)}/${noteId}`;
+const tasksUrl = (tripId: string) => `${API_BASE_URL}/trips/${tripId}/tasks`;
+const taskUrl = (tripId: string, taskId: string) => `${tasksUrl(tripId)}/${taskId}`;
 const attachmentsUrl = (tripId: string) => `${API_BASE_URL}/trips/${tripId}/document-attachments`;
 const attachmentUrl = (tripId: string, attachmentId: string) =>
   `${attachmentsUrl(tripId)}/${attachmentId}`;
+const travelModesUrl = (tripId: string) => `${API_BASE_URL}/trips/${tripId}/travel-modes`;
+const travelModeUrl = (tripId: string, overrideId: string) =>
+  `${travelModesUrl(tripId)}/${overrideId}`;
 const bookingsUrl = (tripId: string) => `${API_BASE_URL}/trips/${tripId}/bookings`;
 const bookingUrl = (tripId: string, bookingId: string) => `${bookingsUrl(tripId)}/${bookingId}`;
 const placesUrl = (tripId: string) => `${API_BASE_URL}/trips/${tripId}/places`;
@@ -422,8 +497,11 @@ async function throwApiError(res: Response): Promise<never> {
   throw new ApiError(res.status, body?.error?.code, body?.error?.details);
 }
 
-export async function fetchSnapshot(tripId: string): Promise<TripSnapshot> {
-  const res = await apiFetch(snapshotUrl(tripId));
+/** The caller's signal is how the boot drops this read once the cache has stood in for it
+ *  (`state/trip-state.tsx`): a snapshot nobody can use any more is just bytes competing with
+ *  the catch-up on a link that has none to spare. */
+export async function fetchSnapshot(tripId: string, signal?: AbortSignal): Promise<TripSnapshot> {
+  const res = await apiFetch(snapshotUrl(tripId), { signal });
   if (!res.ok) throw new Error(`snapshot fetch failed: ${res.status}`);
   return tripSnapshotSchema.parse(await readJson(res));
 }
@@ -454,15 +532,18 @@ export async function updateEvent(
   return tripEventSchema.parse(await readJson(res));
 }
 
+/** `edge` is omitted for a stop and for a span's opening edge — which is what every caller
+ *  meant before ADR-0224 — and `'end'` writes `endStatus` instead (§1). One route either way. */
 export async function setEventStatus(
   tripId: string,
   eventId: string,
   status: EventStatus,
+  edge?: EventEdge,
 ): Promise<TripEvent> {
   const res = await apiFetch(`${eventUrl(tripId, eventId)}/status`, {
     method: HTTP_METHOD.POST,
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ status }),
+    body: JSON.stringify({ status, ...(edge ? { edge } : {}) }),
   });
   if (!res.ok) return throwApiError(res);
   return tripEventSchema.parse(await readJson(res));
@@ -578,6 +659,37 @@ export async function deleteNote(tripId: string, noteId: string): Promise<void> 
   if (!res.ok) return throwApiError(res);
 }
 
+export async function createTask(tripId: string, input: CreateTaskInput): Promise<Task> {
+  const res = await apiFetch(tasksUrl(tripId), {
+    method: HTTP_METHOD.POST,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) return throwApiError(res);
+  return taskSchema.parse(await readJson(res));
+}
+
+/** Edit a task or settle it. **Sparse** — the tick sends `{ status }` alone and everything
+ *  it did not send survives (`updateTaskSchema`). */
+export async function updateTask(
+  tripId: string,
+  taskId: string,
+  input: UpdateTaskInput,
+): Promise<Task> {
+  const res = await apiFetch(taskUrl(tripId, taskId), {
+    method: HTTP_METHOD.PATCH,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) return throwApiError(res);
+  return taskSchema.parse(await readJson(res));
+}
+
+export async function deleteTask(tripId: string, taskId: string): Promise<void> {
+  const res = await apiFetch(taskUrl(tripId, taskId), { method: HTTP_METHOD.DELETE });
+  if (!res.ok) return throwApiError(res);
+}
+
 /** Attach a document the trip already holds to a booking or an event (ADR-0173 §1). */
 export async function createDocumentAttachment(
   tripId: string,
@@ -600,6 +712,29 @@ export async function deleteDocumentAttachment(
   const res = await apiFetch(attachmentUrl(tripId, attachmentId), {
     method: HTTP_METHOD.DELETE,
   });
+  if (!res.ok) return throwApiError(res);
+}
+
+/** **Declare how a pair of places is travelled** (ADR-0206 §V1.6/§Z2, keyed per §AM). `PUT`,
+ *  because the row is identified by the pair in the body and the write is idempotent — stating the
+ *  same thing twice is stating it once. */
+export async function setTravelMode(
+  tripId: string,
+  input: SetTravelModeOverride,
+): Promise<TravelModeOverride> {
+  const res = await apiFetch(travelModesUrl(tripId), {
+    method: HTTP_METHOD.PUT,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) return throwApiError(res);
+  return travelModeOverrideSchema.parse(await readJson(res));
+}
+
+/** Take the declaration back, which returns the leg to the DERIVED mode — there is no "no mode"
+ *  state, only "nobody said otherwise" (§Z2). */
+export async function clearTravelMode(tripId: string, overrideId: string): Promise<void> {
+  const res = await apiFetch(travelModeUrl(tripId, overrideId), { method: HTTP_METHOD.DELETE });
   if (!res.ok) return throwApiError(res);
 }
 
@@ -789,6 +924,37 @@ export async function resolvePlace(tripId: string, input: ResolvePlaceInput): Pr
   return placeSchema.parse(await readJson(res));
 }
 
+// ── ROUTES & TRAVEL TIME (ADR-0205 §6, amended by §Y2) ─────────────────────────────────
+
+/**
+ * **A day's travel times, one request** — its ordered stops × every mode wanted for them.
+ *
+ * One request per day, never one per leg and never one per mode: a per-mode endpoint would put
+ * a round-trip behind every press of the mode control, which ADR-0206 §Z2 forbids by name.
+ *
+ * **`202` is a success here, and the body says so.** The server answers `202` + `Retry-After`
+ * while anything is still warming (ADR-0187's flow) with the same body shape either way, so
+ * `res.ok` already covers it — and the wait is read from the body's own `retryAfterSeconds`,
+ * which zod has validated, rather than from a second parse of the header that duplicates it.
+ * A caller that ignores the field renders a correct day with fewer numbers in it.
+ *
+ * The gate runs server-side (§3), so an out-of-range pair costs a refusal and never a `400`.
+ */
+export async function fetchRoutes(
+  tripId: string,
+  input: RouteBatchRequest,
+  signal?: AbortSignal,
+): Promise<RouteBatch> {
+  const res = await apiFetch(`${API_BASE_URL}/trips/${tripId}/routes`, {
+    method: HTTP_METHOD.POST,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+    signal,
+  });
+  if (!res.ok) return throwApiError(res);
+  return routeBatchSchema.parse(await readJson(res));
+}
+
 // ── Trip-destination lookup (ADR-0113): trip-agnostic, used at creation before a
 // trip exists. Geo-type-restricted autocomplete + a geocode→zone resolve. Online-only.
 
@@ -942,4 +1108,100 @@ export async function refreshFxRates(tripId: string): Promise<FxRates | null> {
   });
   if (!res.ok) return throwApiError(res);
   return fxRefreshResultSchema.parse(await readJson(res)).fxRates;
+}
+
+// ── Itinerary sharing (ADR-0213) ────────────────────────────────────────────────────────
+//
+// The owner side of a trip's public links. All of these are online-only and go straight to
+// the server rather than through the outbox: a share is a capability the world can see, and
+// a queued "stop sharing" that lands ten minutes later is a promise the app did not keep.
+//
+// **A trip has one link per POLICY** (the tenth amendment), so this reads a list and the
+// per-link verbs address a `code`.
+
+/** The trip's live links, newest policy last. Empty when it is not shared — reading must
+ *  never publish anything, so there is nothing to create here. */
+export async function fetchTripShares(tripId: string): Promise<TripShareConfig[]> {
+  const res = await apiFetch(`${API_BASE_URL}/trips/${tripId}/share`);
+  if (!res.ok) return throwApiError(res);
+  const body = await readJson(res);
+  // Element-wise rather than through an array schema: `zod` is the shared package's
+  // dependency, not this one's, so the frontend consumes the exported schemas and never
+  // composes new ones (`packages/shared/CLAUDE.md` — one source of truth for shapes).
+  if (!Array.isArray(body)) throw new Error('expected a list of shares');
+  return body.map((item) => tripShareConfigSchema.parse(item));
+}
+
+/** Get-or-create the link for exactly this policy. Idempotent, which is what lets the
+ *  sheet's first outcome press do this with no separate Save step. Admin-only server-side. */
+export async function upsertTripShare(
+  tripId: string,
+  input: UpsertTripShareInput,
+): Promise<TripShareConfig> {
+  const res = await apiFetch(`${API_BASE_URL}/trips/${tripId}/share`, {
+    method: HTTP_METHOD.PUT,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) return throwApiError(res);
+  return tripShareConfigSchema.parse(await readJson(res));
+}
+
+/** New code, same policy — the previously shared URL stops resolving at once. */
+export async function rotateTripShare(tripId: string, code: string): Promise<TripShareConfig> {
+  const res = await apiFetch(`${API_BASE_URL}/trips/${tripId}/share/${code}/rotate`, {
+    method: HTTP_METHOD.POST,
+  });
+  if (!res.ok) return throwApiError(res);
+  return tripShareConfigSchema.parse(await readJson(res));
+}
+
+/** Stop one link. Its siblings keep working. */
+export async function stopTripShare(tripId: string, code: string): Promise<void> {
+  const res = await apiFetch(`${API_BASE_URL}/trips/${tripId}/share/${code}`, {
+    method: HTTP_METHOD.DELETE,
+  });
+  if (!res.ok) return throwApiError(res);
+}
+
+/** Stop every link on the trip — the collection route, keeping the meaning it always had. */
+export async function stopAllTripShares(tripId: string): Promise<void> {
+  const res = await apiFetch(`${API_BASE_URL}/trips/${tripId}/share`, {
+    method: HTTP_METHOD.DELETE,
+  });
+  if (!res.ok) return throwApiError(res);
+}
+
+/** The PDF of exactly what the live link shows. A plain `fetch`: the route is public, so it
+ *  carries no bearer token — and going through `apiFetch` would let a 401 on it start a
+ *  token refresh for a request that never needed one. */
+export async function fetchSharedItineraryPdf(code: string): Promise<Blob> {
+  const res = await fetch(sharedItineraryPdfUrl(code));
+  if (!res.ok) return throwApiError(res);
+  return res.blob();
+}
+
+/** **The group-chat card** (ADR-0241 §5), a PNG drawn for a member. `null` when the trip has
+ *  nothing to draw yet (204), which means no card rather than a placeholder. */
+export async function fetchTripCard(tripId: string): Promise<Blob | null> {
+  const res = await apiFetch(`${API_BASE_URL}/trips/${tripId}/share/card`);
+  if (res.status === 204) return null;
+  if (!res.ok) return throwApiError(res);
+  return res.blob();
+}
+
+/** The trip book behind a link (ADR-0241 §6). Public, so a plain `fetch` for the reason above. */
+export async function fetchSharedTripBook(code: string): Promise<Blob> {
+  const res = await fetch(sharedTripBookUrl(code));
+  if (!res.ok) return throwApiError(res);
+  return res.blob();
+}
+
+/** The trip and its roster. A small read beside `fetchSnapshot`, used where a surface needs
+ *  only "who is in this trip and what may I do" — the share sheet reaches for it rather than
+ *  its two entry points each having to already know the viewer's role. */
+export async function fetchTripWithMembers(tripId: string): Promise<TripWithMembers> {
+  const res = await apiFetch(`${API_BASE_URL}/trips/${tripId}`);
+  if (!res.ok) return throwApiError(res);
+  return tripWithMembersSchema.parse(await readJson(res));
 }

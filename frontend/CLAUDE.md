@@ -55,6 +55,14 @@ one.
   scrollable ancestor and so drags the sheet a chip row sits in. Under **mandatory**
   scroll-snap the selected child also needs `scroll-snap-align: center`, or the browser
   re-snaps the centred offset back to a start-aligned boundary (`choice-grid.css`).
+- **A horizontally scrolling strip whose edges should fade** — `lib/edge-fade.ts`'s
+  `edgeFadeRef` plus the `edge-fade` class (`styles/edge-fade.css`), never a `mask-image`
+  gradient in your own stylesheet. ADR-0100 §6 decided that fade and three strips then each
+  wrote it out (the pills row, the maybe shelf, the Map's facet strip), so the CONDITION the
+  copies all lacked — an edge with nothing behind it must not fade, which is what the owner
+  reported — would have had to be added three times. A callback ref rather than a hook so a
+  strip rendered inside a `.map()` can take it; it asks `scrollsOn`, so a box that clips
+  instead of scrolling (the Map's nested pills group) declines by itself.
 - **Motion timed from JS** — `lib/motion.ts` (`motionDurationMs`), never a literal and
   never a raw `readDurationMs`. It answers **0** both under reduced motion and when the
   token is unreadable, which is what keeps a state that only exists _during_ an
@@ -63,6 +71,16 @@ one.
   sheet, a new tappable and a new shell screen inherit their motion by existing. What a
   new **large** surface must do is one line: `--press-scale: var(--press-scale-lg)`,
   because the default step is the control one.
+- **A one-shot "that just happened" beat** — `lib/one-shot.ts`'s `BEAT` + `playBeat`, five
+  members and counting (`NUDGE`, `LANDING`, `REBUFF`, `TICK`, `PINNED`), never a hand-rolled class
+  toggle: it owns the remove-reflow-add that makes an animation replay, the token-derived
+  duration, and removal by **timer** rather than `animationend` (which never fires when
+  nothing animates, leaving the class on forever). Its keyframes live beside the surface
+  that owns them. **And it returns the duration so a caller can sequence something after
+  it** — `TaskTick` is the worked example (ADR-0195): completing a task makes its row
+  leave, so the departure waits on the beat, and 0 under reduced motion means there is no
+  gap to reason about. If you delay a caller that way, **flush the pending call on
+  unmount** — otherwise a tap inside the beat becomes a press with no write.
 - **A form or chooser with more than one step** — `ui/primitives/FormSteps`
   (ADR-0155). `useFormSteps` owns the step state, the back layer, the `הבא`/`שמירה`
   footer through `FormActions`, and the transition; `FormStepPanel` paints it. Two
@@ -119,6 +137,37 @@ one.
   (see `constants.ts`'s `BOOKING_TYPE_ICON`/`DOCUMENT_TYPE_ICON`), not a
   `switch` or a set of per-call-site ternaries — the compiler then flags a
   missing case when the enum grows.
+
+## Where a new field goes in a form (ADR-0192)
+
+**A form has five bands, and a new field joins the one that answers its question — never the
+end of the form.** This rule exists because the absence of it was a reported defect: _"every
+time we add a new field or section to the event form we just append them to the end, now it
+looks very messy."_ Appending is not laziness, it is what happens when nothing says otherwise.
+
+    1 · מה      what it is        category · icon + title
+    2 · איפה    where             place, or the two route ends
+    3 · מתי     when + commitment the when, its conflict warning, hard/soft
+    4 · הזמנה   the booking       `יש הזמנה` and everything it opens
+    5 · מצורף   attached content  documents → tasks → notes
+
+`EventForm` renders exactly this and `BookingSheet`'s steps run the same sequence
+(`type → what/where → when → more`), so the two authoring forms cannot teach different orders.
+**`EventForm.test.tsx` asserts the sequence**, so a field that lands in the wrong band fails a
+spec rather than being noticed in a screenshot six weeks later.
+
+Two orderings inside it are load-bearing and are not preferences:
+
+- **Where comes before when.** The place DERIVES the zone the times are read in
+  (`EventForm.tsx`'s `tz`). Type `19:00`, then pick a place in Tokyo, and the same wall clock
+  is stored as a different instant — so asking where first is what stops a form silently
+  changing what was already typed.
+- **Band 5's internal order is ADR-0174 §3's** — a document is a thing you need, a note is
+  something about it, a task is a thing to do between them. The read surfaces use the same
+  sequence, and the app must not teach one order for authoring and another for reading.
+
+**If a field fits no band, that is a decision and wants an ADR** — not an append. And the
+band's own end is still an end: within a band, put the field where it reads, not last.
 
 ## Constants & copy
 
@@ -200,9 +249,33 @@ router and the toast), so it can't be rendered bare. Use `wrapNav` from
 
 ## Anti-patterns already found and fixed once (don't reintroduce)
 
+- **A `//` comment leading a bare `null` ternary branch in JSX.** Prettier hoists those lines
+  onto the `?` line and **reorders them on every run**, so `format` and `format:check` disagree
+  and CI goes red on a file the pre-commit hook has just written — the hook writes the mangled
+  form, `--check` then rejects it, and re-running `format` produces a _different_ mangling. It
+  read as a formatting nit and was a comment-destroying one: the lines came back concatenated in
+  reverse. Cost one red `ci` on ADR-0214's build. Put the reasoning where Prettier is stable —
+  a `{/* … */}` JSX comment above the whole conditional, or a named `const` for the empty branch
+  with its docblock (`Board.tsx`'s `nothing` is the worked example) — and never inside the branch.
 - A hand-rolled floating overlay (`createPortal`/`position:fixed`) instead of
   `Modal` + `useOverlay` — silently breaks system-back/Escape for that one
   surface (ADR-0090); lint-blocked for a reason.
+- **A hit layer stretched over a card to make the whole card tappable** (owner report,
+  2026-08-24). The Plan day row opened its read from `.bld-main`, which is ONE cell of the
+  row's grid (ADR-0178 §1) — so the padding, the badge's column and the width beside the when
+  line answered nothing — and the obvious fix is the one that does not work. A tap is
+  arbitrated against each candidate's **own layout box**, so a layer covering the card loses
+  to the row element, whose box contains the point and which is a candidate itself the moment
+  it carries pointer handlers (here, the drag's). Both layers were tried against
+  `e2e/plan-row-tap.spec.ts`'s taps — a `::after`, then a real child span — and both read the
+  same: `elementFromPoint` returned the layer at every point in the card while every tap
+  outside the title still dispatched its click to `.bld`. jsdom can see none of it. **Expanding a target past
+  its own edges is untouched** — the same run has the time chip's ±8px reaching the chip
+  (ADR-0161 §7), because a few px out it is still the nearest candidate. What fails is
+  covering the neighbours. So a whole-card tap is handled on the card element, with the
+  controls on it recognised by what they are (`closest('button, [role="button"]')`) — and
+  since a React portal bubbles to its REACT parent, such a handler must also ignore what its
+  own sheets send it (`e.currentTarget.contains(e.target)`).
 - A bespoke empty/loading/error `<div>` per screen instead of the
   `ui/feedback/` family (ADR-0078).
 - A form-level "something is wrong" caption, or a per-form `.invalid` class, instead of
@@ -210,6 +283,26 @@ router and the toast), so it can't be rendered bare. Use `wrapNav` from
   the field; the shipped complaint was that the refusal was _"nearly noticeable"_. Note
   the second half, which the caption version hid: a refusal that stops at the FIRST
   problem is a second save attempt for the second missing field.
+- **A `:hover` rule that paints a STATE rather than a hint** (ADR-0195 §4). On a touch
+  device `:hover` **latches** after a tap and clears only when something else is tapped, so
+  every hover rule is also a stuck state — and this app is phone-primary (ADR-0017, "no
+  hover-only affordances"). The tick's hover borrowed `--ok` for its ring and drew the ✓ at
+  `opacity: 0.4`, so a tap left an **open** control wearing a ghost check inside a green
+  circle: the owner's _"still leaves the checkbox selected"_, reported twice, and once
+  investigated and closed as not-reproducing because the session read `aria-pressed` and the
+  fill — both of which were correct the whole time. **A report about a control's appearance
+  after an interaction is not answered by asserting its state.** Three rules follow. A hover
+  hint may never spend a status colour or a state's own glyph. A hint that must exist goes
+  inside `@media (hover: hover) and (pointer: fine)` so it cannot latch — every hover rule in
+  the app is, since the 2026-09-08 sweep, and `styles/hover-is-gated.contract.test.ts` fails
+  the suite on a new one outside the gate. The same latch wears `:focus-within` on a tapped
+  button (it keeps focus after its panel closes), which is why `ValueToken`'s open mark pairs
+  `.open` with `:focus-visible`. And on a **stateful** control, prefer deleting the hover to overriding
+  it: the tick's fix is a deletion, because the quieter replacement could not be measured as
+  cheaply as it could be dropped — and it was mouse-only on a phone-primary app either way.
+  If you do override, check the specificity: `.x:hover .icon` and
+  `.x[aria-pressed='true'] .icon` are both (0,3,0), so the later rule wins on a hovered
+  _pressed_ control and silently takes its mark away.
 - A hand-picked `:active` transform, or a duration literal in a `setTimeout` that is
   waiting for an animation. Both existed in quantity: seven different press values
   across 16 rules, and a mode-switch timer whose token reader was private to
@@ -246,6 +339,39 @@ router and the toast), so it can't be rendered bare. Use `wrapNav` from
   handoff's target. Measure the destination element, and assert the aim against its
   settled box in an e2e spec — jsdom reports every rect as zero, so this whole class of
   bug is invisible to the unit suite by construction.
+- **Transforming an element without counting the `position: fixed` descendants inside it.** A
+  transform (and `will-change: transform`, and a filter) makes its element the **containing
+  block** for every fixed descendant, so a layer that was pinned to the viewport silently
+  becomes pinned to that box — and its rect is then wrong by however far the box sits from the
+  viewport's origin, which changes as the transform animates. ADR-0116 §2d shipped this: the
+  edge dwell translated `.day-page`, the drag ghost rendered inside it, and the clone walked
+  117px down the screen and then 156px while the finger never moved (_"it no longer is under
+  the finger"_, _"the ghost disappears sometimes"_). `useSwipePager`'s docblock had already
+  written the trap down for the same ghost — which is what makes this a counting failure and not
+  a knowledge one. Before adding a transform, `grep` what renders inside that element; a
+  gesture-time fixed layer (`.wp-dragghost`, `.day-peeks`, `.doc-viewer-lift`) belongs OUTSIDE
+  the transformed box, and `offsetParent === null` is the assertion, because a fixed box that
+  reports an offset parent is not viewport-anchored whatever its rect says this frame.
+- **A command channel that is not idempotent, when its caller is a stream.** The same ADR's
+  second defect: the edge dwell re-issues `hold(step)` on every pointer move and every
+  auto-scroll frame, and `hold` cleared the settle timer and rewrote the offset each time — so
+  one pixel of jitter cancelled the page turn it had just started (`dx 382px` → `dx 48px`, no
+  day change, a visible snap-back). Two rules for anything imperative that a gesture drives:
+  **re-commanding the state you are already in is a no-op** — ask the DOM, not a second copy of
+  the state, so an intervening reset correctly reads as "not held" — and **a committed
+  animation is not interruptible by a repeat of the command that started it**, only by a
+  command that means something different.
+- **Sampling the CSS variable a transition is driving, and calling it the picture.** A custom
+  property is the transition's **destination**: `--swipe-dx` reads `0px` the instant it is
+  written, while the compositor is still carrying the element a page away from there. ADR-0116
+  §2d cost **four rounds** to this — every probe reported the offset clean while the screen
+  showed a whole page sliding backwards, because the offset _was_ clean and the paint was not.
+  Sample `new DOMMatrixReadOnly(getComputedStyle(el).transform).m41`, and sample it beside the
+  state it belongs to (which day the page draws, which attributes the host carries) — a position
+  without its meaning is what let a reverse slide read as correct. Corollary for e2e: assert a
+  **count of transitions** and the **painted values**, never the variable; and if a case is
+  about what the eye sees, a `transitionrun` listener plus a 16ms sampler is the instrument, not
+  `expect.poll` on a style property.
 - **Reading a rect and calling it visibility.** An ancestor's `overflow: hidden` clips what
   paints and changes **no rect at all**, so a geometry harness reports every number healthy
   while the element is a sliver. It happened here twice in one evening: the Map card's own
@@ -305,11 +431,31 @@ router and the toast), so it can't be rendered bare. Use `wrapNav` from
   where a check-in read as unplaced in Trip and interleaved by its floor in Plan.
   Touching `placeDayEntries`, `dayBlocks`, `mergeDayEntries` or anything either
   screen reads means checking **both**, in code and in the mockup.
+  **And for a derived TIME there is now a test rather than this instruction**
+  ([ADR-0226](../docs/decisions/0226-a-derived-time-carries-the-instant-behind-it.md)):
+  state one with `statedTime`/`timeFacts` (`lib/time-claim.ts`) so the element
+  carries the instant, the zone and the subject, and
+  `surfaces.agreement.test.tsx` will fail when two surfaces answer one question
+  differently. This line had already cost a release twice when it was written and
+  six more times after; a rule that depends on remembering it is not a rule.
 - Turning a typed wall-clock into an instant with `trip.timezone` (or any zone the
   call site happened to have) instead of `authoringZone(…, zoneEvidence)` — the
   event then renders at a different time than it was typed at. A `WhenField`
   without a `zone`/`zones` prop is exactly that surface: the chip is opt-in per
   call site, so a form doesn't get it "for free" (ADR-0107 session-128).
+- **The read-side twin of the line above:** rendering a stored instant with
+  `trip.timezone` instead of the event's resolved zone
+  (`eventDisplayZones(event, zoneEvidence)`), per **end** — a departure in its
+  origin, an arrival in its destination. The primary zone is the fallback for an
+  event nothing anchors, not a default to reach for. It cost a field report on
+  `BookingDetail` and the Index row (ADR-0107 session-258), where the tell was
+  that the wrong pair looked _right_: the duration beside them is instant-based,
+  so it agrees with any zone and hides the error until you open two surfaces at
+  once. A read one tap from a row must state the row's time.
+- **And the DAY-side twin:** deciding what day it is with `todayInTz(trip.timezone, now)` —
+  the answer is `liveToday(nowMs, zoneEvidence)` (or `tripToday` in `lib/mode.ts`), which reads
+  home before the outbound flight. `lib/mode.ts` predated `liveToday` and kept the old read, so
+  the departure countdown rolled at the destination's midnight (ADR-0107, 2026-09-09 amendment).
 - `navigate(-1)`, `history.back()/forward()/go()`, or any read of
   `history.length` for a back action — back is computed from nav state
   (ADR-0090), never traversed. **Lint-blocked since session 178**, because the
@@ -369,6 +515,26 @@ new `ui/domain/` or `ui/primitives/` component ships with its own test file
 alongside it (the existing `*.test.tsx` co-location is the pattern, not the
 exception).
 
+**Query by `t.*`, never by a copy literal** (session 258). If the component reads a string
+from `i18n/he.ts`, the test that looks for it on screen reads the **same key** —
+`getByText(t.docs.viewer.error)`, not `getByText('לא הצלחנו לפתוח את המסמך')`. A copy pass
+across `he.ts` cost 11 unit failures and 5 e2e failures with no defect behind any of them,
+which is a tax on improving the Hebrew and nothing else. Applies to **e2e specs too**
+(`import { t } from '../src/i18n/he'`): the 5 e2e failures were one reworded button, and the
+unit suite could not see them because `pnpm test` does not run Playwright.
+
+Two things this rule is not:
+
+- **Not for a label the test itself supplies.** `ListRow`, `ConfirmDialog`, `SearchField`,
+  `TimeField`, `MaybeCard` and `ChoiceDisclosure` take their words as **props**, so their
+  specs pass their own fixtures. Coupling those to an unrelated `t` key that happens to hold
+  the same string is worse than a literal — the test then breaks when a screen it has nothing
+  to do with is reworded. Same for seeded fixture data: `ev('קשיח', …)` is an event _title_.
+- **Not satisfied by a substring regex.** `new RegExp('הזז')` kept passing after the button
+  became `הזזה`, and `queryByText('הפוך למנהל')` kept passing after that verb was reworded —
+  an **absence** assertion against a stale literal is vacuous, and it reports green forever.
+  That is the failure mode worth fearing here, not the loud one.
+
 **A WebGL surface cannot be seen in jsdom, but almost all of its contract can be tested.** The Map
 tab is the worked example (ADR-0121 §13): every decision about what a pin looks
 like lives in pure `lib/` functions tested without a renderer
@@ -415,3 +581,30 @@ leak, session 260):
     (`src/test/pwa-register-stub.ts` is the alias that fixed it). When you read a
     failure count, read the **file** count beside it — 3564 passing looked
     healthy while 23 tests were not running at all.
+
+**A shared primitive's classes stop identifying a surface the moment it has two hosts.** The night
+board's strip and the Home glance rail are both `styles/day-track.css` (ADR-0214 §5 / ADR-0215 §2),
+so an unscoped `document.querySelectorAll('.wp-track-blk')` counts **two cards on one screen** — and
+a spec about tomorrow silently starts measuring today. Cost one red test the day the second consumer
+landed. Scope every query to the host class (`.wp-board-tmr` / `.glance-track`), which is the one
+thing only that surface carries. Same shape as the day-surface trap below (a descendant selector
+reaching the peek panes), and it will recur on the third consumer.
+
+**Two traps in measuring a box in an e2e spec**, both of which cost a red CI on `main`
+(day-swipe, 2026-08-22) and neither of which fails loudly:
+
+- **A descendant selector on the day surface reaches the peek panes.** A peek holds a whole day
+  surface, so `.day-page`, `.sec-title` and every row class exist three times over while a
+  gesture is live — and `.day-peeks` renders BEFORE `.day-page`, so
+  `` `${PAGE} .sec-title` ``.first() is TOMORROW's heading. `:not([data-preview])` does not save
+  you: it excludes a pane's own inner host, not the panes nested inside the host you asked
+  about. Use the child combinator (`> .day-page …`), which the same spec already used one
+  assertion away. The failure mode is a spec measuring the wrong pane and staying green.
+- **`locator.boundingBox()` returns `null` for a node a render detached mid-call**, and does not
+  re-resolve the locator the way an action would — so a visible element reports as invisible and
+  the only tell is that the next query succeeds (proven: `isConnected=false`,
+  `getClientRects().length === 0`, correct box one tick later). It also inherits
+  `use.actionTimeout`, which this config leaves at **0 = no timeout**, so a locator that never
+  resolves hangs to the _test_ timeout and names no element. `e2e/measure.ts`'s `stableBox` is
+  the answer to both; reach for it rather than a bare `boundingBox()` on any surface that
+  re-renders.

@@ -6,19 +6,24 @@ import {
   ENTITY_TYPE,
   EVENT_STATUS,
   NOTE_SOURCE,
+  TASK_STATUS,
   type Change,
   type DeliveredEnrichmentFields,
   type DocumentAttachment,
+  type TravelModeOverride,
   type EntityType,
   type MaybeItem,
   type Membership,
   type Note,
   type Place,
+  type Task,
   type Trip,
+  type Forecast,
   type FxRates,
   type TripEnrichments,
   type TripSnapshot,
   type User,
+  travelOverridePair,
 } from '@waypoint/shared';
 import { type Table } from 'dexie';
 import { db } from '../db';
@@ -30,8 +35,9 @@ import { clearAllMapArchives, removeTripMapArchives } from './map-archive-cache'
 import { initOutboxCount, OUTBOX_VERB, type OutboxOp } from './outbox';
 import { getNow } from './useClock';
 import { dropNotesForHostChange } from './notes';
+import { dropTasksForHostChange } from './tasks';
 import { dropAttachmentsForHostChange } from './attachments';
-import { clearPlaceRefsForChange, deletedPlaceId } from './place-refs';
+import { clearPlaceRefsForChange, deletedPlaceId, dropOverridesForPlace } from './place-refs';
 
 /** The slice of TripSnapshot with no dedicated Dexie table of its own. */
 export interface SnapshotMeta {
@@ -42,10 +48,18 @@ export interface SnapshotMeta {
   maybeItems: MaybeItem[];
   places: Place[];
   notes: Note[];
+  /** Tasks ride `snapshotMeta` for the same reason notes do — see `CACHE_CHANNELS`. */
+  tasks: Task[];
   /** The document↔host links (ADR-0173). Rides `snapshotMeta` for the same reason notes do:
    *  a trip's worth is a few dozen tiny rows, and a Dexie table of its own would cost a
    *  schema version bump plus edits to `wipeLocalData` and three transaction lists. */
   documentAttachments: DocumentAttachment[];
+  /** **The per-leg travel-mode overrides** (ADR-0206 §V1.6/§Z2, keyed per §AM). Rides
+   *  `snapshotMeta` for the same reason notes do, and more so: the default is DERIVED, so a trip
+   *  nobody has overridden carries an empty array and this costs nothing at all. Mirroring it is
+   *  what makes root rule 5 true for a declared leg — offline, the day must still say תחב״צ
+   *  rather than quietly reverting to a walking number. */
+  travelModeOverrides: TravelModeOverride[];
   /** Enrichment for the trip's places, keyed by `placeId` (ADR-0166 §6). Rides `snapshotMeta`
    *  for the same reason notes do: a trip's worth is a few dozen small entries, and a
    *  dedicated Dexie table would cost a schema version bump plus edits to `wipeLocalData` and
@@ -62,6 +76,19 @@ export interface SnapshotMeta {
    *  the last published rate with its own date on it, rather than nothing. `null` is the
    *  cold state — never fetched — and every surface treats it as a state to render. */
   fxRates: FxRates | null;
+  /** **The world's weather over the trip's cells** (ADR-0218 §6), riding `snapshotMeta` beside
+   *  `fxRates` above and for the same reason — one small object, and a Dexie table of its own
+   *  would cost a schema version bump for it.
+   *
+   *  **What it does NOT make true is offline forever, and that is the decision** (§4). Root rule
+   *  5 protects the index, the documents and the day, and every one of those still reads
+   *  offline. A forecast is the one thing whose value is its age: mirroring it here is what lets
+   *  the card survive a tunnel and a foreign SIM, and `isForecastFresh` is what removes it once
+   *  the model behind it is ⁦6⁩ hours old. The card going is the honest failure; a five-day-old
+   *  forecast on the surface a person checks instead of a window is not.
+   *
+   *  `null` is the cold state — never fetched, or the fetcher is switched off. */
+  forecast: Forecast | null;
   latestSeq: string;
 }
 
@@ -85,9 +112,12 @@ export async function cacheSnapshot(tripId: string, snapshot: TripSnapshot): Pro
       maybeItems: snapshot.maybeItems,
       places: snapshot.places,
       notes: snapshot.notes,
+      tasks: snapshot.tasks,
       documentAttachments: snapshot.documentAttachments,
+      travelModeOverrides: snapshot.travelModeOverrides,
       enrichments: snapshot.enrichments,
       fxRates: snapshot.fxRates,
+      forecast: snapshot.forecast,
       latestSeq: snapshot.latestSeq,
     });
   });
@@ -156,13 +186,17 @@ async function reconstructSnapshot(tripId: string): Promise<TripSnapshot | null>
     // A trip cached before notes shipped has no list; treat it as empty rather than
     // letting `undefined` reach a `.map()` on the first render after the upgrade.
     notes: meta.notes ?? [],
+    // Same fallback, same reason: a trip cached before tasks shipped has no list.
+    tasks: meta.tasks ?? [],
     // Same fallback, same reason: a trip cached before attachments shipped has no list.
     documentAttachments: meta.documentAttachments ?? [],
+    travelModeOverrides: meta.travelModeOverrides ?? [],
     // Same fallback, same reason: a trip cached before enrichment shipped has no map.
     enrichments: meta.enrichments ?? {},
     // Same fallback, same reason: a trip cached before rates shipped has no set, and
     // `null` is already this field's designed cold state rather than a special case.
     fxRates: meta.fxRates ?? null,
+    forecast: meta.forecast ?? null,
     latestSeq: meta.latestSeq,
   };
 }
@@ -191,7 +225,16 @@ function applyToRow<T extends { id: string }>(
 type CacheRow = { id: string; tripId?: string };
 type CacheChannel =
   | { table: Table<CacheRow, string> }
-  | { metaList: 'maybeItems' | 'places' | 'members' | 'notes' | 'documentAttachments' }
+  | {
+      metaList:
+        | 'maybeItems'
+        | 'places'
+        | 'members'
+        | 'notes'
+        | 'tasks'
+        | 'documentAttachments'
+        | 'travelModeOverrides';
+    }
   | { metaTrip: true };
 
 const CACHE_CHANNELS: Record<EntityType, CacheChannel> = {
@@ -205,8 +248,14 @@ const CACHE_CHANNELS: Record<EntityType, CacheChannel> = {
   // a trip's notes are a few hundred small rows, and a dedicated Dexie table would cost a
   // schema version bump plus edits to `wipeLocalData` and three transaction lists.
   [ENTITY_TYPE.NOTE]: { metaList: 'notes' },
+  // Tasks ride it for the same reason notes do, and the count is smaller still — a trip's
+  // worth is a few dozen rows.
+  [ENTITY_TYPE.TASK]: { metaList: 'tasks' },
   // Attachments ride `snapshotMeta` for the same reason notes do (ADR-0173's reuse audit).
   [ENTITY_TYPE.DOCUMENT_ATTACHMENT]: { metaList: 'documentAttachments' },
+  // Overrides ride it for the same reason, and the count is the smallest of the lot — most trips
+  // have none, because the default is derived (ADR-0206 §Z2).
+  [ENTITY_TYPE.TRAVEL_MODE_OVERRIDE]: { metaList: 'travelModeOverrides' },
   [ENTITY_TYPE.PLACE]: { metaList: 'places' },
   // Trip settings are data-plane (ADR-0039), so the roster + trip row stay
   // coherent too — else an offline reader shows a stale name/member on cold load.
@@ -217,7 +266,14 @@ const CACHE_CHANNELS: Record<EntityType, CacheChannel> = {
 /** Upsert/delete a change into one of `snapshotMeta`'s embedded lists. */
 async function applyChangeToMetaList(
   tripId: string,
-  listKey: 'maybeItems' | 'places' | 'members' | 'notes' | 'documentAttachments',
+  listKey:
+    | 'maybeItems'
+    | 'places'
+    | 'members'
+    | 'notes'
+    | 'tasks'
+    | 'documentAttachments'
+    | 'travelModeOverrides',
   change: EntityChange,
 ): Promise<void> {
   const meta = await db.snapshotMeta.get(tripId);
@@ -245,6 +301,16 @@ async function dropCachedNotesForHost(tripId: string, change: EntityChange): Pro
   if (next !== meta.notes) await db.snapshotMeta.put({ ...meta, notes: next });
 }
 
+/** The same rule for tasks (ADR-0191). A separate function rather than a branch inside the
+ *  one above, because the two write different `snapshotMeta` fields — the shared half is
+ *  `dropHostedForHostChange`, which both derivations call. */
+async function dropCachedTasksForHost(tripId: string, change: EntityChange): Promise<void> {
+  const meta = await db.snapshotMeta.get(tripId);
+  if (!meta?.tasks?.length) return;
+  const next = dropTasksForHostChange(meta.tasks, change);
+  if (next !== meta.tasks) await db.snapshotMeta.put({ ...meta, tasks: next });
+}
+
 /** The attachment cascade's cache half (`lib/attachments.ts`'s `dropAttachmentsForHostChange`,
  *  ADR-0173 §7) — the same shape as the note cascade above, and the same "only write when
  *  something actually went" discipline, since the shared derivation returns the identical
@@ -258,8 +324,8 @@ async function dropCachedAttachmentsForHost(tripId: string, change: EntityChange
 }
 
 /** The place cascade's cache half (`lib/place-refs.ts`'s `clearPlaceRefsForChange`,
- *  ADR-0157 §3) — the same shape as the note cascade above, over the three stores that hold
- *  a place FK. Two tables and one meta list, each written only when the delete actually
+ *  ADR-0157 §3) — the same shape as the note cascade above, over the four stores that hold
+ *  a place FK. Two tables and two meta lists, each written only when the delete actually
  *  cleared something, so a change that is not a place delete costs three reads and no write.
  *  A `deletedPlaceId` test up front keeps even those off the common path. */
 async function clearCachedPlaceRefs(tripId: string, change: EntityChange): Promise<void> {
@@ -273,9 +339,21 @@ async function clearCachedPlaceRefs(tripId: string, change: EntityChange): Promi
   if (nextBookings !== bookings) await db.bookings.bulkPut(nextBookings);
 
   const meta = await db.snapshotMeta.get(tripId);
-  if (!meta?.maybeItems?.length) return;
-  const maybeItems = clearPlaceRefsForChange(meta.maybeItems, ENTITY_TYPE.MAYBE_ITEM, change);
-  if (maybeItems !== meta.maybeItems) await db.snapshotMeta.put({ ...meta, maybeItems });
+  if (!meta) return;
+  const ideas = meta.maybeItems ?? [];
+  const maybeItems = clearPlaceRefsForChange(ideas, ENTITY_TYPE.MAYBE_ITEM, change);
+  // **The override is DELETED with its place, not nulled** — its two place ids are its identity
+  // (ADR-0206 §AM1), so there is no row left once one end is gone, and Postgres cascades it away
+  // writing no `Change` (the backend spec asserts that cascade). Hence the fifth member of this
+  // family lives here rather than in `clearPlaceRefs`, whose whole shape is clearing a FIELD.
+  const declared = meta.travelModeOverrides ?? [];
+  const travelModeOverrides = dropOverridesForPlace(declared, deletedPlaceId(change));
+  if (maybeItems !== ideas || travelModeOverrides !== declared)
+    await db.snapshotMeta.put({
+      ...meta,
+      maybeItems,
+      travelModeOverrides: [...travelModeOverrides],
+    });
 }
 
 /** Keeps the Dexie cache coherent with every data-plane entity type in the
@@ -287,6 +365,7 @@ export async function applyChangeToCache(tripId: string, change: EntityChange): 
   // in the cache with nothing to remove them: the database cascade writes no `Change` rows
   // of its own. A no-op for every change that is not a host delete.
   await dropCachedNotesForHost(tripId, change);
+  await dropCachedTasksForHost(tripId, change);
   // The third member of the same family (ADR-0173 §7), here for exactly the reason above: a
   // deleted booking's or document's links belong to neither of their channels, and the
   // database cascade that removes them writes no `Change` of its own.
@@ -349,7 +428,7 @@ export async function wipeLocalData(): Promise<void> {
   try {
     await db.transaction(
       'rw',
-      [db.events, db.bookings, db.documents, db.snapshotMeta, db.tripList, db.outbox],
+      [db.events, db.bookings, db.documents, db.snapshotMeta, db.tripList, db.outbox, db.routeLegs],
       async () => {
         await Promise.all([
           db.events.clear(),
@@ -358,6 +437,10 @@ export async function wipeLocalData(): Promise<void> {
           db.snapshotMeta.clear(),
           db.tripList.clear(),
           db.outbox.clear(),
+          // Route legs carry no `tripId` and nothing anyone authored (ADR-0205 §4), so
+          // `clearTripCache` has nothing to delete for one trip — but a leg IS a pair of
+          // coordinates this session travelled between, so sign-out clears the table.
+          db.routeLegs.clear(),
         ]);
       },
     );
@@ -471,7 +554,9 @@ async function outboxOpToCacheChanges(tripId: string, op: OutboxOp): Promise<Ent
         entityType: ENTITY_TYPE.EVENT,
         entityId: op.eventId,
         action: CHANGE_ACTION.STATUS,
-        after: { status: op.status },
+        // Whichever column the op names (ADR-0224 §1) — the cached row is merged the same
+        // way either way, so the closing edge needs no second action here.
+        after: op.edge === 'end' ? { endStatus: op.status } : { status: op.status },
       });
     case OUTBOX_VERB.DELETE:
       return one({
@@ -597,6 +682,41 @@ async function outboxOpToCacheChanges(tripId: string, op: OutboxOp): Promise<Ent
         entityId: op.noteId,
         action: CHANGE_ACTION.DELETE,
       });
+    case OUTBOX_VERB.CREATE_TASK: {
+      if (!op.input.id) return [];
+      // The same four server defaults a queued note has to state for itself, for the same
+      // reason: a task read back from the cache before its flush must still satisfy
+      // `taskSchema` on a cold load, and one with no `createdAt` is unsortable. `status`
+      // and the two booleans are column defaults; the stamps come off the same clock the
+      // in-memory optimistic row uses, so the two views of one queued task agree.
+      const stamp = new Date(getNow()).toISOString();
+      return one({
+        entityType: ENTITY_TYPE.TASK,
+        entityId: op.input.id,
+        action: CHANGE_ACTION.CREATE,
+        after: {
+          dueHasTime: false,
+          important: false,
+          ...op.input,
+          status: TASK_STATUS.OPEN,
+          createdAt: stamp,
+          updatedAt: stamp,
+        },
+      });
+    }
+    case OUTBOX_VERB.UPDATE_TASK:
+      return one({
+        entityType: ENTITY_TYPE.TASK,
+        entityId: op.taskId,
+        action: CHANGE_ACTION.UPDATE,
+        after: op.input,
+      });
+    case OUTBOX_VERB.DELETE_TASK:
+      return one({
+        entityType: ENTITY_TYPE.TASK,
+        entityId: op.taskId,
+        action: CHANGE_ACTION.DELETE,
+      });
     case OUTBOX_VERB.UPDATE_TRIP:
       return one({
         entityType: ENTITY_TYPE.TRIP,
@@ -643,6 +763,30 @@ async function outboxOpToCacheChanges(tripId: string, op: OutboxOp): Promise<Ent
       return one({
         entityType: ENTITY_TYPE.DOCUMENT_ATTACHMENT,
         entityId: op.attachmentId,
+        action: CHANGE_ACTION.DELETE,
+      });
+    case OUTBOX_VERB.SET_TRAVEL_MODE: {
+      if (!op.input.id) return [];
+      // **The pair is canonicalised here too, not only server-side.** The cached row has to be
+      // the one `legTravelMode` will look up, and that read keys on the sorted pair — a row
+      // stored in the caller's order would simply not be found while offline, which is the
+      // failure this whole mirror exists to prevent (root rule 5).
+      const pair = travelOverridePair(op.input.fromPlaceId, op.input.toPlaceId);
+      // `updatedAt` is the server's, so the queued row states it — otherwise the row read back
+      // from a cold cache fails `travelModeOverrideSchema`, and `legTravelMode`'s newest-match
+      // rule would have nothing to compare. Same clock as the optimistic row, so the two agree.
+      const at = new Date(getNow()).toISOString();
+      return one({
+        entityType: ENTITY_TYPE.TRAVEL_MODE_OVERRIDE,
+        entityId: op.input.id,
+        action: CHANGE_ACTION.CREATE,
+        after: { ...op.input, ...pair, createdAt: at, updatedAt: at },
+      });
+    }
+    case OUTBOX_VERB.CLEAR_TRAVEL_MODE:
+      return one({
+        entityType: ENTITY_TYPE.TRAVEL_MODE_OVERRIDE,
+        entityId: op.overrideId,
         action: CHANGE_ACTION.DELETE,
       });
     case OUTBOX_VERB.UPLOAD_DOCUMENT:

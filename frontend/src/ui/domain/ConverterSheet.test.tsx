@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type { FxRates } from '@waypoint/shared';
 import { wrapNav } from '../../test/nav-harness';
 import { ConverterSheet } from './ConverterSheet';
+import { t } from '../../i18n/he';
 
 const FX: FxRates = {
   base: 'USD',
@@ -127,7 +128,7 @@ describe('ConverterSheet — the "as of" IS the refresh (§8)', () => {
 describe('ConverterSheet — the pair is the sheet’s, not the trip’s', () => {
   it('turns the pair over without writing either setting', () => {
     const { props } = open();
-    fireEvent.click(screen.getByLabelText('החלפת כיוון'));
+    fireEvent.click(screen.getByLabelText(t.fx.swap));
     expect(props.onSwap).toHaveBeenCalled();
     expect(props.onChangeFrom).not.toHaveBeenCalled();
     expect(props.onChangeTo).not.toHaveBeenCalled();

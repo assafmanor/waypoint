@@ -3,19 +3,31 @@
 // guard for a hard commitment (ADR-0011); editing is a deliberate tap. Edit
 // opens the merged BookingSheet. Delete lives on the row's "⋯" (BookingManageSheet),
 // not here — the detail carries edit only (ADR-0053 revision, 2026-07-17).
-import { carriesRoute, type Booking } from '@waypoint/shared';
+import { useState } from 'react';
+import {
+  carriesRoute,
+  placeCredit,
+  type Booking,
+  type DeliveredImageValue,
+} from '@waypoint/shared';
 import { bookingSheetDraft } from '../lib/booking-draft';
 import { useJourney, useRoundTripPartner, type Journey } from '../lib/booking-journey';
 import { useTrip } from '../state/trip-state';
+import { apiAssetUrl } from '../lib/api-asset';
+import { placeSummary } from '../lib/place-summary';
 import { DetailSheet } from './DetailSheet';
+import { MediaViewer } from './MediaViewer';
+import { KNOWLEDGE_DENSITY, PlaceKnowledge } from './domain/PlaceKnowledge';
 import { NavArrow } from './NavArrow';
 import { RouteLabel } from './RouteLabel';
 import {
   bookingMapPlace,
   bookingPlaceId,
   bookingShowOnMap,
+  eventDisplayZones,
   mapsDirectionsUrl,
   placeName,
+  type ZoneEvidence,
 } from '../lib/places';
 import { placeIataCode } from '../lib/place-label';
 import { usePlaceLabels } from '../state/place-labels';
@@ -39,17 +51,21 @@ export function BookingDetail({
   onClose,
   onEdit,
   onOpen,
+  frozen = false,
 }: {
   booking: Booking;
   onClose: () => void;
   onEdit: (booking: Booking) => void;
+  /** **A finished trip** (ADR-0239 §4): the booking reads and nothing on this sheet writes —
+   *  no edit, no place errand, no new task or note. */
+  frozen?: boolean;
   /** Show a different booking in this sheet — the round-trip fact's way through
    *  (ADR-0154 §5). Absent where the host has no detail state to swap, in which case
    *  the fact still STATES the pair and simply isn't a link: the same "absent, not
    *  broken" rule `onShowOnMap` follows below. */
   onOpen?: (booking: Booking) => void;
 }) {
-  const { trip, events, places, enrichments } = useTrip();
+  const { trip, events, places, enrichments, zoneEvidence } = useTrip();
   const placeLabels = usePlaceLabels();
   const showPlaceOnMap = useShowPlaceOnMap();
   const linkedEvent = events.find((e) => e.bookingId === booking.id);
@@ -57,7 +73,14 @@ export function BookingDetail({
   // The journey this leg belongs to (ADR-0159) — null unless there is more than itself.
   const journey = useJourney(booking);
 
-  const tz = trip.timezone;
+  // **Each end reads in its OWN resolved zone** (ADR-0107), exactly as the day card and
+  // `EventDetail` already do — a read one tap from a row must not state a different time
+  // than the row. `trip.timezone` painted every fact in the trip's PRIMARY zone, so a
+  // TLV→VIE flight on an Iceland trip read its departure in Reykjavik: 12:30 for a flight
+  // that leaves at 15:30, against a duration computed from the instants and therefore right.
+  const zones = linkedEvent ? eventDisplayZones(linkedEvent, zoneEvidence) : undefined;
+  const startZone = zones?.start ?? trip.timezone;
+  const endZone = zones?.end ?? trip.timezone;
   const icon = chosenIcon(linkedEvent?.icon) ?? BOOKING_TYPE_ICON[booking.type];
   // Shared booking grammar (ADR-0059 §3): badge tinted by category.
   const badgeTint = badgeClassForBookingType(booking.type);
@@ -87,14 +110,26 @@ export function BookingDetail({
   // Duration read-out, phrased per the booking type (hours / nights / days) — the
   // same shared formatter the Index row uses (ADR-0063 extension), keyed on the
   // type not the icon-overridable event category.
+  // The stay's own zone rather than the trip's: this zone only ever converts an instant to
+  // a CALENDAR DAY for the nights count, and both ends of a stay sit in one place — the
+  // elapsed reads below it are instant-based and zone-independent either way.
   const duration = linkedEvent
-    ? formatBookingDuration(linkedEvent, tz, bookingDurationUnit(booking.type))
+    ? formatBookingDuration(linkedEvent, startZone, bookingDurationUnit(booking.type))
     : null;
 
   // Location detail (ADR-0109 amendment): the booking's resolved place (transport
   // → origin, else the single place) shown as a fact like the rest, with navigate
   // (directions) + מפה (view) links. Links are absent for a coordless Place-lite.
   const navPlace = places.find((p) => p.id === bookingPlaceId(booking));
+  /** **What the world knows about the place this booking is AT** (ADR-0219 §6, which named
+   *  this surface as the next host: _"`BookingDetail` may pass the same later"_). The same
+   *  place the location fact below already resolves, so the two cannot disagree — and no
+   *  picked-icon rule, for §6's reason: the badge is where a choice beats a photograph, and
+   *  this is the surface that choice leaves the photograph one tap away on. */
+  const knowledgeEnrichment = navPlace ? enrichments[navPlace.id] : undefined;
+  /** The full picture, one level below the read — owned here because the viewer is a portal,
+   *  exactly as `EventDetail` and `Map.tsx` own theirs (ADR-0167 §10). */
+  const [fullPicture, setFullPicture] = useState<DeliveredImageValue | null>(null);
   const dirUrl = mapsDirectionsUrl(navPlace);
   // `מפה` shows the place on OUR map now (ADR-0121 §8) — the Map tab, focused on it
   // — rather than deep-linking to Google's place view, which existed only because
@@ -153,124 +188,177 @@ export function BookingDetail({
       showPlaceOnMap(placeId);
     });
 
+  // **The shell is `DetailSheet`** (ADR-0174 §4). This file built it inline while it was the
+  // app's only read surface, which was right then; an event's read came out identical line for
+  // line, so the skeleton moved out and both render it. What stayed here is the facts, which
+  // are the part that actually differs.
   return (
-    // **The shell is `DetailSheet`** (ADR-0174 §4). This file built it inline while it was
-    // the app's only read surface, which was right then; an event's read came out identical
-    // line for line, so the skeleton moved out and both render it. What stayed here is the
-    // facts, which are the part that actually differs.
-    <DetailSheet
-      ariaLabel={heading}
-      badge={icon}
-      badgeClassName={badgeTint || undefined}
-      title={isRoute ? <RouteLabel from={fromLabel} to={toLabel} /> : heading}
-      // Same rule as the Index row (ADR-0163's amendment): the sub-line is dropped rather
-      // than echoing a title that is already the type's own name.
-      subtitle={typeChipAddsMeaning(booking) ? t.index.bookingType[booking.type] : undefined}
-      hard={linkedEvent?.kind === 'hard'}
-      host={{ kind: 'booking', id: booking.id, name: booking.title }}
-      onEdit={edit}
-      onClose={onClose}
-      facts={
-        <>
-          {showLocation && (
-            <LocationFact
-              text={locationText}
-              dirUrl={dirUrl}
-              onShowOnMap={bookingShowOnMap(booking, places, show)}
-              // Offered whenever there is no place to focus: none at all, or a
-              // coordless Place-lite the picker can enrich in place.
-              onAddLocation={
-                mapPlace || !startErrand
-                  ? undefined
-                  : () =>
-                      startErrand({
-                        target: { kind: 'booking', id: booking.id, field: 'placeId' },
-                        label: errandLabel,
-                        draft: bookingSheetDraft({ booking, trip, events, places }),
-                      })
+    <>
+      <DetailSheet
+        ariaLabel={heading}
+        badge={icon}
+        badgeClassName={badgeTint || undefined}
+        title={isRoute ? <RouteLabel from={fromLabel} to={toLabel} /> : heading}
+        // Same rule as the Index row (ADR-0163's amendment): the sub-line is dropped rather
+        // than echoing a title that is already the type's own name.
+        subtitle={typeChipAddsMeaning(booking) ? t.index.bookingType[booking.type] : undefined}
+        hard={linkedEvent?.kind === 'hard'}
+        host={{ kind: 'booking', id: booking.id, name: booking.title }}
+        frozen={frozen}
+        onEdit={frozen ? undefined : edit}
+        onClose={onClose}
+        knowledge={
+          /* `PlaceKnowledge` answers both absences itself — a place with an image and no summary
+           shows the picture, one with neither renders nothing, which is the majority case
+           (ADR-0166 §11.3). `DECIDING` is the density this sheet wants: it changes no mode,
+           and its clamp opens where it stands. */
+          <span className="wp-read-know">
+            <PlaceKnowledge
+              density={KNOWLEDGE_DENSITY.DECIDING}
+              image={knowledgeEnrichment?.image}
+              summary={placeSummary(knowledgeEnrichment)}
+              onFullPicture={() =>
+                knowledgeEnrichment?.image && setFullPicture(knowledgeEnrichment.image)
               }
             />
-          )}
-          {!linkedEvent ? (
-            <Fact k={t.index.detail.timing} v={t.index.detail.unscheduled} />
-          ) : endsAt ? (
-            <>
-              <Fact k={labels.start} v={startsAt ? formatDayTime(startsAt, tz) : '-'} />
-              <Fact k={labels.end} v={formatDayTime(endsAt, tz)} />
-            </>
-          ) : (
-            <Fact
-              k={startsAt ? labels.start : t.index.detail.timing}
-              v={startsAt ? formatDayTime(startsAt, tz) : formatDayDate(linkedEvent.date)}
-            />
-          )}
-          {duration && <Fact k={t.index.detail.duration} v={duration} />}
-          {booking.confirmationCode && (
-            <Fact k={t.index.detail.code} v={`${CODE_PREFIX}${booking.confirmationCode}`} mono />
-          )}
-          {/* Only for a route, and only once at least one end HAS a code — a train's endpoints
+          </span>
+        }
+        facts={
+          <>
+            {showLocation && (
+              <LocationFact
+                text={locationText}
+                dirUrl={dirUrl}
+                onShowOnMap={bookingShowOnMap(booking, places, show)}
+                // Offered whenever there is no place to focus: none at all, or a
+                // coordless Place-lite the picker can enrich in place.
+                onAddLocation={
+                  mapPlace || !startErrand || frozen
+                    ? undefined
+                    : () =>
+                        startErrand({
+                          target: { kind: 'booking', id: booking.id, field: 'placeId' },
+                          label: errandLabel,
+                          draft: bookingSheetDraft({ booking, trip, events, places }),
+                        })
+                }
+              />
+            )}
+            {!linkedEvent ? (
+              <Fact k={t.index.detail.timing} v={t.index.detail.unscheduled} />
+            ) : endsAt ? (
+              <>
+                <Fact k={labels.start} v={startsAt ? formatDayTime(startsAt, startZone) : '-'} />
+                <Fact k={labels.end} v={formatDayTime(endsAt, endZone)} />
+              </>
+            ) : (
+              <Fact
+                k={startsAt ? labels.start : t.index.detail.timing}
+                v={startsAt ? formatDayTime(startsAt, startZone) : formatDayDate(linkedEvent.date)}
+              />
+            )}
+            {duration && <Fact k={t.index.detail.duration} v={duration} />}
+            {/* **The service's number, mono but NOT amber** (ADR-0222 §3). `mono` on the
+              code below sets a typeface AND `--amber-deep`; rule 4 spends amber on time
+              and commitment, and `LY315` is neither — so `ident` is the same face in the
+              fact's own ink. The word comes from the sheet's own `Record`, one label
+              table with two readers rather than two tables. */}
+            {booking.flightNumber && t.index.sheet.numberLabel[booking.type] && (
+              <Fact
+                k={t.index.sheet.numberLabel[booking.type]}
+                v={booking.flightNumber}
+                variant="ident"
+              />
+            )}
+            {booking.confirmationCode && (
+              <Fact k={t.index.detail.code} v={`${CODE_PREFIX}${booking.confirmationCode}`} mono />
+            )}
+            {/* Only for a route, and only once at least one end HAS a code — a train's endpoints
               have none, so the fact is simply absent there rather than empty. With one end
               known it still states that end and `RouteLabel` draws its usual `-` for the
               other, which is how every half route in this app already reads. */}
-          {isRoute && (fromCode || toCode) && (
-            <div className="bk-fact">
-              <span className="bk-fact-k">{t.index.detail.airports}</span>
-              <span className="bk-fact-v mono">
-                {/* The same arrow every route in this app draws, so a pair of codes reads as a
+            {isRoute && (fromCode || toCode) && (
+              <div className="bk-fact">
+                <span className="bk-fact-k">{t.index.detail.airports}</span>
+                <span className="bk-fact-v mono">
+                  {/* The same arrow every route in this app draws, so a pair of codes reads as a
                     journey rather than as two values (design-language.md: every visible arrow
                     is `NavArrow`). */}
-                <RouteLabel from={fromCode} to={toCode} />
-              </span>
-            </div>
-          )}
-          {booking.provider && <Fact k={t.index.detail.provider} v={booking.provider} />}
-          {room && <Fact k={t.index.detail.room} v={room} />}
-          {(wifi?.network || wifi?.password) && (
-            <Fact
-              k={t.index.detail.wifi}
-              v={[wifi.network, wifi.password].filter(Boolean).join(' · ')}
-              mono
-            />
-          )}
-          {/* **Two derived relations, two facts, both last** (ADR-0154 §5, ADR-0159).
+                  <RouteLabel from={fromCode} to={toCode} />
+                </span>
+              </div>
+            )}
+            {booking.provider && <Fact k={t.index.detail.provider} v={booking.provider} />}
+            {/* **Plain ink, and that is the decision** (ADR-0222 §3). A gate is a location,
+              but teal in this sheet is an AFFORDANCE (`ניווט`, `מפה`) and never a text
+              colour — painting one here would teach the build to spend the hue decoratively,
+              which is the one thing rule 4 exists to stop. */}
+            {booking.gate && t.index.sheet.gateLabel[booking.type] && (
+              <Fact k={t.index.sheet.gateLabel[booking.type]} v={booking.gate} />
+            )}
+            {room && <Fact k={t.index.detail.room} v={room} />}
+            {(wifi?.network || wifi?.password) && (
+              <Fact
+                k={t.index.detail.wifi}
+                v={[wifi.network, wifi.password].filter(Boolean).join(' · ')}
+                mono
+              />
+            )}
+            {/* **Two derived relations, two facts, both last** (ADR-0154 §5, ADR-0159).
               The journey reads first because it is about THIS leg's own trip; the
               round trip is about the other half of the purchase. A leg can honestly
               have both — the outbound of a round trip can itself have a layover. */}
-          {journey && (
-            <RelatedFact
-              label={t.index.detail.journey}
-              text={[
-                t.index.detail.journeyLeg(journey.index + 1, journey.legs.length),
-                journeyNeighbour(journey, tz)?.text,
-              ]
-                .filter(Boolean)
-                .join(` ${DOT_SEPARATOR} `)}
-              onOpen={
-                onOpen &&
-                (() => {
-                  const neighbour = journeyNeighbour(journey, tz);
-                  if (neighbour) onOpen(neighbour.booking);
-                })
-              }
-            />
-          )}
-          {pair && (
-            <RelatedFact
-              label={t.index.detail.pair}
-              text={t.index.detail.pairLeg(
-                pair.leg,
-                pair.partnerEvent?.startsAt
-                  ? formatDayTime(pair.partnerEvent.startsAt, tz)
-                  : pair.partnerEvent?.date
-                    ? formatDayDate(pair.partnerEvent.date)
-                    : t.index.detail.pairUnscheduled,
-              )}
-              onOpen={onOpen && (() => onOpen(pair.partner))}
-            />
-          )}
-        </>
-      }
-    />
+            {journey && (
+              <RelatedFact
+                label={t.index.detail.journey}
+                text={[
+                  t.index.detail.journeyLeg(journey.index + 1, journey.legs.length),
+                  journeyNeighbour(journey, zoneEvidence)?.text,
+                ]
+                  .filter(Boolean)
+                  .join(` ${DOT_SEPARATOR} `)}
+                onOpen={
+                  onOpen &&
+                  (() => {
+                    const neighbour = journeyNeighbour(journey, zoneEvidence);
+                    if (neighbour) onOpen(neighbour.booking);
+                  })
+                }
+              />
+            )}
+            {pair && (
+              <RelatedFact
+                label={t.index.detail.pair}
+                text={t.index.detail.pairLeg(
+                  pair.leg,
+                  pair.partnerEvent?.startsAt
+                    ? formatDayTime(
+                        pair.partnerEvent.startsAt,
+                        eventDisplayZones(pair.partnerEvent, zoneEvidence).start,
+                      )
+                    : pair.partnerEvent?.date
+                      ? formatDayDate(pair.partnerEvent.date)
+                      : t.index.detail.pairUnscheduled,
+                )}
+                onOpen={onOpen && (() => onOpen(pair.partner))}
+              />
+            )}
+          </>
+        }
+      />
+      {/* **Above the sheet, as a second layer** — the same arrangement `EventDetail` uses, so
+          back peels the picture before the read (ADR-0090's stack, `Modal` registering each). */}
+      {fullPicture && (
+        <MediaViewer
+          title={navPlace?.name ?? booking.title}
+          mimeType={fullPicture.mimeType}
+          source={{ kind: 'url', url: apiAssetUrl(fullPicture.url) }}
+          caption={placeCredit(fullPicture)}
+          onClose={() => setFullPicture(null)}
+          intrinsic={fullPicture}
+        />
+      )}
+    </>
   );
 }
 
@@ -336,19 +424,21 @@ export function LocationFact({
  *  journey is read forwards; the previous one on the last leg, where "next" is nothing.
  *  Null when the neighbour has no schedule to name, in which case the fact still states
  *  the position — that part is always true. */
-function journeyNeighbour(journey: Journey, tz: string) {
+function journeyNeighbour(journey: Journey, evidence: ZoneEvidence) {
   const next = journey.legs[journey.index + 1];
   const prev = journey.legs[journey.index - 1];
   const target = next ?? prev;
   if (!target) return null;
-  const at = target.event?.startsAt;
+  const event = target.event;
   return {
     booking: target.booking,
     text: (next ? t.index.detail.journeyNext : t.index.detail.journeyPrev)(
-      at
-        ? formatDayTime(at, tz)
-        : target.event?.date
-          ? formatDayDate(target.event.date)
+      event?.startsAt
+        ? // The NEIGHBOUR's departure in the NEIGHBOUR's zone — a journey's whole point is
+          // that its legs are in different ones, so this leg's zone is the wrong answer here.
+          formatDayTime(event.startsAt, eventDisplayZones(event, evidence).start)
+        : event?.date
+          ? formatDayDate(event.date)
           : t.index.detail.pairUnscheduled,
     ),
   };
@@ -395,11 +485,29 @@ function RelatedFact({
  *  lint guard could not see, which is a base direction for the whole value: a Hebrew
  *  one would have read backwards. `auto` skips isolated content when it sniffs, so a
  *  duration built by `measure` still resolves RTL and keeps its number in front. */
-export function Fact({ k, v, mono }: { k: string; v: string; mono?: boolean }) {
+export function Fact({
+  k,
+  v,
+  mono,
+  variant,
+}: {
+  k: string;
+  v: string;
+  /** The confirmation code's look: monospace AND `--amber-deep`, kept as one word because
+   *  that pairing is what shipped and nothing about it changes. */
+  mono?: boolean;
+  /** **`mono` minus the hue** (ADR-0222 §3) — an identifier you read character by character
+   *  but which is not a time or a commitment, so rule 4 lends it no colour. Added when the
+   *  second caller arrived and showed that one class was carrying two decisions. */
+  variant?: 'ident';
+}) {
   return (
     <div className="bk-fact">
       <span className="bk-fact-k">{k}</span>
-      <span className={'bk-fact-v' + (mono ? ' mono' : '')} dir="auto">
+      <span
+        className={'bk-fact-v' + (mono ? ' mono' : '') + (variant ? ` ${variant}` : '')}
+        dir="auto"
+      >
         {v}
       </span>
     </div>

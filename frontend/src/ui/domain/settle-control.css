@@ -30,6 +30,9 @@
 .app[data-mode='plan'] .wp-settle-btn:focus-visible {
   outline-color: var(--plan);
 }
+.app[data-phase='past'] .wp-settle-btn:focus-visible {
+  outline-color: var(--memory);
+}
 
 /* THE PAIR IS SYMMETRIC, and that is the alignment this extraction is for: the day
    view gave ✓ its `--ok` and left the skip a bare word — neutral, text-only, and
@@ -129,15 +132,25 @@
   width: 17px;
   height: 17px;
 }
-.wp-settle.compact .wp-settle-btn.done:hover,
 .wp-settle.compact .wp-settle-btn.done:focus-visible {
   color: var(--ok);
   border-color: color-mix(in srgb, var(--ok) 45%, transparent);
 }
-.wp-settle.compact .wp-settle-btn.skip:hover,
+@media (hover: hover) and (pointer: fine) {
+  .wp-settle.compact .wp-settle-btn.done:hover {
+    color: var(--ok);
+    border-color: color-mix(in srgb, var(--ok) 45%, transparent);
+  }
+}
 .wp-settle.compact .wp-settle-btn.skip:focus-visible {
   color: var(--miss);
   border-color: color-mix(in srgb, var(--miss) 45%, transparent);
+}
+@media (hover: hover) and (pointer: fine) {
+  .wp-settle.compact .wp-settle-btn.skip:hover {
+    color: var(--miss);
+    border-color: color-mix(in srgb, var(--miss) 45%, transparent);
+  }
 }
 
 /* ── board — the lifted hero, and the only density whose change is the GROUND ───

@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ltrIsolate, withoutBidiControls } from '../../lib/bidi';
 import { MemberRow } from './MemberRow';
+import { t } from '../../i18n/he';
 
 const person = { displayName: 'דנה', avatarHue: 'rose' } as const;
 
@@ -77,7 +78,7 @@ describe('the §10 defects this phase fixes', () => {
     // what this asserts is that the class is still the hook the fix hangs on.
     const { container } = render(<MemberRow person={person} role="admin" />);
     expect(container.querySelector('.role.owner')).toBeTruthy();
-    expect(screen.getByText('מנהל')).toBeTruthy();
+    expect(screen.getByText(t.settings.roleAdmin)).toBeTruthy();
   });
 
   it('a signed overflow count keeps its sign in front of the digits', () => {

@@ -5,7 +5,7 @@
 // §5, so until a form adopts it this file is the only thing holding those rules up.
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { wrapNav } from '../../test/nav-harness';
 import { Sheet } from '../Sheet';
 import { Field } from './Field';
@@ -23,6 +23,7 @@ function Host({
   breakLater,
   onCommit = () => {},
   onCancel = () => {},
+  header,
 }: {
   problems?: Partial<Record<'one' | 'two', readonly FieldProblem<F>[]>>;
   /** Step one passes its gate and only fails afterwards — which is what a field
@@ -31,6 +32,8 @@ function Host({
   breakLater?: readonly FieldProblem<F>[];
   onCommit?: () => void;
   onCancel?: () => void;
+  /** What the host pins beside the read-out — the panel's header slot. */
+  header?: ReactNode;
 }) {
   const errors = useFormErrors<F>();
   const [past, setPast] = useState(false);
@@ -48,7 +51,7 @@ function Host({
   if (!steps.isFirst && !past) setPast(true);
   return (
     <Sheet title="טופס" onClose={onCancel}>
-      <FormStepPanel steps={steps} labels={['ראשון', 'שני']}>
+      <FormStepPanel steps={steps} labels={['ראשון', 'שני']} header={header}>
         {steps.isFirst ? (
           <Field label="שדה א" {...errors.field('a')}>
             <input aria-label="a" />
@@ -271,5 +274,33 @@ describe('FormSteps — the pane travels, it never animates height', () => {
     expect(document.querySelector('.form-step')?.getAttribute('data-step-nav')).toBe('forward');
     fireEvent.click(screen.getByText(t.common.steps.back));
     expect(document.querySelector('.form-step')?.getAttribute('data-step-nav')).toBe('back');
+  });
+});
+
+/* ── The step's identity stays on screen (field report, 2026-08-23) ────────────────────
+   Two screenshots, before and after scrolling, in which both the step name and the booking
+   type were gone: a journey with three stops scrolls well past a screen, and once the heading
+   leaves there is nothing saying which step you are on. */
+describe('FormSteps — the identity is pinned, in ONE box', () => {
+  afterEach(() => cleanup());
+
+  it('keeps the read-out and whatever the host pins in a single sticky box', () => {
+    render(wrapNav(<Host header={<div className="host-pin">טיסה</div>} />));
+    const head = document.querySelector('.form-steps-head')!;
+    expect(head).toBeTruthy();
+    // **One box, and this is the assertion that matters.** Two sticky siblings would leave
+    // the container's own gap between them, and the content scrolls THROUGH that gap —
+    // measured at 24px. So both live inside this element, not beside it.
+    expect(head.querySelector('.form-steps-bar')).toBeTruthy();
+    expect(head.querySelector('.host-pin')).toBeTruthy();
+    // And it is not inside the pane that travels, which is what would scroll it away.
+    expect(head.closest('.form-step')).toBeNull();
+  });
+
+  it('sticks the read-out alone when the host pins nothing', () => {
+    render(wrapNav(<Host />));
+    const head = document.querySelector('.form-steps-head')!;
+    expect(head.querySelector('.form-steps-bar')).toBeTruthy();
+    expect(head.children.length).toBe(1);
   });
 });

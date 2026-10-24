@@ -9,6 +9,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type { MaybeItem, Note } from '@waypoint/shared';
 import { wrapNav } from '../test/nav-harness';
 import { setSimulatedNow } from '../lib/useClock';
+import { buildHostContextIndex } from '../lib/host-context';
 
 const NOW = '2026-07-20T09:00:00Z';
 
@@ -26,10 +27,23 @@ const idea: MaybeItem = {
 let tripNotes: Note[] = [];
 const createNote = vi.fn(() => Promise.resolve(undefined));
 
+vi.mock('../state/mode-state', () => import('../test/mode-from-trip'));
 vi.mock('../state/trip-state', () => ({
   useTrip: () => ({
+    trip: { id: 't1', timezone: 'Asia/Jerusalem', startDate: '2026-08-15', endDate: '2026-08-20' },
+    zoneCrossings: [],
+    // Tasks ride the same snapshot since phase 1; the mark and the sections read them.
+    tasks: [],
+    events: [],
+    taskVerbs: {
+      createTask: async () => undefined,
+      updateTask: async () => {},
+      deleteTask: async () => {},
+      tickTask: async () => {},
+    },
     notes: tripNotes,
     noteHosts: new Map(),
+    hostContexts: buildHostContextIndex([], []),
     users: [
       { id: 'u1', displayName: 'דנה' },
       { id: 'u2', displayName: 'מיכל' },

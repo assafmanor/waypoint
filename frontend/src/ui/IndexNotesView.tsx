@@ -24,37 +24,31 @@ import {
   countNotesByCategory,
   noteGlyph,
   noteHost,
-  noteTitleText,
-  noteWhen,
   NOTE_CATEGORY_ALL,
   sortNotes,
   visibleNotes,
   type NoteCategoryFilter,
-  type NoteHostRef,
 } from '../lib/notes';
-import { ltrIsolate } from '../lib/bidi';
-import { prettyUrl } from '../lib/external-url';
 import { todayInTz } from '../lib/time';
-import { useNoteHostWayIn, type NoteHostWayIn } from '../state/note-host-nav';
-import { EntitySyncBadge, useUnsynced } from './EntitySyncBadge';
+import { useNoteHostWayIn } from '../state/note-host-nav';
 import { NoteSheet, type NoteDraft } from './NoteSheet';
 import { NoteManageSheet } from './NoteManageSheet';
-import { NoteOpenFoot } from './NoteOpenFoot';
+import { NoteRow, useNoteReader } from './NoteRow';
 import { IndexBackRow } from './IndexBackRow';
 import { Icon } from './Icon';
-import { ListRow } from './domain';
 import { ChoiceGrid, type Choice } from './primitives/ChoiceGrid';
 import { RevealList } from './primitives/RevealList';
 import { SearchOverlay } from './primitives/SearchOverlay';
 import { EmptyState } from './feedback';
 import { EVENT_CATEGORY_OPTIONS } from '../lib/category-options';
-import { NOTE_HOST_ICON } from '../constants';
 import { t } from '../i18n/he';
 import './notes.css';
 
 export function IndexNotesView({ onClose }: { onClose: () => void }) {
-  const { trip, notes, noteHosts, noteVerbs } = useTrip();
-  const { mode } = useMode();
+  const { trip, notes, users, noteHosts, noteVerbs } = useTrip();
+  // A finished trip's notes read and nothing writes one (ADR-0239 §4, owner: no post-trip
+  // notes).
+  const { mode, isFinished: finished } = useMode();
   const now = useClock();
 
   const [category, setCategory] = useState<NoteCategoryFilter>(NOTE_CATEGORY_ALL);
@@ -63,10 +57,6 @@ export function IndexNotesView({ onClose }: { onClose: () => void }) {
   // null = closed; 'create' = a new note; a Note = editing that one.
   const [sheet, setSheet] = useState<Note | 'create' | null>(null);
   const [manage, setManage] = useState<Note | null>(null);
-  // **A row's tap opens it WHERE IT IS** (ADR-0153 §4's amendment, round two): the row's
-  // two-line clamp lifts and one foot line appears under it. No sheet, no scrim, and the
-  // list you were reading stays exactly where it was.
-  const [openId, setOpenId] = useState<string | null>(null);
   // The way in to a note's host, measured against the trip's own today (a day-scoped host
   // needs `?day=` unless it IS today).
   const wayIn = useNoteHostWayIn(todayInTz(trip.timezone, now));
@@ -75,6 +65,15 @@ export function IndexNotesView({ onClose }: { onClose: () => void }) {
   // screen built it locally while it was the only reader, and that is exactly how the editor
   // ended up unable to state a category the row beside it already showed (ADR-0152 §5).
   const hosts = noteHosts;
+  // **A row's tap opens it WHERE IT IS** (ADR-0153 §4's amendment, round two), or on its own
+  // screen when it is too long for the list (ADR-0202 §2): `useNoteReader` holds both.
+  const reader = useNoteReader({
+    hosts,
+    users,
+    now,
+    wayIn,
+    onEdit: finished ? undefined : setSheet,
+  });
 
   const ordered = useMemo(() => sortNotes(notes), [notes]);
   const categoryCounts = useMemo(() => countNotesByCategory(ordered, hosts), [ordered, hosts]);
@@ -128,16 +127,15 @@ export function IndexNotesView({ onClose }: { onClose: () => void }) {
   };
 
   const renderNote = (note: Note) => (
-    <NoteLi
+    <NoteRow
       wayIn={wayIn}
       note={note}
       host={noteHost(note, hosts)}
       glyph={noteGlyph(note, hosts)}
       now={now}
-      open={openId === note.id}
-      onManage={setManage}
-      onToggle={() => setOpenId((current) => (current === note.id ? null : note.id))}
-      onEdit={setSheet}
+      {...reader.rowProps(note)}
+      onManage={finished ? undefined : setManage}
+      onEdit={finished ? undefined : setSheet}
     />
   );
   const noteKey = (note: Note) => note.id;
@@ -161,7 +159,11 @@ export function IndexNotesView({ onClose }: { onClose: () => void }) {
           icon={<Icon name="clipboard" />}
           title={t.notes.empty.title}
           body={t.notes.empty.body}
-          action={{ label: t.notes.empty.action, onClick: () => setSheet('create') }}
+          action={
+            finished
+              ? undefined
+              : { label: t.notes.empty.action, onClick: () => setSheet('create') }
+          }
         />
       ) : (
         // Hidden (not merely covered) while search is open: SearchOverlay renders the same
@@ -170,12 +172,16 @@ export function IndexNotesView({ onClose }: { onClose: () => void }) {
         !searchMode && (
           <>
             <div className="filter-row">
+              {/* Worded, not `compact`: ADR-0153 §3 took this row from the
+                  bookings screen with "no change", and `compact` is ADR-0122 §2's density
+                  for a strip over the MAP, where the pin and the row badge already carry
+                  the same glyph. Here the glyph stands alone, so a chip row of six emoji
+                  is the one place in the app a category is unnamed (owner, 2026-08-21). */}
               <ChoiceGrid
                 options={categoryOptions}
                 value={activeCategory}
                 onChange={setCategory}
                 layout="pills"
-                compact
                 ariaLabel={t.notes.filter.categoryLabel}
               />
               <button
@@ -188,9 +194,11 @@ export function IndexNotesView({ onClose }: { onClose: () => void }) {
               </button>
             </div>
 
-            <button type="button" className="addbtn" onClick={() => setSheet('create')}>
-              <Icon name="plus" /> {t.notes.add}
-            </button>
+            {!finished && (
+              <button type="button" className="addbtn" onClick={() => setSheet('create')}>
+                <Icon name="plus" /> {t.notes.add}
+              </button>
+            )}
 
             {matchCount > 0 ? (
               <RevealList
@@ -211,6 +219,7 @@ export function IndexNotesView({ onClose }: { onClose: () => void }) {
           title={t.notes.search.modeTitle}
           contextLabel={trip.name}
           mode={mode}
+          finished={finished}
           query={query}
           onQueryChange={setQuery}
           placeholder={t.notes.search.placeholder}
@@ -244,6 +253,8 @@ export function IndexNotesView({ onClose }: { onClose: () => void }) {
         />
       )}
 
+      {reader.fullScreen}
+
       {manage && (
         <NoteManageSheet
           note={manage}
@@ -262,106 +273,5 @@ export function IndexNotesView({ onClose }: { onClose: () => void }) {
         />
       )}
     </div>
-  );
-}
-
-/** One note row (ADR-0153 §4). Seven facts wanted a place and a phone row holds three:
- *  the badge is the resolved CATEGORY glyph, the title line is the note's own words, the
- *  meta is the host chip then author · when, and the trailing slot is a link mark when
- *  there is a url. Dropped on purpose: the category as a WORD (the glyph says it) and the
- *  author's avatar (a second identity system per row, serving no decision made here). */
-function NoteLi({
-  note,
-  host,
-  glyph,
-  now,
-  wayIn,
-  open,
-  onToggle,
-  onEdit,
-  onManage,
-}: {
-  note: Note;
-  host?: NoteHostRef;
-  glyph: string;
-  now: Date;
-  /** Whether this note's host can be reached, and how (ADR-0153 §8's amendment). */
-  wayIn: NoteHostWayIn;
-  /** Expanded: the title line's two-line clamp is off and the foot is under it. */
-  open: boolean;
-  onToggle: () => void;
-  onEdit: (note: Note) => void;
-  onManage: (note: Note) => void;
-}) {
-  const { users } = useTrip();
-  const unsynced = useUnsynced(note.id);
-  const author = users.find((u) => u.id === note.createdBy)?.displayName;
-
-  // A note with a title AND a body shows the title and DEMOTES the body to the meta line.
-  // Printing both is the same sentence twice — the failure ADR-0151's tile amendment paid
-  // for once already.
-  const titleLine = note.title ? (
-    note.title
-  ) : note.body ? (
-    <span className="note-body-line">{note.body}</span>
-  ) : (
-    // A url-only note's title line IS the url, as an LTR island inside the RTL row —
-    // `ltrIsolate`, never `dir="ltr"` on a non-input (ADR-0118). `prettyUrl`, not the raw
-    // string: a share link is mostly a tracking token, and this is the row's whole title.
-    <span className="note-url-line">{ltrIsolate(prettyUrl(note.url))}</span>
-  );
-
-  const meta = (
-    <>
-      {host && (
-        <>
-          <span className="note-host">
-            <Icon name={NOTE_HOST_ICON[host.kind]} />
-            <span className="note-host-n">{host.name}</span>
-          </span>{' '}
-        </>
-      )}
-      {note.title && note.body ? `${note.body} · ` : ''}
-      {author ? `${author} · ` : ''}
-      {noteWhen(note.createdAt, now.getTime())}
-    </>
-  );
-
-  const reachable = wayIn.canReach(host);
-
-  return (
-    <>
-      <ListRow
-        className={open ? 'is-open' : undefined}
-        icon={glyph}
-        onOpen={onToggle}
-        openLabel={noteTitleText(note)}
-        title={titleLine}
-        meta={meta}
-        right={
-          note.url && (note.title || note.body) ? (
-            <span className="note-link-mark">
-              <Icon name="link" />
-            </span>
-          ) : undefined
-        }
-        sync={<EntitySyncBadge id={note.id} />}
-        unsynced={unsynced}
-        onManage={() => onManage(note)}
-        manageLabel={t.notes.manage.actions}
-      />
-      {/* The row's SIBLING, not a prop on it: `ListRow` is shared with bookings, documents
-          and members, and none of them has anything to expand. The list card is what holds
-          them together, so the open note joins it there. */}
-      {open && (
-        <NoteOpenFoot
-          host={host}
-          url={note.url}
-          urlIsTheTitle={!note.title && !note.body}
-          onGoToHost={reachable ? () => wayIn.goTo(host!) : undefined}
-          onEdit={() => onEdit(note)}
-        />
-      )}
-    </>
   );
 }

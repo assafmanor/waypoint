@@ -1,0 +1,1220 @@
+/* The public itinerary reader (ADR-0213), ported from the proposal block of
+   mockups/a-shared-itinerary-is-organized-by-the-day-v3.html.
+
+   Only the layout delta lives here: every colour, radius, type ramp and spacing value is a
+   token from styles/tokens.css, which is what keeps this page in the same design system as
+   the app despite being the one screen a stranger sees. The mockup's review chrome
+   (`.mk-*`, the phone frame, the measurement table) is deliberately not ported.
+
+   The hero keeps its dark trip identity in BOTH themes — it is always-dark chrome, so its
+   ink is the theme-fixed `--on-dark-*` ramp (ADR-0158 §3), not a re-mapping fill. */
+
+/* **This page is scrolled BY THE DOCUMENT, which is the second answer to the same report**
+   (owner, 2026-08-30: the shared link could not be scrolled at all; 2026-08-31: it still
+   could not be refreshed).
+
+   The first answer gave the page its own `100dvh` scroller, because `html, body` are
+   `overflow: clip` app-wide (tokens.css) — every scroll in the app is `.body`'s, a sheet's or
+   a strip's — and the public reader renders OUTSIDE `AppShell`, so it inherited the refusal
+   and none of the scroller. That fixed scrolling and quietly made refresh impossible: a pull
+   at the top of an INNER scroller is not a viewport overscroll, so the browser's refresh
+   gesture has nothing to read no matter what `overscroll-behavior` says.
+
+   So the document scrolls instead — `:root[data-public-reader]` restores `overflow: visible`
+   — and this is `min-height`, not `height`, so the page is as tall as its content. `dvh`
+   rather than `%` for the same reason as before: a percentage resolves against the LARGE
+   viewport, so a short itinerary would reserve ~125px behind the phone's browser toolbar. */
+/* **This page has its own type scale, one step up from the app's** (owner, 2026-08-30:
+   _"Fonts are too small in the details and very hard to read, also the notes, and overall
+   too small texts"_).
+ 
+   The app's steps are sized for a dense operational UI held by someone who already knows
+   what every row means — `--text-micro` is 10.5px and earns it on a badge. This is a
+   DOCUMENT, read once by a stranger who is often standing up, and the same 10.5px on a
+   place line is simply hard to read. Local variables rather than a change to
+   `tokens.css`: the app's density is not this page's problem to re-decide. */
+.sh-page,
+.sh-boot,
+.sh-unavailable {
+  --sh-micro: 12.5px;
+  --sh-caption: 13.5px;
+  --sh-secondary: 15px;
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: var(--screen);
+}
+
+/* A stranger's device is a phone (ADR-0017), but the link also lands in a desktop browser —
+   bound to the same column the app frames itself in rather than stretching a phone layout
+   across 1600px. */
+.sh-page {
+  max-width: 560px;
+  margin-inline: auto;
+  color: var(--ink);
+}
+
+.sh-boot {
+  display: grid;
+  place-items: center;
+  padding: 28px;
+  color: var(--muted);
+}
+
+.sh-public-bar {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 16px;
+  border-block-end: 1px solid color-mix(in srgb, var(--on-dark) 10%, transparent);
+  background: var(--indigo);
+  color: var(--on-dark-dim);
+  font-size: var(--sh-micro);
+}
+
+/* **The bar's end holds two things now**, so the status line and the take-a-copy control
+   share one flex child rather than fighting `space-between` for the same edge. */
+.sh-bar-end {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+/* **A control in the masthead takes the on-dark ramp** (ADR-0158 §3): `.sh-public-bar` is
+   theme-fixed `--indigo` with `--on-dark-dim` ink, so `--ink` here renders navy on navy. The
+   mockup was drawn that way first and the button was invisible on the page while looking
+   perfectly reasonable in the CSS. */
+.sh-bar-take {
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding-inline: 9px;
+  border: 1px solid color-mix(in srgb, var(--on-dark) 28%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--on-dark) 10%, transparent);
+  color: var(--on-dark);
+  font: 700 var(--sh-micro) var(--font-body);
+  cursor: pointer;
+  position: relative;
+  flex: none;
+}
+.sh-bar-take .icon {
+  width: 13px;
+  height: 13px;
+  flex: none;
+}
+/* 44px of target without 44px of bar — `ValueToken`'s technique (ADR-0177), the same one
+   `.sh-ops > summary` already uses on this page. The masthead is 42px and cannot grow to
+   meet the floor without pushing the whole document down. */
+.sh-bar-take::after {
+  content: '';
+  position: absolute;
+  inset-inline: -6px;
+  inset-block: calc((44px - 100%) / -2);
+  min-height: 44px;
+}
+.sh-bar-take[disabled] {
+  opacity: 0.75;
+  cursor: default;
+}
+/* Its spinner is drawn on the dark bar, so it takes the white default rather than `.ink`
+   — which is exactly the case `.spinner`'s base rule was written for. */
+.sh-bar-take .spinner.ink {
+  border-color: color-mix(in srgb, var(--on-dark) 35%, transparent);
+  border-top-color: var(--on-dark-strong);
+}
+
+/* The foot's copy of the same action, in the owner sheet's own `.share-outcome` — a second
+   host, not a third button. Relative so the progress bar can sit inside it. */
+.sh-take {
+  padding: 12px 14px 0;
+}
+.sh-take .share-outcome {
+  width: 100%;
+  position: relative;
+  flex-wrap: wrap;
+}
+.sh-take .share-outcome .sh-dl-bar {
+  flex: 1 0 100%;
+  margin-block-start: 0;
+}
+
+.sh-brand,
+.sh-freshness {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.sh-brand {
+  color: var(--on-dark-strong);
+  font-weight: 700;
+}
+
+/* The app's own mark rather than its initial (owner, 2026-08-30). Kept in the same box the
+   letter had, so the bar's rhythm is unchanged; the tile behind it stays because the mark is
+   cut for a bright ground and this bar is the page's one dark strip. */
+.sh-brand-mark {
+  width: 24px;
+  height: 24px;
+  padding: 3px;
+  border: 1px solid var(--mark-edge);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  object-fit: contain;
+}
+
+.sh-live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ok);
+}
+
+.sh-freshness.stale .sh-live-dot {
+  background: var(--muted);
+}
+
+.sh-hero {
+  position: relative;
+  overflow: hidden;
+  padding: 21px 18px 22px;
+  background:
+    radial-gradient(circle at 8% 14%, rgba(44, 156, 144, 0.22), transparent 27%),
+    linear-gradient(158deg, var(--indigo), var(--board));
+  color: var(--on-dark);
+}
+
+.sh-kicker {
+  margin-block-end: 6px;
+  color: var(--on-dark-dim);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+/* Where the trip IS, which is the only fact on this line that changes — so it is the only
+   part of it that is not dim (eleventh amendment §4). The line used to read a constant
+   `מסלול חי`, printed identically on a trip that ended six months ago. */
+.sh-kicker strong {
+  color: var(--on-dark-strong);
+}
+
+.sh-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  color: var(--on-dark-strong);
+  font: 27px/1.12 var(--font-head);
+}
+
+.sh-title-mark {
+  width: 46px;
+  height: 46px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 23px;
+}
+
+.sh-dates {
+  margin-block-start: 8px;
+  color: var(--on-dark-dim);
+  font: 500 12px/1.4 var(--font-body);
+}
+
+/* **Only the dates are mono** (ADR-0242 §5). The line also prints the counts, a Hebrew
+   sentence, and JetBrains Mono ships no Hebrew: the whole line in mono borrowed a fallback
+   face on screen and printed boxes on paper (#899). */
+.sh-dates-num {
+  font-family: var(--font-mono);
+}
+
+.sh-story {
+  margin: -1px 14px 14px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-block-start: 0;
+  border-radius: 0 0 15px 15px;
+  background: var(--card);
+}
+
+.sh-story strong {
+  display: block;
+  font: 17px/1.3 var(--font-head);
+}
+
+.sh-story p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: var(--sh-caption);
+  line-height: 1.55;
+}
+
+.sh-stale {
+  margin: 10px 14px 0;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--muted);
+  font-size: var(--sh-caption);
+}
+
+.sh-days {
+  padding: 14px 14px 24px;
+}
+
+.sh-days-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin: 0 3px 10px;
+}
+
+.sh-days-head h2 {
+  margin: 0;
+  font: 19px var(--font-head);
+}
+
+.sh-days-head span {
+  color: var(--muted);
+  font-size: var(--sh-micro);
+}
+
+.sh-day {
+  margin-block-end: 10px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--card);
+  /* **The gap the landing leaves above itself** (ADR-0213's eleventh amendment §1).
+     `landAtTop` passes no numbers on purpose — the offset belongs to the row being aimed at,
+     so the previous day stays a visible sliver and the reader can tell there is history above
+     them without reading it. Drawn and measured at 26px; a device pass owns the final value. */
+  scroll-margin-block-start: 26px;
+}
+
+/* **A DAY THAT IS OVER READS ONE NOTCH QUIETER** (eleventh amendment §3), and it is a
+   treatment rather than a badge: a chip that every card in a chronological run carries
+   repeats the date already printed beside it and tells no two cards apart — which is exactly
+   why `.chip.past` was deleted from the All Trips list rather than promoted (`App.css`).
+   These were that list's own two moves, the desaturation and muted title of what was
+   `.trip-card.is-past`, at this page's scale. They cost no layout. The list itself dropped
+   them (ADR-0240 §7): a finished trip there is a memory, not a disabled row, where a day of
+   a trip still running is genuinely behind you. */
+.sh-day.is-past {
+  filter: saturate(0.82);
+}
+
+.sh-day.is-past .wp-dayhead-copy > strong {
+  color: var(--muted);
+}
+
+.sh-day.open {
+  box-shadow: var(--elevation-raised);
+}
+
+/* The caret's rotation is the reader's DISCLOSURE state, so it stays with the card that opens
+   rather than moving into `day-head.css` with the caret cell — the app's head does not toggle. */
+.sh-day.open .wp-dayhead-caret .icon {
+  transform: rotate(180deg);
+}
+
+.sh-day-body {
+  padding: 7px 11px 4px;
+  border-block-start: 1px solid var(--line);
+  background: color-mix(in srgb, var(--paper) 34%, var(--card));
+}
+
+.sh-part {
+  margin-block-end: 8px;
+}
+
+/* **THE APP'S OWN PLAYHEAD, INSIDE A DAY OF THE DOCUMENT** (ADR-0217, amended for this page
+   2026-09-02; drawn in `mockups/the-shared-reader-gets-the-playhead-v1.html`).
+
+   `ui/domain/NowMarker.tsx` is the app's one "you are here" mark and this page is its third
+   host. It needs three numbers from here and nothing else — which is what `now-marker.css`
+   was parameterised for, and it said so: "a host that needs it different sets `--now-ground`
+   rather than this sheet guessing".
+
+   `--now-bleed`  ⁦11px⁩ = this body's own inline padding, so the rule reaches the day card's
+                  inner edges and the arrow stands in the gutter. It is a CEILING and not a
+                  preference: `.sh-day` carries `overflow: hidden` for its ⁦16px⁩ radius, so a
+                  bleed past the padding is a mark with no arrow — the same trap `.journey`
+                  sets on the day surfaces.
+   `--now-tab`    ⁦15px⁩, smaller than the day list's ⁦18px⁩, because ⁦18⁩ draws a ⁦13px⁩ triangle
+                  into an ⁦11px⁩ gutter and reaches over the row's own edge. Measured on the
+                  drawing; ⁦15⁩ is ⁦10.8px⁩ and fits.
+   `--now-ground` the day BODY's ground and never `--screen`: the halo paints what the mark
+                  actually stands on, and here that is a tint inside a card.
+   `--now-room`   the boundary form's space. The day list spends ⁦9px⁩ (`.day-unplaced`'s
+                  number); this sheet's own rhythm is tighter — ⁦7px⁩ between rows — so ⁦6px⁩ is
+                  this host's equivalent rather than a second opinion about the same gap. */
+.sh-day-body .now-here {
+  --now-bleed: 11px;
+  --now-tab: 15px;
+  --now-ground: color-mix(in srgb, var(--paper) 34%, var(--card));
+  --now-room: 6px;
+  /* **AND WHERE THE MARK IS THE LANDING'S TARGET, IT LANDS IN THE MIDDLE** (ADR-0213's
+     eleventh amendment §1, corrected 2026-09-12). `landAtTop` aims `block: 'start'` and
+     passes no numbers — the gap above a landing belongs to the row being aimed at — so
+     `50vh` here IS the drawing's `scrollTop = lineTop - vh / 2`, written where the rest of
+     this mark's numbers live rather than as arithmetic at the call site. It costs nothing on
+     the ordinary landing: a scroll margin is read only when this element is the thing being
+     scrolled to, and on most of the day it is the card (`shareLanding`). */
+  scroll-margin-block-start: 50vh;
+}
+
+/* **AND THE ROW SAYS THE WORD, WHICH IS WHAT KEEPS THE MARK A SHAPE.**
+
+   ADR-0217 §1 gave the mark no caption for a stated reason: "the running row's own `עכשיו`
+   chip says the word". True of `EventCard` — and this page marked a running row not at all,
+   so the nailed arrow was the only thing on screen saying anything, and an arrow says no
+   time. The same premise had already failed once, one surface over, for the boundary form.
+
+   **Two ways to close it, and the render chose.** Putting the clock on the MARK at the
+   arrow's height is refused: the gutter is ⁦11px⁩, so a chip there lands ON this row's own
+   title and clock — the defect the owner rejected twice while ADR-0217 was drawn (_"fix the
+   issue where the playhead is going over the text"_). So the row says it, exactly as
+   `EventCard` does, and §1's premise becomes true on every surface instead of gaining an
+   exception.
+
+   `t.common.now`, which this page already rendered inside the now-line it is replacing — no
+   new vocabulary, which is the axis ADR-0139 found drifts first when a small widget is
+   copied. */
+.sh-event-now {
+  margin-inline-start: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--amber) 16%, transparent);
+  color: var(--amber-deep);
+  font-size: 10px;
+  font-weight: 700;
+  vertical-align: 1px;
+}
+
+.sh-part-head {
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 1px 3px 5px;
+  color: var(--amber-deep);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.sh-part-head::after {
+  content: '';
+  height: 1px;
+  flex: 1;
+  background: color-mix(in srgb, var(--amber) 28%, var(--line));
+}
+
+.sh-part-mark {
+  min-width: 20px;
+  font-size: 16px;
+  text-align: center;
+}
+
+.sh-summary-row {
+  min-height: 38px;
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  margin-block-end: 4px;
+  padding: 5px 8px;
+  border-radius: 10px;
+  background: var(--card);
+}
+
+.sh-mark {
+  font-size: 17px;
+  text-align: center;
+}
+
+.sh-summary-row strong {
+  overflow: hidden;
+  font-size: 12.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sh-event {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: 7px;
+  margin-block-end: 7px;
+  padding: 7px 8px;
+  border-radius: 10px;
+  background: var(--card);
+}
+
+/* A hard event is a real commitment (ADR-0011). It reads firmer here for the same reason
+   it does in the app: the reader must be able to tell what cannot move. */
+.sh-event.hard {
+  border-inline-start: 3px solid var(--amber-deep);
+}
+
+/* **THE DAY'S FRAME, NOT ONE OF ITS STOPS** (ADR-0238 §1, drawn in
+   `mockups/a-shared-day-starts-and-ends-at-a-bed-v1.html`).
+
+   The two bed rows are `.sh-event`s — same grid, same glyph column, same place line — because
+   a bed is exactly that row with a hotel's name and `לינה · עד 11:00` on it, and inventing a
+   second row shape for it is what root rule 8 exists to stop. What they drop is the card fill:
+   the day body's own tint shows through and a hairline states the edge, so a frame does not
+   read as a stop somebody scheduled. Position alone would say it on a day that HAS stops and
+   says nothing on a day whose schedule is otherwise empty, which is why this is two
+   declarations rather than none. Measured at ⁦55px⁩, identical to the row it borrows. */
+.sh-bed {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.sh-event-glyph {
+  font-size: 17px;
+  text-align: center;
+}
+
+.sh-event-main {
+  min-width: 0;
+}
+
+.sh-event-main > strong {
+  display: block;
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sh-place-line {
+  display: block;
+  margin-block-start: 3px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: var(--sh-micro);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* **A description is two lines, and this rule was missing entirely.** `.sh-place-line` is
+   built for a single value — `nowrap` plus an ellipsis — which is right for an address and
+   wrong for prose: the caption was cut at one line however short it was, so the server-side
+   cap had nowhere to land. Two lines is the budget the mockup measured (day 9 grew 230px on
+   captions alone before it), and `white-space: normal` is what lets the second one exist. */
+.sh-cap {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-height: 1.45;
+  white-space: normal;
+}
+
+.sh-time {
+  color: var(--amber-deep);
+  font-family: var(--font-mono);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* **A clock with a word in front of it** (`מ-15:00`, `עד 11:00`). The word is prose and
+   must NOT be set in `--font-mono`: JetBrains ships no Hebrew on purpose, so on paper it
+   printed `.notdef` boxes and on screen it borrows whatever Hebrew mono the device has.
+   The wrapper carries the hue and the body face; `.sh-time` inside it keeps the number in
+   mono, so the time column reads with ONE face for its digits whatever the edge means. */
+.sh-said {
+  color: var(--amber-deep);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* The derived noun in front of an event's place line — what the row IS, from its booking's
+   type. Neutral and bold rather than coloured: it is a label, and the colour budget's two
+   spends on this line are already taken (amber for the hour, and nothing for the place). */
+.sh-kind {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+/* 44px, per ADR-0017's touch floor — the only interactive thing inside a day body. */
+.sh-map-link {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: transparent;
+  color: var(--teal);
+  font: 700 var(--sh-caption) var(--font-body);
+  text-decoration: none;
+}
+
+.sh-journey {
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 10px 7px 28px;
+  padding-inline-start: 14px;
+  border-inline-start: 1px dashed var(--teal);
+  color: var(--muted);
+  font-size: var(--sh-micro);
+}
+
+.sh-appendix {
+  padding: 0 14px 20px;
+}
+
+.sh-appendix h2 {
+  margin: 0 3px 10px;
+  font: 17px var(--font-head);
+}
+
+.sh-private {
+  margin-block-end: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
+}
+
+.sh-private > strong {
+  display: block;
+  margin-block-end: 4px;
+  font-size: var(--sh-caption);
+}
+
+.sh-private p {
+  margin: 0 0 4px;
+  color: var(--muted);
+  font-size: var(--sh-caption);
+  line-height: 1.5;
+}
+
+.sh-private p strong {
+  color: var(--ink);
+}
+
+.sh-private a {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  color: var(--teal);
+  text-decoration: none;
+}
+
+.sh-footer {
+  /* The tail clears the phone's home indicator — this page has no tab bar to do it. */
+  padding: 19px 16px calc(25px + var(--safe-bottom));
+  border-block-start: 1px solid var(--line);
+  text-align: center;
+}
+
+.sh-footer strong {
+  display: block;
+  font: 16px var(--font-head);
+}
+
+.sh-footer span {
+  display: block;
+  margin-block-start: 4px;
+  color: var(--muted);
+  font-size: var(--sh-caption);
+}
+
+.sh-footer a {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  margin-block-start: 8px;
+  color: var(--ink);
+  font-size: var(--sh-caption);
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.sh-unavailable {
+  display: grid;
+  place-items: center;
+  padding: 28px;
+  text-align: center;
+}
+
+.sh-unavailable-mark {
+  width: 58px;
+  height: 58px;
+  margin: 0 auto 14px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--card);
+  font-size: 24px;
+}
+
+.sh-unavailable h2 {
+  margin: 0 0 7px;
+  font: 21px var(--font-head);
+}
+
+.sh-unavailable p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+/* The retry on `LoadFailed` (ADR-0213's seventeenth amendment). The neutral `--cta`, because
+   this is a generic action and neither amber nor teal is spendable on one (ADR-0028); at
+   card size it takes the gentler press step, the same rule `.zero-act` states. */
+.sh-retry {
+  --press-scale: var(--press-scale-lg);
+  margin-block-start: 18px;
+  min-height: 44px;
+  padding: 0 20px;
+  border: 1px solid var(--cta);
+  border-radius: var(--radius-16);
+  background: var(--cta);
+  color: var(--cta-text);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.sh-retry:focus-visible {
+  outline: 2.5px solid var(--teal);
+  outline-offset: 2px;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   ADR-0213's 2026-08-30 amendment — drawn in
+   `mockups/a-shared-itinerary-tells-the-trip-v4.html`, whose measurement table is
+   the source of every number below.
+   ══════════════════════════════════════════════════════════════════════════════ */
+
+/* **The trip's fixed points, above the schedule.** A LIST, not cards: the day card's
+   shape at this size would out-shout the spine it sits above. */
+.sh-fixed {
+  margin: 0 0 var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-16);
+  background: var(--card);
+  overflow: hidden;
+}
+.sh-fixed > h2 {
+  margin: 0;
+  padding: 11px 14px;
+  font: 700 var(--sh-secondary) var(--font-body);
+  color: var(--ink);
+  border-block-end: 1px solid var(--line);
+}
+.sh-fixed-row {
+  display: grid;
+  grid-template-columns: 22px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 7px 14px;
+  border-block-start: 1px solid var(--line);
+  color: var(--ink);
+  text-decoration: none;
+}
+.sh-fixed-row:first-of-type {
+  border-block-start: 0;
+}
+.sh-fixed-row .icon {
+  color: var(--muted);
+}
+.sh-fixed-row b {
+  font-size: var(--sh-secondary);
+  font-weight: 600;
+}
+.sh-fixed-row i {
+  display: block;
+  font-style: normal;
+  font-size: var(--sh-micro);
+  color: var(--muted);
+}
+/* Amber, and only here: this column is a clock and a commitment, which is exactly and
+   only what ADR-0028 spends amber on. */
+.sh-fixed-when {
+  font: 700 var(--sh-micro) var(--font-mono);
+  color: var(--amber-deep);
+  text-align: end;
+  align-self: start;
+  padding-block-start: 3px;
+}
+
+/* **Where you sleep frames the day** — teal, because it is a location and nothing else
+   (ADR-0028). */
+.sh-stay {
+  color: var(--teal);
+}
+/* **The glyph is spaced by a margin, not by `gap`, and that is a repair.** This rule used to
+   say `display: inline-flex; gap: 5px` — and `.wp-dayhead-copy > span` (0,1,1) sets `display:
+   block`, which beats `.sh-stay` (0,1,0), so the element was never a flex container and the
+   gap did nothing: measured 0px between the bed and the word (owner, 2026-08-30, _"no
+   spacing at all between the bed glyph and the לנים ב..."_). Winning the specificity fight
+   would also have cost the ellipsis, since `text-overflow` cannot clip an anonymous flex
+   item — so the icon stays inline and takes a margin instead, and the line keeps truncating
+   the way every other line in this header does. */
+.sh-stay .icon {
+  width: 13px;
+  height: 13px;
+  margin-inline-end: 5px;
+  vertical-align: -2px;
+}
+
+/* **The stay's two moments, and the ONE place in this header a break is allowed**
+   (ADR-0213's 2026-08-31 amendment §2, amended 2026-09-01).
+
+   `.wp-dayhead-copy > span` (`day-head.css`) is (0,1,1) and sets `nowrap` with `text-overflow: ellipsis`,
+   which is right for every other line here: a trip title and a hotel name are unbounded, so
+   they must be cut. A pair of clocks is not — `צ׳ק-אאוט עד 11:00` + `צ׳ק-אין מ-15:00` is the
+   longest this can ever be — so cutting it buys nothing and costs the reader the fact.
+   Measured at ⁦246px⁩ of ink in a ⁦206px⁩ box at 360, i.e. `nowrap` ate the check-in on every
+   transfer day of the trip; broken it is ⁦34px⁩ against ⁦17px⁩ for one moment, and the header
+   measures ⁦95px⁩ either way because the second line lands in height the date column
+   already takes.
+
+   **The break is between the two moments, never inside one** — see `.sh-moment` below.
+   Free wrapping put it between `צ׳ק-אין` and its own clock.
+
+   **This is also why the clock is not appended to `.sh-stay` itself.** It would be the same
+   ellipsis, and in RTL the cut falls at the logical end — exactly where the clock sits — so a
+   long hotel name would delete it silently. The specificity fight is the one this sheet
+   already lost once above (`.wp-dayhead-copy > span` beating `.sh-stay`'s `display`), so this is
+   (0,2,0) on purpose. */
+.wp-dayhead-copy > .sh-stay-when {
+  margin-block-start: 2px;
+  color: var(--amber-deep);
+  white-space: normal;
+}
+
+/* **One moment per line** (owner, 2026-09-01: _"it should read `Check out <time>` /
+   `Check in <time>`"_). As one `·`-joined run the pair wrapped wherever it ran out of box,
+   and at 360 that fell between `צ׳ק-אין` and its own clock — a noun stranded from the time
+   it names. Each moment is bounded, so these keep the header's `nowrap`; the container's
+   `white-space: normal` above now only permits the break BETWEEN them. */
+.sh-stay-when .sh-moment {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* **The legs of one journey, under the journey.** The frame above already states the
+   whole span, so these are the detail inside it. */
+/* **A journey is a surface, so its legs are visibly ON it** (ADR-0213 ninth amendment §1,
+   drawn and measured in `mockups/a-journey-is-a-flight-plan-v1.html`).
+   
+   What this replaces is `.sh-legs`'s 30px indent carrying the whole claim "these two are
+   inside that one" — measured at 30px of a 360px column, which reads as a slightly narrower
+   PEER, not as containment. A tint plus one rail says it in a way white space cannot, and it
+   is the same grammar `.sh-day` uses for the day that holds these rows one level up rather
+   than a new idiom. Teal because a journey is about getting between two places, which is what
+   teal is for (rule 4 / ADR-0028); the times inside already own the amber. */
+.sh-trek {
+  margin: 0 0 8px;
+  border-radius: 12px;
+  background: color-mix(in oklab, var(--teal) 7%, transparent);
+  border-inline-start: 2px solid var(--teal);
+  overflow: hidden;
+}
+/* **The header is a header, not an event row.** It drops `.sh-event`'s glyph column and its
+   `--sh-secondary` title, so it cannot be mistaken for one of the flights beneath it — which
+   is exactly what it was being mistaken for. */
+.sh-trek-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  padding: 8px 10px;
+  min-height: 34px;
+  border-block-end: 1px solid color-mix(in oklab, var(--teal) 22%, transparent);
+  font-size: var(--sh-caption);
+}
+.sh-trek-head strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--sh-caption);
+  font-weight: 700;
+}
+/* **A sized icon, because `.icon` is sized per context in this app.** Left unsized the flight
+   glyph draws at its own 24px box and the header measured 131px instead of 34 — found by
+   rendering the mockup, invisible in the markup. */
+.sh-trek-head .icon {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  color: var(--teal);
+}
+.sh-trek-sum {
+  color: var(--muted);
+  font-size: var(--sh-micro);
+}
+
+.sh-legs {
+  margin: 0 0 6px;
+  padding-inline-start: 30px;
+  display: grid;
+  gap: 2px;
+}
+/* Inside the container the indent has nothing left to prove, so it goes back to padding the
+   surface rather than faking nesting. */
+.sh-trek .sh-legs {
+  margin: 0;
+  padding: 4px 10px 6px;
+}
+/* A leg's own flight time, under its code (§2 — the fact the eighth amendment removed and the
+   owner asked back the same day). Micro, so it annotates its row instead of competing with
+   the header's total. */
+.sh-leg-span {
+  display: block;
+  font-size: var(--sh-micro);
+  color: var(--muted);
+}
+.sh-leg-row {
+  display: grid;
+  /* **`max-content`, not 78px.** A fixed column sized for `14:30` wrapped a `14:30–18:15`
+     range onto two lines (owner, 2026-08-30, with a screenshot) — and a type scale that grew
+     would have broken it again next time. The column now takes exactly what the widest time
+     needs, and `.sh-time` refuses to wrap so it cannot be squeezed instead. */
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+  min-height: 32px;
+  padding-block: 4px;
+}
+.sh-leg-row strong {
+  display: block;
+  font-size: var(--sh-secondary);
+}
+.sh-leg-row .sh-kind {
+  display: block;
+  font: 500 var(--sh-micro) var(--font-mono);
+  color: var(--muted);
+}
+/* The wait, between the legs it is between. */
+.sh-layover {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+  font-size: var(--sh-micro);
+  color: var(--muted);
+}
+.sh-layover .icon {
+  width: 13px;
+  height: 13px;
+  flex: none;
+}
+
+/* **The operational material, folded under its row.** Closed by default: a reader wants
+   the schedule and an operator wants the code, and the fold is what serves both without a
+   second page. The print renderer inverts this — see `itinerary-pdf.template.ts`. */
+.sh-ops {
+  margin: 4px 0 0;
+}
+.sh-ops > summary {
+  list-style: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 28px;
+  font: 600 var(--sh-micro) var(--font-body);
+  color: var(--cta);
+  cursor: pointer;
+  /* **44px of target without 44px of line** — `ValueToken`'s technique (ADR-0177), not a
+     new one. The mockup measured this summary at 28px against ADR-0017's floor, and a
+     `min-height: 44px` would add 16px to EVERY row that carries a detail — eleven of them
+     on the owner's day 9. The overlay grows the hit box instead. */
+  position: relative;
+}
+.sh-ops > summary::-webkit-details-marker {
+  display: none;
+}
+.sh-ops > summary::after {
+  content: '';
+  position: absolute;
+  inset-inline: -8px;
+  inset-block: calc((44px - 100%) / -2);
+  min-height: 44px;
+}
+.sh-ops > summary .icon {
+  width: 13px;
+  height: 13px;
+}
+.sh-ops[open] > summary .icon {
+  transform: rotate(180deg);
+}
+.sh-ops-body {
+  display: grid;
+  gap: 4px;
+  padding: 6px 0 2px;
+}
+.sh-op {
+  display: flex;
+  /* A note is prose and wraps; its glyph belongs beside the first line rather than halfway
+     down the paragraph. */
+  align-items: flex-start;
+  gap: 8px;
+  min-height: 32px;
+  padding-block: 5px;
+  font-size: var(--sh-micro);
+  line-height: 1.5;
+  color: var(--muted);
+}
+.sh-op .icon {
+  width: 14px;
+  height: 14px;
+  margin-block-start: 2px;
+  flex: none;
+}
+.sh-op code {
+  font: 700 var(--sh-micro) var(--font-mono);
+  color: var(--ink);
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  border-radius: 5px;
+  padding: 2px 6px;
+}
+/* **A file is a download, and it keeps ADR-0017's floor.** These links used to live in the
+   appendix's `.sh-private a`, which gave them the 44px; the block that replaced it renders
+   op rows, so the floor has to be stated where they actually are now. */
+.sh-op a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin-block: -6px;
+  color: var(--cta);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* **The appendix is op rows, unfolded.** Nothing here has a row to belong to, so there is
+   nothing to fold under — it gets the card the per-family blocks used to have. */
+.sh-appendix .sh-ops-body {
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
+}
+
+/* The day a booking falls on, stated under its date — it replaced an anchor that threw the
+   reader down the page (owner, 2026-08-30). */
+.sh-fixed-when i {
+  display: block;
+  margin-block-start: 2px;
+  font: 400 var(--sh-micro) var(--font-body);
+  font-style: normal;
+  color: var(--muted);
+}
+
+/* Who is going, under the trip's own line in the masthead. */
+.sh-travelers {
+  margin-block-start: 6px;
+  color: var(--muted);
+  font-size: var(--sh-caption);
+}
+
+/* A note's own words, rendered by the app's note renderer. The title is the note's, the
+   prose below it is `NoteProse` at its dense step. */
+.sh-op-note {
+  display: block;
+  min-width: 0;
+}
+/* **The direct child only.** Unscoped, this caught every inline `**bold**` run inside
+   `NoteProse` and broke each onto its own line — found by rendering, not by reading. */
+.sh-op-note > strong {
+  display: block;
+  color: var(--ink);
+  font-size: var(--sh-micro);
+}
+/* **A note is read, not glanced at** (owner, 2026-08-31, twice). `--sh-micro` is this page's
+   smallest step and right for a label beside a value; a paragraph somebody wrote for the
+   group to act on is body text, and it gets the body step. */
+.sh-op-note .note-prose {
+  font-size: var(--sh-secondary);
+  line-height: 1.55;
+}
+/* **The clip's budget on this page** (ADR-0235 §3). The same six lines a host's section
+   takes: a reading page has no competing blocks, but it has no reason to differ either, and
+   two numbers for one decision is how they drift. `.note-clip` itself is in `ui/notes.css`,
+   shared with the app — this page renders the app's note renderer, so it inherits the app's
+   answer about how much of a note a card shows and states only the number.
+
+   The control is `.row-open-act.note-more` from the same place, and `row-open.css` reaches
+   this page through `NoteProse`'s own import chain in the app bundle — `SharedItinerary`
+   imports it explicitly beside `NoteProse` so a future tree-shake cannot take it away. */
+.sh-op-note .note-clip {
+  --note-clip-lines: 6;
+}
+.sh-op-note > strong {
+  font-size: var(--sh-caption);
+}
+
+/* How long it took, and what the clock did. */
+.sh-travel-facts {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-block-start: 3px;
+  color: var(--muted);
+  font-size: var(--sh-micro);
+}
+
+/* **A download reports itself** — the state sits beside the name rather than replacing it,
+   so the row does not reflow under the finger that just pressed it. */
+/* **The file row is a control, and it was 42px** (ADR-0213 ninth amendment §4). Measured off
+   the shipped page while drawing `the-reader-hands-you-a-file-v1.html`: the row every
+   download report has been about was also under ADR-0017's 44px floor, which nothing in the
+   suites asked about. */
+.sh-op-file {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  flex: 1 1 auto;
+  min-width: 0;
+  color: inherit;
+}
+/* **The glyph slot IS the motion slot.** `FormActions` puts the spinner where the label was;
+   a file row has no label to give up, so the spinner takes the glyph's box — one 15px square
+   either way, so a row that is downloading is exactly as tall as one that is not. This is
+   ADR-0052 §4's rule, which the first two attempts at this row implemented two thirds of. */
+.sh-op-mark {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  color: var(--cta);
+}
+.sh-op-mark .icon {
+  width: 15px;
+  height: 15px;
+}
+.sh-op-file-copy {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.sh-op-file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: block;
+}
+.sh-dl-state {
+  margin-inline-start: 6px;
+  font-size: var(--sh-micro);
+  color: var(--muted);
+}
+/* `--ok` / `--miss` for the two states that have FINISHED, and `--cta` above for the one in
+   flight: a file arriving is an action, not a status (rule 4). */
+.sh-op-file[data-state='done'] .sh-op-mark,
+.sh-op-file[data-state='shared'] .sh-op-mark {
+  color: var(--ok);
+}
+.sh-op-file[data-state='failed'] .sh-op-mark {
+  color: var(--miss);
+}
+.sh-op-file[data-state='done'] .sh-dl-state,
+.sh-op-file[data-state='shared'] .sh-dl-state {
+  color: var(--ok);
+}
+.sh-op-file[data-state='failed'] .sh-dl-state {
+  color: var(--miss);
+}
+
+/* **The progress bar the row was missing** (owner, 2026-08-31: _"it should have another
+   animation for downloading"_). Neutral `--cta`, not amber: amber is time and commitment
+   only (ADR-0028 / rule 4), and a download is neither.
+
+   Two modes, because only one of them is honest at a time. With a `Content-Length` the fill
+   is the real fraction of bytes read. Without one it sweeps, and the sweep is a DIFFERENT
+   shape on purpose — a short block travelling the track rather than a fill growing from the
+   start edge — so "I don't know how long" never looks like "I am 30% done".
+
+   `inset-inline-start` and a positive translate: the track is inside an RTL row, so the
+   sweep has to start at the right and travel left like everything else on the page. */
+.sh-dl-bar {
+  display: block;
+  position: relative;
+  overflow: hidden;
+  margin-block-start: 5px;
+  block-size: 3px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--cta) 18%, transparent);
+}
+.sh-dl-bar > span {
+  display: block;
+  block-size: 100%;
+  border-radius: inherit;
+  background: var(--cta);
+  transition: inline-size 140ms linear;
+}
+.sh-dl-bar[data-indeterminate] > span {
+  position: absolute;
+  inset-inline-start: 0;
+  inline-size: 38%;
+  animation: sh-dl-sweep 1.1s ease-in-out infinite;
+}
+@keyframes sh-dl-sweep {
+  from {
+    transform: translateX(160%);
+  }
+  to {
+    transform: translateX(-260%);
+  }
+}
+/* **Reduced motion SLOWS the sweep; it does not stop it** — which is what the app's own
+   `.spinner` does (1.6s instead of 0.7s, `screens.css`) and what the first version of this
+   rule got wrong by setting `animation: none`. A stopped indeterminate bar is
+   indistinguishable from a stalled download, so stopping it destroys the one thing it says.
+   A determinate fill is information rather than motion and only loses its transition. */
+@media (prefers-reduced-motion: reduce) {
+  .sh-dl-bar > span {
+    transition: none;
+  }
+  .sh-dl-bar[data-indeterminate] > span {
+    animation-duration: 2.6s;
+  }
+}
+
+/* **A list, not the trip** (ADR-0242 §4). A city's head over its rows: the daypart head's
+   type without its mark, and nothing at all when the list is in one city. */
+.sh-list-group + .sh-list-group {
+  margin-block-start: 6px;
+}
+
+.sh-list-head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 4px 3px 7px;
+  color: var(--ink);
+  font: 700 var(--sh-caption) var(--font-body);
+}
+
+.sh-list-head span {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.sh-list-empty {
+  margin: 0 3px;
+  color: var(--muted);
+  font-size: var(--sh-caption);
+}

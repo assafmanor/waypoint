@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { bestEffort, PhaseTimeoutError, withDeadline } from './deadline';
+import { bestEffort, PhaseTimeoutError, standInAfter, withDeadline } from './deadline';
 
 const NEVER = new Promise<never>(() => {});
 
@@ -119,5 +119,71 @@ describe('bestEffort', () => {
 
   it('passes a healthy answer through', async () => {
     await expect(bestEffort('local', 1000, async () => 'hit', null)).resolves.toBe('hit');
+  });
+});
+
+describe('standInAfter', () => {
+  it('offers the cached answer once the live read is late, and still resolves live', async () => {
+    vi.useFakeTimers();
+    let settle!: (v: string) => void;
+    const live = new Promise<string>((res) => {
+      settle = res;
+    });
+    const onStandIn = vi.fn();
+    const result = standInAfter(1000, live, async () => 'cached', onStandIn);
+
+    await vi.advanceTimersByTimeAsync(999);
+    expect(onStandIn).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(onStandIn).toHaveBeenCalledWith('cached');
+
+    settle('live');
+    await expect(result).resolves.toBe('live');
+  });
+
+  it('never stands in for a live read that answered in time', async () => {
+    vi.useFakeTimers();
+    const cached = vi.fn(async () => 'cached');
+    const onStandIn = vi.fn();
+    await expect(standInAfter(1000, Promise.resolve('live'), cached, onStandIn)).resolves.toBe(
+      'live',
+    );
+
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(cached).not.toHaveBeenCalled();
+    expect(onStandIn).not.toHaveBeenCalled();
+  });
+
+  // A first-ever boot: nothing cached, so there is nothing to show and the wait continues.
+  it('stays quiet when the cache has no answer', async () => {
+    vi.useFakeTimers();
+    const onStandIn = vi.fn();
+    const result = standInAfter(1000, NEVER as Promise<string>, async () => null, onStandIn);
+
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(onStandIn).not.toHaveBeenCalled();
+    void result;
+  });
+
+  it('treats a cache read that throws as no answer', async () => {
+    vi.useFakeTimers();
+    const onStandIn = vi.fn();
+    void standInAfter(
+      1000,
+      NEVER as Promise<string>,
+      () => Promise.reject(new Error('x')),
+      onStandIn,
+    );
+
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(onStandIn).not.toHaveBeenCalled();
+  });
+
+  it("passes the live read's own rejection through untouched", async () => {
+    vi.useFakeTimers();
+    const boom = new Error('boom');
+    await expect(
+      standInAfter(1000, Promise.reject(boom), async () => 'cached', vi.fn()),
+    ).rejects.toBe(boom);
   });
 });

@@ -10,13 +10,21 @@ import { DocumentsModule } from './documents/documents.module';
 import { MapModule } from './map/map.module';
 import { EnrichmentModule } from './enrichment/enrichment.module';
 import { FxModule } from './fx/fx.module';
+import { WeatherModule } from './weather/weather.module';
 import { EventsModule } from './events/events.module';
 import { HealthController } from './health/health.controller';
 import { MaybeItemsModule } from './maybe-items/maybe-items.module';
 import { NotesModule } from './notes/notes.module';
+import { NotificationsModule } from './notifications/notifications.module';
+import { KeyRotationModule } from './key-rotation/key-rotation.module';
+import { TasksModule } from './tasks/tasks.module';
 import { DocumentAttachmentsModule } from './document-attachments/document-attachments.module';
+import { TravelModesModule } from './travel-modes/travel-modes.module';
 import { PlacesModule } from './places/places.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { RoutingModule } from './routing/routing.module';
+import { SharingModule } from './sharing/sharing.module';
+import { SpaModule } from './spa/spa.module';
 import { SyncModule } from './sync/sync.module';
 import { TripsModule } from './trips/trips.module';
 
@@ -38,14 +46,25 @@ import { TripsModule } from './trips/trips.module';
     BookingsModule,
     MaybeItemsModule,
     NotesModule,
+    TasksModule,
     DocumentAttachmentsModule,
+    TravelModesModule,
     PlacesModule,
     DocumentsModule,
     MapModule,
+    RoutingModule,
+    SharingModule,
+    // The PWA shell and the link-preview tags on it (ADR-0220). After `SharingModule` and
+    // `TripsModule` because it imports both, and its routes (`/`, `/join/:code`, `/s/:code`)
+    // are app paths rather than API ones.
+    SpaModule,
     // Out-of-band and route-less in Phase 1 (ADR-0166 §6): registered so it is proven to
     // construct, called by nothing yet.
     EnrichmentModule,
     FxModule,
+    WeatherModule,
+    NotificationsModule,
+    KeyRotationModule,
   ],
   controllers: [HealthController],
   providers: [

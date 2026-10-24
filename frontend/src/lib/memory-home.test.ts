@@ -1,0 +1,457 @@
+import { describe, expect, it } from 'vitest';
+import { RECAP_ABSENT, type RecapFigure, type TripRecap } from '@waypoint/shared';
+import { t } from '../i18n/he';
+import type { Booking, MaybeItem, Note, Place, TripEvent, ZoneEvidence } from '@waypoint/shared';
+import { buildNoteHosts } from './notes';
+import {
+  memoryBests,
+  memoryDays,
+  memoryFigures,
+  memoryJournal,
+  memoryNextTime,
+  foldNextTime,
+  journalLead,
+  memoryRecord,
+  matchesRecordQuery,
+  recordKinds,
+  memoryStragglers,
+} from './memory-home';
+
+const present = (
+  value: number,
+  extra: { estimate?: true; unresolved?: number } = {},
+): RecapFigure => ({
+  state: 'present',
+  value,
+  ...extra,
+});
+
+function recap(figures: Partial<TripRecap['figures']>): TripRecap {
+  return {
+    figures: {
+      days: present(10),
+      nights: present(9),
+      beds: RECAP_ABSENT,
+      places: RECAP_ABSENT,
+      placesByCategory: RECAP_ABSENT,
+      kinds: RECAP_ABSENT,
+      regions: RECAP_ABSENT,
+      route: RECAP_ABSENT,
+      groundMeters: RECAP_ABSENT,
+      airMeters: RECAP_ABSENT,
+      airMinutes: RECAP_ABSENT,
+      zonesCrossed: RECAP_ABSENT,
+      zoneShiftMinutes: RECAP_ABSENT,
+      ...figures,
+    },
+    superlatives: {
+      busiestDay: RECAP_ABSENT,
+      longestFlight: RECAP_ABSENT,
+      longestStop: RECAP_ABSENT,
+    },
+    stragglers: [],
+    nextTime: { skipped: [], ideas: [] },
+    cover: undefined,
+    memoryPlace: undefined,
+  };
+}
+
+describe('memoryFigures: the tiles, labelled', () => {
+  it("the seed's three, each carrying the Home's label for its key", () => {
+    const figures = memoryFigures(
+      recap({
+        places: present(4, { unresolved: 6 }),
+        airMeters: present(9_203_024),
+        zoneShiftMinutes: present(360),
+      }),
+    );
+    expect(figures).toEqual([
+      { key: 'places', value: '4', label: t.planHome.past.fig.places, unresolved: 6 },
+      { key: 'air', value: '9,203', label: t.planHome.past.fig.air },
+      { key: 'shift', value: '+6', label: t.planHome.past.fig.shift },
+    ]);
+  });
+});
+
+describe('memoryDays: the contact sheet (ADR-0240 §4)', () => {
+  const stamp = { tripId: 't1', createdAt: '', updatedAt: '', updatedBy: 'u1' };
+  const places: Place[] = [{ id: 'p1', name: 'Senso-ji', lat: 35.7, lng: 139.8, ...stamp }];
+  const ev = (id: string, date: string, extra: Partial<TripEvent> = {}): TripEvent => ({
+    id,
+    date,
+    title: id,
+    kind: 'soft',
+    status: 'done',
+    sortOrder: 0,
+    source: 'manual',
+    ...stamp,
+    ...extra,
+  });
+  const base = {
+    trip: { destination: 'טוקיו', startDate: '2026-05-01', endDate: '2026-05-04' },
+    bookings: [],
+    places,
+    placeLabels: {},
+    enrichments: {},
+  };
+
+  it('frames only days where something happened, and counts the rest', () => {
+    const { days, quiet } = memoryDays({
+      ...base,
+      events: [
+        ev('a', '2026-05-02', { placeId: 'p1', icon: '⛩️' }),
+        ev('b', '2026-05-03', { status: 'skipped', icon: '🍸' }),
+        ev('c', '2026-05-04', { status: 'planned' }),
+      ],
+    });
+    expect(days.map((day) => day.date)).toEqual(['2026-05-02']);
+    expect(quiet).toBe(3);
+    expect(days[0]).toMatchObject({ numeral: '02', glyphs: ['⛩️'] });
+    expect(days[0]!.when).toContain('02.05');
+  });
+
+  it('marks a day with what happened on it, at most four distinct glyphs', () => {
+    const icons = ['🗺️', '🐟', '🐟', '⛩️', '🍶', '🌳'];
+    const { days } = memoryDays({
+      ...base,
+      events: icons.map((icon, i) => ev(`e${i}`, '2026-05-02', { icon, sortOrder: i })),
+    });
+    expect(days[0]!.glyphs).toEqual(['🗺️', '🐟', '⛩️', '🍶']);
+  });
+
+  it('counts a hard row nobody skipped as having happened', () => {
+    const { days } = memoryDays({
+      ...base,
+      events: [
+        ev('flight', '2026-05-01', { kind: 'hard', status: 'planned', category: 'transport' }),
+      ],
+    });
+    expect(days.map((day) => day.date)).toEqual(['2026-05-01']);
+  });
+});
+
+describe('memoryBests: firsts and bests (ADR-0240 §4)', () => {
+  const stamp = { tripId: 't1', createdAt: '', updatedAt: '', updatedBy: 'u1' };
+  const ev = (id: string, time: string, extra: Partial<TripEvent> = {}): TripEvent => ({
+    id,
+    date: '2026-05-02',
+    title: id,
+    kind: 'soft',
+    status: 'done',
+    startsAt: `2026-05-02T${time}:00.000Z`,
+    sortOrder: 0,
+    source: 'manual',
+    placeId: `p-${id}`,
+    ...stamp,
+    ...extra,
+  });
+  const evidence = {
+    primaryZone: 'UTC',
+    crossings: [],
+    events: [],
+    places: [],
+  } as unknown as ZoneEvidence;
+  const days = [
+    { date: '2026-05-02', when: 'ש׳ 02.05', numeral: '02', name: 'Asakusa', glyphs: [] },
+  ];
+  const run = (
+    events: TripEvent[],
+    figures: Partial<TripRecap['superlatives']> = {},
+    bookings: Booking[] = [],
+  ) => {
+    const base = recap({});
+    return memoryBests({
+      recap: { ...base, superlatives: { ...base.superlatives, ...figures } },
+      events,
+      bookings,
+      days,
+      evidence,
+    });
+  };
+
+  it('names the first and last thing that happened, with its clock and its place', () => {
+    const rows = run([
+      ev('late', '20:00'),
+      ev('early', '09:00'),
+      ev('skipped', '07:00', { status: 'skipped' }),
+    ]);
+    expect(rows.map((row) => [row.key, row.title])).toEqual([
+      ['first', 'early'],
+      ['last', 'late'],
+    ]);
+    expect(rows[0]!.clock).toContain('09:00');
+    expect(rows[0]!.placeId).toBe('p-early');
+  });
+
+  it('leaves out legs and beds, which are not places the trip was at', () => {
+    const rows = run([
+      ev('flight', '06:00', {
+        kind: 'hard',
+        status: 'planned',
+        category: 'transport',
+        placeId: undefined,
+      }),
+      ev('hotel', '07:00', { kind: 'hard', status: 'planned', category: 'lodging' }),
+      ev('museum', '10:00'),
+    ]);
+    expect(rows.map((row) => row.title)).toEqual(['museum']);
+  });
+
+  it('drops a superlative that repeats a row already named', () => {
+    const rows = run([ev('tour', '09:00'), ev('bar', '21:00')], {
+      longestStop: { state: 'present', value: { eventId: 'tour', minutes: 360 } },
+    });
+    expect(rows.map((row) => row.key)).toEqual(['first', 'last']);
+  });
+
+  it('a day row carries no place, so no pin', () => {
+    const rows = run([ev('a', '09:00')], {
+      busiestDay: { state: 'present', value: { date: '2026-05-02', places: 5 } },
+    });
+    const day = rows.find((row) => row.key === 'busiestDay')!;
+    expect(day.placeId).toBeUndefined();
+    expect(day.title).toContain('Asakusa');
+    expect(day.detail).toBe(t.planHome.past.bests.places(5));
+  });
+});
+
+describe('memoryStragglers: the rows the sheet walks (ADR-0240 §4)', () => {
+  const stamp = { tripId: 't1', createdAt: '', updatedAt: '', updatedBy: 'u1' };
+  const ev = (id: string, startsAt?: string): TripEvent => ({
+    id,
+    date: '2026-05-02',
+    title: id,
+    kind: 'soft',
+    status: 'planned',
+    ...(startsAt ? { startsAt } : {}),
+    sortOrder: 0,
+    source: 'manual',
+    ...stamp,
+  });
+  const evidence = {
+    primaryZone: 'UTC',
+    crossings: [],
+    events: [],
+    places: [],
+  } as unknown as ZoneEvidence;
+
+  it("asks in the recap's order, each row with its day and, when it has one, its clock", () => {
+    const rows = memoryStragglers({
+      recap: { ...recap({}), stragglers: ['timed', 'untimed', 'gone'] },
+      events: [ev('untimed'), ev('timed', '2026-05-02T21:30:00.000Z')],
+      evidence,
+    });
+    // A straggler the events no longer carry is not asked about.
+    expect(rows.map((row) => row.event.id)).toEqual(['timed', 'untimed']);
+    expect(rows[0]!.subject).toContain('02.05');
+    expect(rows[0]!.subject).toContain('21:30');
+    expect(rows[1]!.subject).not.toContain(':');
+  });
+});
+
+describe('memoryNextTime: skipped rows, then ideas never used (ADR-0240 §4)', () => {
+  const stamp = { tripId: 't1', createdAt: '', updatedAt: '', updatedBy: 'u1' };
+  const skippedRow: TripEvent = {
+    id: 'bar',
+    date: '2026-05-02',
+    title: 'Cocktail bar',
+    kind: 'soft',
+    status: 'skipped',
+    placeId: 'p-bar',
+    sortOrder: 0,
+    source: 'manual',
+    ...stamp,
+  };
+  const idea = (id: string, extra: Partial<MaybeItem> = {}): MaybeItem => ({
+    id,
+    title: id,
+    createdBy: 'u1',
+    consumed: false,
+    ...stamp,
+    ...extra,
+  });
+
+  it("keeps the recap's order and says which day each row can open", () => {
+    const rows = memoryNextTime({
+      recap: { ...recap({}), nextTime: { skipped: ['bar'], ideas: ['someday', 'friday', 'gone'] } },
+      events: [skippedRow],
+      bookings: [],
+      maybes: [idea('friday', { targetDate: '2026-05-03', placeId: 'p-f' }), idea('someday')],
+    });
+    expect(rows.map((row) => [row.id, row.skipped, row.date])).toEqual([
+      ['bar', true, '2026-05-02'],
+      ['someday', false, undefined],
+      ['friday', false, '2026-05-03'],
+    ]);
+    expect(rows[0]!.placeId).toBe('p-bar');
+    expect(rows[0]!.when).toContain('02.05');
+    expect(rows[1]!.when).toBeUndefined();
+    expect(rows[2]!.placeId).toBe('p-f');
+  });
+});
+
+describe('memoryJournal: the notes in day order (ADR-0240 §4)', () => {
+  const stamp = { tripId: 't1', updatedAt: '', updatedBy: 'u1', createdBy: 'u1' };
+  const stop = { id: 'e1', title: 'Golden Gai', date: '2026-05-03' };
+  const note = (id: string, createdAt: string, extra: Partial<Note> = {}): Note => ({
+    id,
+    source: 'member',
+    createdAt,
+    ...stamp,
+    ...extra,
+  });
+  const evidence = {
+    primaryZone: 'Asia/Tokyo',
+    crossings: [],
+    events: [],
+    bookings: [],
+    places: [],
+  } as unknown as ZoneEvidence;
+  const hosts = buildNoteHosts({
+    events: [stop],
+    bookings: [],
+    places: [],
+    maybeItems: [],
+    documents: [],
+  });
+
+  it('files a note under the day it is about, else the day it was written, in written order', () => {
+    const journal = memoryJournal({
+      trip: { startDate: '2026-05-01', endDate: '2026-05-03' },
+      notes: [
+        // Written on the 1st about the 3rd's stop: it belongs to the 3rd.
+        note('about', '2026-05-01T01:00:00Z', { eventId: 'e1' }),
+        // 23:30 UTC on the 1st is the 2nd in Tokyo, where the trip was.
+        note('late', '2026-05-01T23:30:00Z'),
+        note('later', '2026-05-03T05:00:00Z'),
+        // A packing list from before the trip is counted, not filed.
+        note('packing', '2026-04-01T10:00:00Z'),
+      ],
+      hosts,
+      evidence,
+      days: [{ date: '2026-05-03', when: '', numeral: '03', name: 'Shinjuku', glyphs: [] }],
+    });
+    expect(journal.days.map((day) => [day.date, day.notes.map((n) => n.id)])).toEqual([
+      ['2026-05-02', ['late']],
+      ['2026-05-03', ['about', 'later']],
+    ]);
+    expect(journal.days[1]!.heading).toContain('Shinjuku');
+    expect(journal.days[0]!.heading).toContain('02.05');
+    expect(journal.outside).toBe(1);
+  });
+});
+
+describe('memoryRecord: the rows the lists by kind and the search read (ADR-0240 §4)', () => {
+  const stamp = { tripId: 't1', createdAt: '', updatedAt: '', updatedBy: 'u1' };
+  const ev = (id: string, date: string, extra: Partial<TripEvent> = {}): TripEvent => ({
+    id,
+    date,
+    title: id,
+    kind: 'soft',
+    status: 'done',
+    sortOrder: 0,
+    source: 'manual',
+    ...stamp,
+    ...extra,
+  });
+  const evidence = {
+    primaryZone: 'UTC',
+    crossings: [],
+    events: [],
+    bookings: [],
+    places: [],
+  } as unknown as ZoneEvidence;
+
+  const rows = memoryRecord({
+    events: [
+      ev('dinner', '2026-05-02', {
+        category: 'food',
+        placeId: 'p-ramen',
+        startsAt: '2026-05-02T19:30:00.000Z',
+      }),
+      ev('lunch', '2026-05-02', { category: 'food', startsAt: '2026-05-02T12:00:00.000Z' }),
+      ev('bar', '2026-05-01', { category: 'food', status: 'skipped' }),
+      ev('museum', '2026-05-03', { category: 'sightseeing', status: 'planned' }),
+      ev('walk', '2026-05-03'),
+    ],
+    bookings: [],
+    placeName: (id) => (id === 'p-ramen' ? 'Ichiran' : undefined),
+    evidence,
+  });
+
+  it('orders by day then clock, and says what became of each row', () => {
+    expect(rows.map((row) => [row.event.id, row.outcome])).toEqual([
+      ['bar', 'skipped'],
+      ['lunch', 'done'],
+      ['dinner', 'done'],
+      ['museum', 'open'],
+      ['walk', 'done'],
+    ]);
+    expect(rows[2]!.subject).toContain('19:30');
+    // A row with no category of its own reads as the general kind.
+    expect(rows[4]!.category).toBe('other');
+  });
+
+  it('offers the kinds fullest first', () => {
+    expect(recordKinds(rows)).toEqual([
+      { kind: 'food', count: 3 },
+      { kind: 'sightseeing', count: 1 },
+      { kind: 'other', count: 1 },
+    ]);
+  });
+
+  it('finds a row by its place and by its kind, not only its title', () => {
+    const dinner = rows.find((row) => row.event.id === 'dinner')!;
+    expect(matchesRecordQuery(dinner, 'ichiran')).toBe(true);
+    expect(matchesRecordQuery(dinner, t.iconPicker.categories.food)).toBe(true);
+    expect(matchesRecordQuery(dinner, 'museum')).toBe(false);
+  });
+});
+
+describe('foldNextTime: what was skipped leads, the rest is one row (owner, 2026-09-27)', () => {
+  const row = (id: string, skipped: boolean) => ({ id, icon: '', title: id, skipped });
+
+  it('shows skipped rows up to the cap and folds the rest with every idea', () => {
+    const rows = [row('s1', true), row('s2', true), row('s3', true), row('s4', true)];
+    const folded = foldNextTime([...rows, row('i1', false), row('i2', false)], 3);
+    expect(folded.shown.map((r) => r.id)).toEqual(['s1', 's2', 's3']);
+    expect(folded.rest.map((r) => r.id)).toEqual(['s4', 'i1', 'i2']);
+    expect(folded.ideas).toBe(2);
+  });
+
+  it('never leads with an idea: a trip that skipped nothing shows only the fold', () => {
+    const folded = foldNextTime([row('i1', false), row('i2', false)], 3);
+    expect(folded.shown).toEqual([]);
+    expect(folded.ideas).toBe(2);
+  });
+});
+
+describe('journalLead: the notes the journal leads with (owner, 2026-09-27)', () => {
+  const note = (id: string, body: string): Note => ({
+    id,
+    body,
+    source: 'member',
+    tripId: 't1',
+    createdAt: '',
+    updatedAt: '',
+    updatedBy: 'u1',
+    createdBy: 'u1',
+  });
+  const day = (date: string, ...notes: Note[]) => ({ date, heading: date, notes });
+  const days = [
+    day('d1', note('milk', 'milk'), note('beach', 'the waves came without warning, all of us')),
+    day('d2', note('lagoon', 'an hour on the rocks watching one seal come back')),
+    day('d3', note('long', 'a very long note that outranks everything else on every day here')),
+  ];
+
+  it('picks the richest note of different days, in journal order, and files the rest by day', () => {
+    const { lead, rest } = journalLead(days, 3);
+    expect(lead.flatMap((d) => d.notes.map((n) => n.id))).toEqual(['beach', 'lagoon', 'long']);
+    expect(rest.map((d) => [d.date, d.notes.map((n) => n.id)])).toEqual([['d1', ['milk']]]);
+  });
+
+  it('fills from a day already picked once every day has one', () => {
+    const { lead } = journalLead([day('d1', note('a', 'aaaa'), note('b', 'bbb'))], 2);
+    expect(lead.flatMap((d) => d.notes.map((n) => n.id))).toEqual(['a', 'b']);
+  });
+});

@@ -58,16 +58,22 @@ import { observeResize } from '../../lib/observe-resize';
 import { observeVisibility } from '../../lib/visibility';
 import { RELOAD_GUARD_KEY, reloadOnce } from '../../lib/guarded-reload';
 import { PhaseTimeoutError, withDeadline } from '../../lib/deadline';
+import { centreOfPoints, normalizeBearing, shortestTurn } from '../../lib/map-camera';
 import type { LatLng, MapArrival, MapBounds } from '../../lib/map-camera';
 import { MAP_COLOR_SCHEME, type MapColorScheme, type MapTileUrls } from '../../lib/map-config';
 import {
   MAP_CONNECTOR,
   MAP_LOAD_PHASE,
   MAP_LOAD_TIMEOUT_MS,
+  MAP_ORIENT,
   MAP_RELOAD_COOLDOWN_MS,
   MAP_ZOOM,
+  REPLAY,
   type PinHue,
 } from '../../constants';
+import type { ReplayDay } from '../../lib/map-replay';
+import { useMapReplay, type ReplayLit } from '../../lib/useMapReplay';
+import { useDeviceHeading } from '../../lib/useDeviceHeading';
 import { publishMapReading, TUNE, tune } from '../../lib/dev-tuning';
 import { DevMapProbe } from '../../dev/DevMapProbe';
 import { Icon, type IconName } from '../Icon';
@@ -244,7 +250,13 @@ const PIN_TIER_PAINT: Record<PinTier, string> = {
  *  Colour is **additive, never the carrier**: ✓ and ✕ differ in shape for anyone who
  *  cannot separate the hues, and `PIN_OUTCOME_LABEL` puts it in words for anyone who
  *  cannot see the pin. */
-const PIN_OUTCOME_ICON: Record<PinOutcome, IconName> = { done: 'check', skipped: 'skip' };
+//  `open` (ADR-0241 §1, a finished trip's place nobody answered for) has no glyph: the
+//  card ground inside the ring IS the ○.
+const PIN_OUTCOME_ICON: Record<PinOutcome, IconName | undefined> = {
+  done: 'check',
+  skipped: 'skip',
+  open: undefined,
+};
 
 /** …and the same fact in words, for the pin's accessible name. A mark is invisible to a
  *  screen reader, so the one surface that answers in shapes has to answer in the app's own
@@ -252,6 +264,7 @@ const PIN_OUTCOME_ICON: Record<PinOutcome, IconName> = { done: 'check', skipped:
 const PIN_OUTCOME_LABEL: Record<PinOutcome, string> = {
   done: t.event.didThis,
   skipped: t.event.skipped,
+  open: t.map.pinOpen,
 };
 
 /** One pin, entirely in primitives. No `PlaceUsage`, no `Place`, no state — which
@@ -305,8 +318,12 @@ export interface MapPin {
    *  and — unless the pin is one of the two amber cues — outside a day scope, which is
    *  the screen's call for the reason `order` is (see `Map.tsx`). */
   transition?: string;
-  /** The single amber time-anchor the canvas allows — Trip mode, exactly one pin. */
+  /** The single amber time-anchor the canvas allows — Trip mode, exactly one STOP. A stop can
+   *  be several places (ADR-0225 §4): every peer wears the ring, and `nextPeer` says which of
+   *  them do not also carry the word. */
   nextStop?: boolean;
+  /** A peer of the next stop that is not the one you enter it through: ring, no word. */
+  nextPeer?: boolean;
   /** You are here, right now. The canvas's second amber cue, and the only animated
    *  thing on it: `nextStop` waits still, this one pulses (ADR-0109's 2026-07-27
    *  amendment). Mutually exclusive with `nextStop` — an event is `now` or
@@ -364,9 +381,11 @@ export interface MapPaneProps {
   onSelectResult?: (googlePlaceId: string) => void;
   /** Where the device is, when near-me is granted. */
   me?: LatLng;
-  /** The day's stops in order — a dashed neutral connector, Plan mode + day scope
-   *  only (§10). Absent (or under two points) draws nothing. */
-  connector?: readonly LatLng[];
+  /** **The day's legs** — each with its drawn geometry (the routed path where one has arrived,
+   *  the straight segment where it has not) and how prominent it is (ADR-0206 §AC). Plan mode +
+   *  day scope only for the dashed set (§10); the amber one is either mode (§AB1). §D8's "one
+   *  solid line" is the caller's rule to keep — this draws what it is handed. */
+  connector?: readonly MapDayLeg[];
   /** Changes exactly when a control changed the pin SET, so the camera re-frames
    *  then and at no other time (§7). */
   setSignal: string;
@@ -422,8 +441,15 @@ export interface MapPaneProps {
   cardReserveAt?: () => number;
   /** Locate was tapped with no fix to centre on. The camera half stays here (it needs
    *  the map instance); the permission ladder is the screen's, because that is where
-   *  `useGeolocation` and the pre-prompt live (ADR-0126 §6). */
-  onLocate: () => void;
+   *  `useGeolocation` and the pre-prompt live (ADR-0126 §6). Absent, the control is too
+   *  (a finished trip, ADR-0239 §3). */
+  onLocate?: () => void;
+  /** **Replay** (ADR-0241 §2): the finished trip's days with a record, in order. Absent, the
+   *  control is too — every trip but a finished one, and under reduced motion. Memoized on a
+   *  content key by the caller, like `pins`. */
+  replay?: readonly ReplayDay[];
+  /** A replay started or ended, so the screen can drop its sheet to the map and bring it back. */
+  onReplayChange?: (playing: boolean) => void;
 }
 
 /** Below `MAP_ZOOM.DOT_BELOW` every pin degrades to a dot (ADR-0121 §6, finally built).
@@ -609,8 +635,13 @@ function MapPaneInner({
   cardReserveAt,
   onHold,
   draftMarker,
+  replay,
+  onReplayChange,
 }: MapPaneProps) {
   const paneRef = useRef<HTMLDivElement>(null);
+  /** What a replay has lit so far, `null` when none runs. State, because the pins and the line
+   *  both draw it; it changes a few times a second only while a replay plays. */
+  const [replayLit, setReplayLit] = useState<ReplayLit | null>(null);
   // Is the tap Google is about to report the release of a gesture of OURS? Owned by
   // `useCanvasGestures` and read below — a ref rather than state, because a re-render here
   // re-diffs every marker on a map that ticks every second (ADR-0121 §4).
@@ -973,7 +1004,12 @@ function MapPaneInner({
   );
 
   return (
-    <div className="map-pane" ref={paneRef} onClick={handlePaneClick}>
+    <div
+      className="map-pane"
+      ref={paneRef}
+      onClick={handlePaneClick}
+      {...(replayLit ? { 'data-replay': '' } : {})}
+    >
       {/* OUTSIDE the branch below, deliberately: the pane element is what carries the
           capture listener, and it has to keep hearing a context die even once the canvas
           has been swapped for `ErrorState`. */}
@@ -1019,7 +1055,14 @@ function MapPaneInner({
               the map exists and simply do nothing until it does, which is what keeps the pin
               set free of a loading branch. */}
           {pins.map((pin) => (
-            <PinMarker key={pin.placeId} map={map} gl={gl} pin={pin} onSelect={selectPin} />
+            <PinMarker
+              key={pin.placeId}
+              map={map}
+              gl={gl}
+              pin={pin}
+              onSelect={selectPin}
+              replay={replayLit ? (replayLit.places.has(pin.placeId) ? 'lit' : 'ahead') : undefined}
+            />
           ))}
           {results.map((result) => (
             <ResultMarker
@@ -1032,7 +1075,7 @@ function MapPaneInner({
           ))}
           {me && <MeMarker map={map} gl={gl} at={me} />}
           {draftMarker && <DraftMarker map={map} gl={gl} marker={draftMarker} />}
-          <DayConnector map={map} path={connector} scheme={scheme} />
+          <DayConnector map={map} legs={connector} scheme={scheme} litReach={replayLit?.reach} />
           {/* **The wait, stated** (field report #35). Until the first tile paints the canvas
             is empty while our own markers already draw on it — the very picture #28 reported
             as a failure. Over the canvas rather than instead of it: the renderer needs its own
@@ -1094,10 +1137,14 @@ function MapPaneInner({
             onAreaSort={onAreaSort}
             onLocate={onLocate}
             arrival={arrival}
+            legs={connector}
             cardReserve={cardReserve}
             cardReserveAt={cardReserveAt}
             onHold={handleHold}
             gestureTapRef={gestureTapRef}
+            replay={replay}
+            onReplayLit={setReplayLit}
+            onReplayChange={onReplayChange}
           />
         </>
       )}
@@ -1169,11 +1216,15 @@ const PinMarker = memo(function PinMarker({
   gl,
   pin,
   onSelect,
+  replay,
 }: {
   map: MapLibreMap | null;
   gl: MapLibreModule | null;
   pin: MapPin;
   onSelect: (placeId: string) => void;
+  /** Where a running replay has reached this pin (ADR-0241 §2). A prop beside `pin` rather than
+   *  a field in it, so the screen's pin array does not change while a replay plays. */
+  replay?: 'ahead' | 'lit';
 }) {
   const cls = [
     'map-pin',
@@ -1188,6 +1239,7 @@ const PinMarker = memo(function PinMarker({
     pin.nextStop && 'nextstop',
     pin.nowStop && 'nowstop',
     pin.selected && 'selected',
+    replay && `is-${replay}`,
   ]
     .filter(Boolean)
     .join(' ');
@@ -1197,7 +1249,7 @@ const PinMarker = memo(function PinMarker({
   // reservation has. `nowStop`/`nextStop` then decide the tag's HUE rather than its words.
   const tagText =
     pin.transition ??
-    (pin.nowStop ? t.map.happeningNow : pin.nextStop ? t.map.nextStop : undefined);
+    (pin.nowStop ? t.map.happeningNow : pin.nextStop && !pin.nextPeer ? t.map.nextStop : undefined);
   // The mark is silent, so the outcome joins the NAME — `שם · היינו`, the app's own
   // separator. Built here rather than folded into the screen's `label` so the words and
   // the shape they stand in for are written in one place.
@@ -1206,7 +1258,11 @@ const PinMarker = memo(function PinMarker({
   // carried visually by the leading dot and the pulse — so the name composes it back in
   // words, and nothing that used to be readable is now only visible (ADR-0141 §6, the
   // same three-carriers arrangement ADR-0137 §3 made for the outcome).
-  const cue = pin.nowStop ? t.map.happeningNow : pin.nextStop ? t.map.nextStop : undefined;
+  const cue = pin.nowStop
+    ? t.map.happeningNow
+    : pin.nextStop && !pin.nextPeer
+      ? t.map.nextStop
+      : undefined;
   const name = [
     pin.label,
     pin.transition ? cue : undefined,
@@ -1287,7 +1343,7 @@ const PinMarker = memo(function PinMarker({
           )}
           {centreMark && (
             <span className={`pin-g outcome ${centreMark}`} aria-hidden="true">
-              <Icon name={PIN_OUTCOME_ICON[centreMark]} />
+              {PIN_OUTCOME_ICON[centreMark] && <Icon name={PIN_OUTCOME_ICON[centreMark]} />}
             </span>
           )}
         </span>
@@ -1306,7 +1362,7 @@ const PinMarker = memo(function PinMarker({
             number either. */}
         {badgeMark ? (
           <span className={`pin-n outcome ${badgeMark}`} aria-hidden="true">
-            <Icon name={PIN_OUTCOME_ICON[badgeMark]} />
+            {PIN_OUTCOME_ICON[badgeMark] && <Icon name={PIN_OUTCOME_ICON[badgeMark]} />}
           </span>
         ) : (
           pin.order != null && (
@@ -1378,81 +1434,531 @@ const DRAFT_MARKER_Z = 950;
  *  added and never removed). */
 const CONNECTOR = { source: 'wp-connector', layer: 'wp-connector-line' } as const;
 
-/** The day's order as a dashed neutral line (§10). Dashed because a straight segment is not
- *  the route you will walk — drawing it solid would claim it is — which also leaves
- *  **solid + amber** unspent for a real Routes polyline later.
+/** The amber leg's own LAYER, over the connector's source rather than beside it: the two are one
+ *  piece of data with two paints, split by `filter` (ADR-0206 §AC). */
+const ROUTE = { layer: 'wp-route-line' } as const;
+
+/** The unrouted leg's own layer (ADR-0206 §AL6). Its own layer rather than a `case` inside
+ *  `ROUTE`'s paint, because it differs in `line-dasharray` and `line-cap` — both of which are
+ *  LAYOUT/paint properties MapLibre cannot switch per feature with a data expression. */
+const TRANSIT = { layer: 'wp-route-transit' } as const;
+
+/** The tether between two peers of one stop (ADR-0225 §3) — its own layer for the same reason
+ *  the unrouted leg has one: a different dash and weight, which are not per-feature paint. */
+const TETHER = { layer: 'wp-route-tether' } as const;
+
+/** The stubs and the end dots. **The stubs share the LINE source** — they are one more kind of
+ *  line, split off by `filter` rather than by a parallel copy of the data (rule 8). The dots
+ *  cannot: a `circle` layer needs a point source, and that is the honest cost ADR-0206 §AC3
+ *  names. */
+const STUB = { layer: 'wp-connector-stub' } as const;
+const DOT = { source: 'wp-connector-dot', layer: 'wp-connector-dot-circle' } as const;
+
+/** **Bottom to top, the order these must paint in** — the neutral dash under the amber leg it is
+ *  the background for, the end dots over both. Read by `layer()` for its `beforeId` and by the
+ *  teardown for what to take away. */
+const PAINT_ORDER: readonly string[] = [
+  TETHER.layer,
+  CONNECTOR.layer,
+  STUB.layer,
+  ROUTE.layer,
+  TRANSIT.layer,
+  DOT.layer,
+];
+
+/** **One leg of the day, as the pane is told to draw it.** The screen owns which leg is which —
+ *  `MapPane` is presentational (ADR-0096) and draws what it is handed. */
+export interface MapDayLeg {
+  /** The drawn geometry: the routed path, or the straight segment where none has arrived yet. */
+  path: readonly LatLng[];
+  /** The two stops it runs between. The stub (ADR-0206 §AC5) is measured against these, and they
+   *  are what makes "the leg ARRIVING at a stop" expressible without an index into anything. */
+  from: LatLng;
+  to: LatLng;
+  /** `route` is §D8's one solid amber leg; `near` is prominent without spending amber twice;
+   *  `dim` recedes. Absent is the ordinary leg. */
+  emphasis?: 'route' | 'near' | 'dim';
+  /** **A leg drawn as a straight segment that is NOT a claim about the path** (ADR-0206 §AL6).
+   *
+   *  Two causes, one treatment, and one flag — because the renderer's question is what this line
+   *  may assert, not why (rule 8). A **declared תחב״צ** leg (§AA4): a road polyline for a rail
+   *  journey is a false claim about the path. And a leg whose chosen mode the gate **refuses**
+   *  (§AM10): a 40 km walk has no route and never will, and drawing the road between its ends in
+   *  solid amber says it is one.
+   *
+   *  Drawn in the route's amber at the route's weight with a long dash and butt caps, which is
+   *  three channels away from the un-routed connector — the one thing it could be mistaken for. */
+  unrouted?: boolean;
+  /** **Not a leg at all** (ADR-0225 §3): the short dash between two places that are one stop.
+   *  Neutral, thin, no duration, no end dots and no stub — it asserts nothing about a path,
+   *  only that the two pins share a number for a reason. Drawn in both modes. */
+  tether?: boolean;
+  /** **The stop this leg reaches, as replay keys it** (`replayReach`, ADR-0241 §2): a replay
+   *  shows a segment when the stop it arrives at lights. Set on a finished trip's journey only. */
+  reach?: string;
+}
+
+const KIND = { leg: 'leg', stub: 'stub' } as const;
+
+/** A content key, so a clock tick handing down a fresh array is not a new line. Same trick the
+ *  screen uses for `pins`, one layer down. */
+const legsKey = (legs?: readonly MapDayLeg[]): string =>
+  legs && legs.length
+    ? JSON.stringify(
+        legs.map((leg) => [
+          leg.path.map((at) => lngLat(at)),
+          lngLat(leg.from),
+          lngLat(leg.to),
+          leg.emphasis ?? '',
+          leg.unrouted ? 'u' : '',
+          leg.tether ? 't' : '',
+          leg.reach ?? '',
+        ]),
+      )
+    : '';
+
+const feature = (geometry: object, properties: object) => ({
+  type: 'Feature' as const,
+  geometry,
+  properties,
+});
+
+/** Pull the last point back along its own final segment by up to `px` screen pixels, in place.
  *
- *  **The fake is gone** (ADR-0186 §2). ADR-0121 §10 had to write _"the Maps API has no
- *  `strokeDasharray`, so a dash is a repeating symbol along a fully transparent stroke"_;
- *  MapLibre has `line-dasharray`, so this is now a line with a dash pattern and the
- *  `DASH_SCALE`/`DASH_REPEAT` symbol arithmetic is deleted along with `Polyline`.
+ *  **Bounded by that ONE segment, and that is the whole point.** The collar is a cosmetic
+ *  setback; the path is a claim. So it may shorten a straight run into a stop and it must never
+ *  delete a vertex — a vertex is a turn the route actually makes. The first build spent its `px`
+ *  by popping points until the budget ran out, which is fine at street zoom and a lie at trip
+ *  zoom, where ⁦9px⁩ is hundreds of metres of real road: it erased the last turn of the route
+ *  (reported 2026-08-27, with a screenshot) and, on a leg shorter than two collars, returned
+ *  fewer than two points and erased the LEG. Neither is expressible here — the point count out
+ *  is the point count in, and `COLLAR_MAX_SEGMENT` keeps the segment itself from collapsing. */
+function trimEnd(out: [number, number][], px: number): [number, number][] {
+  if (out.length < 2) return out;
+  const a = out[out.length - 2]!;
+  const b = out[out.length - 1]!;
+  const d = Math.hypot(b[0] - a[0], b[1] - a[1]);
+  if (d === 0) return out;
+  const t = 1 - Math.min(px, d * MAP_CONNECTOR.COLLAR_MAX_SEGMENT) / d;
+  out[out.length - 1] = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+  return out;
+}
+
+/** Trim `px` screen pixels off both ends of a projected polyline, one final segment at each end
+ *  (see `trimEnd`). Always returns as many points as it was given. */
+function trimEnds(pts: readonly [number, number][], px: number): [number, number][] {
+  return trimEnd(trimEnd(pts.slice(), px).reverse(), px).reverse();
+}
+
+/** **The day's lines, and every one of them is the real route** (ADR-0206 §AB5 / §AC).
  *
- *  Imperative because a line is style, not a marker: there is no React element for a layer.
- *  It renders `null` and does its work in an effect, exactly as `PinDensity` does. */
+ *  Four things are drawn out of TWO sources — one of lines, one of points:
+ *
+ *    1. every leg, dashed and neutral, at its own weight and opacity (§AC2);
+ *    2. the one **selected or next** leg, solid amber over it (§D8 — and §AC1 deleted the
+ *       "otherwise the first leg" arm, so a Plan day with nothing selected spends no amber);
+ *    3. a filled **dot** at each leg's end (§AC3), because a plain gap is invisible on a line
+ *       already made of gaps — that was measured on the mockup, not assumed;
+ *    4. one **stub** per stop (§AC5) where the router's snap point is far from the stop itself.
+ *
+ *  **The three line treatments share ONE source and split by `filter`**, so the legs, the amber
+ *  one and the stubs are one piece of data with three renderings rather than three parallel
+ *  copies to keep in step (rule 8). Weight and opacity are data-driven `match` expressions on the
+ *  feature's own `emphasis`, which is what lets a single layer draw legs of different prominence.
+ *
+ *  **The dash no longer means "not the route"** (§AB5). ADR-0121 §10 drew straight segments and
+ *  said so in the dash; there is geometry now, so the dash means "not the leg you are looking at".
+ *
+ *  **One component and one effect, never a layer beside this one** (ADR-0206 §M7): the ids, the
+ *  style-reload guard and the teardown all live here.
+ *
+ *  Imperative because a line is style, not a marker: there is no React element for a layer. It
+ *  renders `null` and does its work in an effect, exactly as `PinDensity` does. */
 const DayConnector = memo(function DayConnector({
   map,
-  path,
+  legs,
   scheme,
+  litReach,
 }: {
   map: MapLibreMap | null;
-  path?: readonly LatLng[];
+  legs?: readonly MapDayLeg[];
+  /** While a replay plays (ADR-0241 §2): the stops reached so far. A leg into any other stop
+   *  waits faint, so a segment appears with the stop it reaches. */
+  litReach?: ReadonlySet<string>;
   /** The canvas's OWN scheme. This used to be latched at construction because a Map ID's
    *  style could not be changed on a live map (ADR-0121 §11) — ADR-0186 §7 removes that
    *  limit, and the line still takes the same value the ground was painted from so the two
    *  cannot disagree after a theme flip. */
   scheme: MapColorScheme;
 }) {
-  // A content key, so a clock tick handing down a fresh array is not a new line. Same trick
-  // the screen uses for `pins`, one layer down.
-  const shape = path && path.length >= 2 ? path.map((at) => lngLat(at)) : null;
-  const shapeKey = shape ? JSON.stringify(shape) : '';
+  const key = legsKey(legs);
+  const dark = scheme === MAP_COLOR_SCHEME.dark;
+  const held = useRef<readonly MapDayLeg[]>([]);
+  held.current = legs ?? [];
+
+  // **A replay's segments, as a paint override on the layers already drawn** — no source write,
+  // so a step costs one style property per layer rather than a rebuild of the line.
+  const litKey = litReach ? [...litReach].join(';') : null;
+  useEffect(() => {
+    if (!map) return;
+    const plain = ['match', ['get', 'emphasis'], 'dim', MAP_CONNECTOR.DIM_OPACITY, 1];
+    const opacity = litReach
+      ? ['case', ['in', ['get', 'reach'], ['literal', [...litReach]]], plain, REPLAY.AHEAD_OPACITY]
+      : plain;
+    for (const [layer, prop] of [
+      [CONNECTOR.layer, 'line-opacity'],
+      [DOT.layer, 'circle-opacity'],
+    ] as const) {
+      if (map.getLayer(layer)) map.setPaintProperty(layer, prop, opacity as never);
+    }
+    // `litReach` is read through its content key: a new Set per step with the same members is
+    // not a change.
+  }, [map, litKey, key]);
 
   useEffect(() => {
-    if (!map || !shapeKey) return;
-    const data = {
-      type: 'Feature' as const,
-      geometry: { type: 'LineString' as const, coordinates: JSON.parse(shapeKey) as number[][] },
-      properties: {},
+    if (!map || !key) return;
+    const routeColor = dark ? MAP_CONNECTOR.ROUTE.COLOR.dark : MAP_CONNECTOR.ROUTE.COLOR.light;
+    const legColor = dark ? MAP_CONNECTOR.COLOR.dark : MAP_CONNECTOR.COLOR.light;
+    const isRoute = ['==', ['get', 'emphasis'], 'route'];
+    /** An unrouted leg (ADR-0206 §AL6/§AM10) — its own layer, and excluded from the other two. */
+    const isUnrouted = ['==', ['get', 'unrouted'], 1];
+    const byEmphasis = (plain: number, near: number, dim: number) => [
+      'match',
+      ['get', 'emphasis'],
+      'near',
+      near,
+      'dim',
+      dim,
+      plain,
+    ];
+
+    /** **The collar and the stub are SCREEN distances, so the drawn geometry depends on the
+     *  camera.** Project, trim/measure in pixels, unproject. A constant in metres was the
+     *  alternative and it is wrong in both directions: invisible at country zoom, enormous at
+     *  street zoom. The STORED shape is never trimmed — only what is painted. */
+    const build = () => {
+      const px = (at: LatLng): [number, number] => {
+        const p = map.project(lngLat(at) as [number, number]);
+        return [p.x, p.y];
+      };
+      const back = (p: [number, number]) => {
+        const at = map.unproject(p);
+        return [at.lng, at.lat];
+      };
+      const lines: object[] = [];
+      const dots: object[] = [];
+
+      held.current.forEach((leg, i) => {
+        if (leg.path.length < 2) return;
+        const emphasis = leg.emphasis ?? '';
+        const trimmed = trimEnds(
+          leg.path.map((at) => px(at)),
+          MAP_CONNECTOR.COLLAR_PX,
+        );
+        const coords = trimmed.map(back);
+        // A tether is a line and nothing else (ADR-0225 §3): no end dots, no stub — those say
+        // "a journey ends here", and nothing ends inside a stop.
+        if (leg.tether) {
+          lines.push(
+            feature({ type: 'LineString', coordinates: coords }, { kind: KIND.leg, tether: 1 }),
+          );
+          return;
+        }
+        lines.push(
+          feature(
+            { type: 'LineString', coordinates: coords },
+            { kind: KIND.leg, emphasis, unrouted: leg.unrouted ? 1 : 0, reach: leg.reach ?? '' },
+          ),
+        );
+        for (const end of [coords[0]!, coords[coords.length - 1]!]) {
+          dots.push(
+            feature({ type: 'Point', coordinates: end }, { emphasis, reach: leg.reach ?? '' }),
+          );
+        }
+
+        // **One stub per STOP, not one per leg end** (§AC5). Drawn at the leg's END, which yields
+        // exactly one per stop that has an arriving leg — plus the FIRST leg's start, the one
+        // stop in a day with no arrival. Two tails at one stop would be the same fact twice.
+        const stub = (stop: LatLng, anchor: LatLng) => {
+          const stopPx = px(stop);
+          const anchorPx = px(anchor);
+          const d = Math.hypot(anchorPx[0] - stopPx[0], anchorPx[1] - stopPx[1]);
+          if (d <= MAP_CONNECTOR.STUB.MIN_PX) return;
+          const t = MAP_CONNECTOR.COLLAR_PX / d;
+          lines.push(
+            feature(
+              {
+                type: 'LineString',
+                coordinates: [
+                  lngLat(anchor),
+                  back([
+                    stopPx[0] + (anchorPx[0] - stopPx[0]) * t,
+                    stopPx[1] + (anchorPx[1] - stopPx[1]) * t,
+                  ]),
+                ],
+              },
+              { kind: KIND.stub, emphasis },
+            ),
+          );
+        };
+        stub(leg.to, leg.path[leg.path.length - 1]!);
+        if (i === 0) stub(leg.from, leg.path[0]!);
+      });
+
+      return {
+        lines: { type: 'FeatureCollection' as const, features: lines },
+        dots: { type: 'FeatureCollection' as const, features: dots },
+      };
     };
+
     const draw = () => {
-      // The style is torn down and rebuilt by a theme swap, so "already added" has to be
-      // asked rather than remembered — a flag would go stale the moment the ground restyles.
-      const existing = map.getSource(CONNECTOR.source);
-      if (existing) {
-        (existing as unknown as { setData: (d: unknown) => void }).setData(data);
-        return;
-      }
-      map.addSource(CONNECTOR.source, { type: 'geojson', data });
-      map.addLayer({
+      const data = build();
+      type LegProps = { kind?: string; emphasis?: string; unrouted?: number; tether?: number };
+      const props = (f: object) => (f as { properties: LegProps }).properties;
+      const has = (kind: string, route: boolean) =>
+        data.lines.features.some((f) => {
+          const p = props(f);
+          if (p.kind !== kind) return false;
+          if (kind !== KIND.leg) return true;
+          // An unrouted leg and a tether belong to none of the other layers, so they must not keep
+          // them mounted either — an empty layer composited every frame is work nobody asked for,
+          // which is the whole reason `layer()` is conditional.
+          return !p.unrouted && !p.tether && (p.emphasis === 'route') === route;
+        });
+      const hasUnrouted = data.lines.features.some(
+        (f) => props(f).kind === KIND.leg && Boolean(props(f).unrouted),
+      );
+      const hasTether = data.lines.features.some(
+        (f) => props(f).kind === KIND.leg && Boolean(props(f).tether),
+      );
+
+      // The style is torn down and rebuilt by a theme swap, so "already added" has to be asked
+      // rather than remembered — a flag would go stale the moment the ground restyles.
+      const source = (id: string, payload: { features: object[] }) => {
+        if (!payload.features.length) return false;
+        const existing = map.getSource(id);
+        if (existing) (existing as unknown as { setData: (d: unknown) => void }).setData(payload);
+        // **`tolerance: 0`, against MapLibre's default `0.375`.** The default is a
+        // Douglas-Peucker budget applied per TILE ZOOM, so the further out the camera is the more
+        // of the route it is allowed to straighten — on a line whose entire job is to be the
+        // provider's own geometry (§AB5), the one thing it must never do. A handful of features
+        // costs nothing to tile exactly.
+        else map.addSource(id, { type: 'geojson', data: payload, tolerance: 0 });
+        return true;
+      };
+
+      /** **Only the layers that have something to draw.** A Trip-mode day draws ONE leg, and
+       *  three more layers beside it — empty, but composited every frame — is work nobody asked
+       *  for. Removed again when the data stops needing them.
+       *
+       *  **Added at its place in `PAINT_ORDER`, never on top.** A `draw()` off a zoom does not
+       *  tear the set down first, so a layer that becomes needed later would otherwise land
+       *  above one added earlier — and the neutral dash painting over the amber leg it is the
+       *  background for is the exact ordering this file already asserts. */
+      const layer = (want: boolean, spec: { id: string; [k: string]: unknown }) => {
+        const there = Boolean(map.getLayer(spec.id));
+        if (want && !there) {
+          const above = PAINT_ORDER.slice(PAINT_ORDER.indexOf(spec.id) + 1).find((id) =>
+            map.getLayer(id),
+          );
+          map.addLayer(spec as never, above);
+        } else if (!want && there) map.removeLayer(spec.id);
+      };
+
+      const isTether = ['==', ['get', 'tether'], 1];
+      const lines = source(CONNECTOR.source, data.lines);
+      // **The tether** (ADR-0225 §3): the connector's neutral ink at a finer dash and a lighter
+      // weight — under everything, because it is the least of the claims on this canvas.
+      layer(lines && hasTether, {
+        id: TETHER.layer,
+        type: 'line',
+        source: CONNECTOR.source,
+        filter: ['all', ['==', ['get', 'kind'], KIND.leg], isTether],
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: {
+          'line-color': legColor,
+          'line-width': MAP_CONNECTOR.TETHER.WEIGHT,
+          'line-opacity': MAP_CONNECTOR.TETHER.OPACITY,
+          'line-dasharray': [...MAP_CONNECTOR.TETHER.DASH],
+        },
+      });
+      layer(lines && has(KIND.leg, false), {
         id: CONNECTOR.layer,
         type: 'line',
         source: CONNECTOR.source,
+        filter: [
+          'all',
+          ['==', ['get', 'kind'], KIND.leg],
+          ['!', isRoute],
+          ['!', isUnrouted],
+          ['!', isTether],
+        ],
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: {
-          'line-color':
-            scheme === MAP_COLOR_SCHEME.dark ? MAP_CONNECTOR.COLOR.dark : MAP_CONNECTOR.COLOR.light,
-          'line-width': MAP_CONNECTOR.WEIGHT,
-          // It carries no arrowheads: the numbers are the order, and at phone size an
-          // arrowhead on a 2.5px dashed line is mush (§10).
+          'line-color': legColor,
+          'line-width': byEmphasis(
+            MAP_CONNECTOR.WEIGHT,
+            MAP_CONNECTOR.NEAR_WEIGHT,
+            MAP_CONNECTOR.WEIGHT,
+          ),
+          'line-opacity': byEmphasis(1, 1, MAP_CONNECTOR.DIM_OPACITY),
+          // No arrowheads: the numbers are the order, and at phone size an arrowhead on a
+          // 2.5px dashed line is mush (§10).
           'line-dasharray': [...MAP_CONNECTOR.DASH],
         },
       });
+      layer(lines && has(KIND.stub, false), {
+        id: STUB.layer,
+        type: 'line',
+        source: CONNECTOR.source,
+        filter: ['==', ['get', 'kind'], KIND.stub],
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: {
+          'line-color': ['case', isRoute, routeColor, legColor],
+          'line-width': MAP_CONNECTOR.STUB.WEIGHT,
+          'line-opacity': MAP_CONNECTOR.STUB.OPACITY,
+          'line-dasharray': [...MAP_CONNECTOR.STUB.DASH],
+        },
+      });
+      // Added after the dash it belongs to, so the one amber leg paints over the order.
+      layer(lines && has(KIND.leg, true), {
+        id: ROUTE.layer,
+        type: 'line',
+        source: CONNECTOR.source,
+        filter: ['all', ['==', ['get', 'kind'], KIND.leg], isRoute, ['!', isUnrouted]],
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': routeColor, 'line-width': MAP_CONNECTOR.ROUTE.WEIGHT },
+      });
+      // **The unrouted leg** (ADR-0206 §AL6/§AM10). The route's amber and the route's weight,
+      // because it IS a journey — but a long dash and BUTT caps, because it is not a claim about
+      // the path.
+      // Round caps would eat the gap (3.5px off 4.2px at this weight) and the line would read
+      // nearly solid, asserting exactly what it exists to disclaim.
+      layer(lines && hasUnrouted, {
+        id: TRANSIT.layer,
+        type: 'line',
+        source: CONNECTOR.source,
+        filter: ['all', ['==', ['get', 'kind'], KIND.leg], isUnrouted],
+        layout: { 'line-cap': MAP_CONNECTOR.TRANSIT.CAP, 'line-join': 'round' },
+        paint: {
+          'line-color': routeColor,
+          'line-width': MAP_CONNECTOR.ROUTE.WEIGHT,
+          'line-opacity': byEmphasis(1, 1, MAP_CONNECTOR.DIM_OPACITY),
+          'line-dasharray': [...MAP_CONNECTOR.TRANSIT.DASH],
+        },
+      });
+      layer(source(DOT.source, data.dots), {
+        id: DOT.layer,
+        type: 'circle',
+        source: DOT.source,
+        paint: {
+          'circle-color': ['case', isRoute, routeColor, legColor],
+          'circle-radius': [
+            'case',
+            isRoute,
+            MAP_CONNECTOR.DOT.RADIUS_ROUTE,
+            MAP_CONNECTOR.DOT.RADIUS,
+          ],
+          'circle-opacity': byEmphasis(1, 1, MAP_CONNECTOR.DIM_OPACITY),
+        },
+      });
     };
-    // A layer cannot be added before the style exists, and the pane may mount before the
-    // first `load` — so ask, and otherwise wait for it.
-    if (map.isStyleLoaded()) draw();
-    else map.once('load', draw);
+
+    /** The zoom the geometry now in the source was actually built at, `null` until a draw has
+     *  landed. Recorded INSIDE `drew()` and never beside a call to it: a draw the style refused
+     *  must not be remembered as one that happened, or the collar stays measured at the camera
+     *  it was refused at while the map moves on — which is a route ending a block short of its
+     *  pin, the worst shape of the 2026-08-27 report. */
+    let builtAt: number | null = null;
+
+    /** **Draw if the style will take a layer, and say whether it did.**
+     *
+     *  The first build asked `isStyleLoaded()` and otherwise waited for `load`. Both halves are
+     *  wrong, and together they LOSE the line — the reported _"I tap a stop and the amber route
+     *  to it sometimes doesn't render at all"_. `isStyleLoaded()` is false while **any tile is
+     *  in flight**, which is exactly the state tapping a stop creates, because the tap moves the
+     *  camera; and `load` fires **once per map instance**, so a draw deferred to it after the
+     *  first paint is deferred for ever. This effect's own teardown had already taken the layers
+     *  down, so the line did not come back until something else changed the key.
+     *
+     *  What adding a layer actually needs is the style **spec**, not loaded tiles — so try
+     *  first. `addSource`/`addLayer` reject a spec that has not parsed **before mutating
+     *  anything**, so a refused attempt costs nothing and the ordinary case draws immediately. */
+    const drew = (): boolean => {
+      try {
+        draw();
+      } catch (err) {
+        // Only a style that has not parsed yet is allowed to refuse. Anything a LOADED style
+        // throws is ours, and eating it would hide it for good.
+        if (map.isStyleLoaded()) throw err;
+        return false;
+      }
+      builtAt = map.getZoom();
+      return true;
+    };
+
+    /** The retry, for the one case `drew()` cannot serve at once: the pane mounted before the
+     *  style spec arrived. `styledata` is what that spec arriving fires — including the one a
+     *  theme flip installs — and `idle` is the backstop, since a map cannot come to rest
+     *  without it. */
+    const retry = () => {
+      if (!drew()) return;
+      map.off('styledata', retry);
+      map.off('idle', retry);
+    };
+    if (!drew()) {
+      map.on('styledata', retry);
+      map.on('idle', retry);
+    }
+
+    /** **The collar is a screen distance, so a zoom changes what is drawn — and re-deriving it
+     *  the moment the camera stops is what broke `place-know.spec.ts`.** Mutating the style
+     *  inside the `zoomend` handler lands a repaint exactly as the app is settling after a
+     *  camera fit; the map never reaches idle promptly, and the file went from ⁦38s⁩ to ⁦1.1m⁩ with
+     *  its scroll and stability assertions failing. Measured by bisection, not guessed.
+     *
+     *  So the redraw is **deferred out of the settling frame**, and only happens when the zoom
+     *  moved far enough for the collar to be visibly wrong — under half a level, a ⁦9px⁩ setback
+     *  is still a ⁦9px⁩-ish setback and nobody can see the difference.
+     *
+     *  **On `idle` as well as `zoomend`**, and that is not belt-and-braces: the threshold is
+     *  measured against the zoom the geometry was BUILT at, so a `zoomend` that arrives while
+     *  the style is still refusing would leave a stale collar with no second event to correct
+     *  it. `idle` is the one event a camera cannot come to rest without, and the handler returns
+     *  on a comparison unless the collar is genuinely wrong. */
+    let queued: number | undefined;
+    const redraw = () => {
+      // Nothing has been drawn yet; that is `retry`'s job, not this one's.
+      if (builtAt === null) return;
+      if (Math.abs(map.getZoom() - builtAt) < MAP_CONNECTOR.COLLAR_REDRAW_ZOOM) return;
+      if (queued !== undefined) return;
+      queued = requestAnimationFrame(() => {
+        queued = undefined;
+        drew();
+      });
+    };
+    map.on('zoomend', redraw);
+    map.on('idle', redraw);
     return () => {
-      map.off('load', draw);
+      map.off('styledata', retry);
+      map.off('idle', retry);
+      map.off('zoomend', redraw);
+      map.off('idle', redraw);
+      if (queued !== undefined) cancelAnimationFrame(queued);
       // Guarded rather than trusted: on unmount the map may already be `remove()`d by
       // `MapCanvas`, in which case there is no style left to take a layer out of.
       try {
-        if (map.getLayer(CONNECTOR.layer)) map.removeLayer(CONNECTOR.layer);
-        if (map.getSource(CONNECTOR.source)) map.removeSource(CONNECTOR.source);
+        for (const id of PAINT_ORDER) {
+          if (map.getLayer(id)) map.removeLayer(id);
+        }
+        for (const id of [CONNECTOR.source, DOT.source]) {
+          if (map.getSource(id)) map.removeSource(id);
+        }
       } catch {
         // The map is gone; its layers went with it.
       }
     };
-  }, [map, shapeKey, scheme]);
+  }, [map, key, dark]);
 
   return null;
 });
@@ -1474,10 +1980,14 @@ function MapCameraControls({
   onAreaSort,
   onLocate,
   arrival,
+  legs,
   cardReserve,
   cardReserveAt,
   onHold,
   gestureTapRef,
+  replay,
+  onReplayLit,
+  onReplayChange,
 }: {
   /** The camera's view of the live instance, or `null` before there is one. */
   map: CameraMap | null;
@@ -1489,9 +1999,13 @@ function MapCameraControls({
   areaCount: number | null;
   areaSorted: boolean;
   onAreaSort: () => void;
-  onLocate: () => void;
+  onLocate?: () => void;
   /** See `MapPaneProps` — the pane hands it straight to the camera. */
   arrival?: MapArrival | null;
+  /** The day's lines, so the camera can frame the one the selection is ABOUT (ADR-0206 §AC8).
+   *  The same array `DayConnector` draws — one fact, two readers, so the line the canvas paints
+   *  amber and the line the camera frames cannot be different legs. */
+  legs?: readonly MapDayLeg[];
   cardReserve?: number;
   cardReserveAt?: () => number;
   /** The long press lives here rather than beside `PinDensity` for the same reason the
@@ -1502,6 +2016,9 @@ function MapCameraControls({
   /** Written by the recogniser, read by the canvas's own click handler above: the release of
    *  a completed gesture must not be read as a tap. */
   gestureTapRef: RefObject<boolean>;
+  replay?: readonly ReplayDay[];
+  onReplayLit: (lit: ReplayLit | null) => void;
+  onReplayChange?: (playing: boolean) => void;
 }) {
   // The camera answers to the day's OWN pins, never to the ghost tier: a ghost is a
   // place this day does not contain, so framing it makes the camera chase somewhere
@@ -1526,8 +2043,12 @@ function MapCameraControls({
     showResults,
     locate: locateCamera,
     keepCentred,
+    framePath,
     zoomTo,
     stepZoomIn,
+    orientTo,
+    turnTo,
+    readBearing,
   } = useMapCamera(map, {
     points,
     setSignal,
@@ -1559,9 +2080,53 @@ function MapCameraControls({
   const selectedId = selected?.placeId;
   const focusRef = useRef<{ lat: number; lng: number } | undefined>(undefined);
   focusRef.current = selected ? { lat: selected.lat, lng: selected.lng } : undefined;
+
+  /** **The amber leg, which is what a selection is ACTUALLY about** (ADR-0206 §AC8). §AC2 makes
+   *  it the leg arriving at the selected stop, so the stop is one of its two ends — framing the
+   *  leg shows you the stop and the road to it, where centring the stop showed you the stop and
+   *  put the road under the card. `undefined` for a stop with no leg (a day's first stop, a
+   *  shelf idea, an all-days scope), which is the ordinary focus this has always done. */
+  const routeLegRef = useRef<readonly LatLng[] | undefined>(undefined);
+  const routeLeg = legs?.find((leg) => leg.emphasis === 'route');
+  // The two stops as well as the path: the drawn path is trimmed and may be snapped short of
+  // either end (§AC5), and the thing you tapped must be in frame whatever the router did.
+  routeLegRef.current = routeLeg ? [routeLeg.from, routeLeg.to, ...routeLeg.path] : undefined;
+
+  /** **What the camera was actually put on for this selection**, written by the effect below and
+   *  read by the band effect further down. `undefined` until a selection has moved it.
+   *
+   *  **The two must read ONE fact, and the first build had them each derive their own** (field
+   *  report, 2026-08-27, with a screenshot of the result). The band effect took the leg's centre
+   *  whenever a leg existed; the selection effect frames the leg only when `framePath` **agrees**
+   *  to. So on a leg the floor refuses — long ones, which on an Iceland day is most of them — the
+   *  camera panned to the stop and was then dragged straight off it to the middle of a ⁦40 km⁩ leg,
+   *  at street zoom, because `recentreInBand` pans the whole offset and does not care that the
+   *  point is off-screen. The screenshot is an empty hillside reading `אין מקומות באזור`.
+   *
+   *  It also answers a second case the derivation got wrong for free: a leg's SHAPE arriving from
+   *  the network is not a selection, so it must not change what the camera is keeping in view. */
+  const subjectRef = useRef<LatLng | undefined>(undefined);
+
   useEffect(() => {
-    if (selectedId && focusRef.current) focus(focusRef.current);
-  }, [selectedId, focus]);
+    if (!selectedId || !focusRef.current) {
+      subjectRef.current = undefined;
+      return;
+    }
+    const stop = focusRef.current;
+    const leg = routeLegRef.current;
+    // **A leg the floor refuses is `framePath`'s to fall back from, not this effect's** (§AC8's
+    // 2026-08-28 amendment). The refusal used to send the pan back here, and a pan keeps the zoom
+    // you are on — which since AC8 is the zoom the camera itself chose for the PREVIOUS leg, so
+    // walking a day from two stops on one street to two an hour apart stayed at street zoom
+    // (owner: _"the zoom stays instead of zooming out"_). The floor is what caps it, and the floor
+    // is `framePath`'s number; the answer here stays "which subject did the camera end up on".
+    if (leg) {
+      subjectRef.current = (framePath(leg, stop) ? centreOfPoints(leg) : null) ?? stop;
+      return;
+    }
+    focus(stop);
+    subjectRef.current = stop;
+  }, [selectedId, focus, framePath]);
 
   // **AND WHEN THE BAND CHANGES UNDER A SELECTION THAT DID NOT** (ADR-0122 §7's 2026-08-06
   // amendment; owner: _"the card … completely covers the pin"_, then _"switching from full map
@@ -1598,8 +2163,15 @@ function MapCameraControls({
       }),
     [paneRef],
   );
+  //
+  // **And what it keeps centred is whatever the selection effect PUT the camera on** (ADR-0206
+  // §AC8) — `subjectRef`, never a fresh derivation of its own. The leg's centre where the leg was
+  // framed, so folding the card does not undo the framing it was asked for; the stop where it was
+  // not, which is the whole of the field report `subjectRef`'s own note records. It stays a
+  // tolerance-guarded PAN rather than a second fit, which is what keeps a sheet drag from turning
+  // into a camera animation per frame.
   useEffect(() => {
-    if (selectedId && focusRef.current) keepCentred(focusRef.current);
+    if (selectedId && subjectRef.current) keepCentred(subjectRef.current);
   }, [selectedId, cardReserve, canvasH, keepCentred]);
 
   // **AND A SETTLED RESULT SET GETS THE SAME TREATMENT** (ADR-0168 §1): at the map extreme
@@ -1627,7 +2199,7 @@ function MapCameraControls({
     // A repeat tap steps one level in from wherever the map IS (#20) — statelessly, so
     // a pinch between taps cannot desynchronise it and no tap count lives anywhere.
     if (me) locateCamera(me);
-    else onLocate();
+    else onLocate?.();
   }, [me, locateCamera, onLocate]);
 
   // The job the second tap used to do invisibly, now a control that says it: frame
@@ -1637,24 +2209,159 @@ function MapCameraControls({
   const framable = pins.some(isFramedByCamera);
   const frame = useCallback(() => reframe(points), [reframe, points]);
 
+  // **Replay** (ADR-0241 §2) lives beside the camera it drives: each day is a `reframe`, which is
+  // the one eased move, and the end frames the journey exactly as `frame` does.
+  const replayer = useMapReplay({
+    days: replay,
+    frame: reframe,
+    frameAll: frame,
+    paneRef,
+    onLit: onReplayLit,
+    onChange: onReplayChange,
+  });
+
   // Tappable only when there is an area to sort BY. Zero keeps saying so and stays a
   // readout; `null` is "no idle yet", so there are no bounds to snapshot either.
   const areaTappable = areaCount != null && areaCount > 0;
+
+  // ── ORIENTATION (ADR-0234) ────────────────────────────────────────────────────
+  // **Everything here is pane-local, and that is what keeps it free.** The bearing comes
+  // from the camera and the heading from the device, so the screen learns nothing, no prop
+  // changes on a tap (ADR-0122 §9), and the marker set never re-diffs for a turn.
+  const heading = useDeviceHeading();
+  const [following, setFollowing] = useState(false);
+  const [atNorth, setAtNorth] = useState(true);
+
+  // Read through a ref by the painter below, which runs on the MAP's events rather than on
+  // React's: a bearing in state would re-render this subtree on every frame of a turn.
+  const headingRef = useRef(heading.heading);
+  headingRef.current = heading.status === 'on' ? heading.heading : undefined;
+
+  /** **The needle's angle, ACCUMULATED and never wrapped** (owner, 2026-09-18: _"when the
+   *  compass rolls over the top and then a little more it does a full circle instead of just
+   *  slightly moving"_).
+   *
+   *  The bearing itself is `[0, 360)`, and that wrap is exactly the problem: the needle is a
+   *  `rotate` with a `transition`, and CSS interpolates the property NUMERICALLY. Crossing
+   *  north takes the value from `358deg` to `2deg`, so the browser animates **−356°** — the
+   *  long way round the dial — for a four-degree turn. Every shortest-arc rule this feature
+   *  has is in code I wrote (`cameraFrame`, `smoothHeading`, `sameCamera`); this is the one
+   *  interpolation CSS does, and normalising to `[0, 360)` is what handed it a cliff.
+   *
+   *  So this ref holds a CONTINUOUS angle — 358 → 362, never 358 → 2 — advanced by the
+   *  short arc each frame. It grows without bound in principle and that is fine in practice:
+   *  27,000 full turns to reach 1e7, where a double still resolves a millionth of a degree. */
+  const needle = useRef(0);
+
+  /** **The two angles, written to the DOM rather than to state** — `PinDensity`'s own shape
+   *  one control over. `--map-needle` turns the needle; `--me-heading` turns the me-dot's
+   *  cone and is the DEVICE's heading minus the MAP's bearing, so in heading-up it points
+   *  straight up the screen. `data-heading` is the cone's presence: absent when no heading
+   *  is known, because a cone pointing at a guess is a claim the sensor cannot back. */
+  const paint = useCallback(() => {
+    const pane = paneRef.current;
+    if (!pane) return;
+    const bearing = readBearing() ?? 0;
+    // **`--map-needle` is NOT the bearing, and the name says so.** It is the continuous
+    // angle above; read the camera if you want the real `[0, 360)` value. `shortestTurn`
+    // normalises both ends, so handing it an unwrapped `from` is exactly what it is for.
+    needle.current += shortestTurn(needle.current, bearing);
+    pane.style.setProperty('--map-needle', `${needle.current}deg`);
+    // React sees only the boolean, and only when it flips — `setState` bails out on an
+    // identical value, so a turn costs no renders until the map crosses into or out of north.
+    setAtNorth(Math.abs(shortestTurn(bearing, 0)) <= MAP_ORIENT.NORTH_EPSILON_DEG);
+    const facing = headingRef.current;
+    if (facing == null) {
+      delete pane.dataset.heading;
+      return;
+    }
+    pane.dataset.heading = '';
+    pane.style.setProperty('--me-heading', `${normalizeBearing(facing - bearing)}deg`);
+  }, [paneRef, readBearing]);
+
+  // The map's own turn — a two-finger twist, or our own eased reset. `rotate` fires per
+  // frame of either, which is exactly the cadence the needle wants and precisely why none
+  // of it goes through React.
+  useEffect(() => {
+    if (!map) return;
+    paint();
+    const rotate = map.addListener('rotate', paint);
+    const idle = map.addListener('idle', paint);
+    return () => {
+      rotate.remove();
+      idle.remove();
+    };
+  }, [map, paint]);
+
+  // A new heading sample: turn the map if we are following, and repaint the cone either
+  // way — a twist while merely holding a fix still moves the cone against the ground.
+  useEffect(() => {
+    if (following && heading.status === 'on' && heading.heading != null) turnTo(heading.heading);
+    paint();
+  }, [following, heading.status, heading.heading, turnTo, paint]);
+
+  // A sensor that refuses mid-follow ends the follow rather than leaving a control claiming
+  // to track something it cannot read.
+  useEffect(() => {
+    if (following && (heading.status === 'denied' || heading.status === 'unsupported')) {
+      setFollowing(false);
+    }
+  }, [following, heading.status]);
+
+  /** **One control, two actions, and the needle says which** (ADR-0234 §1). Following → stop,
+   *  at north. Off north → back to north. North-up → start following, and THIS TAP is the
+   *  user gesture iOS requires for the orientation permission (§6). A refused sensor leaves
+   *  the control in reset-only service and re-asks on the next tap; it is never dead. */
+  const orientAction: 'north' | 'follow' = following || !atNorth ? 'north' : 'follow';
+  const toggleOrient = useCallback(() => {
+    if (following) {
+      setFollowing(false);
+      heading.stop();
+      orientTo(0);
+      return;
+    }
+    if (!atNorth) {
+      orientTo(0);
+      return;
+    }
+    setFollowing(true);
+    heading.start();
+  }, [following, atNorth, heading, orientTo]);
+
+  const orientLabel =
+    heading.status === 'denied' && orientAction === 'follow'
+      ? t.map.orient.denied
+      : t.map.orient[orientAction];
 
   return (
     <>
       {/* One cluster, so the band's geometry is written once and the
           one-floating-object rule (ADR-0122 §6) needs one selector, not three. */}
       <div className="map-camctl">
-        <button
-          type="button"
-          className="map-recenter"
-          aria-label={t.map.locate}
-          title={t.map.locate}
-          onClick={locate}
-        >
-          <Icon name="locate" />
-        </button>
+        {/* In the seat `onLocate` leaves empty on a finished trip, so the band keeps its width. */}
+        {replay && replay.length > 0 && (
+          <button
+            type="button"
+            className="map-replay"
+            aria-pressed={replayer.playing}
+            aria-label={replayer.playing ? t.map.replay.stop : t.map.replay.play}
+            title={replayer.playing ? t.map.replay.stop : t.map.replay.play}
+            onClick={replayer.toggle}
+          >
+            <Icon name={replayer.playing ? 'pause' : 'play'} />
+          </button>
+        )}
+        {onLocate && (
+          <button
+            type="button"
+            className="map-recenter"
+            aria-label={t.map.locate}
+            title={t.map.locate}
+            onClick={locate}
+          >
+            <Icon name="locate" />
+          </button>
+        )}
         {framable && (
           <button
             type="button"
@@ -1666,37 +2373,72 @@ function MapCameraControls({
             <Icon name="frame" />
           </button>
         )}
+        {/* THE COMPASS — the band's third member, and the first test of ADR-0126 §1's own
+            prediction that a third would join this band rather than open a second one.
+            Measured: 52px of the inline axis, 0px of the block axis.
+
+            ALWAYS PRESENT, deliberately. Google's appears-only-off-north variant is the
+            smaller band and it deletes the only way INTO heading-up, because the control
+            would be absent in exactly the state you enter that mode from (§2).
+
+            The label says what the TAP DOES and changes with the state, which is correct
+            here and would be wrong on `באזור`: that control has visible text the label must
+            not override (ADR-0126 §4), and this one has none but its needle. */}
+        <button
+          type="button"
+          className={'map-compass' + (following ? ' on' : '')}
+          aria-label={orientLabel}
+          aria-pressed={following}
+          title={orientLabel}
+          onClick={toggleOrient}
+        >
+          <Icon name="compass" />
+        </button>
       </div>
       {/* The live region WRAPS the control rather than becoming it (ADR-0126 §4):
           one node cannot hold both roles, and `role="status"` would win over
           `role="button"`. This is `StatusBanner`'s own shape — a polite region with a
           control inside it — so the count text exists once in the DOM and what the
           region announces is the button's own words, not a second copy of them. */}
-      <div className={'map-areacount' + (areaSorted ? ' on' : '')} role="status" aria-live="polite">
-        {areaTappable ? (
-          <button
-            type="button"
-            className="map-areabtn"
-            aria-pressed={areaSorted}
-            // The ACTION as a description. An `aria-label` would override the visible
-            // text, and the visible text has to stay the accessible NAME (§4).
-            title={t.map.area.action}
-            onClick={onAreaSort}
-          >
-            <b dir="auto">{areaCount}</b> {t.map.area.suffix}
-          </button>
-        ) : (
-          <span>
-            {areaCount === 0 ? (
-              t.map.area.none
-            ) : (
-              <>
-                <b dir="auto">-</b> {t.map.area.suffix}
-              </>
-            )}
-          </span>
-        )}
-      </div>
+      {/* While a replay runs the area count has nothing to count, and the day's name takes the
+          canvas foot, where a free-text name gets the canvas's width (ADR-0241 §2). */}
+      {replayer.playing ? (
+        replayer.caption && (
+          <div className="map-replay-caption" role="status" aria-live="polite">
+            <span dir="auto">{replayer.caption}</span>
+          </div>
+        )
+      ) : (
+        <div
+          className={'map-areacount' + (areaSorted ? ' on' : '')}
+          role="status"
+          aria-live="polite"
+        >
+          {areaTappable ? (
+            <button
+              type="button"
+              className="map-areabtn"
+              aria-pressed={areaSorted}
+              // The ACTION as a description. An `aria-label` would override the visible
+              // text, and the visible text has to stay the accessible NAME (§4).
+              title={t.map.area.action}
+              onClick={onAreaSort}
+            >
+              <b dir="auto">{areaCount}</b> {t.map.area.suffix}
+            </button>
+          ) : (
+            <span>
+              {areaCount === 0 ? (
+                t.map.area.none
+              ) : (
+                <>
+                  <b dir="auto">-</b> {t.map.area.suffix}
+                </>
+              )}
+            </span>
+          )}
+        </div>
+      )}
     </>
   );
 }

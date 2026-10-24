@@ -6,8 +6,17 @@
 // trip-state, no screen imports (dependency direction §12). Co-located CSS loads
 // with each component.
 
-export { Board, DayRail, TransitProgress } from './Board';
-export type { BoardProps, BoardVariant, BoardRow, BoardTransit, BoardNext } from './Board';
+export { Board, CountdownTile, DayRail, TomorrowStrip, TransitProgress } from './Board';
+export type {
+  BoardProps,
+  BoardVariant,
+  BoardRow,
+  BoardTransit,
+  BoardNext,
+  BoardCountdown,
+  BoardGap,
+  BoardTomorrow,
+} from './Board';
 
 export { EventCard } from './EventCard';
 export type { EventCardProps, EventKind, EventPhaseName } from './EventCard';
@@ -25,6 +34,7 @@ export type { GlanceCardProps } from './GlanceCard';
 // The rate on the Home (ADR-0180 §3). NOT `GlanceCard*` — that name is the
 // day-at-a-glance time rail's, and this is the section it sits in, not the rail.
 export { RateCard, rateLine } from './RateCard';
+export { WeatherCard } from './WeatherCard';
 
 export { StatTile } from './StatTile';
 export type { StatTileProps } from './StatTile';
@@ -33,15 +43,21 @@ export { IndexTile } from './IndexTile';
 export type { IndexTileProps } from './IndexTile';
 
 export { ListRow, RowManageSheet, RowActionList } from './ListRow';
+// The foot under a row that opened in place — notes and tasks (ADR-0189).
+export { RowOpenFoot } from './RowOpenFoot';
 export { NoteMark } from './NoteMark';
 export { DocumentMark } from './DocumentMark';
+// The third mark a host row can carry (ADR-0191): something still to be done about it.
+export { TaskMark } from './TaskMark';
 export type { ListRowProps, RowAction, BadgeTone } from './ListRow';
 
 export { ChangeFeed } from './ChangeFeed';
 export type { ChangeFeedProps } from './ChangeFeed';
 
 export { SettleControl } from './SettleControl';
-export type { SettleOutcome, SettleVariant } from './SettleControl';
+export type { SettleOutcome, SettleVariant, SettleWords } from './SettleControl';
+export { DoneChip } from './DoneChip';
+export { ArchiveBanner } from './ArchiveBanner';
 
 export { RouteField } from './RouteField';
 export type { RouteFieldProps, RouteEnd } from './RouteField';

@@ -8,7 +8,7 @@
 // (chrome-base color only — no board glow/pulse/now-next, so board scarcity
 // still holds; ADR-0028/0033). A live trip present is also what drives the
 // header back button. Design reference: mockups/all-trips-v2.html.
-import { useEffect, useState } from 'react';
+import { useRef, type PointerEvent as ReactPointerEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { Trip } from '@waypoint/shared';
 import { useAuth } from '../state/auth-state';
@@ -16,15 +16,22 @@ import { useActiveTripId } from '../state/active-trip-id';
 import { NAV_DIR, useBackLayer } from '../state/nav-state';
 import { beginTripHandoff } from '../lib/trip-handoff';
 import { useIsOffline } from '../lib/outbox';
-import { loadTripList } from '../lib/cache';
+import { useHoldToOpen } from '../lib/useHoldToOpen';
+import { useTripList } from '../lib/useTripList';
 import { tripChip, type TripChip } from '../lib/active-trip';
-import { daysUntilStart } from '../lib/mode';
+import { daysUntilStartOnDevice, deviceToday } from '../lib/mode';
 import { formatTripDates } from '../lib/time';
 import { useClock } from '../lib/useClock';
+import { useFailableImage } from '../lib/useFailableImage';
+import { useTripMemories } from '../lib/trip-recap';
+import { tripAnniversaries, tripsLifetime, type Anniversary } from '../lib/resurface';
+import { autoIsolate } from '../lib/bidi';
+import type { DayShot } from '../lib/day-photo';
 import { DEFAULT_TRIP_ICON, GLYPH } from '../constants';
 import { NavArrow } from '../ui/NavArrow';
 import { t } from '../i18n/he';
 import { Avatar } from '../ui/primitives/Avatar';
+import { BAND_DENSITY, PhotoBand } from '../ui/domain/PhotoBand';
 import { Icon } from '../ui/Icon';
 import { ZeroState } from './ZeroState';
 
@@ -67,25 +74,51 @@ function TripMeta({ trip }: { trip: Trip }) {
   );
 }
 
-export function AllTrips({ onOpenAccount }: { onOpenAccount: () => void }) {
+// **A finished trip's flag slot holds its cover** (ADR-0240 §7), the way a badge holds a
+// photograph (ADR-0167 §1): the same box, so the card gains no height. No cover, or one that no
+// longer loads, is the flag as before.
+function TripFlag({ trip, cover }: { trip: Trip; cover?: DayShot }) {
+  const { src, onError } = useFailableImage(cover?.url);
+  return (
+    <span className="flag" data-photo={src ? '' : undefined}>
+      {src ? (
+        <img src={src} alt="" loading="lazy" decoding="async" onError={onError} />
+      ) : (
+        (trip.icon ?? DEFAULT_TRIP_ICON)
+      )}
+    </span>
+  );
+}
+
+// **What the finished trips add up to** (ADR-0240 §7): the line that makes `הסתיים` read as a
+// record rather than a menu.
+function LifetimeLine({ finished }: { finished: readonly Trip[] }) {
+  const life = tripsLifetime(finished);
+  const copy = t.shell.allTrips;
+  const parts = [copy.lifeTrips(life.trips), copy.lifeDays(life.days)];
+  if (life.countries !== undefined) parts.push(copy.lifeCountries(life.countries));
+  return <div className="trips-life">{parts.join(' · ')}</div>;
+}
+
+export function AllTrips({
+  onOpenAccount,
+  onShare,
+}: {
+  onOpenAccount: () => void;
+  /** Opens the one `ShareItinerarySheet` the shell owns. This screen has no share control of
+   *  its own: the way in here is a hold on the card (ADR-0033's 2026-08-30 amendment), and the
+   *  visible twin that pays for the gesture is the trip header's share. */
+  onShare: (trip: Trip, finished: boolean) => void;
+}) {
   const navigate = useNavigate();
   const { me } = useAuth();
   const { setTripId } = useActiveTripId();
   const offline = useIsOffline();
   const now = useClock();
-  const [trips, setTrips] = useState<Trip[] | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    // Falls back to the cached list offline so the all-trips view (and the back
-    // route into a live trip) keeps working with no network.
-    loadTripList().then(({ trips: list }) => {
-      if (!cancelled) setTrips(list);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  // Falls back to the cached list offline — and on a link too slow to say so yet — so the
+  // all-trips view (and the back route into a live trip) keeps working with no network.
+  const trips = useTripList();
+  const memories = useTripMemories((trips ?? []).filter((trip) => tripChip(trip, now) === 'past'));
 
   // **THE BACK ARROW AND THE SYSTEM BACK ARE ONE FUNCTION** (owner, session 175). This
   // screen is a declared root (`ROOT_PATHS`), so a structural back here is a no-op and the
@@ -109,6 +142,31 @@ export function AllTrips({ onOpenAccount }: { onOpenAccount: () => void }) {
     return { remainsActive: false };
   }, hasLiveTrip);
 
+  // **The way in to sharing is a HOLD, and the visible control is gone** (ADR-0033's
+  // 2026-08-30 amendment §1; owner: _"The share icon is taking much space and is causing a
+  // line overflow. Perhaps we need a long click instead?"_). Measured at 360px, the icon cost
+  // 42px of the content column and put the meta on three lines.
+  //
+  // Not a new gesture: `lib/useHoldToOpen.ts` is the app's third holdable thing and exists for
+  // exactly this trade (ADR-0202) — a hold "costs no pixels", and is "a shortcut, never the
+  // only way", paid for by a visible twin. The twin here is the trip header's own share, one
+  // tap inside the trip, which is also the keyboard-reachable one ADR-0157 §2 requires.
+  //
+  // One hook for the whole list plus a ref for which card the finger is on — `NoteSection`'s
+  // shape, because a hook cannot be called inside `.map()`.
+  const held = useRef<Trip | null>(null);
+  const hold = useHoldToOpen(() => {
+    // The card's own bucket, not the mode's phase: there is no ModeProvider on this screen.
+    if (held.current) onShare(held.current, tripChip(held.current, now) === 'past');
+  });
+  const holdProps = (trip: Trip) => ({
+    ...hold,
+    onPointerDown: (event: ReactPointerEvent) => {
+      held.current = trip;
+      hold.onPointerDown?.(event);
+    },
+  });
+
   if (trips === null) return null;
 
   const buckets: Record<TripChip, Trip[]> = { now: [], soon: [], past: [] };
@@ -124,12 +182,50 @@ export function AllTrips({ onOpenAccount }: { onOpenAccount: () => void }) {
   // a tile with no measurable box — the plain route transition plays instead.
   const pick = (trip: Trip, card: HTMLElement) => {
     setTripId(trip.id);
-    const flying = beginTripHandoff(card.querySelector('.flag'), trip.id);
+    // A cover does not fly: the pill it would land on draws the glyph, and a shared element has
+    // to be the same object at both ends (`lib/trip-handoff.ts`).
+    const flying = beginTripHandoff(card.querySelector('.flag:not([data-photo])'), trip.id);
     navigate('/', flying ? { state: { navDir: NAV_DIR.HANDOFF } } : undefined);
   };
 
+  // **A year ago today, above everything** (ADR-0240 §7): the trip as its cover, with the place
+  // on the scrim. A card is a way into the trip, like its row below, so it opens the same way.
+  const anniversaryCard = ({ trip, years, memory }: Anniversary) => {
+    const line = `${t.shell.allTrips.anniversary(years)} · ${memory.place}`;
+    return (
+      <button
+        key={`anniv-${trip.id}`}
+        className="trip-anniv"
+        onClick={(e) => pick(trip, e.currentTarget)}
+      >
+        {memory.cover ? (
+          <PhotoBand
+            shot={{ ...memory.cover, of: line }}
+            density={BAND_DENSITY.COVER}
+            interactive={false}
+          />
+        ) : (
+          <span className="trip-anniv-line">
+            {t.shell.allTrips.anniversary(years)} · {autoIsolate(memory.place)}
+          </span>
+        )}
+        <span className="trip-anniv-foot">
+          <b>{trip.name}</b>
+          <span className="trip-anniv-dates" dir="auto">
+            {formatTripDates(trip.startDate, trip.endDate)}
+          </span>
+        </span>
+      </button>
+    );
+  };
+
   const hero = (trip: Trip) => (
-    <button key={trip.id} className="trip-hero" onClick={(e) => pick(trip, e.currentTarget)}>
+    <button
+      key={trip.id}
+      className="trip-hero"
+      onClick={(e) => pick(trip, e.currentTarget)}
+      {...holdProps(trip)}
+    >
       <span className="flag">{trip.icon ?? DEFAULT_TRIP_ICON}</span>
       <span className="main">
         <span className="t">{trip.name}</span>
@@ -141,22 +237,32 @@ export function AllTrips({ onOpenAccount }: { onOpenAccount: () => void }) {
     </button>
   );
 
+  // **`הסתיים` is deleted rather than promoted** (amendment §3): under a `הסתיים` heading,
+  // over dates already past, the chip repeats its own heading and tells no two cards apart.
+  // The heading already says it, so nothing is lost — and the countdown, which is the one fact
+  // that varies INSIDE a section, gets the trailing slot to itself. A finished trip is not
+  // dimmed either (ADR-0240 §7): a memory is not a disabled row.
   const row = (trip: Trip, chip: 'soon' | 'past') => (
     <button
       key={trip.id}
-      className={'trip-card' + (chip === 'past' ? ' is-past' : '')}
+      className="trip-card"
       onClick={(e) => pick(trip, e.currentTarget)}
+      {...holdProps(trip)}
     >
-      <span className="flag">{trip.icon ?? DEFAULT_TRIP_ICON}</span>
+      <TripFlag trip={trip} cover={memories.get(trip.id)?.cover} />
       <span className="main">
         <span className="t">{trip.name}</span>
         <TripMeta trip={trip} />
       </span>
-      <span className={'chip ' + chip}>
-        {chip === 'soon'
-          ? t.shell.allTrips.chipSoon(daysUntilStart(trip, now) ?? 0)
-          : t.shell.allTrips.chipPast}
-      </span>
+      {/* Counted from the DEVICE's today: no itinerary is loaded here, and the trip's own zone
+          is the far side's clock — at 00:34 at home this said `מחרתיים` for tomorrow's trip
+          (owner, 2026-09-10). Floored because the bucket above is the trip zone's (ADR-0033),
+          so on a westward trip's first hours the row is still `בקרוב` and says `היום`. */}
+      {chip === 'soon' && (
+        <span className="chip soon">
+          {t.shell.allTrips.chipSoon(Math.max(0, daysUntilStartOnDevice(trip.startDate, now)))}
+        </span>
+      )}
     </button>
   );
 
@@ -211,6 +317,7 @@ export function AllTrips({ onOpenAccount }: { onOpenAccount: () => void }) {
       </header>
 
       <main className="trips-body">
+        {tripAnniversaries(buckets.past, memories, deviceToday(now)).map(anniversaryCard)}
         {buckets.now.length > 0 && (
           <>
             <div className="sec">{t.shell.allTrips.sectionNow}</div>
@@ -226,6 +333,7 @@ export function AllTrips({ onOpenAccount }: { onOpenAccount: () => void }) {
         {buckets.past.length > 0 && (
           <>
             <div className="sec">{t.shell.allTrips.sectionPast}</div>
+            <LifetimeLine finished={buckets.past} />
             {buckets.past.map((trip) => row(trip, 'past'))}
           </>
         )}

@@ -50,7 +50,19 @@ describe('formatDistance (precision drops as the number grows)', () => {
 
   it('drops the decimal past 10 km, where it stops meaning anything', () => {
     expect(plain(11_600)).toBe('12 ק״מ');
-    expect(plain(9_200_000)).toBe('9200 ק״מ');
+  });
+
+  // **A GROUPED NUMBER PAST A THOUSAND** (ADR-0212 §4). This assertion previously pinned
+  // `9200 ק״מ` — the four-digit case was anticipated here and nowhere else, because until a
+  // flight carried a distance no caller could produce one, so the ungrouped output was recorded
+  // rather than read. On a row it parses as a part number.
+  it('groups the thousands, once a carried leg can produce four digits', () => {
+    expect(plain(9_200_000)).toBe('9,200 ק״מ');
+    // The Vienna→Keflavík leg this was drawn against, and the day total that sums two of them.
+    expect(plain(2_930_941)).toBe('2,931 ק״מ');
+    expect(plain(5_292_250)).toBe('5,292 ק״מ');
+    // The boundary is untouched: three digits group nothing.
+    expect(plain(999_000)).toBe('999 ק״מ');
   });
 
   it('reads number-then-unit, with only the numeral isolated (ADR-0118)', () => {

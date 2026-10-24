@@ -25,7 +25,9 @@ import { resolveAvatarHue } from '@waypoint/shared';
 import { ENTITY_TYPE, ERROR_CODE } from '@waypoint/shared';
 import { EnrichmentScheduler } from '../enrichment/enrichment.scheduler';
 import { FxService } from '../fx/fx.service';
+import { forecastCells, WeatherService } from '../weather/weather.service';
 import { EnrichmentService } from '../enrichment/enrichment.service';
+import { assertTripAdmin } from '../common/trip-scope.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { ChangeService, type ChangeOp } from '../sync/change.service';
 import { generateInviteCode } from './invite.util';
@@ -37,7 +39,9 @@ import {
   toMaybeItemDto,
   toMembershipDto,
   toDocumentAttachmentDto,
+  toTravelModeOverrideDto,
   toNoteDto,
+  toTaskDto,
   toPlaceDto,
   toTripDto,
   toUserDto,
@@ -64,6 +68,11 @@ function tripHasEnded(endDate: Date, timezone: string): boolean {
   return todayKey > endKey;
 }
 
+const inviteExpired = () =>
+  new GoneException({
+    error: { code: ERROR_CODE.INVITE_EXPIRED, message: 'This trip has ended.' },
+  });
+
 @Injectable()
 export class TripsService {
   constructor(
@@ -72,6 +81,7 @@ export class TripsService {
     private readonly enrichment: EnrichmentService,
     private readonly scheduler: EnrichmentScheduler,
     private readonly fx: FxService,
+    private readonly weather: WeatherService,
   ) {}
 
   async createTrip(userId: string, input: CreateTripInput): Promise<Trip> {
@@ -170,8 +180,10 @@ export class TripsService {
 
   /** The trip's one durable invite (ADR-0067): returns the current code, minting
    *  one only if the trip has none. Stable across calls, so opening trip-settings
-   *  shows the same link rather than churning a new one each time. */
+   *  shows the same link rather than churning a new one each time. An ended trip
+   *  hands out no link at all (ADR-0239 §5): the join route would refuse it. */
   async getOrCreateInvite(tripId: string, actorUserId: string): Promise<string> {
+    await this.assertTripNotEnded(tripId);
     const existing = await this.prisma.invite.findUnique({ where: { tripId } });
     if (existing) return existing.code;
     return this.mintInvite(tripId, actorUserId);
@@ -181,6 +193,7 @@ export class TripsService {
    *  the row in place, so the previously shared code stops resolving at once. */
   async rotateInvite(tripId: string, actorUserId: string): Promise<string> {
     await this.assertAdmin(tripId, actorUserId);
+    await this.assertTripNotEnded(tripId);
     return this.mintInvite(tripId, actorUserId);
   }
 
@@ -366,15 +379,11 @@ export class TripsService {
     await this.prisma.tripBlock.deleteMany({ where: { tripId, userId: targetUserId } });
   }
 
-  /** Throws 403 unless the actor is an `admin` of the trip. Assumes membership
-   *  is already confirmed (MembershipGuard); a non-member reads as non-admin. */
-  private async assertAdmin(tripId: string, userId: string): Promise<void> {
-    const membership = await this.prisma.membership.findUnique({
-      where: { tripId_userId: { tripId, userId } },
-    });
-    if (!membership || membership.role !== 'admin') {
-      throw new ForbiddenException('Admin only');
-    }
+  /** Throws 403 unless the actor is an `admin` of the trip. The check itself now lives in
+   *  `common/trip-scope.util.ts`, shared with ADR-0213's sharing module; this stays as the
+   *  name seven call sites in this service already read. */
+  private assertAdmin(tripId: string, userId: string): Promise<void> {
+    return assertTripAdmin(this.prisma, tripId, userId);
   }
 
   /** A non-persisted `trip`/`delete` change for the ephemeral delete broadcast. */
@@ -414,12 +423,18 @@ export class TripsService {
       select: { endDate: true, timezone: true },
     });
     if (!trip) throw new NotFoundException('Invite not found');
-    if (tripHasEnded(trip.endDate, trip.timezone)) {
-      throw new GoneException({
-        error: { code: ERROR_CODE.INVITE_EXPIRED, message: 'This trip has ended.' },
-      });
-    }
+    if (tripHasEnded(trip.endDate, trip.timezone)) throw inviteExpired();
     return invite.tripId;
+  }
+
+  /** Minting and joining answer an ended trip with the same 410, so the link the
+   *  share sheet hands out and the route that reads it cannot disagree (ADR-0239 §5). */
+  private async assertTripNotEnded(tripId: string): Promise<void> {
+    const trip = await this.prisma.trip.findUniqueOrThrow({
+      where: { id: tripId },
+      select: { endDate: true, timezone: true },
+    });
+    if (tripHasEnded(trip.endDate, trip.timezone)) throw inviteExpired();
   }
 
   async listForUser(userId: string): Promise<Trip[]> {
@@ -451,7 +466,9 @@ export class TripsService {
       maybeItems,
       places,
       notes,
+      tasks,
       documentAttachments,
+      travelModeOverrides,
     ] = await this.prisma.$transaction(
       [
         this.prisma.change.findFirst({
@@ -481,9 +498,27 @@ export class TripsService {
           where: { tripId },
           orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
         }),
+        // Oldest first, and deliberately NOT the screen's order: the tasks screen sorts by
+        // urgency (brief §13), which is a derivation over `dueAt` against a clock the server
+        // does not share with the reader. `createdAt` gives the client a stable base to sort
+        // from; `id` breaks ties, since one save can write several tasks in a millisecond.
+        this.prisma.task.findMany({
+          where: { tripId },
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        }),
         // Oldest first, so a host's chips read in the order they were attached; `id`
         // breaks ties, since one save can write several links in the same millisecond.
         this.prisma.documentAttachment.findMany({
+          where: { tripId },
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        }),
+        // **Inside the transaction, unlike enrichment below.** An override is a trip entity with
+        // its own `Change` (ADR-0206 §AM), so it belongs to the `latestSeq` coherence guarantee —
+        // a declared leg that landed between the cursor read and this one would otherwise be a
+        // change the client re-applies harmlessly, which is the tolerated direction, but there is
+        // no reason to leave the door open. Order is stable rather than meaningful: nothing reads
+        // these as a list, only as a lookup by pair.
+        this.prisma.travelModeOverride.findMany({
           where: { tripId },
           orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
         }),
@@ -505,6 +540,11 @@ export class TripsService {
     // (ADR-0157 §6, ADR-0166 §14). `readAndRefresh` never throws and never waits
     // on the network: it returns the stored set at whatever age it is.
     const fxRates = await this.fx.readAndRefresh();
+    // The forecast rides the same seat as the rates, on the same terms and for the same two
+    // reasons (ADR-0218 §6): it is a global read model with no `seq` to be coherent with, and
+    // this read is its ONLY trigger — there is no controller, because `FxController` exists only
+    // because a human taps refresh and nobody taps a forecast.
+    const forecast = await this.weather.readAndRefresh(forecastCells(trip, places));
     // **The read is also the trigger** (§14). The join just told us which of this trip's places
     // nobody has looked up or whose values have lapsed, for no extra query — so this is where
     // backfill, TTL refresh and recovery-after-a-redeploy all happen. Synchronous and `void`:
@@ -521,9 +561,12 @@ export class TripsService {
       maybeItems: maybeItems.map(toMaybeItemDto),
       places: places.map(toPlaceDto),
       notes: notes.map(toNoteDto),
+      tasks: tasks.map(toTaskDto),
       documentAttachments: documentAttachments.map(toDocumentAttachmentDto),
+      travelModeOverrides: travelModeOverrides.map(toTravelModeOverrideDto),
       enrichments,
       fxRates,
+      forecast,
       latestSeq: latestChange ? latestChange.seq.toString() : '0',
     };
   }

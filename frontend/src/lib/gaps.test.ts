@@ -12,7 +12,10 @@ import {
   gapAfterLast,
   gapBeforeFirst,
   gapBetween,
+  narrowGapToNow,
   nextSlot,
+  quickAddSlot,
+  eventAtSlot,
 } from './gaps';
 
 const TZ = 'Asia/Tokyo';
@@ -335,6 +338,33 @@ describe('blockFor', () => {
     expect(blockFor(at('23:30', 180), 120).end).toBe('23:59');
   });
 
+  /**
+   * **AND NEVER PAST THE MOMENT THE DAY SAYS TO LEAVE** (`Gap.until`, 2026-09-01).
+   *
+   * The free MINUTES are measured over the hole and the block starts wherever the position put
+   * it, and on the day's head those are two different instants: `freeBeforeFirst` hugs the first
+   * row, so a hole running 07:00–08:05 offers its block at 07:30 with 65 minutes free — and a
+   * 60-minute idea capped against the 65 ran to 08:30, straight through the 08:05 departure. This
+   * is the reported case reduced to arithmetic.
+   */
+  it('never runs a block past the slot’s own ceiling', () => {
+    const head = {
+      minutes: 65,
+      fill: { date: DATE, start: '07:30', end: '08:05' },
+      until: '08:05',
+    };
+    expect(blockFor(head, 60).end).toBe('08:05');
+  });
+
+  it('leaves a length the ceiling does not reach alone', () => {
+    const head = {
+      minutes: 65,
+      fill: { date: DATE, start: '07:30', end: '08:05' },
+      until: '08:05',
+    };
+    expect(blockFor(head, 20).end).toBe('07:50');
+  });
+
   it('drops the end entirely when the start leaves no room at all', () => {
     expect(blockFor(at('23:59', 180), 60).end).toBe('');
   });
@@ -363,5 +393,162 @@ describe('ideaBlock', () => {
 
   it('falls back to the default block for an idea with no category', () => {
     expect(ideaBlock(undefined, at('12:00', 300)).end).toBe('13:00');
+  });
+});
+
+// ── AND WHAT IS LEFT OF IT ONCE YOU ARE STANDING IN IT (ADR-0217's 2026-09-05 amendment) ────
+//
+// `narrowGapForTravel`'s mirror at the other end. Reported at ⁦16:10⁩ of an ⁦08:00–16:46⁩ window:
+// the strip still stated `8:46 שע׳ פנויות` and its `＋` opened a sheet headed `08:00 – 09:00`.
+describe('narrowGapToNow', () => {
+  const DAY = '2026-07-07';
+  const at = (hhmm: string) => Date.parse(`${DAY}T${hhmm}:00+09:00`);
+  /** The hole `freeBetween` builds for ⁦08:00–17:00⁩, un-narrowed. */
+  const hole = () => freeBetween(ev('a', '07:00', '08:00'), ev('b', '17:00'), TZ)!;
+
+  it('leaves a hole alone until the moment is inside it', () => {
+    expect(narrowGapToNow(hole(), at('07:30'), at('17:00'), TZ)).toEqual(hole());
+    // …which is also what makes it a no-op on every other day: `nowMs` is nowhere near.
+    expect(narrowGapToNow(hole(), at('08:00'), at('17:00'), TZ)).toEqual(hole());
+  });
+
+  it('states what is left and offers the slot from here', () => {
+    const live = narrowGapToNow(hole(), at('13:01'), at('17:00'), TZ)!;
+    expect(live.minutes).toBe(239);
+    expect(live.fill.start).toBe('13:05');
+    expect(live.fill.end).toBe('14:05');
+    // The window's own end becomes the ceiling a block may run to, so a drop can no longer
+    // spill past the row below on the rounding the slot's start just took.
+    expect(live.until).toBe('17:00');
+  });
+
+  it('rounds the offer INWARD, like the bound at the other end', () => {
+    // ⁦13:02⁩ offers ⁦13:05⁩ — never ⁦13:00⁩, which has already gone.
+    expect(narrowGapToNow(hole(), at('13:02'), at('17:00'), TZ)!.fill.start).toBe('13:05');
+    // …and the statement is still counted from the clock, not from the grid.
+    expect(narrowGapToNow(hole(), at('13:02'), at('17:00'), TZ)!.minutes).toBe(238);
+  });
+
+  it('keeps the ceiling the journey already put on the hole', () => {
+    const capped = { ...hole(), until: '16:45' };
+    const live = narrowGapToNow(capped, at('16:10'), at('16:46'), TZ)!;
+    // The reported number: ⁦36⁩ minutes to the departure, not the ⁦8:46⁩ the hole was born with.
+    expect(live.minutes).toBe(36);
+    expect(live.fill.start).toBe('16:10');
+    expect(live.fill.end).toBe('16:45');
+    expect(live.until).toBe('16:45');
+  });
+
+  it('is null once nothing is left, which is the caller’s cue to draw no strip', () => {
+    expect(narrowGapToNow(hole(), at('17:00'), at('17:00'), TZ)).toBeNull();
+    expect(narrowGapToNow(hole(), at('17:30'), at('17:00'), TZ)).toBeNull();
+  });
+
+  // Under a slot step from the end there is no block's worth of room, and a zero-length slot is
+  // no droppable position at all — so the offer degrades to a start, which is the shape
+  // `freeBetween` and `nextSlot` already use for the same situation (ADR-0161 §3).
+  it('offers a start alone when the room is gone but the minute is not', () => {
+    const live = narrowGapToNow(hole(), at('16:58'), at('17:00'), TZ)!;
+    expect(live.minutes).toBe(2);
+    expect(live.fill.end).toBe('');
+  });
+
+  // A block a pick writes reads the narrowed object, so it cannot land in the passed half —
+  // which is the half of the report that a corrected LABEL would never have reached.
+  it('moves the block a pick writes, not only the words above it', () => {
+    const live = narrowGapToNow(hole(), at('13:01'), at('17:00'), TZ)!;
+    expect(blockFor(live, 90)).toEqual({ date: DAY, start: '13:05', end: '14:35' });
+    // …and it stays inside the window even where the length asked for would overrun it.
+    expect(
+      blockFor(narrowGapToNow({ ...hole(), until: '16:45' }, at('16:10'), at('16:46'), TZ)!, 90),
+    ).toEqual({ date: DAY, start: '16:10', end: '16:45' });
+  });
+});
+
+describe('quickAddSlot — the ＋ lands on now (ADR-0231 §3)', () => {
+  const DATE = '2026-09-16';
+  const TZ = 'Asia/Tokyo';
+  const at = (hhmm: string) => Date.parse(`${DATE}T${hhmm}:00+09:00`);
+  const row = (
+    id: string,
+    start: string,
+    end: string,
+    status: TripEvent['status'] = EVENT_STATUS.PLANNED,
+  ): TripEvent => ({
+    id,
+    tripId: 't1',
+    date: DATE,
+    title: id,
+    kind: EVENT_KIND.SOFT,
+    status,
+    startsAt: `${DATE}T${start}:00+09:00`,
+    endsAt: `${DATE}T${end}:00+09:00`,
+    sortOrder: 1,
+    source: 'manual',
+    createdAt: '2026-09-01T00:00:00Z',
+    updatedAt: '2026-09-01T00:00:00Z',
+    updatedBy: 'u1',
+  });
+
+  it('starts at now on the slot grid and takes the default block into an open afternoon', () => {
+    expect(quickAddSlot([row('free', '16:30', '19:30')], DATE, TZ, at('13:51'))).toEqual({
+      date: DATE,
+      start: '13:55',
+      end: '14:55',
+    });
+  });
+
+  it('is capped by the next planned row ahead', () => {
+    expect(quickAddSlot([row('next', '14:30', '16:00')], DATE, TZ, at('13:51')).end).toBe('14:30');
+  });
+
+  it('ignores a done row still holding its box — you are standing in the free time it left', () => {
+    const tour = row('tour', '10:00', '16:00', EVENT_STATUS.DONE);
+    expect(quickAddSlot([tour, row('free', '16:30', '19:30')], DATE, TZ, at('13:51'))).toEqual({
+      date: DATE,
+      start: '13:55',
+      end: '14:55',
+    });
+  });
+
+  it('never leaves the day: late at night the block clamps and then drops', () => {
+    expect(quickAddSlot([], DATE, TZ, at('23:20'))).toEqual({
+      date: DATE,
+      start: '23:20',
+      end: '23:59',
+    });
+    expect(quickAddSlot([], DATE, TZ, at('23:58')).end).toBe('');
+  });
+});
+
+describe('eventAtSlot — an existing event keeps its length at a new slot (ADR-0161 §1)', () => {
+  const DATE = '2026-09-16';
+  const TZ = 'Asia/Tokyo';
+  const base: TripEvent = {
+    id: 'e',
+    tripId: 't1',
+    date: DATE,
+    title: 'e',
+    kind: EVENT_KIND.SOFT,
+    status: EVENT_STATUS.PLANNED,
+    sortOrder: 1,
+    source: 'manual',
+    createdAt: '2026-09-01T00:00:00Z',
+    updatedAt: '2026-09-01T00:00:00Z',
+    updatedBy: 'u1',
+  };
+  const fill = { date: DATE, start: '18:00', end: '19:00' };
+  const iso = (hhmm: string) => new Date(Date.parse(`${DATE}T${hhmm}:00+09:00`)).toISOString();
+
+  it("a three-hour row moved to 18:00 ends at 21:00, not at the slot's own end", () => {
+    const e = { ...base, startsAt: iso('16:30'), endsAt: iso('19:30') };
+    expect(eventAtSlot(e, fill, TZ)).toEqual({ startsAt: iso('18:00'), endsAt: iso('21:00') });
+  });
+
+  it("a start-only row stays start-only; an untimed one takes the slot's block", () => {
+    expect(eventAtSlot({ ...base, startsAt: iso('16:30') }, fill, TZ)).toEqual({
+      startsAt: iso('18:00'),
+    });
+    expect(eventAtSlot(base, fill, TZ)).toEqual({ startsAt: iso('18:00'), endsAt: iso('19:00') });
   });
 });

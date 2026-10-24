@@ -3,63 +3,92 @@
 // plan violet, never amber, no pulse (design-language: mode identity, ADR-0028).
 //
 // Readiness and the checklist are DERIVED from the snapshot, never stored
-// (lib/readiness.ts, ADR-0061). Each incomplete row's CTA *does the thing* —
+// (@waypoint/shared readiness.ts, ADR-0061). Each incomplete row's CTA *does the thing* —
 // opens the type-specific create form (flight seeded with the missing leg /
 // lodging), seeds the day builder, or the settings invite — not a bare tab
 // switch. Completed checks collapse into a summary. Only rows we can honestly
 // derive appear; Gmail / Google-connection / WhatsApp stay out (ADR-0045/0004).
-import { useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { BOOKING_TYPE } from '@waypoint/shared';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { BOOKING_TYPE, TASK_STATUS } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
+import { useMode } from '../state/mode-state';
 import { BEAT, playBeat } from '../lib/one-shot';
 import { useClock } from '../lib/useClock';
 import { useCountUp } from '../lib/useCountUp';
-import { daysUntilStart, tripPhase } from '../lib/mode';
-import { dayPhrase } from '../lib/hebrew';
-import { countdownParts, formatTripDates } from '../lib/time';
-import { computeReadiness, type CheckId, type ReadinessCheck } from '../lib/readiness';
+import { prepHeroFacts } from '../lib/prep-hero-facts';
+import { PrepDates, PrepHero } from '../ui/domain/PrepHero';
+import { useAutomaticTasks } from '../lib/useAutomaticTasks';
+import {
+  AUTOMATIC_TASK_ACTION,
+  draftOverlay,
+  isLive,
+  isManual,
+  resolvedReadinessPct,
+  tickedAutomaticStatus,
+  type AutomaticTask,
+} from '../lib/automatic-tasks';
+import { AutomaticTaskRow } from '../ui/AutomaticTaskRow';
+import { TaskBandRow } from '../ui/TaskBandRow';
+import {
+  isSettled,
+  openManualTasks,
+  orderTaskRows,
+  sortTasks,
+  subtaskProgress,
+  taskRowKey,
+  type TaskRow,
+  taskPreview,
+  type TaskDueClock,
+} from '../lib/tasks';
+import { toHeroTask } from '../lib/hero-task';
+import { PlanLift } from '../ui/domain/PlanLift';
+import { TaskManageSheet } from '../ui/TaskManageSheet';
 import { BookingSheet, type BookingSeed, type BookingSheetDraft } from '../ui/BookingSheet';
 import { usePlaceErrandReturn } from '../state/map-scope-state';
-import { HOME_TAB } from '../state/nav-state';
+import {
+  DAYS_TAB,
+  FOCUS_PARAM,
+  HOME_FOCUS,
+  HOME_TAB,
+  INDEX_FOCUS,
+  INDEX_TAB,
+  TAB_PARAM,
+} from '../state/nav-state';
+import type { Task } from '@waypoint/shared';
 import { DocumentUploadSheet } from '../ui/DocumentUploadSheet';
 import { StatTile } from '../ui/domain';
-import { CollapseToggle, Collapsible } from '../ui/primitives/Collapsible';
-import { DOT_SEPARATOR, MS_PER_DAY, type TabId } from '../constants';
+import { MemoryHome } from './MemoryHome';
+import { EmptyState } from '../ui/feedback';
+import { Icon } from '../ui/Icon';
+import { Collapsible } from '../ui/primitives/Collapsible';
+import { PLAN_TASK_CAP, type TabId } from '../constants';
 import { t } from '../i18n/he';
-import { Icon, type IconName } from '../ui/Icon';
-
-// `IconName`, not glyphs: the collapsed summary row renders these pills directly
-// beside its own `<Icon name="check" />`, so the emoji version was five emoji and
-// one SVG sharing a flex row — the sibling test in design-language.md.
-const CHECK_ICON: Record<CheckId, IconName> = {
-  flights: 'flight',
-  lodging: 'hotel',
-  itinerary: 'calendar',
-  documents: 'documents',
-  group: 'members',
-};
-
-interface ChecklistRow {
-  icon: IconName;
-  title: string;
-  meta: string;
-  /** Documents row: the per-traveller passport indicator (filled = uploaded). */
-  dots?: { have: number; total: number };
-  cta: { label: string; warn?: boolean; onClick: () => void };
-}
-
-// Trip-local day number (1-based) for a calendar-date string — matches the
-// header's day-strip numbering. UTC-midnight diff, no timezone re-reading.
-const dayNumberOf = (date: string, startDate: string) =>
-  Math.round(
-    (Date.parse(`${date}T00:00:00Z`) - Date.parse(`${startDate}T00:00:00Z`)) / MS_PER_DAY,
-  ) + 1;
+import { useSettledHosts } from '../ui/HostTasks';
 
 export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
-  const { trip, events, bookings, places, documents, users, setActiveDate } = useTrip();
+  const {
+    trip,
+    events,
+    bookings,
+    users,
+    setActiveDate,
+    taskVerbs,
+    tasks,
+    subtasks,
+    zoneCrossings,
+    zoneEvidence,
+  } = useTrip();
   const now = useClock();
+  const { isFinished, phase } = useMode();
   const navigate = useNavigate();
+  const { readiness, automatic, applyVerb } = useAutomaticTasks();
+  // **The percentage reads the same resolution the rows do** — otherwise the hero can say
+  // 60% directly above a list where every row is ticked. `computeReadiness` stays pure; what
+  // moved is only which number this hero prints.
+  const readinessPct = resolvedReadinessPct(automatic);
+  // The `⋯` on an automatic row, shared with the tasks screen's sheet.
+  const [manage, setManage] = useState<Task | null>(null);
   // A create-form open seeded by a checklist CTA (null = closed). The row that
   // opened it decides the booking type (and, for a flight, the missing leg).
   const [sheetSeed, setSheetSeed] = useState<BookingSeed | null>(null);
@@ -76,276 +105,360 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
   const [uploadingDoc, setUploadingDoc] = useState(false);
   const [showCompleted, setShowCompleted] = useState(false);
 
-  /** The prep hero answers a tap with a beat and nothing else (ADR-0160 §H).
-   *
-   *  **Not a `<button>`, deliberately.** Trip's board is one because it opens the lifted
-   *  horizon; this hero opens nothing, because what it summarises — the readiness percent —
-   *  is the checklist rendered immediately below it. Announcing a control to a screen reader
-   *  and then doing nothing when it is activated is the shape ADR-0150 §8 argues against
-   *  from the other direction: the affordance has to match what a press can achieve. So
-   *  there is no role and no tab stop, and the beat is for the finger that already touched
-   *  it. */
-  const prepRef = useRef<HTMLDivElement>(null);
-  const rebuff = () => {
-    if (prepRef.current) playBeat(prepRef.current, BEAT.REBUFF);
-  };
+  /** **Arriving from the tasks screen's automatic row** (ADR-0190 §3). Two of the five
+   *  checks resolve into a seeded `BookingSheet`, which lives here — so the tap over there
+   *  deep-links with the same `focus` param the Index already answers to, and this opens the
+   *  sheet on arrival. Cleared after, so back/reload do not re-trigger it. */
+  const [params, setParams] = useSearchParams();
+  useEffect(() => {
+    const focus = params.get(FOCUS_PARAM);
+    if (focus !== HOME_FOCUS.ADD_FLIGHT && focus !== HOME_FOCUS.ADD_LODGING) return;
+    setSheetSeed(
+      focus === HOME_FOCUS.ADD_LODGING
+        ? { type: BOOKING_TYPE.HOTEL }
+        : // No `missingLeg` across a URL: seed the outbound, which is the leg missing in
+          // the common case and the one the form can be corrected from either way.
+          { type: BOOKING_TYPE.FLIGHT, dest: trip.destination },
+    );
+    const next = new URLSearchParams(params);
+    next.delete(FOCUS_PARAM);
+    setParams(next, { replace: true });
+  }, [params, setParams, trip.destination]);
 
-  const total = dayNumberOf(trip.endDate, trip.startDate);
-  // Called unconditionally, above the past/upcoming branch below, because both
-  // branches' StatTiles share these same three counts (ADR-0143: "a value that
-  // changes should be seen to change" — day/event/booking counts were named but
-  // never claimed). Hooks can't be called only from inside one branch.
-  const countedTotal = useCountUp(total);
+  /** **THE HERO LIFTS NOW** (ADR-0193 §4), and this replaces ADR-0160 §H's rebuff rather
+   *  than sitting beside it. §H made this a `<div>` with a beat because the hero opened
+   *  nothing — "announcing a control to a screen reader and then doing nothing when it is
+   *  activated" is ADR-0150 §8 from the other side. That argument was right and its premise
+   *  has expired: §3 folds the far and undated tasks behind one row, so the hero now
+   *  summarises what the screen keeps folded, which is the condition §H itself named for
+   *  revisiting. A press has something to open, so it is a `<button>`.
+   *
+   *  The ref survives the change with a second job: it is the box the flight measures
+   *  (ADR-0160 §5) — held rather than measured at press time, because `--press-scale-lg` is
+   *  still applied under the finger and `getBoundingClientRect` includes transforms. */
+  const prepRef = useRef<HTMLElement>(null);
+  const [lifted, setLifted] = useState(false);
+  const wasLifted = useRef(false);
+  /** The landing beat (ADR-0160 §7), played AFTER the render that reveals the hero — not in
+   *  the close handler, which is where it is tempting to put it and would not survive:
+   *  React owns `className` on that node, so a class added imperatively before its next
+   *  reconcile is overwritten by it. */
+  useEffect(() => {
+    if (wasLifted.current && !lifted && prepRef.current) {
+      playBeat(prepRef.current, BEAT.LANDING, '--t-quick');
+    }
+    wasLifted.current = lifted;
+  }, [lifted]);
+
+  // Called unconditionally, above the past branch below, because hooks can't be called only
+  // from inside one branch (ADR-0143: "a value that changes should be seen to change").
   const countedEvents = useCountUp(events.length);
   const countedBookings = useCountUp(bookings.length);
 
-  // A finished trip is a calm read-only archive (ADR-0040): no prep dashboard,
-  // no countdown, no board — a quiet retrospective and a way back into the days.
-  if (tripPhase(trip, now) === 'past') {
-    return (
-      <>
-        <div className="prep prep-past">
-          <div className="prep-k">{t.planHome.past.complete}</div>
-          <div className="prep-count">{trip.destination}</div>
-          <div className="prep-dates">
-            {formatTripDates(trip.startDate, trip.endDate, { style: 'prose' })}{' '}
-            <span className="dot">{DOT_SEPARATOR}</span> {dayPhrase(total)}
-          </div>
-        </div>
+  // A finished trip is a memory, not a plan (ADR-0239, ADR-0240 §4).
+  if (isFinished) return <MemoryHome onNavigate={onNavigate} />;
 
-        <div className="sec-title">{t.planHome.past.summary}</div>
-        <div className="prep-stats">
-          <StatTile value={countedTotal} label={t.planHome.past.days} />
-          <StatTile value={countedEvents} label={t.planHome.stats.events} />
-          <StatTile value={countedBookings} label={t.planHome.stats.bookings} />
-        </div>
+  /** The hero's tier, countdown, runway and eve clock — one derivation for both of its hosts
+   *  (`lib/prep-hero-facts.ts`, ADR-0221). */
+  const facts = prepHeroFacts({ trip, events, now, zoneEvidence });
+  const countdown = facts.countdown;
+  // Still missing = not satisfied by the data and not waved off by a person. The completed
+  // half keeps its own collapse (ADR-0190 §4): the tasks screen's `הושלמו` chip is a
+  // different surface, so two toggles is not one mechanism twice — and this section's title
+  // is literally "what is missing", which it stops being if the done rows never leave.
+  const liveChecks = automatic.filter(isLive);
+  // **The CONVERGED list** (ADR-0188 §6: "Plan Home carries the converged list, automatic
+  // first and manual after"). Phase 2 built the automatic half only; the manual half arrives
+  // here (owner, 2026-08-16: tasks belong on Plan Home too, not only Trip Home).
+  //
+  // Ordered by the same `orderTaskRows` the tasks screen uses — urgent manual, then the
+  // checks, then the rest — so the two surfaces cannot disagree about what leads. Which
+  // manual tasks: the band's, i.e. overdue or due within the week, because Plan Home is
+  // where you prepare and a task due next month is not yet preparation.
+  const taskClock: TaskDueClock = {
+    nowMs: now.getTime(),
+    crossings: zoneCrossings,
+    primaryZone: trip.timezone,
+    trip,
+    phase,
+  };
+  const settledHosts = useSettledHosts();
+  /** **Everything open, with no date window** (ADR-0193 §1). `tasksDueSoon` used to be this
+   *  list and it is Trip Home's rule: dated, and overdue or inside a week. On the screen
+   *  whose countdown reads `בעוד 47 ימים` that made an undated task and anything a week out
+   *  invisible — while `completedManual` below has never had a window at all, so the same
+   *  task appeared under `הושלמו` the instant it was ticked. Widening is what makes the two
+   *  halves ask one question. */
+  const openTasks = openManualTasks(tasks, taskClock, settledHosts);
+  /** **The hero's two numbers, from the Index tile's own derivation** (owner, 2026-08-16:
+   *  _"in the hero it says משימות פתוחות X which doesn't include the automatic tasks"_).
+   *
+   *  It was `openTasks.length`, i.e. manual only — and ADR-0190 §1 as amended settled that a
+   *  readiness check IS an open task, which is why `taskPreview` has counted them for the
+   *  Index tile since. Two surfaces answering "how many are open" with different numbers is
+   *  the disagreement that rule exists to prevent, so this reuses the function rather than
+   *  adding `+ liveChecks.length` beside it: they cannot drift now.
+   *
+   *  `overdue` stays manual by construction and not by choice — a check carries no `dueAt`,
+   *  so nothing about it can have passed. */
+  const preview = taskPreview(tasks, automatic, taskClock, settledHosts);
+  /** **What stays inline, and what folds — a CAP, not a split** (ADR-0193 §3, amended
+   *  2026-08-16 on the owner's report of a bare stripe where the list should be).
+   *
+   *  It was a semantic split: "near" meant `important` or inside `tasksDueSoon`'s 7-day
+   *  window, and everything else folded. On the reported trip both open tasks were due in
+   *  **16 days**, so both were far, so the inline list was EMPTY — and `.checklist` is a
+   *  card with a 1px border, which rendered as a **2px stripe** under the section title. Two
+   *  open tasks and neither of them on screen.
+   *
+   *  The cap cannot do that, and the difference is structural rather than a tuning: the
+   *  first N of a list is never zero, while a predicate can empty it at any length. It also
+   *  makes this list and the lifted hero the same rule — `orderTaskRows`, first N, remainder
+   *  stated — which they were quietly not. */
+  const allRows = orderTaskRows(openTasks, liveChecks, taskClock);
+  const shownRows = allRows.slice(0, PLAN_TASK_CAP);
+  const restRows = allRows.slice(PLAN_TASK_CAP);
+  const [showRest, setShowRest] = useState(false);
+  // **The completed half is the same noun the open half is** (phase 3r). It was
+  // `automatic.filter(done)` alone, so a completed MANUAL task could never appear and the
+  // toggle's count answered about half the feature — the one-noun failure ADR-0188 §4 and
+  // ADR-0190 §1 have each already corrected on other surfaces.
+  const completedAutomatic = automatic.filter((a) => a.done);
+  const completedManual = useMemo(
+    () =>
+      sortTasks(
+        tasks.filter((task) => isManual(task) && isSettled(task)),
+        taskClock,
+      ),
+    [tasks, taskClock],
+  );
+  const completedCount = completedAutomatic.length + completedManual.length;
 
-        <button className="addbtn" onClick={() => onNavigate('days')}>
-          {t.planHome.past.viewDays}
-        </button>
-      </>
-    );
-  }
+  /** **The run-up the lift opens onto** (ADR-0193 §4, amended 2026-08-16 on the owner's call).
+   *
+   *  **ONE list, in the tasks screen's own order** — `orderTaskRows`, which already
+   *  interleaves urgent → the live checks → the rest (ADR-0190 §2). The first build split the
+   *  remainder into `לפני היציאה` / `בזמן הטיול` / `ללא תאריך` and derived it with a
+   *  `planRunUp` of its own; that derivation is DELETED rather than left unused. A task with
+   *  no date is not a different KIND of thing from one with a date, and two surfaces
+   *  disagreeing about what leads is the thing §2 of that ADR exists to prevent.
+   *
+   *  Capped at `PLAN_TASK_CAP` with the remainder stated, never dropped silently — the
+   *  same cap the inline list uses, since it is the same question about the same list. */
+  const liftTasks = shownRows.map((row) =>
+    row.kind === 'task'
+      ? toHeroTask(row.task, taskClock, users, subtasks.get(row.task.id))
+      : // A check is a task all the way through (ADR-0190 §1 as amended), so it renders as
+        // one here too. Its second line goes in `meta`, NOT in `due`: a check has no `dueAt`
+        // and never can, and `due` draws a clock — which made every check read as though
+        // `חסרות טיסת הלוך` were a deadline. Caught in the running app, not by a spec.
+        { title: row.auto.title, meta: row.auto.meta },
+  );
 
-  const days = daysUntilStart(trip, now);
-  const countdown = days === null ? null : countdownParts(days);
-  const readiness = computeReadiness({
-    startDate: trip.startDate,
-    endDate: trip.endDate,
-    destination: {
-      name: trip.destination,
-      googlePlaceId: trip.destinationGooglePlaceId,
-      timezone: trip.timezone,
-      countryCode: trip.destinationCountryCode,
-    },
-    events,
-    bookings,
-    places,
-    documents,
-    travelerIds: users.map((u) => u.id),
-  });
-  const incompleteChecks = readiness.checks.filter((c) => !c.done);
-  const completedChecks = readiness.checks.filter((c) => c.done);
+  /** **A press that produces nothing reads as a dead surface** (ADR-0160 §9's own rule, and
+   *  the reason §H put a rebuff here). So the hero is a control only while it has something
+   *  to open — and when it has nothing, the press is still ANSWERED with the beat rather
+   *  than swallowed (owner, 2026-08-17, restoring what ADR-0193 §4 retired: it read the
+   *  empty state as unreachable, and it is reachable the moment a trip is actually ready).
+   *  This is the Trip board's own shape one screen over (§Q). */
+  const liftable = allRows.length > 0;
 
-  // Each check → its row copy + the one action that resolves it. Actionable CTAs
-  // open the thing itself (ADR-0061): flight/lodging → the seeded create form,
-  // empty-day → the day builder on the first empty day, group → the settings
-  // invite, documents → the passport upload sheet.
-  const rowFor = (check: ReadinessCheck): ChecklistRow => {
-    const c = t.planHome.checklist;
-    switch (check.id) {
-      case 'flights': {
-        // Seed the missing leg: outbound needs a flight TO the destination (seed
-        // its `dest`), a return needs one FROM it (seed its `origin`).
-        const seed: BookingSeed = !check.hasOutbound
-          ? { type: BOOKING_TYPE.FLIGHT, dest: trip.destination }
-          : { type: BOOKING_TYPE.FLIGHT, origin: trip.destination };
-        const meta = check.done
-          ? c.flightsDoneMeta
-          : !check.hasOutbound && !check.hasReturn
-            ? c.flightsMissingBothMeta
-            : check.hasOutbound
-              ? c.flightsMissingReturnMeta
-              : c.flightsMissingOutboundMeta;
-        return {
-          icon: CHECK_ICON.flights,
-          title: c.flightsTitle,
-          meta,
-          cta: { label: c.addFlight, warn: true, onClick: () => setSheetSeed(seed) },
-        };
-      }
-      case 'lodging':
-        return {
-          icon: CHECK_ICON.lodging,
-          title: c.lodgingTitle,
-          meta: check.done
-            ? c.lodgingDoneMeta
-            : c.lodgingMissingMeta(check.count ?? 0, check.total ?? 0),
-          cta: {
-            label: c.addLodging,
-            warn: true,
-            onClick: () => setSheetSeed({ type: BOOKING_TYPE.HOTEL }),
-          },
-        };
-      case 'itinerary': {
-        const nums = readiness.emptyDates.map((d) => dayNumberOf(d, trip.startDate)).join(', ');
-        return {
-          icon: CHECK_ICON.itinerary,
-          title: check.done ? c.itineraryDoneTitle : c.itineraryTitle(check.count ?? 0),
-          meta: check.done ? c.itineraryDoneMeta : c.itineraryMeta(nums),
-          cta: {
-            label: c.buildDay,
-            onClick: () => {
-              if (readiness.emptyDates[0]) setActiveDate(readiness.emptyDates[0]);
-              onNavigate('days');
-            },
-          },
-        };
-      }
-      case 'documents':
-        return {
-          icon: CHECK_ICON.documents,
-          title: c.documentsTitle,
-          meta: check.done
-            ? c.documentsDoneMeta
-            : c.documentsMissingMeta(check.count ?? 0, check.total ?? 0),
-          dots: { have: check.count ?? 0, total: check.total ?? 0 },
-          cta: { label: c.uploadDocs, onClick: () => setUploadingDoc(true) },
-        };
-      case 'group':
-        return {
-          icon: CHECK_ICON.group,
-          title: check.done ? c.groupTitle : c.groupMissingTitle,
-          meta: check.done ? c.groupDoneMeta(users.length) : c.groupMissingMeta,
-          cta: { label: c.invite, onClick: () => navigate(`/trip/${trip.id}/settings`) },
-        };
+  /** The one verb per check (ADR-0061 §1: the CTA does the thing). The COPY moved to
+   *  `lib/automatic-tasks.ts` when the tasks screen became a second reader of it; what stays
+   *  here is what only this screen can do — seed its own sheet, open its own upload. */
+  const runAction = (auto: AutomaticTask) => {
+    switch (auto.action) {
+      case AUTOMATIC_TASK_ACTION.ADD_FLIGHT:
+        // Seed the missing leg: outbound needs a flight TO the destination, a return one
+        // FROM it. `missingLeg` is derived beside the copy, so both hosts agree on it.
+        setSheetSeed(
+          auto.missingLeg === 'outbound'
+            ? { type: BOOKING_TYPE.FLIGHT, dest: trip.destination }
+            : { type: BOOKING_TYPE.FLIGHT, origin: trip.destination },
+        );
+        return;
+      case AUTOMATIC_TASK_ACTION.ADD_LODGING:
+        setSheetSeed({ type: BOOKING_TYPE.HOTEL });
+        return;
+      case AUTOMATIC_TASK_ACTION.BUILD_DAY:
+        if (readiness.emptyDates[0]) setActiveDate(readiness.emptyDates[0]);
+        onNavigate(DAYS_TAB);
+        return;
+      case AUTOMATIC_TASK_ACTION.UPLOAD_DOCS:
+        setUploadingDoc(true);
+        return;
+      case AUTOMATIC_TASK_ACTION.INVITE:
+        navigate(`/trip/${trip.id}/settings`);
+        return;
     }
   };
 
+  /** A band row's tap reaches the tasks SCREEN, the same way Trip Home's does (ADR-0050's
+   *  deep-link), so a task is read where it lives rather than on a band that is a window. */
+  const openTasksScreen = () =>
+    navigate(`/?${TAB_PARAM}=${INDEX_TAB}&${FOCUS_PARAM}=${INDEX_FOCUS.TASKS}`);
+
+  /** The tick — the same verb the tasks screen fires, and the act that mints the overlay
+   *  row when there is not one yet (brief §4). */
+  const tickAutomatic = (auto: AutomaticTask) =>
+    applyVerb(auto.task ?? draftOverlay(auto, trip.id), {
+      status: tickedAutomaticStatus(auto),
+    });
+
+  /** One row of the converged list, either kind. Extracted because the list is now drawn in
+   *  TWO places — the capped head and the folded remainder — and a second copy is how the
+   *  two halves of one list start rendering differently. */
+  const taskRow = (row: TaskRow) =>
+    row.kind === 'auto' ? (
+      <AutomaticTaskRow
+        key={taskRowKey(row)}
+        auto={row.auto}
+        onTick={() => tickAutomatic(row.auto)}
+        onAct={() => runAction(row.auto)}
+        onManage={() => manageAutomatic(row.auto)}
+      />
+    ) : (
+      <TaskBandRow
+        key={taskRowKey(row)}
+        task={row.task}
+        users={users}
+        clock={taskClock}
+        progress={subtaskProgress(subtasks.get(row.task.id))}
+        onTick={() => void taskVerbs.tickTask(row.task)}
+        onOpen={openTasksScreen}
+      />
+    );
+
+  /** A check with no row yet is handed a draft; the verb is what writes it (brief §4). */
+  const manageAutomatic = (auto: AutomaticTask) =>
+    setManage(auto.task ?? draftOverlay(auto, trip.id));
+
   return (
     <>
-      <div className="prep" ref={prepRef} onClick={rebuff}>
-        {/* No "היציאה" label once the trip is underway — the countdown line
-            reads "הטיול בעיצומו" on its own (would otherwise concatenate oddly).
-            The "בעוד" connective rides with the count (ADR-0085), so a near date
-            reads "היציאה · מחר" and a far one "היציאה · בעוד 3 ימים". */}
-        {countdown && <div className="prep-k">{t.planHome.prep.departIn}</div>}
-        {countdown ? (
-          <div className="prep-count">
-            {countdown.prefix && <span className="prep-count-u">{countdown.prefix}</span>}{' '}
-            {countdown.value && (
-              <span className="prep-count-n" dir="auto">
-                {countdown.value}
-              </span>
-            )}{' '}
-            <span className="prep-count-u">{countdown.unit}</span>
-          </div>
+      {/* **The hero, and whether it is a CONTROL is the caller's call** (ADR-0193 §4) —
+          `Board`'s own shape, one screen over: a `<button>` when there is a run-up to open,
+          the `<div>` it has always been when there is not. A pressable card with nothing
+          behind it is the dead tap ADR-0160 §9 exists to prevent, and announcing a control
+          that does nothing on activation is ADR-0150 §8 from the other side. The `<div>` is
+          not dead, though: it plays §H's rebuff, the same way the board's does.
+
+          **NOTHING INTERACTIVE MAY EVER GO INSIDE THIS ELEMENT.** Chrome closes a
+          `<button>` at a nested one and reparents everything after it (ADR-0160 §4,
+          reproduced live at 1 of 4 children left) — which is also why the second readout
+          below is a readout. `PlanHome.lift.test.tsx` fails the build if a control
+          appears in here, because no snapshot can see that. */}
+      <PrepHero
+        ref={prepRef}
+        tier={facts.tier}
+        countdown={facts.countdown}
+        runway={facts.runway}
+        eve={facts.eve}
+        nowMs={now.getTime()}
+        dates={<PrepDates startDate={trip.startDate} endDate={trip.endDate} />}
+        readinessPct={readinessPct}
+        openTasks={preview.open}
+        overdue={preview.overdue}
+        lifted={lifted}
+        {...(liftable
+          ? { onPress: () => setLifted(true), pressLabel: t.planHome.lift.title }
+          : { onRebuff: (el) => playBeat(el, BEAT.REBUFF) })}
+      />
+
+      <div className="sec-title">{t.planHome.checklist.title}</div>
+
+      {/* **THE CARD IS NEVER RENDERED WITHOUT CONTENT** (ADR-0193 §3/§6, amended 2026-08-16).
+          It used to be, and that was the reported defect: `.checklist` is a card with a 1px
+          border, so a card holding only a COLLAPSED drawer painted as a **2px stripe** under
+          the section title while two tasks sat folded inside it. Rows or an empty state —
+          there is no third state now, which is what makes the stripe unreachable rather than
+          merely fixed. */}
+      <div className="checklist">
+        {allRows.length === 0 ? (
+          /* **The app's ONE empty shell** (ADR-0078), which this section had never used —
+             `הכול מוכן 🎉` was an 11px `.hint` in the title row, 15px of section against
+             136px of block, which is why it did not read as an empty state to the person who
+             asked for one. Inside the card rather than beside it, so the section keeps one
+             silhouette in every state.
+
+             No `action`: every other empty state in the app hands back a next step, and the
+             whole point of this one is that there is nothing to do. */
+          <EmptyState
+            icon={<Icon name="check" />}
+            title={t.planHome.checklist.emptyTitle}
+            body={t.planHome.checklist.emptyBody}
+          />
         ) : (
-          <div className="prep-count">{t.planHome.prep.underway}</div>
-        )}
-        <div className="prep-dates">
-          {formatTripDates(trip.startDate, trip.endDate, { style: 'prose' })}{' '}
-          <span className="dot">{DOT_SEPARATOR}</span> {dayPhrase(total)}
-        </div>
-        <div className="prep-ready">
-          <div className="prep-ready-top">
-            <span>{t.planHome.prep.readiness}</span>
-            <b dir="auto">{readiness.pct}%</b>
-          </div>
-          <div className="prep-track">
-            <div className="prep-fill" style={{ width: `${readiness.pct}%` }} />
-          </div>
-        </div>
-      </div>
-
-      <div className="sec-title">
-        {t.planHome.checklist.title}
-        <span className="sec-title-end">
-          {incompleteChecks.length === 0 && (
-            <span className="hint">{t.planHome.checklist.allDone}</span>
-          )}
-          {completedChecks.length > 0 && (
-            <CollapseToggle
-              expanded={showCompleted}
-              onToggle={() => setShowCompleted((v) => !v)}
-              expandLabel={t.planHome.checklist.showCompleted(completedChecks.length)}
-              collapseLabel={t.planHome.checklist.hideCompleted}
-              className="chk-toggle"
-            />
-          )}
-        </span>
-      </div>
-
-      {incompleteChecks.length > 0 && (
-        <div className="checklist">
-          {incompleteChecks.map((check) => {
-            const row = rowFor(check);
-            return (
-              <div className="chk-row" key={check.id}>
-                <div className="chk-ic">
-                  <Icon name={row.icon} />
-                </div>
-                <div className="chk-main">
-                  <div className="chk-t">{row.title}</div>
-                  <div className="chk-m">
-                    {row.meta}
-                    {row.dots && (
-                      <span className="chk-ppl" aria-hidden="true">
-                        {Array.from({ length: row.dots.total }).map((_, i) => (
-                          <i key={i} className={i < row.dots!.have ? 'on' : undefined} />
-                        ))}
-                      </span>
-                    )}
-                  </div>
-                </div>
+          <>
+            {shownRows.map(taskRow)}
+            {/* **The continuation is the card's LAST ROW**, not a control beside the card
+                (owner, 2026-08-16). `.tsk-more` is the shipped row Trip Home's band already
+                ends in — a continuation belongs to the list it continues, and at 44px it is
+                the first version of this control to clear ADR-0017's floor: the two pills it
+                replaces measured **22px**. Trip Home's own row NAVIGATES, so it carries a
+                `NavArrow`; this one expands in place, so it carries a caret that turns. */}
+            {restRows.length > 0 && (
+              <>
                 <button
-                  className={row.cta.warn ? 'chk-cta warn' : 'chk-cta'}
-                  onClick={row.cta.onClick}
+                  type="button"
+                  className="tsk-more chk-more-row"
+                  aria-expanded={showRest}
+                  onClick={() => setShowRest((v) => !v)}
                 >
-                  {row.cta.label}
+                  {showRest
+                    ? t.planHome.checklist.hideRest
+                    : t.planHome.checklist.showRest(restRows.length)}
+                  <Icon name="caret" />
                 </button>
-              </div>
-            );
-          })}
-        </div>
+                <Collapsible expanded={showRest}>{restRows.map(taskRow)}</Collapsible>
+              </>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* **The completed half is a DIFFERENT list, so it is not a peer of the row above**
+          (owner, 2026-08-16: the two matched pills _"look bad"_). `עוד N` continues what you
+          are reading; this opens something else. A quiet centred link says that, where two
+          identical pills said the opposite. Footnote weight, with a 44px target through an
+          `::after` overlay — `ValueToken`'s idiom, so clearing the floor does not grow the
+          line. */}
+      {completedCount > 0 && (
+        <button
+          type="button"
+          className="chk-done-link"
+          aria-expanded={showCompleted}
+          onClick={() => setShowCompleted((v) => !v)}
+        >
+          {showCompleted
+            ? t.planHome.checklist.hideCompleted
+            : t.planHome.checklist.showCompleted(completedCount)}
+        </button>
       )}
 
-      {completedChecks.length > 0 && (
+      {completedCount > 0 && (
         <>
-          {/* The collapsed teaser (a static pill row, not itself animated) sits
-              above the animated checklist so the count-in-label toggle always
-              has something legible to point at while collapsed. */}
-          {!showCompleted && (
-            <div className="chk-done-sum">
-              <span className="ok">
-                <Icon name="check" /> {t.planHome.checklist.completedSummary}
-              </span>
-              {completedChecks.map((check) => (
-                <span className="pill" key={check.id}>
-                  <Icon name={CHECK_ICON[check.id]} />{' '}
-                  {t.planHome.checklist.summaryLabels[check.id]}
-                </span>
-              ))}
-            </div>
-          )}
           <Collapsible expanded={showCompleted} className="checklist">
-            {completedChecks.map((check) => {
-              const row = rowFor(check);
-              return (
-                <div className="chk-row" key={check.id}>
-                  <div className="chk-ic">
-                    <Icon name={row.icon} />
-                  </div>
-                  <div className="chk-main">
-                    <div className="chk-t">{row.title}</div>
-                    <div className="chk-m">{row.meta}</div>
-                  </div>
-                  <div className="chk-ok">
-                    <Icon name="check" /> {t.planHome.checklist.done}
-                  </div>
-                </div>
-              );
-            })}
+            {completedAutomatic.map((auto) => (
+              <AutomaticTaskRow
+                key={auto.key}
+                auto={auto}
+                onTick={() => tickAutomatic(auto)}
+                onAct={() => runAction(auto)}
+                onManage={() => manageAutomatic(auto)}
+              />
+            ))}
+            {/* …and the manual half, which this section could never show before (3r). */}
+            {completedManual.map((task) => (
+              <TaskBandRow
+                key={task.id}
+                task={task}
+                users={users}
+                clock={taskClock}
+                progress={subtaskProgress(subtasks.get(task.id))}
+                onTick={() => void taskVerbs.tickTask(task)}
+                onOpen={openTasksScreen}
+              />
+            ))}
           </Collapsible>
         </>
       )}
@@ -357,7 +470,7 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
         <StatTile
           // Not counted-up: `readiness` (and so `emptyDates.length`) is computed
           // below the past-trip branch's early return above, so a `useCountUp`
-          // call here would run conditionally on `tripPhase` — the hooks-rules
+          // call here would run conditionally on `isFinished` — the hooks-rules
           // violation the two calls above avoid by sitting ahead of that return.
           value={
             <span
@@ -369,6 +482,28 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
           label={t.planHome.stats.emptyDays}
         />
       </div>
+
+      {/* **The lift** (ADR-0193 §4). `origin` is the collapsed hero's own box, measured by
+          the flight rather than written as a constant — the mistake this repo has made
+          three times (ADR-0142's 118px, ADR-0143's 58px, the trip handoff's target). */}
+      {lifted && (
+        <PlanLift
+          origin={prepRef.current}
+          collapsedHeight={prepRef.current?.getBoundingClientRect().height}
+          tier={facts.tier}
+          countdown={countdown}
+          runway={facts.runway}
+          eve={facts.eve}
+          nowMs={now.getTime()}
+          dates={<PrepDates startDate={trip.startDate} endDate={trip.endDate} />}
+          readinessPct={readinessPct}
+          openTasks={preview.open}
+          overdue={preview.overdue}
+          tasks={liftTasks}
+          more={restRows.length || undefined}
+          onClose={() => setLifted(false)}
+        />
+      )}
 
       {(sheetSeed || bookingDraft) && (
         <BookingSheet
@@ -383,6 +518,41 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
       )}
       {uploadingDoc && (
         <DocumentUploadSheet tripId={trip.id} onClose={() => setUploadingDoc(false)} />
+      )}
+      {manage && (
+        <TaskManageSheet
+          task={manage}
+          derivedAction={(() => {
+            const auto = automatic.find((a) => a.key === manage.derivedKey);
+            return auto
+              ? {
+                  label: auto.title,
+                  onSelect: () => {
+                    setManage(null);
+                    runAction(auto);
+                  },
+                }
+              : undefined;
+          })()}
+          onEdit={() => setManage(null)}
+          onToggleImportant={() => {
+            const task = manage;
+            setManage(null);
+            applyVerb(task, { important: !task.important });
+          }}
+          onDismiss={() => {
+            const task = manage;
+            setManage(null);
+            applyVerb(task, { status: TASK_STATUS.DISMISSED });
+          }}
+          onReopen={() => {
+            const task = manage;
+            setManage(null);
+            applyVerb(task, { status: TASK_STATUS.OPEN });
+          }}
+          onDelete={() => setManage(null)}
+          onClose={() => setManage(null)}
+        />
       )}
     </>
   );

@@ -19,7 +19,7 @@ vi.mock('./state/auth-state', () => ({
   AuthProvider: ({ children }: { children: ReactNode }) => children,
 }));
 
-import { AuthGate } from './App';
+import { AuthGate, publicAppPath } from './App';
 import { saveIntent } from './lib/intent';
 import { t } from './i18n/he';
 
@@ -30,6 +30,7 @@ function renderAt(path: string) {
         <Route element={<AuthGate />}>
           <Route path="/" element={<div>HOME_OUTLET</div>} />
           <Route path="login" element={<div>LOGIN_SCREEN</div>} />
+          <Route path="s/:code" element={<div>SHARE_OUTLET</div>} />
         </Route>
       </Routes>
     </MemoryRouter>,
@@ -51,5 +52,24 @@ describe('AuthGate intent gate', () => {
   it('renders the outlet with no pending intent', async () => {
     renderAt('/');
     expect(await screen.findByText('HOME_OUTLET')).toBeTruthy();
+  });
+
+  // ADR-0213: the shared itinerary's reader has no account and never will, so sending them
+  // to /login would not defer the screen — it would replace it.
+  it('lets an anonymous /s route through', async () => {
+    expect(
+      await screen.findByText('SHARE_OUTLET', {}, { container: renderAt('/s/7Kq2mB9x').container }),
+    ).toBeTruthy();
+    expect(screen.queryByText('LOGIN_SCREEN')).toBeNull();
+  });
+});
+
+describe('publicAppPath', () => {
+  it.each(['/login', '/join/7Kq2mB9x', '/s/7Kq2mB9x'])('lets %s render with no account', (path) => {
+    expect(publicAppPath(path)).toBe(true);
+  });
+
+  it.each(['/', '/trips', '/settings', '/trip/t1/settings'])('gates %s behind sign-in', (path) => {
+    expect(publicAppPath(path)).toBe(false);
   });
 });

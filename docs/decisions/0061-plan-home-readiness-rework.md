@@ -1,6 +1,6 @@
 # 0061 — Plan-mode Home "what's missing to complete" rework
 
-**Status:** Accepted (Assaf sign-off 2026-07-18; mockup `mockups/plan-home-readiness-v1.html`). **Amended 2026-08-07** (session 218) from field report #5 — the round-trip check reads a leg's **location**, not its name; see the amendment below.
+**Status:** Accepted (Assaf sign-off 2026-07-18; mockup `mockups/plan-home-readiness-v1.html`). **Amended 2026-08-07** (session 218) from field report #5 — the round-trip check reads a leg's **location**, not its name. **Amended 2026-08-14** — a trip night only needs a bed if there is a sleepable stretch left in it; see the amendments below.
 **Date:** 2026-07-18
 **Refines:** [0045](0045-trip-home-real-data-only.md) (real-data-only home — the sibling principle the checklist already follows), [0004](0004-integrations-are-pipes.md) (deferred suggestions wait for their pipes/data). Builds on the plan-home built in `planning/2026-07-14-session-06-plan-home.md`.
 
@@ -78,6 +78,35 @@ Field report #5 (triaged in [`planning/2026-08-07-session-216-field-reports-tria
 **The degradation clause is untouched and is what the routes are shaped around:** none of them can answer _no_. A place no route can place is unconfirmed, and an unconfirmed leg leaves the check **open** rather than reading done — the same conservative direction the clause chose, now reached far less often. What the amendment removes is the **false** open, which is the one that made a correct trip look unprepared.
 
 **Two limits, recorded rather than papered over.** A country whose real zone is missing from the curated multi-zone list degrades to "can't confirm" (open, never a false pass). And a zone is a region, not a border: a leg into Osaka satisfies a Tokyo-destination trip, which is honest for a check that asks "is there a way in", and a country-sized zone shared with a neighbour would too. **A place's own country code would answer better than its zone and we do not store one** — `Place` carries no country (the trip's destination does, via its geocode), so adding one is a Google field-mask + schema decision, not a bug fix. If the zone route proves too coarse, that is the next thing to cost.
+
+### Amendment (2026-08-14) — a night is only a night if there is a **bed-shaped gap** in it
+
+Owner report: _"The first and last days don't necessarily have hotels (maybe the flight is before you need to sleep), and thinking of it even mid trip there are scenarios where you for example take an overnight bus."_ The 2026-07-18 refinement above credited exactly one thing — a `hotel` booking's span — so a fully-prepared trip read as missing lodging for every night spent in the air, on a night bus, or awake waiting for an early-hours flight. Like the 2026-08-07 amendment, this is a **defect against this ADR**, not a change to it: the check was always meant to ask "does everyone have somewhere to sleep", and it was built asking "is there a hotel booking on this date".
+
+**`nightNeedsABed` measures the sleepable stretch, not the flight.** Each trip night gets a window — `NIGHT_WINDOW_START_TIME`→`NIGHT_WINDOW_END_TIME`, 22:00 to 08:00 the next morning, trip-local — and two things are subtracted from it:
+
+1. **Time in motion.** A booked leg that carries you occupies the window for its whole length.
+2. **Time somewhere else.** A leg whose origin reaches the destination **ends** your presence; one whose endpoint reaches it **starts** a presence. An arrival wins over a departure, so a hop between two places inside the destination leaves you there.
+
+What remains is the longest stretch a room could have been slept in. Below `SLEEPABLE_NIGHT_MIN_MINUTES` (5h) the night leaves the check's denominator entirely — it is not an uncovered night, it is not a night.
+
+**Both subtractions are load-bearing, and the owner's second report is what proves it.** _"What if the flight is at 1am — then of course there's a big chance that on the night before we wouldn't get a hotel booking."_ An overlap test alone (the first draft of this amendment, rejected before it was built) scores a 01:00 flight **out** and a 01:00 flight **in** identically — 2 hours of the window either way — and they are opposite facts: the departure consumes the night, the arrival is the reason you want the bed. No threshold separates them, because the difference is not duration. Presence does.
+
+| night                                       | longest sleepable stretch | needs a bed |
+| ------------------------------------------- | ------------------------- | ----------- |
+| 01:00 flight out                            | 22:00→01:00 = 3h          | no          |
+| 06:00 flight out                            | 22:00→06:00 = 8h          | yes         |
+| red-eye out 23:00→06:00                     | 22:00→23:00 = 1h          | no          |
+| flight in landing 00:40                     | 00:40→08:00 = 7h20        | yes         |
+| night bus 21:00→04:00, both ends in-country | 04:00→08:00 = 4h          | no          |
+
+**`inMotion` is a new profile axis, not `carriesRoute`.** ADR-0154 §2's `BOOKING_TYPE_PROFILE` gains an optional `inMotion`, set once inside `transportProfile` so flight/train/transit carry it and a future carried mode inherits it by being one of them. The **car hire** is why it is not `carriesRoute` (ADR-0162's own separation, one axis further): a hire carries a route and spans two instants exactly like the three above, but its span is a period you _hold_ the vehicle, parked through every night of it — reading that as motion would tell a five-day rental it needs no lodging at all. A test pins it.
+
+**A lodging-category event now covers its nights without a booking.** The friend's spare room, the campsite: the app can already author these and the check could not see them. Same direction as everything else here — it only ever closes a night the old rule left falsely open.
+
+**The degradation clause is untouched, and it is what makes the residual safe.** An untimed leg, an endpoint no route can place, a trip with no zone (pre-ADR-0113): nothing is subtracted, the window stays whole, the night reads as needing a bed and the check stays **open**. Every failure mode here is a false _nag_, never a false all-clear.
+
+**Two limits, recorded rather than papered over.** An **unbooked transport event** is deliberately not credited — it carries no `BookingType`, so a taxi and a car hire are the same shape to the derivation, and crediting the wrong one is precisely the false pass this check is built to avoid. And an **untimed** flight subtracts nothing, so a 01:00 departure entered without a clock still asks for a hotel; that case, not the couch, is the one that would justify the stored per-night waiver considered alongside this change. **The waiver was deliberately not built** — readiness is advisory and gates nothing, so a night the derivation cannot reach costs a nag and not a blocked trip, and a stored override would need a column, a sync path and a way to go stale. Revisit if the untimed-leg case shows up in a real trip.
 
 ## Alternatives considered
 

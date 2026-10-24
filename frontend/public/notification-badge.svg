@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- The notification BADGE — Android's small icon (ADR-0220 §6).
+
+       **This exists because a full-bleed tile has no silhouette.** `sw.ts` passed
+       `badge: '/pwa-192.png'`, and Android draws the small icon by taking the asset's ALPHA
+       channel and painting it in the status-bar colour. `pwa-192.png` is a full-bleed square
+       (ADR-0087's 2026-09-03 amendment, deliberately — the platform's mask is meant to be
+       the only silhouette anywhere), so its alpha is the whole square and the status bar drew
+       a solid white rectangle. The owner reported the rectangle; the asset was working
+       exactly as specified.
+
+       So this file is an ALPHA DRAWING, not a picture: white where the mark is, transparent
+       everywhere else. Nothing about the colour survives — Android has ignored the small
+       icon's tint since API 21, which is what makes "it should appear as black and white I
+       guess" the constraint rather than a preference.
+
+       **The core is a hole, and that is the whole design decision.** Measured at 24px in
+       `mockups/the-app-is-seen-before-it-is-opened-v1.html` §5: a solid pin reads as a
+       generic teardrop once the amber is gone, and an outline at the mark's own 9-unit
+       stroke is 0.42px at that size, i.e. absent. Punching the core out with `evenodd`
+       keeps the one element that makes this OUR pin.
+
+       The hole is the mark's own core: r=60 at (256,216), the same circle `AppMark.tsx` and
+       `favicon.svg` fill with amber — an arc subpath starting at (256,156) and sweeping
+       360 degrees. Not a decorative dot of a convenient size; if the mark's core moves, this
+       moves with it.
+
+       The scale is `translate(256 256) scale(0.86) translate(-256 -260)` — 0.86 of the
+       canvas, which measured 18.2x18px of ink inside the 24x24 slot. Android insets the
+       small icon itself, so filling the box is not the goal.
+
+       The large `icon` is untouched and stays `pwa-192.png` in colour: it is correct today
+       and it is what the shade row shows on the right.
+
+       Rasterized to `notification-badge.png` by `node scripts/gen-app-icons.mjs`, and listed
+       in `vite.config.ts`'s `includeAssets` so the service worker precaches it — an icon the
+       worker cannot read offline is a notification with Chrome's face on it. -->
+  <g transform="translate(256 256) scale(0.86) translate(-256 -260)">
+    <path
+      d="M256 44 C150 44 66 126 66 230 C66 348 206 436 256 476 C306 436 446 348 446 230 C446 126 362 44 256 44 Z M256 156 a60 60 0 1 0 0.1 0 Z"
+      fill="#ffffff"
+      fill-rule="evenodd"
+    />
+  </g>
+</svg>

@@ -1,7 +1,8 @@
 // HomeSkeleton — tier 2's content-shaped snapshot skeleton (ADR-0105). Renders
 // the two per-mode shapes Home resolves into using the REAL component classes
 // (`ui/domain/board.css`'s `.wp-board-*`, `screens.css`'s `.quick`/`.qa`/
-// `.prep-*`/`.checklist`/`.chk-*`, `ui/domain/glance-card.css`'s `.glance-day`)
+// `.prep-*`/`.checklist`/`.chk-*`, `ui/domain/glance-card.css`'s `.glance-day` +
+// `styles/day-track.css`'s `.wp-track`)
 // with `Skeleton` bars standing in for text — not a parallel hand-tuned
 // stylesheet. A real-class change (padding, radius, a hero gradient) is
 // inherited automatically instead of the skeleton silently drifting out of
@@ -41,6 +42,25 @@ function TripHomeSkeleton() {
           <Skeleton shape="block" height={3} className="fb-skel-pill" />
         </div>
       </div>
+      {/* Abstracted, not line-for-line: one shimmering bar for the track, one line for the
+          sentence, one for the foot — the real `.glance-track`/`.glance-lead`/`.glance-foot`
+          rhythm and its full height, without a rectangle per micro label. **And it sits HERE**,
+          above the quick grid: the skeleton has to agree with the order the screen resolves into
+          (ADR-0215 §1), or the loading state moves the card the moment the data lands. */}
+      <div className="glance-day">
+        <div className="wp-track glance-track">
+          <div className="wp-track-marks" />
+          <div className="track">
+            <Skeleton shape="block" height={18} />
+          </div>
+        </div>
+        <div className="glance-lead">
+          <Skeleton shape="line" height={15} width={150} />
+        </div>
+        <div className="glance-foot">
+          <Skeleton shape="line" height={12} width="60%" />
+        </div>
+      </div>
       <div className="quick">
         <div className="qa">
           <Skeleton shape="circle" width={20} height={20} />
@@ -53,21 +73,6 @@ function TripHomeSkeleton() {
         <div className="qa">
           <Skeleton shape="circle" width={20} height={20} />
           <Skeleton shape="line" height={11} width="70%" />
-        </div>
-      </div>
-      {/* Abstracted, not line-for-line: one shimmering bar standing in for the
-          whole rail, one for the lead count, one for the free-until foot line —
-          echoes the real .rail/.lead/.glance-foot rhythm (and its full height)
-          without drawing a separate rectangle for every micro label. */}
-      <div className="glance-day">
-        <div className="rail">
-          <Skeleton shape="block" height={14} />
-        </div>
-        <div className="lead">
-          <Skeleton shape="block" height={32} width={90} />
-        </div>
-        <div className="glance-foot">
-          <Skeleton shape="line" height={12} width="60%" />
         </div>
       </div>
     </>
@@ -88,34 +93,24 @@ function PlanHomeSkeleton() {
           </div>
         </div>
       </div>
+      {/* The checklist is `ListRow` since ADR-0190 — `.chk-row` and its parts retired with
+          the convergence — so the skeleton follows it. Same rule as the rest of this file:
+          the real classes, with `Skeleton` standing in for text, so the pre-draw cannot
+          drift out of shape independently of what it is pre-drawing. No trailing CTA block
+          either; that button was deleted with the row. */}
       <div className="checklist">
-        <div className="chk-row">
-          <div className="chk-ic">
-            <Skeleton shape="circle" width={18} height={18} />
+        {[46, 58, 38].map((titleWidth) => (
+          <div className="wp-listrow" key={titleWidth}>
+            <div className="wp-listrow-open">
+              <span className="wp-listrow-badge">
+                <Skeleton shape="circle" width={18} height={18} />
+              </span>
+              <span className="wp-listrow-main">
+                <Skeleton shape="line" height={13} width={`${titleWidth}%`} />
+              </span>
+            </div>
           </div>
-          <div className="chk-main">
-            <Skeleton shape="line" height={13} width="46%" />
-          </div>
-          <Skeleton shape="block" width={68} height={28} />
-        </div>
-        <div className="chk-row">
-          <div className="chk-ic">
-            <Skeleton shape="circle" width={18} height={18} />
-          </div>
-          <div className="chk-main">
-            <Skeleton shape="line" height={13} width="58%" />
-          </div>
-          <Skeleton shape="block" width={68} height={28} />
-        </div>
-        <div className="chk-row">
-          <div className="chk-ic">
-            <Skeleton shape="circle" width={18} height={18} />
-          </div>
-          <div className="chk-main">
-            <Skeleton shape="line" height={13} width="38%" />
-          </div>
-          <Skeleton shape="block" width={68} height={28} />
-        </div>
+        ))}
       </div>
     </>
   );

@@ -256,6 +256,24 @@
           transition: none !important;
         }
       }
+
+      /* THIS PAGE HAS TO SCROLL, AND THE INLINED APP CSS SAYS IT MUST NOT.
+         `styles/tokens.css` carries `html, body { overflow: clip }` (ADR-0200 §1:
+         the APP's document never scrolls, an inner `.body` does), and inlining
+         that sheet applies it here — where there is no inner scroller and the
+         page is several viewports tall. `clip` is not a scroll container at all,
+         so the root's `scrollHeight` COLLAPSES to the viewport: everything below
+         the fold is unreachable, not merely hidden, and a "is it taller than the
+         viewport" test answers NO exactly like a page that fits.
+
+         Keep this block LAST so it wins whatever that sheet grows. It is chrome:
+         the frames below are ordinary divs and never saw the rule. Found on three
+         shipped mockups in 2026-08 — two of them promoted build specs nobody could
+         read — see `references/pitfalls.md`. */
+      html,
+      body {
+        overflow: visible;
+      }
     </style>
   </head>
 

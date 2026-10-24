@@ -187,3 +187,283 @@ The rule the slices should have been written against, stated now: **wherever a w
 - **The free-slot prefill is read on the same clock it will be typed on** — `nextSlot` was called with `trip.timezone` beside a field authoring elsewhere, so "after your last event" could prefill a time that meant something else. A prefill and its interpretation must share a zone or the default is a lie.
 - **The confirmation toast says the time back in the event's own zone**, not the primary — it was confirming an hour nobody typed.
 - **Plan mode's gap machinery is deliberately untouched.** `PlanDay` computes its gaps, their labels and its drag-to-another-day round-trip in one base zone (`trip.timezone`), and it is internally consistent that way: changing only the authoring interpretation would author outside the gap the user tapped. Moving that surface to per-day zones is one coherent change (gaps, labels, the wall-clock-vs-instant question on a cross-day move), recorded on the backlog rather than half-done here.
+
+## Amendment (2026-08-21, session 258) — the two booking READ surfaces were never wired
+
+Slice 3b's closing claim was that "no read surface is left painting one zone". Two were, and both were about a **booking**: `BookingDetail` — the sheet a row's tap opens — and `scheduleParts`/`scheduleLabel` (`lib/index-bookings.ts`), the Index row's when-line. Both took `trip.timezone` and rendered every clock in it.
+
+The owner's report is what that costs. On an Iceland trip (primary `Atlantic/Reykjavik`), a Tel Aviv → Vienna flight stored at `12:30Z → 16:15Z` read:
+
+| Surface                            | Departure | Arrival   | Duration     |
+| ---------------------------------- | --------- | --------- | ------------ |
+| Day card (`EventCard`, since s89)  | **15:30** | **18:15** | 3:45 · −1 ש׳ |
+| Booking form (`BookingSheet`, s91) | **15:30** | **18:15** | —            |
+| Booking detail (this fix)          | 12:30     | 16:15     | 3:45         |
+| Index row (this fix)               | 12:30     | —         | —            |
+
+Three facts about that table are the point:
+
+- **The wrong pair was internally consistent.** `12:30`/`16:15` are 3h45 apart on one wall clock, and the duration row agreed with them — because the duration was always computed from the **instants** and so was always right. A zone bug that keeps arithmetic self-consistent is the kind nobody spots from one screen; it took two screens side by side.
+- **The sheet disagreed with the form it opens.** `BookingSheet` has read each end in its own endpoint's zone since slice 4a, so the read said `12:30` and the edit one tap later said `15:30` about the same booking. `EventDetail` — this sheet's peer, built later (ADR-0174 §4) — was zone-aware from birth, and its own docblock states the rule this sheet broke: _a read cannot state a different time than the row it opened_.
+- **Reykjavik is not a wrong-but-defensible answer.** It is the clock of a place the first leg never touches. The primary zone is the fallback for an event nothing anchors (§3 step 5), and a flight with two picked airports is anchored twice over.
+
+**The fix is to call the resolver, not to add one.** `eventDisplayZones` already answers this; both surfaces now read it, per end.
+
+- `BookingDetail` resolves `{start, end}` once from trip-state's `zoneEvidence` and uses `startZone`/`endZone` for the two timing facts. Its two **relational** facts (the journey neighbour, the round-trip partner) resolve the **other** leg's own zone rather than borrowing this one's — a journey's whole point is that its legs are in different zones.
+- `scheduleParts` reads the clock in the **edge's** zone (a departure in its origin, a check-out in its destination). It now takes the `ZoneEvidence` **in place of** the `Trip` rather than beside it: `primaryZone` _is_ `trip.timezone`, nothing else on the trip was read, and a required argument is what stops the next call site quietly falling back. Same for `IndexBookingsView`'s row, whose `trip` prop went the same way.
+- The **duration** formatter keeps its single-zone signature and is handed the resolved zone. Its zone only ever converts an instant to a calendar day for the nights count, and both ends of a stay sit in one place; the elapsed reads are instant-based and were never affected.
+- `PlanDay`'s gap machinery stays deliberately untouched, for the reason the session-128 amendment above records.
+
+**What day it is stays on the primary zone here.** `today` and `isEventPast` inside `scheduleParts` answer "is this behind me", not "what does the clock say", and moving them is the day-rollover rule (§4), not this one. Left as it was, on purpose.
+
+The anti-pattern is now written down as the read-side twin of session 128's authoring rule: **rendering a stored instant with `trip.timezone` instead of the event's resolved display zone.** Both halves of that pair have now cost a field report.
+
+## Amendment (2026-09-01) — the server had the parts and not the answer
+
+Owner, with the app, the reader page and the PDF side by side:
+
+> _"The timezone derivation is simply wrong - see how plan day doesn't agree with the times. And
+> how the durations don't add up correctly"_
+
+Reproduced to the minute from the owner's own outbound. The app was right on every row; both
+sharing renderers were wrong on three:
+
+| row                     | app (correct) | server shipped |
+| ----------------------- | ------------- | -------------- |
+| נתב״ג → וינה            | `15:30–18:15` | `14:30–18:15`  |
+| וינה → קפלאוויק         | `21:00–23:20` | `19:00–23:20`  |
+| check-in, Gissurarbúð 5 | `15:00`       | `17:00`        |
+
+**Departures wrong by exactly that leg's own zone shift, arrivals right** — the signature of
+rendering both ends of a leg in the destination's zone.
+
+### §1 · `currentZone` was standing in for a question it does not answer
+
+The server resolved an event's clock through `common/event-zone.util.ts`'s `eventDisplayZone`:
+one zone, from `currentZone`, **with no place rung at all** — a deliberate choice, and the
+docblock said so. Two things follow from it that the choice did not anticipate:
+
+- `tripZoneCrossings` stamps a crossing at the flight's **departure** (`at: startsAt`), and
+  `segmentZoneAt` returns `toZone` from that instant on. That is correct and intended for a
+  live clock — §8's mid-flight instant reads where you are going — and it means asking it about
+  a **departure's own clock** returns the far end.
+- With no place rung, anything standing in a place the itinerary says you have not reached
+  resolves to the segment instead. A hotel's door opens at 15:00 where the hotel is, hours
+  before its guests land; the crossings put that instant in Vienna.
+
+`eventDisplayZones` — this ADR's actual per-end resolver, §3/§6's priority ladder — answers
+both correctly and lived in `frontend/src/lib/places.ts`.
+
+### §2 · ADR-0197 §5's sweep moved the primitives and left the composer
+
+That sweep promoted `placeTimezone`, `bookingZoneOverrides`, `bookingEndZones`,
+`tripZoneCrossings`, `segmentZoneAt` and `currentZone` into `packages/shared/src/zones.ts`,
+for exactly this reason — its own file header says _"two implementations that agree today are
+how you get there"_. It left `eventDisplayZones` behind.
+
+So the server had every part of the answer and not the answer, and reached for the nearest
+thing that type-checked. **A promotion that stops at the primitives leaves open the door it was
+closing**, and that is the transferable lesson here: the composer is the thing consumers
+actually call.
+
+`eventDisplayZones` now lives in `zones.ts` beside the five functions it composes;
+`lib/places.ts` re-exports it, so no call site moved. The lift needed **zero** new
+dependencies — `bookingEndZones` already resolves a single-place booking through its own
+`placeId`, and `eventPlaceId(event, undefined)` was only ever `event.placeId`.
+
+### §3 · The notification sweep had the same bug, and it is the worse one
+
+Counted rather than assumed, per root `CLAUDE.md`. `eventDisplayZone` had two readers, and the
+second was `notifications/kinds/event-shape.ts`. `event-soon` called it with **no** `atMs`, so
+it resolved at the event's own start — meaning _"your flight leaves soon"_ stated the departure
+in the city you had not reached. By ADR-0197 §5's own standard that is the single bug that gets
+the feature turned off, so it is fixed here rather than filed:
+
+- `TripZones` carries the bookings and places `loadZones` **already read in full** to build the
+  crossings and simply did not keep. No extra query.
+- The notification `EVENT_SELECT` gains `placeId` and `bookingId` — the place rung.
+- `eventZone` becomes `eventZones` and returns the **pair**, so every caller states which end it
+  means: `event-soon` and `trip-tomorrow` take `.start`; `span-edge` takes `[edge.which]`, which
+  it can, because its edge was already tagged `'start' | 'end'`.
+
+### §4 · `event-zone.util.ts` is deleted, and the invariant that replaces it
+
+With both readers moved, `eventDisplayZone` had zero callers. It is deleted rather than left:
+its remaining value was a two-field interface and its remaining risk was that the next person
+asking what zone an event's time means would find the wrong function first.
+
+**The invariant, and it is greppable:** `currentZone` is now called only with a `nowMs` — the
+reader's own zone, the quiet-hours window, a digest's day. Nothing passes it an event's instant.
+If a future call does, it is asking where you are about a clock that belongs somewhere.
+
+### What was verified
+
+- A projection spec built from the owner's outbound — Jerusalem → Vienna → Reykjavík plus an
+  Iceland hotel — asserts all three rows. Restoring the single-zone answer fails with
+  `expected '14:30' to be '15:30'` and `expected '17:00' to be '15:00'`: the screenshots, as
+  test names.
+- The second half of the report (_"the durations don't add up"_) is pinned as the identity that
+  makes the card self-consistent rather than as three numbers:
+  `(printed arrival − printed departure) − zone shift = duration`. ⁦470⁩ − (−⁦180⁩) = ⁦650⁩ now;
+  it was ⁦530⁩ + ⁦180⁩ = ⁦710⁩ against a stated ⁦650⁩, which is the arithmetic the owner did by eye.
+  Sabotaged: `expected 710 to be 650`.
+- A notification spec asserts a flight ping states `18:30` (Tel Aviv) and not `17:30` (Vienna),
+  with a stub carrying the booking and both endpoint places — because with the empty arrays the
+  existing tests use, every zone question falls through to the primary and the defect is
+  invisible. That is precisely why the suite could not see it. Sabotaged:
+  `expected '17:30' to contain '18:30'`.
+- `frontend/src/lib/places.test.ts`'s existing ~500 lines of `eventDisplayZones` coverage now
+  runs against the shared implementation through the re-export, unchanged — the evidence that
+  the lift is behaviour-preserving.
+
+**No mockup.** Nothing about the layout changes: the same rows in the same places, with correct
+numbers in them. What was needed was a fixture that crosses a zone, which no spec had.
+
+## Amendment (2026-09-03) — the same promotion, one rung short
+
+Owner, against the public reader page:
+
+> _"the live sharing page uses the current time in the destination as 'now', instead of deriving
+> the time dynamically by the events, the same way that the app does everywhere else"_
+
+Correct, and it is the 2026-09-01 amendment's own §2 happening a second time. That one promoted
+`eventDisplayZones` because the server had every **primitive** and not the **composer**, so it
+reached for `currentZone`. The lift stopped at the per-event composer. The **day**-level answer —
+`dayAmbientZone`, the session-100 amendment's three rungs — stayed in `frontend/src/lib/places.ts`,
+so the server could say what an event's clock means and still not say which zone a day is lived
+in. Sharing had no other zone to reach for than `Trip.timezone`, and used it for both halves of
+_now_: which card is today, and what the marker's clock reads.
+
+**The transferable lesson is the same sentence one altitude up.** "A promotion that stops at the
+primitives leaves open the door it was closing" is really about **rungs**: this model answers
+_where are you now_ (`liveZone`), _where is this day lived_ (`dayAmbientZone`), _what does this
+clock mean_ (`eventDisplayZones`) and _what does a typed time mean_ (`authoringZone`), and a
+consumer that cannot reach the rung it needs does not go without an answer — it takes the
+nearest one that type-checks. So the test for a promotion is not "did the parts move" but
+"can every consumer reach the rung its question is on".
+
+### What moved
+
+Into `packages/shared/src/zones.ts`: `dayAmbientZone` with the `ZoneEvidence` bundle and the two
+helpers behind it (`eventKnownZone`, `eventsOnDate`). Into `trip-dates.ts` beside the `zonedIso`
+they are arguments to: `zoneOffsetMinutes` — whose duplication `zoneOffsetAt`'s docblock had been
+naming for months, and which the server had meanwhile grown a private copy of
+(`sharing-projection.service.ts`'s `zoneOffsetMinutesAt`, deleted) — plus `DAY_NOON`/`DAY_MIDNIGHT`.
+`lib/places.ts`, `lib/time.ts` and `frontend/src/constants.ts` re-export all of them, so no call
+site moved.
+
+**What deliberately stays in the frontend** is the pair no server asks: `liveZone` (where you are
+standing this second) and `authoringZone` (what a form's typed time means). Nothing on the server
+authors, and nothing on the server stands anywhere.
+
+### The rung a shared page is on is the DAY
+
+Worth stating because the obvious lift would have been `liveZone`, and it is the wrong one. The
+public page is a stack of day cards and ships pre-formatted labels, so the zone it needs is the
+zone those labels were resolved in — which is the day's, and per day is also a resolution it can
+publish without publishing instants. On every day the reader's marker is drawn, the two agree by
+construction: `shareNowLine` refuses a day that crosses a zone, so the day it accepts is a day
+whose every label resolved in that day's own ambient.
+
+The surface record — the contract field, how a card claims the moment, and the seams either side
+of it — is [ADR-0213](0213-a-shared-trip-changes-emphasis-and-print-is-its-own-rendering.md)'s
+2026-09-03 amendment.
+
+## Amendment (2026-09-09) — the mode and the departure countdown read the same today
+
+Owner, from the Plan-mode hero at 00:58 at home on 9 September, for a trip starting on the 11th:
+
+> _"the date and time is used with the trip timezone instead of the real timezone"_
+
+The hero said `בעוד 3 ימים`; it is two. `lib/mode.ts` — `tripPhase`, `deriveMode`, `daysUntilStart`
+— predates the session-102 rule above and still read "today" as `todayInTz(trip.timezone, now)`,
+so before the trip the countdown rolled at **Reykjavík's** midnight while the person counting stood
+in Tel Aviv. The same read also opened Trip mode three hours late on the departure morning, and
+held it three hours after the return.
+
+**They now read `tripToday`, which is `liveToday` with the trip's zone evidence** — the mode-free
+answer everything else already gives: home before the outbound flight (`segmentZoneAt`'s origin
+rung), the far side after it, the primary only when no crossing anchors the itinerary. No new
+signal: the device clock stays out of it (§4), and a trip with no zoned outbound flight yet keeps
+the destination's midnight, as before. The evidence is optional on exactly two callers that have
+no itinerary to read — the all-trips list's `בעוד` chip and the pre-snapshot skeleton — and the
+docblock says so, so the fallback is a stated limitation rather than a per-surface `todayInTz`.
+**Corrected 2026-09-10:** the limitation showed the same night — at 00:34 at home the list said
+`מחרתיים` for tomorrow's trip — so the all-trips chip now counts from the **device's** today
+(`daysUntilStartOnDevice`), the rule the join ticket below already had: a screen with no trip
+loaded is wherever the phone is. The skeleton keeps the primary-zone fallback for its first
+frame. The list's `בקרוב`/`הסתיים` buckets and the landing rule (ADR-0033) followed the same
+day on 2026-09-10, once a westward trip's start date at home opened on the list fifteen hours
+before its flight (ADR-0033's 2026-09-10 amendment §6); `tripChip` counts from the device too.
+
+**Corrected 2026-09-10 — the departure day itself.** The owner's device, at 00:00 at home on the
+eve of the same trip, read `היציאה מחר` over a clock of `26:59:48` (ADR-0221 §3). `tripToday` was
+reading `liveToday` as promised, but `liveZone`'s third rung — no event near now — answers with the
+**ambient zone of the day the segment puts you in**, and the departure day's ambient is the far
+side (its events are there; its noon is past the flight). So at home midnight of day 1 the live
+zone was Reykjavík, where it was still the 10th, and Trip mode opened at 03:00 at home after all.
+Eastward this cannot show — Tokyo is on day 1 before Tel Aviv is — which is why the amendment's own
+test passed. `liveZone` now returns the first crossing's origin for any instant before it: before
+the outbound flight you are at home, and the day's ambient, a layout answer sampled at noon, has
+nothing to add. `mode.test.ts` carries the westward case beside the eastward one.
+
+The join ticket is the one countdown with no trip at all, and it had the same symptom by a
+different route: `Math.ceil` of the fractional days to the start date's UTC midnight, one too
+many for any evening east of UTC. It counts whole calendar days from the **device's** today now —
+the one place `DEVICE_TIMEZONE` is documented for, a screen with no trip loaded.
+
+---
+
+## Amendment (2026-09-11) — evidence about where you are must be about the leg you are on
+
+Owner, from a device on the departure morning of a TLV → Vienna → Keflavík trip, with the
+board's clock reading `06:44` beside a phone reading `09:44`:
+
+> _"It switched to the trip's timezone even though the first flight is still ahead of us. We
+> should be on the timezone of the first leg (Israel). […] we have a 3 hour layover at Vienna
+>
+> - make sure that while we're there we're using Vienna time"_
+
+The 2026-09-10 correction above fixed this at **rung 3** — "before the outbound flight you are
+at home" — and rung 3 is the last one consulted. Rung 2 answered first: the Reykjavík hotel's
+check-in is at 15:00 local, eight hours from 09:44, comfortably inside
+`LIVE_ZONE_WINDOW_MS`, and it was the nearest known-zone event because both flights abstain
+(a crossing does not vote). So the clock read the destination six hours before boarding — and
+went on reading it through the Vienna layover, where the same hotel is the event _in progress_
+(rung 1). The 09-10 test passed throughout: its hotel sat 18 hours out, just past the window.
+
+**Two filters now gate every rung, and each one is a wrong clock on this itinerary:**
+
+- **`segmentBoundsAt(nowMs, crossings)`** — the half-open window of the leg you are on. An
+  event outside it is a fact about another leg: the 09:00 coffee in Tel Aviv is still inside
+  the ±12h window at 19:30 in Vienna, and it is not where you are standing.
+- **`zoneReachedAt(nowMs, crossings)`** — a zone is _unreached_ when it is the destination of
+  a crossing still ahead and nothing has taken you there yet. This is the hotel, and the
+  trip-long car hire that starts on day 1 at the destination: a place whose local time begins
+  before the flight that gets you there. Compared by **offset**, like every other agreement in
+  the model, and **minus what you have already stood in** — on a round trip home is the return
+  leg's destination, so without that clause a home-zone event would stop testifying the moment
+  a return flight is entered. A zone the crossings never mention is reached by default: it has
+  nothing to contradict, which is what keeps the session-100 Cyprus rule working.
+
+**Neither filter alone is enough**, which is why there are two: the hotel sits _inside_ the
+layover's window (its check-in precedes the Keflavík flight), and the coffee is in a zone
+we have certainly reached.
+
+**Rung 3 stops calling `dayAmbientZone` and the 09-10 special case disappears with it.** The
+day's ambient is a layout answer sampled at **noon**, and on a travel day noon is on the wrong
+side of the crossing you are standing on — that is the whole of the 09-10 bug, and the layover
+is the same bug between two later crossings. Rung 3 is now the consensus of the live day's own
+_testifying_ events (`zoneConsensus`, extracted from `dayAmbientZone` so the two cannot
+disagree about what agreement means), else the segment **at this instant**, else the primary.
+Before the first crossing that segment _is_ the origin, so "you are at home" is what the
+general rule says rather than a case bolted in front of it.
+
+`dayAmbientZone` itself is unchanged: a day is still framed at noon, and the shared page, the
+shift pills and the ADR-0029 gate still read it. What changed is that the **live** question no
+longer borrows a day-shaped answer.
+
+**`liveAnchorCoord` deliberately does not follow** (ADR-0218's 2026-09-03 amendment), and its
+docblock now says so: its rung 2 is _"or where we're headed — an hour before the drive, the
+next place is already the answer"_, which is right for a forecast and wrong for a clock. A
+forecast is allowed to look ahead; the clock has to say what time it is where you are.

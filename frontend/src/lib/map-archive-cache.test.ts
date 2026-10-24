@@ -62,6 +62,25 @@ describe('downloadMapArchive', () => {
     expect(apiFetch).toHaveBeenCalledTimes(1);
   });
 
+  it('records the vintage it was cut from, which is what makes a refresh decidable', async () => {
+    // ADR-0186 §6 amendment: without a label on the bytes, "is there something fresher" has no
+    // answer and the first download a device ever makes is the map it keeps forever.
+    apiFetch.mockResolvedValue(
+      new Response('abcd', { status: 200, headers: { 'Content-Length': '4' } }),
+    );
+    const { downloadMapArchive, readLocalMapArchive } = await import('./map-archive-cache');
+
+    await downloadMapArchive({
+      url: 'https://app.example/map/world.pmtiles',
+      kind: 'world',
+      vintage: 'v7',
+      now: 10,
+    });
+    await expect(
+      readLocalMapArchive('https://app.example/map/world.pmtiles', 20),
+    ).resolves.toMatchObject({ meta: { vintage: 'v7', downloadedAt: 10 } });
+  });
+
   it('reports 503 as preparing with Retry-After, not as a failed download', async () => {
     apiFetch.mockResolvedValue(
       new Response(null, { status: 503, headers: { 'Retry-After': '9' } }),
@@ -76,6 +95,40 @@ describe('downloadMapArchive', () => {
         currentTripId: 't1',
       }),
     ).resolves.toEqual({ status: 'preparing', retryAfterSeconds: 9 });
+  });
+
+  // ── A LENGTH THE ORIGIN DOES NOT OWN (2026-09-04) ────────────────────────────────────────
+  //
+  // The size was DEMANDED of the response, so a body that declared none threw — and the throw
+  // read as "the map download failed" on a phone whose settings listed every archive as saved.
+  // Anything re-encoded between the origin and the device arrives chunked and declares nothing,
+  // which at the edge is every compressible response: the JSON route pack, never the archives.
+
+  it('weighs a response that declares no length instead of refusing it', async () => {
+    apiFetch.mockResolvedValue(new Response('{"signature":"s","legs":[]}', { status: 200 }));
+    const { downloadMapArchive, readLocalMapArchive } = await import('./map-archive-cache');
+
+    await expect(
+      downloadMapArchive({
+        url: 'https://app.example/trips/t1/routes/pack',
+        kind: 'routes',
+        tripId: 't1',
+        currentTripId: 't1',
+        now: 10,
+      }),
+    ).resolves.toEqual({ status: 'stored', sizeBytes: 27 });
+    await expect(
+      readLocalMapArchive('https://app.example/trips/t1/routes/pack', 20),
+    ).resolves.toMatchObject({ meta: { sizeBytes: 27 } });
+  });
+
+  it('still refuses an empty body — nothing is not a download', async () => {
+    apiFetch.mockResolvedValue(new Response('', { status: 200 }));
+    const { downloadMapArchive } = await import('./map-archive-cache');
+
+    await expect(
+      downloadMapArchive({ url: 'https://app.example/map/world.pmtiles', kind: 'world' }),
+    ).rejects.toThrow(/empty/);
   });
 
   it('checks storage headroom before writing the response body', async () => {
@@ -136,5 +189,77 @@ describe('retainMapArchives', () => {
     );
     expect((await listMapArchives()).map((entry) => entry.tripId)).not.toContain('expired');
     expect((await listMapArchives()).map((entry) => entry.tripId)).not.toContain('removed');
+  });
+});
+
+// ── THE ROUTE PACK RIDES THIS STORE (ADR-0206 §V1.8) ────────────────────────────────────────
+//
+// M10's two device-side exit criteria, and they are both about the pack being ORDINARY here:
+// counted in the readout the size grouping already builds, and removed by the delete that
+// already exists. Neither needed new machinery — which is the whole claim of §V1.8.
+
+describe('the offline route pack', () => {
+  it('is a trip artefact: counted with the trip and removed by the trip delete', async () => {
+    const { seedMapArchiveForTests, listMapArchives, removeTripMapArchives } =
+      await import('./map-archive-cache');
+    await seedMapArchiveForTests('https://app.example/t1/extract', 100, {
+      kind: 'extract',
+      tripId: 't1',
+      now: 1,
+    });
+    await seedMapArchiveForTests('https://app.example/t1/pack', 20, {
+      kind: 'routes',
+      tripId: 't1',
+      now: 2,
+    });
+
+    // What `UserSettings` sums per trip row.
+    const held = await listMapArchives();
+    expect(held.filter((e) => e.tripId === 't1').reduce((n, e) => n + e.sizeBytes, 0)).toBe(120);
+
+    await removeTripMapArchives('t1');
+    expect((await listMapArchives()).map((entry) => entry.key)).toEqual([]);
+  });
+
+  it('is swept off an ended trip by the SAME retention as the extract', async () => {
+    // Before §V1.8 this swept `kind === 'extract'` and would have left a pack behind for good.
+    const { seedMapArchiveForTests, retainMapArchives, listMapArchives } =
+      await import('./map-archive-cache');
+    await seedMapArchiveForTests('https://app.example/expired/pack', 4, {
+      kind: 'routes',
+      tripId: 'expired',
+      now: 1,
+    });
+    await seedMapArchiveForTests('https://app.example/current/pack', 4, {
+      kind: 'routes',
+      tripId: 'current',
+      now: 2,
+    });
+
+    await retainMapArchives({
+      trips: [trip('current', '2026-08-20'), trip('expired', '2026-07-01')],
+      currentTripId: 'current',
+      now: Date.parse('2026-08-14T00:00:00Z'),
+    });
+
+    const keys = (await listMapArchives()).map((entry) => entry.key);
+    expect(keys).toEqual(['https://app.example/current/pack']);
+  });
+
+  it('is not stored while the server is still warming it', async () => {
+    // `202` with a body that is already usable but not yet complete — storing it would freeze a
+    // half-warm trip onto the device (ADR-0187's flow, `Retry-After` and all).
+    apiFetch.mockResolvedValue(
+      new Response('{"signature":"s","legs":[]}', {
+        status: 202,
+        headers: { 'Retry-After': '7', 'Content-Length': '27' },
+      }),
+    );
+    const { downloadMapArchive, listMapArchives } = await import('./map-archive-cache');
+
+    await expect(
+      downloadMapArchive({ url: 'https://app.example/t1/pack', kind: 'routes', tripId: 't1' }),
+    ).resolves.toEqual({ status: 'preparing', retryAfterSeconds: 7 });
+    await expect(listMapArchives()).resolves.toEqual([]);
   });
 });

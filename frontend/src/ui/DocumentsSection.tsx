@@ -53,7 +53,9 @@ export function DocumentsSection({
   onFilterChange?: (filter: DocumentTypeFilter) => void;
 } = {}) {
   const { trip, documents, notes } = useTrip();
-  const { mode } = useMode();
+  // A finished trip's documents still open (ADR-0049 §2), and nothing uploads, renames or
+  // deletes one (ADR-0239 §4).
+  const { mode, isFinished: finished } = useMode();
   // Built once per note-list change rather than filtered per row (ADR-0152 §6c).
   const noteCounts = useMemo(() => noteCountsByHost(notes), [notes]);
   const [uploading, setUploading] = useState(false);
@@ -105,7 +107,8 @@ export function DocumentsSection({
 
   // Only a type that HAS a document gets a chip (ADR-0101); `הכל` always does. Worded rather
   // than `compact`: the owner asked for the row "where category titles are also shown", which
-  // is the bookings density, not the notes one (ADR-0122 §2).
+  // is the bookings density — and since 2026-08-21 the notes row is worded too, leaving
+  // `compact` to the one strip ADR-0122 §2 argued it for, the Map's.
   const typeOptions: Choice<DocumentTypeFilter>[] = [
     { value: DOCUMENT_TYPE_ALL, icon: '', label: t.docs.filter.all, count: allDocs.length },
     ...Object.entries(typeCounts)
@@ -181,7 +184,7 @@ export function DocumentsSection({
         </div>
       )}
 
-      {!isEmpty && !searchMode && (
+      {!isEmpty && !searchMode && !finished && (
         <button type="button" className="addbtn" onClick={() => setUploading(true)}>
           <Icon name="plus" /> {t.docs.add}
         </button>
@@ -196,12 +199,14 @@ export function DocumentsSection({
           </div>
           <div className="et">{t.docs.emptyTitle}</div>
           <div className="es">{t.docs.emptyBody}</div>
-          <button type="button" className="ea" onClick={() => setUploading(true)}>
-            <span className="plus">
-              <Icon name="plus" />
-            </span>{' '}
-            {t.docs.emptyAdd}
-          </button>
+          {!finished && (
+            <button type="button" className="ea" onClick={() => setUploading(true)}>
+              <span className="plus">
+                <Icon name="plus" />
+              </span>{' '}
+              {t.docs.emptyAdd}
+            </button>
+          )}
         </div>
       )}
 
@@ -220,6 +225,7 @@ export function DocumentsSection({
           title={t.docs.search.modeTitle}
           contextLabel={trip.name}
           mode={mode}
+          finished={finished}
           query={query}
           onQueryChange={setQuery}
           placeholder={t.docs.search.placeholder}
@@ -252,7 +258,12 @@ export function DocumentsSection({
         />
       )}
       {managing && (
-        <DocumentManageSheet tripId={trip.id} doc={managing} onClose={() => setManaging(null)} />
+        <DocumentManageSheet
+          tripId={trip.id}
+          doc={managing}
+          frozen={finished}
+          onClose={() => setManaging(null)}
+        />
       )}
     </>
   );

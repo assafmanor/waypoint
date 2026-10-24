@@ -11,17 +11,9 @@
 //
 // Generic mechanics with no trip-domain shape, so it is a primitive: the caller
 // owns the stops, the current stop, the header content, and the scrolling body.
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type CSSProperties,
-  type ReactNode,
-} from 'react';
+import { useCallback, useEffect, useRef, type CSSProperties, type ReactNode } from 'react';
 import { clampToStops, nearestStop, stopHeightCss, type SnapStop } from '../../lib/snap-sheet';
-import { observeResize } from '../../lib/observe-resize';
-import { scrollerWithin, scrollsOn } from '../../lib/scrollable';
+import { scrollerWithin } from '../../lib/scrollable';
 import { useSnapDrag } from '../../lib/useSnapDrag';
 import './snap-sheet.css';
 
@@ -56,81 +48,95 @@ export function SnapSheet<T extends string>({
   className?: string;
 }) {
   const root = useRef<HTMLDivElement>(null);
-  // The live height WHILE dragging, in px. `null` at rest, which is what hands the
-  // height back to CSS so the snap animates instead of being set imperatively.
-  const [dragPx, setDragPx] = useState<number | null>(null);
 
   const containerPx = useCallback(() => root.current?.parentElement?.clientHeight ?? 0, []);
   const currentPx = useCallback(() => root.current?.getBoundingClientRect().height ?? 0, []);
 
-  const drag = useSnapDrag({
+  /** **The live height is written to the DOM, not to React state** (ADR-0200 §7's rule, applied
+   *  here after the owner reported the drag as _"slow and wonky"_). A state update per move
+   *  re-rendered this component sixty times a second while the finger was down, on the screen
+   *  whose parent already re-renders every second on the clock — and nothing in that render
+   *  changed except one inline pixel value. Chrome delivers pointer and touch moves aligned to
+   *  the frame, so one write per move is one write per frame with no batching of our own.
+   *
+   *  React never owns `height` or the `dragging` class: its `style` carries only `--snap-h`,
+   *  so a clock re-render mid-drag writes neither and cannot wipe them. Release clears both,
+   *  which is what hands the height back to `--snap-h` and lets the snap animate. */
+  const setLiveHeight = (px: number | null) => {
+    const el = root.current;
+    if (!el) return;
+    el.style.height = px == null ? '' : `${px}px`;
+    el.classList.toggle(DRAGGING_CLASS, px != null);
+  };
+  const onDrag = (px: number) => setLiveHeight(clampToStops(px, containerPx(), stops, order));
+  const onRelease = (px: number, velocity: number) => {
+    const container = containerPx();
+    setLiveHeight(null);
+    onViewChange(
+      nearestStop(clampToStops(px, container, stops, order), container, stops, order, velocity),
+    );
+  };
+
+  const drag = useSnapDrag({ heightPx: currentPx, onDrag, onRelease });
+
+  /** **A SWIPE THAT BEGINS AS A SCROLL IS A SCROLL; THE SHEET MOVES ONLY WHEN A SWIPE BEGINS WITH
+   *  THE LIST ALREADY AT ITS END THAT WAY** (ADR-0122 §4's 2026-09-15 amendment, in its third
+   *  reading by the owner: _"sometimes I just want to scroll and I don't want it to change mode
+   *  immediately. I want to first finish scrolling, then if I want to change mode I'd swipe
+   *  again"_).
+   *
+   *  One question decides every vertical press on the body, asked of the LIST at the moment the
+   *  finger has moved enough to have a direction: **can it still scroll the way the finger is
+   *  going?** If it can, the gesture is the browser's pan for its whole life — however far it
+   *  goes, and even if the list runs out under the finger. If it cannot — a finger going up with
+   *  the list already at its bottom, a finger going down with the list at its top, or a list
+   *  that fits and so is at both ends at once — the sheet moves from the first pixel. So from
+   *  `half` a long drag up reads to the end of the list and stops there; the NEXT swipe up opens
+   *  it. The browser's own bounce at the end is the cue that the list is done.
+   *
+   *  The reasons are read LIVE from the DOM at the decision, never off state: the DOM cannot
+   *  be a frame behind the way state can, and the Map's sheet re-renders every second. */
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const listAtEnd = (dy: number) => {
+    const body = bodyRef.current;
+    if (!body) return true;
+    return dy < 0
+      ? body.scrollTop >= body.scrollHeight - body.clientHeight - SCROLL_END_EPSILON_PX
+      : body.scrollTop <= 0;
+  };
+  const bodyDrag = useSnapDrag({
     heightPx: currentPx,
-    onDrag: (px) => setDragPx(clampToStops(px, containerPx(), stops, order)),
-    onRelease: (px, velocity) => {
-      const container = containerPx();
-      setDragPx(null);
-      onViewChange(
-        nearestStop(clampToStops(px, container, stops, order), container, stops, order, velocity),
-      );
-    },
+    // Vertical-dominant or nothing: a sideways finger is a strip's, or a text selection's.
+    claim: ({ dx, dy }) => Math.abs(dx) <= Math.abs(dy) && listAtEnd(dy),
+    onDrag,
+    onRelease,
   });
 
-  /** **Whether the BODY is currently a drag target** — true exactly while it cannot scroll.
-   *
-   *  State rather than a live read because its consumer is `touch-action`, which the browser
-   *  evaluates when a gesture STARTS: an attribute set on `pointerdown` is already too late.
-   *  Maintained by a `ResizeObserver`, so it costs nothing per render — which matters on the
-   *  Map, whose sheet re-renders every second on the clock and whose one hard rule is that no
-   *  height may depend on a layout read (ADR-0121 §5). An observer fires when a box actually
-   *  changes, and the clock does not change one. */
-  const [bodyDrags, setBodyDrags] = useState(false);
-  const bodyRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const body = bodyRef.current;
-    if (!body) return;
-    const read = () => setBodyDrags(!scrollsOn(body, 'block'));
-    // The one-shot read is what correctness depends on; the observer keeps it true after.
-    read();
-    // **The body AND its content**, because they answer different halves of one question: the
-    // body's box changes when the sheet snaps to another stop, and the content's when rows
-    // arrive, a row is selected (which grows it severalfold) or a filter empties the list.
-    // Observing only the body would keep `touch-action: none` on a list that had just grown
-    // past the port, which is the one state this must never be wrong about.
-    return observeResize([body, ...body.children], read);
-    // Re-subscribed when the children change identity, so a caller swapping its content
-    // (`searching` flips the Map's sheet between two different trees) is observed too.
-  }, [children]);
-
-  /** The body's own press, gated on the two things that make it not ours (ADR-0122 §4).
-   *
-   *  The reasons are read LIVE rather than off `bodyDrags`: this is the decision, and the DOM
-   *  cannot be a frame behind the way state can. */
+  /** The body's own press, gated on the two things that make it nobody's drag at all — the
+   *  direction rule above is asked later, at the slop, once there is a direction to ask about. */
   const onBodyPointerDown = (e: React.PointerEvent) => {
     const body = bodyRef.current;
     const target = e.target as HTMLElement;
     if (!body) return;
-    // 1. It scrolls → the press is the list's. Nothing here competes with a scroll.
-    if (scrollsOn(body, 'block')) return;
-    // 2. Something INSIDE it scrolls on this axis → the press is that scroller's. `boundary` is
+    // 1. Something INSIDE it scrolls on this axis → the press is that scroller's. `boundary` is
     //    the body itself, which is why the walk has to stop below it: the body is an
     //    `overflow-y: auto` box, so a walk that included it would always find one.
     if (scrollerWithin(target, body, 'block')) return;
-    // 3. The press is on text the user may be selecting or a field they may be caretting into.
+    // 2. The press is on text the user may be selecting or a field they may be caretting into.
     //    A sheet that moves when you try to place a cursor is worse than no gesture at all —
     //    and the Map's sheet holds a note composer on every selected row.
     if (target.closest('input, textarea, select, [contenteditable]')) return;
-    drag.onPointerDown(e);
+    bodyDrag.onPointerDown(e);
   };
 
   // A resize mid-drag would leave the live height clamped against a container
   // that no longer exists (a rotation, an on-screen keyboard). Drop back to the
   // snapped height rather than carrying a stale pixel number.
   useEffect(() => {
-    if (dragPx == null) return;
-    const drop = () => setDragPx(null);
+    const drop = () => setLiveHeight(null);
     window.addEventListener('resize', drop);
     return () => window.removeEventListener('resize', drop);
-  }, [dragPx]);
+  }, []);
 
   // The splitter's keyboard, which is the whole reason for the role: arrows move one
   // stop, Home/End go to the extremes. As a focusable button that did nothing on a
@@ -155,18 +161,11 @@ export function SnapSheet<T extends string>({
   return (
     <div
       ref={root}
-      className={
-        'wp-snapsheet' + (dragPx != null ? ' dragging' : '') + (className ? ' ' + className : '')
-      }
+      className={'wp-snapsheet' + (className ? ' ' + className : '')}
       // The resting height is declarative (`--snap-h`), so the browser animates the
-      // snap; the live drag height overrides it imperatively and drops back to
-      // `null` on release, which is what makes the release animate.
-      style={
-        {
-          '--snap-h': stopHeightCss(stops[view]),
-          ...(dragPx != null ? { height: `${dragPx}px` } : null),
-        } as CSSProperties
-      }
+      // snap; the live drag height overrides it imperatively (`setLiveHeight`) and is
+      // cleared on release, which is what makes the release animate.
+      style={{ '--snap-h': stopHeightCss(stops[view]) } as CSSProperties}
       data-view={view}
     >
       {/* The whole top region is the drag target, not the grab line inside it: 76×16px
@@ -193,37 +192,21 @@ export function SnapSheet<T extends string>({
         </button>
         {header && <div className="wp-snapsheet-headrow">{header}</div>}
       </div>
-      {/* **THE BODY IS A DRAG TARGET EXACTLY WHILE IT CANNOT SCROLL** (ADR-0122 §4's 2026-08-06
-          amendment; owner: _"when the list doesn't scroll (or there's text that's not list items,
-          for example the empty state has a glyph+text that doesn't allow us to scroll), we should
-          be able to use the same gesture"_).
-
-          **One fact decides it, and it is the fact that removes the hard problem.** Dragging from
-          a scroller is genuinely hard: `touch-action: none` is what lets a drag be seen at all,
-          and it is exactly what makes a list unscrollable — and the browser will not hand a
-          native pan back once it has started one, so the choice cannot be deferred to the first
-          move either. **None of that arises when the content fits**, because then no pan can
-          start: there is nothing to scroll, so there is nothing to arbitrate against, and the
-          whole body is as safe a target as the handle row above it.
-
-          It replaced a `flex: 1` spacer that claimed only the space AFTER the content. That was
-          the same idea reaching a subset of the same cases, and it under-delivered on the one the
-          owner named first: an empty state is a tall glyph-and-text block, so it leaves little or
-          no gap below itself while scrolling nothing. One rule covers both, and the flex column
-          and its `flex-shrink` trap went with the spacer.
-
-          `data-drag` and the live read are two readers of one fact, deliberately: the attribute
-          carries `touch-action`, which the browser needs BEFORE the gesture starts, so it comes
-          from an observer; the gate is the decision and must be current, so it reads the DOM at
-          `pointerdown` and cannot be stale. */}
-      <div
-        ref={bodyRef}
-        className="wp-snapsheet-body"
-        {...(bodyDrags ? { 'data-drag': '' } : null)}
-        onPointerDown={onBodyPointerDown}
-      >
+      {/* **THE BODY SCROLLS, AND DRAGS THE SHEET ONLY WHEN A SWIPE BEGINS WITH NOTHING LEFT TO
+          SCROLL** (ADR-0122 §4's 2026-09-15 amendment; the rule is on `bodyDrag` above). It
+          carries NO `touch-action` of its own: whose the pan is gets decided per gesture, at the
+          slop — `touch-action` would have to be decided before the finger has moved, which is
+          before anything that decides it exists. */}
+      <div ref={bodyRef} className="wp-snapsheet-body" onPointerDown={onBodyPointerDown}>
         {children}
       </div>
     </div>
   );
 }
+
+/** A sub-pixel short of the bottom is the bottom: `scrollHeight` is an integer and `scrollTop`
+ *  need not be, so without the slack a list at its end would keep the gesture for nothing. */
+const SCROLL_END_EPSILON_PX = 1;
+/** Owned imperatively for the gesture's lifetime; the stylesheet keys its no-transition,
+ *  no-selection and cursor rules on it. */
+const DRAGGING_CLASS = 'dragging';

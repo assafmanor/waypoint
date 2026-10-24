@@ -7,6 +7,7 @@ import {
   ENRICHMENT_ABSENCE_REASON,
   ENRICHMENT_FIELD,
   ENRICHMENT_MISS_TTL_MS,
+  ENRICHMENT_PIPELINE_VERSION,
   ENRICHMENT_SOURCE,
   isEnrichmentBlobKey,
   MATCH_METHOD,
@@ -307,6 +308,7 @@ describe('EnrichmentService', () => {
       attemptedAt: NOW.toISOString(),
       sources: [ENRICHMENT_SOURCE.WIKIPEDIA],
       reason: ENRICHMENT_ABSENCE_REASON.NOT_FOUND,
+      pipeline: ENRICHMENT_PIPELINE_VERSION,
     });
   });
 
@@ -464,6 +466,24 @@ describe('EnrichmentService', () => {
     const stored = await track(await service.enrich(nextPlace(), NOW));
     // Wikipedia's own match still ran; it just had less to go on.
     expect(stored.fields.summary?.state).toBe('present');
+  });
+
+  it('records a miss behind a failed source as unavailable, not as a fact (a 429 is not a place)', async () => {
+    const service = serviceWith(
+      {
+        ...identityProvider(),
+        match: vi.fn(async () => {
+          throw new Error('outbound fetch failed: 429 for www.wikidata.org');
+        }),
+      },
+      emptySummaryProvider(),
+    );
+    const stored = await track(await service.enrich(nextPlace(), NOW));
+    // Retried on the hour clock rather than believed for the 30-day miss TTL.
+    expect(stored.fields.summary).toMatchObject({
+      state: 'absent',
+      reason: ENRICHMENT_ABSENCE_REASON.UNAVAILABLE,
+    });
   });
 
   it('reads back what it stored, and reads nothing for an unknown place', async () => {

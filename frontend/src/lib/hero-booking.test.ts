@@ -309,3 +309,38 @@ describe('a check-in window on the hero (ADR-0184 §6)', () => {
     expect(after.kind).toBe('none');
   });
 });
+
+// **SAYING IT IS WHAT CLEARS THE BOARD** (ADR-0224 §5). The owner's report is the check-out
+// arm: `CHECKOUT_LEAD_MIN` is 180, so a check-out made at 08:30 owned the hero until 11:00
+// with nothing the group could say to it. The check-in arm had half this test already — the
+// missed branch excluded a `DONE` check-in — and the LIVE branch had none, so a checked-in
+// stay went on being offered for the rest of its grace or window.
+describe('a settled edge leaves the hero (ADR-0224 §5)', () => {
+  const checkoutDay = '2026-07-10';
+  const during = ms('09:00', checkoutDay);
+
+  it('drops a check-out the group has made', () => {
+    expect(deriveHeroBooking([hotel()], during, checkoutDay).kind).toBe('transition-checkout');
+    const out = hotel({ endStatus: EVENT_STATUS.DONE });
+    expect(deriveHeroBooking([out], during, checkoutDay).kind).toBe('none');
+  });
+
+  it('drops a check-out that is not going to happen either', () => {
+    const staying = hotel({ endStatus: EVENT_STATUS.SKIPPED });
+    expect(deriveHeroBooking([staying], during, checkoutDay).kind).toBe('none');
+  });
+
+  it('does not let the CHECK-IN answer for the check-out', () => {
+    // The defect in one assertion: with a single `status` this is what "we checked in"
+    // would have had to mean, and the check-out would have vanished a day early.
+    const checkedIn = hotel({ status: EVENT_STATUS.DONE });
+    expect(deriveHeroBooking([checkedIn], during, checkoutDay).kind).toBe('transition-checkout');
+  });
+
+  it('drops a LIVE check-in once it is answered, not only a missed one', () => {
+    const arriving = hotel({ startsAt: at('15:00'), endsAt: at('11:00', checkoutDay) });
+    expect(deriveHeroBooking([arriving], ms('15:30'), DATE).kind).toBe('transition-checkin');
+    const inside = hotel({ status: EVENT_STATUS.DONE });
+    expect(deriveHeroBooking([inside], ms('15:30'), DATE).kind).toBe('none');
+  });
+});

@@ -49,6 +49,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 import {
+  SW_UPDATE_ASK_RETRY_MS,
   SW_UPDATE_CHECK_MS,
   SW_UPDATE_IDLE_APPLY_MS,
   SW_UPDATE_NOTICE_AFTER_MS,
@@ -89,6 +90,8 @@ export function useAppUpdate(): AppUpdate {
   // The plugin captures its callbacks once, on first render, so everything they
   // touch is a ref or a stable setter.
   const weAskedRef = useRef(false);
+  /** When SKIP_WAITING was last posted, so an unanswered one can be posted again. */
+  const askedAtRef = useRef(0);
   const stageRef = useRef<SwapStage>('none');
   stageRef.current = stage;
 
@@ -137,6 +140,7 @@ export function useAppUpdate(): AppUpdate {
 
   const reload = useCallback(() => {
     weAskedRef.current = true;
+    askedAtRef.current = getNow();
     if (stageRef.current === 'swapped') {
       window.location.reload();
       return;
@@ -152,10 +156,21 @@ export function useAppUpdate(): AppUpdate {
   // `update()` would only queue a doomed fetch on a plane.
   useEffect(() => {
     if (!registration) return;
-    const id = window.setInterval(() => {
+    const check = () => {
       if (!isOffline()) void registration.update();
-    }, SW_UPDATE_CHECK_MS);
-    return () => window.clearInterval(id);
+    };
+    const id = window.setInterval(check, SW_UPDATE_CHECK_MS);
+    // **Coming back is the moment worth checking on** (2026-08-30). The browser re-checks
+    // `sw.js` on navigation and this is a SPA, so it never does — which left the hourly tick
+    // as the only way a running app learned about a deploy, and a phone app left open across
+    // one ran the old build until the tick came round. Returning to a backgrounded PWA is
+    // both the likeliest moment for a new build to exist and the beat before the one that can
+    // quietly apply it, since the next background is what `takeIt` waits for.
+    const stop = observeVisibility({ onResume: check });
+    return () => {
+      window.clearInterval(id);
+      stop();
+    };
   }, [registration]);
 
   // Every interaction, tracked from mount rather than from the moment an update
@@ -182,11 +197,18 @@ export function useAppUpdate(): AppUpdate {
 
     const canReloadQuietly = () => !hasOverlay() && !isEditing();
     const isIdle = () => getNow() - touchedAtRef.current >= SW_UPDATE_IDLE_APPLY_MS;
-    // Asked once and once only. If SKIP_WAITING goes unanswered the page is still
-    // whole and still safe, so re-posting it every recheck buys nothing — the
-    // notice below becomes the fallback, and the next cold load takes the build.
+    // **Asked again if it goes unheard** (2026-08-30). This used to be once and once only,
+    // reasoning that a page whose swap never lands is still whole and still safe — true, and
+    // it still leaves a standalone PWA on the pre-deploy build for the rest of the trip,
+    // because the "next cold load" it fell back on may never come for an installed app.
+    // A post older than `SW_UPDATE_ASK_RETRY_MS` with no `controllerchange` behind it is
+    // treated as unheard rather than as declined. It stays cheap: still only at a quiet
+    // moment, still one message, and `swappedRef` makes the reload itself idempotent.
+    const askIsStale = () =>
+      weAskedRef.current && getNow() - askedAtRef.current >= SW_UPDATE_ASK_RETRY_MS;
     const takeIt = () => {
-      if (weAskedRef.current || !canReloadQuietly()) return;
+      if (!canReloadQuietly()) return;
+      if (weAskedRef.current && !askIsStale()) return;
       reload();
     };
 
@@ -214,4 +236,41 @@ export function useAppUpdate(): AppUpdate {
     reload,
     dismiss: useCallback(() => setDismissed(true), []),
   };
+}
+
+/** The message the worker answers (`sw.ts`'s one `message` listener, pinned by
+ *  `sw.contract.test.ts`). The plugin posts its own copy from inside
+ *  `updateServiceWorker()`, so this is the second reader of one protocol, not a second
+ *  protocol. */
+const SKIP_WAITING = 'SKIP_WAITING';
+
+/**
+ * **Take the parked build NOW** — for a caller that has just proven this document is stale
+ * rather than merely old.
+ *
+ * The hook above swaps at a quiet moment, which is right for a running app and too slow for
+ * a page that cannot render anything until it swaps: the shared reader is exactly that when
+ * the projection it fetched is newer than the build parsing it
+ * (`share-itinerary.ts`'s `SharedItineraryUnreadable`). Posting SKIP_WAITING is the whole of
+ * it — `onSwapped`'s `controllerchange` listener owns the reload, so this adds no second
+ * reload path and inherits its idempotence.
+ *
+ * Returns whether a parked build was actually asked to take over, so a caller that gets
+ * `false` knows no reload is coming and can fall back to its own recovery.
+ */
+export async function takeParkedBuild(): Promise<boolean> {
+  const container = navigator.serviceWorker;
+  if (!container) return false;
+  const registration = await container.getRegistration();
+  if (!registration) return false;
+  // A document open since before the deploy has not necessarily looked yet, and the hook's
+  // own poll may be up to `SW_UPDATE_CHECK_MS` away.
+  try {
+    await registration.update();
+  } catch {
+    /* offline, or the worker is gone: there is nothing parked to take */
+  }
+  if (!registration.waiting) return false;
+  registration.waiting.postMessage({ type: SKIP_WAITING });
+  return true;
 }

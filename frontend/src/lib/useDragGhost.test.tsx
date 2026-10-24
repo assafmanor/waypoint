@@ -12,7 +12,7 @@ function source(left: number, top: number): HTMLElement {
   const el = document.createElement('div');
   el.className = 'bld soft';
   el.id = 'row-1';
-  el.dataset.bldId = 'ev-1';
+  el.dataset.event = 'ev-1';
   el.innerHTML = '<span class="bld-ttl" data-shelf-drop="day">בוקר</span>';
   el.getBoundingClientRect = () =>
     ({ left, top, width: 340, height: 56, right: left + 340, bottom: top + 56 }) as DOMRect;
@@ -51,7 +51,7 @@ describe('useDragGhost (ADR-0116 sessions 117-118)', () => {
     ghost.lift(source(0, 0), { clientX: 0, clientY: 0 });
     const clone = host().firstElementChild as HTMLElement;
     expect(clone.id).toBe('');
-    expect(clone.dataset.bldId).toBeUndefined();
+    expect(clone.dataset.event).toBeUndefined();
     expect(clone.querySelector('[data-shelf-drop]')).toBeNull();
     expect(clone.querySelector('.bld-ttl')).not.toBeNull();
   });

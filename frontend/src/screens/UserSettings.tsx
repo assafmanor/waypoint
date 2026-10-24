@@ -16,6 +16,9 @@ import { SETTINGS_PICTURE_PATH, useAppBack } from '../state/nav-state';
 import { readThemePick, setThemePick, THEME_PICK, type ThemePick } from '../lib/theme';
 import { currencyForDeviceRegion } from '../lib/currency';
 import { Avatar } from '../ui/primitives/Avatar';
+import { NotificationSettings } from '../ui/NotificationSettings';
+import { InstallSettings } from '../ui/InstallSettings';
+import { PushDebugPanel } from '../ui/PushDebugPanel';
 import { ChoiceGrid } from '../ui/primitives/ChoiceGrid';
 import { CurrencyPicker, currencyLabel } from '../ui/primitives/CurrencyPicker';
 import { Icon } from '../ui/Icon';
@@ -239,6 +242,26 @@ export default function UserSettings() {
           />
         )}
 
+        {/* Between תצוגה and מפות אופליין (ADR-0197 §7.1): notifications are a preference a
+            person chooses, map storage is housekeeping, and the account stays last because it
+            is the only section nothing in it was chosen. */}
+        <NotificationSettings
+          vapidPublicKey={me.push?.vapidPublicKey ?? null}
+          prefs={{
+            // An absent `notify` is a cached `/me` from an older build; ON matches the column
+            // default, and the safe direction here is "as the server has it".
+            notifyTasks: me.notify?.tasks ?? true,
+            notifyObligations: me.notify?.obligations ?? true,
+            notifyMemories: me.notify?.memories ?? true,
+          }}
+          onPatchPrefs={patchMe}
+        />
+
+        {/* Immediately after notifications, because that section's iPhone sentence now points
+            at this row instead of re-teaching the gesture (ADR-0204 §6) — the thing it points
+            at should be the next thing you see. */}
+        <InstallSettings />
+
         <div className="set-sec-title">{t.shell.account.mapStorage}</div>
         <div className="set-card">
           <div className="id-row">
@@ -293,6 +316,12 @@ export default function UserSettings() {
           </div>
         </div>
         <div className="set-hint-block">{t.shell.account.emailHint}</div>
+
+        {/* The instrument stays, and its job has changed. The designed section above is now
+            the product surface; this remains behind `VITE_PUSH_DEBUG` for the one thing the
+            product surface deliberately does not do — read back the raw endpoint, which is
+            how you confirm the row the backend stored is this device. */}
+        <PushDebugPanel />
 
         {/* Signing out is routine, so it is NOT the danger grammar — that is reserved
             for the irreversible (leaving a trip, deleting it). */}

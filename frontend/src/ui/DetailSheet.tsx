@@ -22,6 +22,7 @@ import type { NoteHostRef } from '../lib/notes';
 import { Sheet } from './Sheet';
 import { HostDocuments } from './HostDocuments';
 import { HostNotes } from './HostNotes';
+import { HostTasks } from './HostTasks';
 import { Icon } from './Icon';
 import { t } from '../i18n/he';
 
@@ -32,8 +33,10 @@ export function DetailSheet({
   title,
   subtitle,
   hard,
+  knowledge,
   facts,
   host,
+  frozen = false,
   onEdit,
   onClose,
 }: {
@@ -49,10 +52,23 @@ export function DetailSheet({
   /** **The hard-commitment guard** (ADR-0011), which is what ADR-0053 made this whole
    *  surface for: a read stands between you and the edit of a real commitment. */
   hard?: boolean;
+  /** **What the world knows about this place** (ADR-0219 §6) — `PlaceKnowledge` at
+   *  `DECIDING`, rendered directly under the head and before everything the trip itself
+   *  wrote. A node rather than the component, because this file is presentational and only the
+   *  host knows which place it is about; absent → nothing renders, which is the majority case.
+   *
+   *  **Above the hard note and the facts on purpose.** The picture and the summary are what the
+   *  place IS; the note and the facts are what the trip decided about it, and a read is easier
+   *  to place when it opens with the subject. `BookingDetail` may pass the same later. */
+  knowledge?: ReactNode;
   facts: ReactNode;
   /** Whose documents and notes read here. One host, both sections, both through
    *  `lib/host-context.ts` — so a linked pair reads as one context on either surface. */
   host: NoteHostRef;
+  /** **A finished trip** (ADR-0239 §4): the host's tasks and notes read without a way to add
+   *  or edit one. Separate from `onEdit`, which a live trip's past day also withholds while its
+   *  notes stay writable. */
+  frozen?: boolean;
   /** **Absent on a read-only archive** (ADR-0040): a finished trip is browsable, and this
    *  sheet is what makes it browsable — but nothing on it may write. */
   onEdit?: () => void;
@@ -77,6 +93,8 @@ export function DetailSheet({
           </div>
         </div>
 
+        {knowledge}
+
         {hard && (
           <div className="bs-hard-note">
             <Icon name="lock" /> {t.index.detail.hardNote}
@@ -90,7 +108,10 @@ export function DetailSheet({
             shorter, fixed-length list goes first. Both are absent — not empty — when the host
             carries nothing, which is most of them. */}
         <HostDocuments host={{ kind: host.kind, id: host.id }} />
-        <HostNotes host={host} />
+        {/* Documents → TASKS → notes (ADR-0191 §5): ADR-0174 §3's order kept, with a task
+            between the two because it is a thing to DO rather than a thing to know. */}
+        <HostTasks host={host} frozen={frozen} />
+        <HostNotes host={host} frozen={frozen} />
       </div>
     </Sheet>
   );

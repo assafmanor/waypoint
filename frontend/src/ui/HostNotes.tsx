@@ -11,12 +11,13 @@
 // The host is passed as a fact, never picked (ADR-0153 §5). Which FK the note is written to
 // comes from `NOTE_HOST_FIELD` through `noteHostInput`, so a sixth hostable entity adds a
 // line in `@waypoint/shared` and nothing here.
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { ENTITY_TYPE, type Note } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
 import { useClock } from '../lib/useClock';
 import {
   isHostedBy,
+  noteHost,
   noteHostInput,
   notesForContext,
   notesForHost,
@@ -26,6 +27,7 @@ import {
 import { resolveHostContext, type HostContext } from '../lib/host-context';
 import { NoteSection } from './NoteSection';
 import { NoteSheet } from './NoteSheet';
+import { NoteFullScreen } from './NoteFullScreen';
 
 /** **How many notes this one host carries**, from trip state — for the surfaces that ask
  *  about a single host rather than a listful: the delete confirms, which owe the reader the
@@ -89,34 +91,65 @@ export function useAnchorName(
 export function HostNotes({
   host,
   canAdd = true,
+  frozen = false,
+  onAdd,
+  compose,
+  composeActive,
+  composeHint,
 }: {
-  host: NoteHostRef;
-  /** Off where the surface already carries a way to write one: the host's own FORM has a
-   *  composer that rides its save (ADR-0152 §6b), so a `＋ פתק` beside it would be a second
-   *  add path — and the one that opens another sheet, which that section is there to avoid. */
+  /** **`id` is absent on a CREATE**, where the host does not exist yet — the section then has
+   *  no rows to show and is purely the composer's home. Exactly `HostTasks`' and
+   *  `DocumentAttachField`'s shape, so the three content sections on a form take their host
+   *  the same way rather than each inventing a way to say "not saved yet" (ADR-0192 §2). */
+  host: Omit<NoteHostRef, 'id'> & { id?: string };
+  /** Whether the header carries a way in at all. */
   canAdd?: boolean;
+  /** **A finished trip** (ADR-0239 §4): the notes still read and open full screen, and
+   *  nothing adds or edits one. */
+  frozen?: boolean;
+  /** **What `＋ פתק` does, when it is not `NoteSheet`.** A host FORM passes the composer's
+   *  `openNew` here, so the control reveals the inline box below instead of opening a second
+   *  form over a form (ADR-0192 §2's 2026-08-16 reversal — owner: _"clicking the + פתק should
+   *  open a new inline task, not the entire form"_). Absent on a read surface, which has no
+   *  inline box and whose way in IS the editor. */
+  onAdd?: () => void;
+  /** The form's composer, rendered as this section's last row (ADR-0192 §2). */
+  compose?: ReactNode;
+  /** Whether that box is open or holding unsaved notes — decides the empty line. */
+  composeActive?: boolean;
+  composeHint?: string;
 }) {
-  const { notes, users, noteVerbs } = useTrip();
+  const { notes, users, noteVerbs, noteHosts } = useTrip();
   const now = useClock();
   const [editing, setEditing] = useState<Note | 'create' | null>(null);
+  // **The full screen, opened from a host** (ADR-0202 §1/§2). Here rather than in
+  // `NoteSection` because the screen needs the RESOLVED host and the trip's users, and this is
+  // the connected half that already holds both — the section stays presentational.
+  const [reading, setReading] = useState<Note | null>(null);
+  const hostId = host.id;
   // The host as the index knows it — so the editor can state the category this note inherits.
-  const resolved = useResolvedHost(host);
+  const resolved = useResolvedHost({ ...host, id: hostId ?? '' });
   // Read the whole context, write to its anchor (ADR-0172 §1/§2). On a place those differ:
   // it shows its single context's notes and a new one lands on that context's booking, which
   // is what keeps the note with the original context if the place is ever reused (§4).
-  const context = useHostContext(host.kind, host.id);
-  const hostNotes = useMemo(() => notesForContext(notes, context), [notes, context]);
-  // **A place says where an inherited note came from** (ADR-0172 §9's amendment). Only a
-  // place can be showing rows it does not host — §3's inheritance is one-way — so the whole
-  // question is "is this note hosted by the surface I am on", and everywhere else the answer
-  // is always yes and nothing is marked.
-  const anchorName = useAnchorName(context, host);
-  const inheritedFrom = useMemo(
-    () =>
-      anchorName
-        ? (note: Note) => (isHostedBy(note, host.kind, host.id) ? undefined : anchorName)
-        : undefined,
-    [anchorName, host.kind, host.id],
+  const context = useHostContext(host.kind, hostId ?? '');
+  // No host, no rows: an unsaved event has nothing to have been said about it yet, and the
+  // context lookup for an empty id would answer with whatever a blank key happens to hit.
+  const hostNotes = useMemo(
+    () => (hostId ? notesForContext(notes, context) : []),
+    [notes, context, hostId],
+  );
+  // **A note says where it came from when that is not the surface you are on** (ADR-0172 §9's
+  // amendment): a place names the context it inherits from, and an event or idea names the
+  // place whose own note it is showing (§3's 2026-09-27 amendment).
+  const anchorName = useAnchorName(context, { kind: host.kind, id: hostId ?? '' });
+  const inheritedFrom = useCallback(
+    (note: Note) => {
+      if (isHostedBy(note, host.kind, hostId ?? '')) return undefined;
+      const source = noteHost(note, noteHosts);
+      return source?.kind === ENTITY_TYPE.PLACE ? source.name : anchorName;
+    },
+    [anchorName, host.kind, hostId, noteHosts],
   );
 
   return (
@@ -126,10 +159,40 @@ export function HostNotes({
         users={users}
         now={now}
         inheritedFrom={inheritedFrom}
-        onAdd={canAdd ? () => setEditing('create') : undefined}
-        onEdit={setEditing}
+        onAdd={canAdd && !frozen ? (onAdd ?? (() => setEditing('create'))) : undefined}
+        onEdit={frozen ? undefined : setEditing}
+        onOpenFull={setReading}
+        compose={compose}
+        composeActive={composeActive}
+        composeHint={composeHint}
       />
-      {editing && (
+      {/* No `onGoToHost`: you are standing on the host. The screen still NAMES it, because
+          with no chip in its bar the foot is the only place the host appears at all — the
+          opposite call from the row's foot one level down, and for the same reason (say a
+          fact once, on the surface that is missing it). */}
+      {reading && (
+        <NoteFullScreen
+          note={reading}
+          host={hostId ? resolved : undefined}
+          users={users}
+          now={now}
+          onEdit={
+            frozen
+              ? undefined
+              : () => {
+                  const note = reading;
+                  setReading(null);
+                  setEditing(note);
+                }
+          }
+          onClose={() => setReading(null)}
+        />
+      )}
+
+      {/* Unreachable without a host: a form supplies its own `onAdd`, so nothing here opens
+          `create`, and a row can only be edited if a row was rendered — which needs an id.
+          Guarded anyway so the type is honest rather than asserted. */}
+      {editing && hostId && (
         <NoteSheet
           note={editing === 'create' ? undefined : editing}
           host={resolved}

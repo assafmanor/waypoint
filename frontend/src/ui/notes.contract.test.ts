@@ -24,8 +24,68 @@ describe('a note body keeps the newlines the composer writes (ADR-0152 §6b)', (
   // The two surfaces that render a BODY as content: the host section (unclamped, and where
   // the report came from) and the notes screen's row (clamped to two lines — the clamp
   // counts RENDERED lines, so preserving them does not fight it).
+  //
+  // **The host section's breaks are no longer this rule's doing** (ADR-0202 §6): its body is
+  // rendered by `NoteProse`, which emits a `<br />` per authored line, and
+  // `HostNotes.test.tsx` asserts that directly — a stronger guard than reading CSS text,
+  // which is all this file can do. The declaration stays because `.note-item-b` still holds a
+  // raw text node in the url-only case, and because the class is the one a future raw render
+  // would land in. What must not be deleted is `.note-body-line`'s: the notes screen's row
+  // renders a FLATTENED string (`flattenNoteMarkdown`) whose newlines are real characters,
+  // and nothing but this rule makes them visible.
   it.each(['.note-item-b', '.note-body-line'])('%s declares white-space: pre-wrap', (selector) => {
     expect(rule(selector)).toMatch(/white-space:\s*pre-wrap/);
+  });
+
+  // …and the prose must NOT inherit it, or the `<br />`s stack with preserved space runs.
+  it('insulates .note-prose from an inherited pre-wrap', () => {
+    expect(rule('.note-prose')).toMatch(/white-space:\s*normal/);
+  });
+});
+
+// **A SHIPPED DEFECT, and the only place it can be caught** (ADR-0202 §9b's second round).
+// `--np-base` is the one knob a host moves to make the prose read at reading size, and
+// `.note-prose` declared it on ITSELF — a custom property on an element shadows the inherited
+// one, so `.note-full-body`'s value never arrived and the size fix changed nothing. It
+// typechecked and every test stayed green, because a jsdom render has no cascade to consult:
+// `getComputedStyle` there resolves no `var()` and no inheritance.
+//
+// So the guard has to read the stylesheet as text, which is exactly what this file is for.
+describe('the prose takes its size from its HOST (ADR-0202 §9b)', () => {
+  it('does not declare --np-base on itself, or a host can never raise it', () => {
+    expect(rule('.note-prose')).not.toMatch(/--np-base\s*:/);
+  });
+
+  it('keeps the chrome-size default in the var() fallback instead', () => {
+    expect(rule('.note-prose')).toMatch(/--np-size:\s*var\(--np-base,\s*var\(--text-body\)\)/);
+  });
+
+  it('has the full screen ask for reading size', () => {
+    expect(rule('.note-full-body')).toMatch(/--np-base:\s*var\(--text-reading\)/);
+  });
+});
+
+// **THE OTHER HALF OF THE SAME REPORT, and a worse bug than the size** (ADR-0202 §10b). The
+// prose's block spacing lives on `.note-prose > * + *`, which is specificity (0,1,0). A
+// per-element reset — `.note-prose p { margin: 0 }` — is (0,1,1), so it wins NO MATTER THE
+// ORDER: every block gap this file declared was dead on arrival and the prose shipped with no
+// spacing between blocks at all. That is what "clumped up" was.
+//
+// jsdom cannot see it (no cascade, no `var()`, no specificity resolution), and a browser has to
+// be looking at the right property to notice, so the guard is structural: the reset must sit at
+// the same weight as the rhythm, which means on `> *` and nowhere else.
+describe('the prose rhythm is not out-specified by its own reset (ADR-0202 §10b)', () => {
+  it('resets margins on the direct-child selector, at the rhythm’s own weight', () => {
+    expect(css).toMatch(/\.note-prose\s*>\s*\*\s*\{[^}]*margin:\s*0/);
+  });
+
+  // Every `.note-prose <tag>` block — a DESCENDANT selector, therefore one class plus one
+  // element, therefore (0,1,1) and heavier than the gaps.
+  it('declares no margin in any descendant-selector rule', () => {
+    const offenders = [...css.matchAll(/(^|\})\s*((?:\.note-prose [^{>,]+,?\s*)+)\{([^}]*)\}/gm)]
+      .filter(([, , , body]) => /(^|[;{\s])margin(-block|-inline|-top|-bottom)?\s*:/.test(body))
+      .map(([, , selector]) => selector.trim());
+    expect(offenders).toEqual([]);
   });
 
   // Not the composer's chip: a committed note collapses to ONE line there by design, and
@@ -33,5 +93,40 @@ describe('a note body keeps the newlines the composer writes (ADR-0152 §6b)', (
   // not read as applying to the one place that deliberately does not.
   it('leaves the composer chip on its one line', () => {
     expect(rule('.note-chip-t')).toMatch(/white-space:\s*nowrap/);
+  });
+});
+
+// ── THE CLIP (ADR-0235) ──────────────────────────────────────────────────────
+// Everything here is invisible to jsdom by construction: the clip is a height and the fade
+// is a mask, and the component tests can only see the class. Both rules below are ones that
+// were WRONG in a first draft and would have shipped looking fine, which is the standard
+// this file exists to hold.
+describe('a note inside a card is bounded, and the fade does not touch a short one', () => {
+  // **The fade's stops are absolute, not percentages.** A `100% - 1.15lh` gradient resolves
+  // against the box, so on a note SHORTER than its budget — where the box shrinks to content
+  // and hides nothing — it fades the last line of a note you can read whole. Caught while
+  // writing the mockup; the version that shipped measures from the top, so a short box lies
+  // entirely inside the opaque stop and needs neither a class nor a measurement.
+  it('.note-clip fades from a fixed offset rather than from 100%', () => {
+    const clip = rule('.note-clip');
+    expect(clip).toMatch(/mask-image/);
+    expect(clip).not.toMatch(/100%\s*-\s*1\.15lh/);
+    expect(clip).toMatch(/--note-clip-fade:\s*calc\(var\(--note-clip-lines\) \* 1lh\)/);
+  });
+
+  // The bound itself, and that it is a BOX. `-webkit-line-clamp` counts what `-webkit-box`
+  // calls a line, and a whole `<ul>` from `NoteProse` is one box in that count — same budget,
+  // 170.6px against 120.8px (ADR-0235 §2, measured in the mockup).
+  it('.note-clip bounds a height and does not reach for -webkit-line-clamp', () => {
+    expect(rule('.note-clip')).toMatch(/max-height:\s*calc\(var\(--note-clip-lines\) \* 1lh\)/);
+    expect(rule('.note-clip')).not.toMatch(/line-clamp/);
+  });
+
+  // Every surface that clips must state its budget, or `calc(var(--note-clip-lines) * 1lh)`
+  // resolves to nothing and the clip silently does not clip. The hero's lives beside the
+  // block it bounds in `hero-lift.css` and the shared page's in `shared-itinerary.css`; this
+  // one is the section's.
+  it('a host section states its own budget', () => {
+    expect(rule('.note-item-b .note-clip')).toMatch(/--note-clip-lines:\s*\d+/);
   });
 });

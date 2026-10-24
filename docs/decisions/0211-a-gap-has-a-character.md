@@ -1,0 +1,339 @@
+# 0211 — A gap has a character, and `זמן חופשי` was an `else`
+
+**Status:** Accepted 2026-08-29, on the owner's "let's build this". **Built the same day.**
+**Date:** 2026-08-29
+**Reported:** the owner, from a device, with a screenshot — _"not always we want to show that we have
+free time, for example on this screenshot we're on the way, so this isn't free time. It should look
+different. Also at night or early in the morning it should show different messages. On the empty
+state (no upcoming events), etc."_ Then, on the drawing — _"I think that at night when the day is
+over (no more plans for today) the hero should also have some kind of a lookahead. Like what's
+coming up tomorrow. Should it be on the lifted hero? I'm not sure."_
+**Drawn in:** [`mockups/the-gap-is-not-free-time-v1.html`](../../mockups/the-gap-is-not-free-time-v1.html)
+**Session note:** [2026-08-29](../planning/2026-08-29-the-gap-is-not-free-time.md)
+**Applies:** [0208](0208-a-claim-needs-something-to-stand-on.md) and
+[0207](0207-a-fix-may-withdraw-a-claim-it-may-not-make-one.md) to the one statement on the board
+that had never taken their test.
+**Refines:** [0160](0160-the-hero-lifts-and-shows-a-horizon.md) §S (which repaired this `else` from
+the other side) and §M (whose day token this extends to the sibling meta row);
+[0059](0059-booking-presentation-on-home-and-index.md) §2 (whose rail gate this generalises).
+**Constrained by** [0160](0160-the-hero-lifts-and-shows-a-horizon.md) §12 — no third slot — and
+[0028](0028-plan-violet-color-budget-dark-ready.md) rule 4.
+
+## Amendment (2026-09-01) — the night was keyed on the arm, and it is a fact about the hour
+
+**Reported from a phone at ⁦01:12⁩, with a screenshot:** _"at night after midnight the day switches
+and then we don't see the night stuff, the after all events, i.e the tomorrow lookahead."_
+
+The screen behind that: a night whose next event is a ⁦07:00⁩ check-in, so the plan has **no bed to
+name** — `wokeIn` is absent, the read falls through to `open`, and the board printed
+`פנוי · זמן חופשי · עד 07:00` over a day rail whose knob sat at ⁦0%⁩ under the word `עכשיו`.
+
+**Both halves of that are this ADR's own reasoning, applied to the wrong key.** §4 says _"the rail
+comes off in the same states"_ and the states it named were `at-the-stay`'s; this file's header
+lists `זמן חופשי` _"in bed at ⁦02:40⁩, up at ⁦06:40⁩ before the day starts"_ among the readings it was
+written to end, and it ended them only where a stay happened to be there. **The night is a fact
+about the hour, and the hour belongs to every arm.** So:
+
+1. **`GapRead.band` is set whenever the clock is outside `DAY_WINDOW`**, in all five arms, resolved
+   once before any of them. It was `at-the-stay`'s field; it is now the read's.
+2. **`gapDrawsDayRail` asks the band, not the kind** — `read.band === undefined && kind !== empty-day`.
+   `dayProgress` clamps at **both** ends, so this also takes the rail off at ⁦23:40⁩, where it drew a
+   knob at ~⁦98%⁩ for a day already over. `at-the-stay` needs no special case any more: it is outside
+   the window by construction, so the hour rule already covers it.
+3. **`open` spends the band on its label** — `לילה · זמן חופשי · עד 07:00`. The title stays, because
+   nothing IS scheduled and that is true; what changes is `פנוי`, which is a claim about a day that
+   has not started. Same two words `at-the-stay` uses, from the same key — which is why the key
+   moved from `t.board.gap.atTheStay` to `t.board.gap.band`: it was always about the clock, and the
+   original comment beside it said so.
+
+**Why exactly two arms spend it.** `on-the-way` is a person's own assertion and the hour does not
+qualify it. `day-done` and `empty-day` already use the label to say **which day** (`היום`), which
+is what they are about; the band would displace real information. `open`'s label was `פנוי` beside
+a title reading `זמן חופשי` — a repetition, so the slot was free to carry the hour.
+
+**What this does not do, and the report's own words are the reason:** the lookahead does **not**
+follow you past midnight. At ⁦01:12⁩ "tomorrow" is the day after the one you are about to live, and
+the day you want is today — whose shape is on `GlanceCard` one section down (ADR-0215 §1 moved it
+there). Re-drawing it on the board would be the duplication that ADR removed. The board at that
+hour says what the hour is, what is next, and how long until it; the card says the shape.
+
+**Verified in the browser** on the seeded trip at three pinned clocks: ⁦01:12⁩ with a bed
+(`לילה · Shinjuku Granbell`, no rail — unchanged), ⁦06:40⁩ with none
+(`בוקר · זמן חופשי · עד 12:20`, no rail — the fix), and ⁦13:40⁩ (`פנוי · זמן חופשי`, rail drawn —
+unchanged).
+
+**One thing found while verifying and deliberately not fixed here** (backlog): `dayHasEvents` is
+`clockDayEvents.length > 0`, which excludes ambient events — so a day whose only commitment is a
+stay's check-in reads as `empty-day`, `יום פנוי`, "a day nobody planned". ADR-0164 says that edge is
+something you can still miss, and the two answers disagree. On a trip whose zone differs from where
+the traveller currently is, the arrival night compounds it. That is a question about what counts as
+a day having content, and it belongs to ADR-0164/0054's boundary rather than to this amendment.
+
+## Amendment (2026-09-20) — the closed set gains `arrived`, and three things this file got right for one reason only
+
+Decided and built in [0237](0237-the-board-says-where-you-are.md), off two device screenshots one
+minute apart: the day view drew the live leg as in progress, this board read `פנוי · זמן חופשי`.
+
+1. **`ON_THE_WAY` was unreachable by sensor for three weeks.** §3 gives it "the `בדרך` device mark",
+   which is what `Home` passed — and never the `stance` the same screen computed ⁦600⁩ lines above.
+   So an `en-route` fix withdrew the leave-by tile and the read fell through to `open`. The
+   character now takes either kind of evidence; the board is not obliged to say how it knows.
+2. **A seventh character, `arrived`** (`כרגע · הגענו`), first in the set — a fix at the destination
+   outranks a `בדרך` pressed half an hour ago and since answered by arriving. It wears teal, which
+   is the clearest case rule 4 has. It gets **no meta line**: the next row says that clock ⁦40px⁩
+   lower and the tile counts to it.
+3. **§5's ceiling was unconditional on the character**, which was invisible while `on-the-way` drew
+   nothing else — the shipped card printed `כרגע · בדרך` over `עד 14:15`, a free-time ceiling for
+   somebody who had already left. `due-out` excluded itself by arithmetic and nothing else did.
+   The two moving arms now withhold it.
+4. **Build log §1 is amended.** It kept `on-the-way` swapping the BADGE to the gap's own title
+   _"because there the swap is the shipped transit costume rather than a repetition"_. True while
+   the title had nothing under it; false the moment the journey's numbers landed below it, where
+   `בדרך` printed in the badge and again in the title ⁦85px⁩ apart — the duplication this same log
+   removed when it refused `לילה` in both slots. The **blip** stays teal: that is the live mark,
+   not the word.
+
+§5's own slot is where the journey's numbers go (`נותרו ~1:12 שע׳ · הגעה ~18:19`), which is why
+0237 costs ⁦0px⁩ — it spends a line this ADR opened and never filled on `on-the-way`.
+
+## Amendment (2026-09-15) — §8 refused a title state, and at a PASSED leave-by it was wrong to
+
+**Reported from a device at ⁦11:16⁩, with a screenshot:** _"I feel like it shouldn't say that we have
+free time if we're late."_
+
+The card behind it: nothing running, `Dyrhólaey` at ⁦11:30⁩ as `הבא בתור`, and the countdown tile in
+`--miss` red reading `12 · דקות באיחור · ליציאה`. Two inches above it, the now-slot read
+`פנוי · זמן חופשי`.
+
+**That is this file's own header defect, one state further along.** The opening screenshot was the
+lifted hero saying `זמן חופשי` in its title while its journey line, ⁦40px⁩ below, said
+`נסיעה · בדרך`. This is the same card, the same slot, and the contradicting line is now the tile.
+`open` fires because there IS something later today — which is true, and stopped being the whole
+truth the moment the departure into it went by.
+
+**§8 named this state and refused it**, in two sentences that are each half right:
+
+> **No separate "about to leave" state.** The countdown already swaps to the leave-by (ADR-0206
+> §Z1). A title state would say it twice, and would turn a passed clock into a claim about a person.
+
+1. **"Would say it twice" holds for `LIVE`, and that arm is unchanged.** With the departure still
+   ahead of you the gap IS free time, and the tile is the slot carrying the urgency. A sixth
+   character there would be the second printing §8 named.
+2. **At `PASSED` it is not a second printing, it is the opposite one.** The cost §8 weighed was
+   redundancy; what shipped was contradiction, and ADR-0207/0208 rank those differently — the board
+   may be quiet about a thing, it may not say the reverse of what it says ⁦100px⁩ lower.
+3. **"A claim about a person" is a constraint on the WORDS, not a veto on the state.**
+   `זמן לצאת` is a claim about the clock, in the register `זמן היציאה עבר` already uses on this
+   card. `אתם באיחור` and `יוצאים` remain refused, for §Z5 M4's reason, which has not weakened.
+
+So `due-out` joins the closed set as its second member, and §8's bullet now reads as a refusal of
+the `LIVE` arm alone.
+
+**What it stands on is the tile's own condition, not a second one.** Home passes
+`leavePassed = leave.phase === PASSED && !leaveAnswered` — the boolean that already decides the red
+tile. A `בדרך` mark or an `arrived`/`en-route` fix withdraws the title exactly as it withdraws the
+tile (ADR-0207), §AJ2's clamp keeps it off a departure nobody could have made (ADR-0206 §AJ3), and
+two reads of one departure is precisely how the title and the tile came to disagree in the first
+place.
+
+**Order: second, above `at-the-stay`.** For `on-the-way`'s own reason one line up — the leave-by is
+the live question of the next thirty minutes, where `at-the-stay` and `open` are both statements
+about a day. Late out of a hotel at ⁦05:40⁩ is late, not `בוקר`.
+
+**It carries the band and does not spend it**, which is the 2026-09-01 amendment applied rather than
+excepted: `band` is a fact about the hour, so it is set (and `gapDrawsDayRail` still takes the rail
+off at ⁦05:40⁩), but the label is carrying real information and the hour would displace it — the same
+reason `day-done` and `empty-day` keep `היום`.
+
+**And it does not wear teal.** It shares `on-the-way`'s label, not its costume: `כרגע · זמן לצאת`
+becomes `כרגע · בדרך` the moment somebody presses the mark, one word steady and the title moving
+from the question to the answer. Teal is "where you are" (rule 4), and where they are is the one
+thing this state is waiting to find out.
+
+**No new control, no new number, no layout change** — a sixth member on a keyed record, two words,
+and one boolean the screen already held.
+
+## Context
+
+The board's now-slot printed `זמן חופשי` in a gap. It was not a claim anybody decided to make: it
+was `Board`'s final `else`, reached when the `in-transit`, `group-split` and `now` questions had all
+answered "no" (`Board.tsx:929-936`, rendered at `:441-446`).
+
+So it printed on a bus, in bed at ⁦02:40⁩, at ⁦06:40⁩ before the day had started, and on a day nobody
+had planned. The owner's screenshot is the sharpest form: the lifted hero saying `זמן חופשי` in its
+title while its own journey line, 40px below, said `נסיעה · בדרך` — one card, two contradictory
+statements about one minute, and the wrong one is the one nobody asserted.
+
+Two things make this an ADR rather than a copy fix.
+
+**§S already described this shape, from the other side.** It fixed the _silence_ the same `else`
+caused when the hero lifted in a gap, and wrote the general form down: _"a variant that is an `else`
+on one surface is an empty array on the other."_ This is that `else` producing a falsehood instead,
+which §S's own sentence predicts.
+
+**The repo already had the rule it breaks.** ADR-0208 is titled "a claim needs something to stand
+on"; ADR-0207 is "a fix may withdraw a claim, it may not make one". `travel.leavePassed` says
+`זמן היציאה עבר` and never `אתם באיחור` precisely because the app has no sensor and a settle mark is
+not one. Every sentence on this surface has been through that test. The title slot never had.
+
+## Decision
+
+### 1. The gap is derived, not fallen into
+
+`lib/gap-character.ts` answers one question — what kind of gap is this — from inputs the screen
+already holds for other reasons. `Board` and `HeroLift` render its answer. Neither decides.
+
+Pure and clock-injected, like `hero-travel.ts` beside it. `gapWords` is the one function in it that
+reads `i18n/he.ts`, and it is there rather than at the two render sites for `lib/transitions.ts`'
+own reason: two components each mapping a discriminant to a phrase is two places for the phrase to
+drift.
+
+### 2. One answer, both elevations
+
+ADR-0160 §1 is that the board and the lifted hero are one object at two elevations. So the screen
+derives the character **once** and hands the same `BoardGap` to both; `BoardGapSlot` is exported
+from `Board.tsx` and imported by `HeroLift`, the same path `DayRail` and `BoardCountdown` already
+take. A second copy of these two lines is exactly how §S's defect comes back.
+
+### 3. The closed set — five characters, first match wins (six since 2026-09-15)
+
+Each stands on something already in the code. Nothing here is a guess about a person, and nothing
+needs a field the app does not store.
+
+| character     | stands on                                                      | label · title                                                                                                      |
+| ------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `on-the-way`  | the `בדרך` device mark (`lib/on-way.ts`)                       | `כרגע` · `בדרך`                                                                                                    |
+| `due-out`     | the leave-by has passed and nothing withdrew it (2026-09-15)   | `כרגע` · `זמן לצאת`                                                                                                |
+| `at-the-stay` | `travelOrigin → wokeIn` **and** the clock outside `DAY_WINDOW` | `לילה` / `בוקר` · the stay's name                                                                                  |
+| `day-done`    | no `next` **on today's date**, on a day that had events        | `היום` · `סוף היום`                                                                                                |
+| `empty-day`   | the clock's day holds no timed event at all                    | `היום` · `יום פנוי`                                                                                                |
+| `open`        | `next` is today — the honest gap                               | `פנוי` · `זמן חופשי` · `עד HH:MM` (the label is `לילה`/`בוקר` outside `DAY_WINDOW` — see the 2026-09-01 amendment) |
+
+**The order is the decision.** A person's own assertion outranks the plan's position, which is why
+`on-the-way` is first: somebody up and out at ⁦06:20⁩ is moving, not at a hotel.
+
+**`at-the-stay` says a PLACE, never `ישנים`.** That would be a claim about a person and the app has
+no sensor for it (ADR-0207 §2). What it may say is where the plan puts you, and what hour it is.
+
+**Night and early morning are one member.** Only which side of `DAY_WINDOW` you are on differs, and
+that is a claim about the **clock**, which keeps it inside ADR-0208. The band needs one number the
+app did not have — `NIGHT_ENDS_HOUR = 5` — and it is the only number this ADR adds; it is named in
+`constants.ts` beside `DAY_WINDOW` with its reasoning, and it wants a device pass on a real early
+start. **The band is not one comparison**: the night wraps midnight, so morning is the narrow slice
+from `NIGHT_ENDS_HOUR` to the window opening and everything else outside the window is night. The
+first implementation used a single `<` and read ⁦23:30⁩ as morning; the spec caught it.
+
+**`on-the-way` wears teal, and nothing else does.** The board already paints `כרגע · בדרך` teal for
+a bracketed transport in motion (`midSpan.transitLabel`, `.wp-board-now-label.loc`). A journey a
+person asserted is the same fact as one the plan brackets, so it takes the same costume — badge and
+label — rather than reading amber over a teal line two rows down, which is this ADR's own
+contradiction one register over. `לילה` and `בוקר` stay amber: the clock is amber's (rule 4).
+
+### 4. `wokeIn` needs a bound, and `DAY_WINDOW` is it
+
+`travelOrigin` falls through to the bed when nothing has started today (ADR-0206 §AD) — but that
+answer survives all day, so at ⁦11:00⁩ on an empty day the bed is still the plan's last position and
+you are out. Requiring the clock to be outside the waking window is what stops a stale claim being
+made, and it costs no new constant: `DAY_WINDOW` is the rail's own window, already there.
+
+**And the rail comes off in the same states.** `dayProgress` clamps to `[0,1]`, so at ⁦02:40⁩ the
+board drew a knob at ⁦0%⁩ under a label reading `עכשיו` — telling somebody in bed they were standing
+at ⁦07:00⁩. That is `in-transit`'s gate from the other end (ADR-0059 §2: the flight IS the day's
+current activity), so it is **one** boolean both callers feed (`showRail`), not a second condition
+beside the first. Absence beats a pinned lie.
+
+### 5. The gap that really is a gap finally says how much
+
+The `now` variant renders `.wp-board-now-meta`; the `free` branch rendered none — while `GlanceCard`
+printed `פנוי עד ⁦11:45⁩` two inches lower, which is visible in the owner's own screenshot. `open`
+now fills the slot the branch always had, in the board's own words (`עד`). No new markup.
+
+### 6. The lookahead already existed, and was silent about which day it meant
+
+This is the owner's follow-up, and answering it **withdrew a claim the drawing had already made**.
+
+`deriveNow` (`lib/time.ts:312`) is handed the whole _trip's_ events and carries no date filter, so
+`הבא בתור` has always crossed midnight: at ⁦22:40⁩ on day 3 the board was already showing tomorrow's
+⁦07:00⁩ flight. `סוף היום` fires only when the trip has no timed event left at all. The first draft
+of the mockup, the session note, a backlog line and a PR description all said it fired on any
+unplanned day; reading `Board.tsx` alone is what produced that, and a throwaway `vitest` against
+the real `deriveNow`/`heroHorizon` is what disproved it.
+
+So what was missing is not a lookahead but the **day token**: `07:00` with nothing saying tomorrow.
+ADR-0160 §M named that exact ambiguity for the in-transit landing — _"a red-eye landing at 06:00
+reads as this morning"_ — and solved it with `BoardTransit.endDay`. `BoardNext` now carries the
+same field, from the same `relativeDayLabel`, rendered **with the time it qualifies** and never on
+the countdown, which is §M's own rule for §M's own reason.
+
+### 7. `אחר כך` stops stopping at midnight
+
+`thenAfter` filtered `heroHorizon`'s `events`, which Home passed as `dayEvents` — so at ⁦22:40⁩ the
+lifted hero showed tomorrow's flight and then nothing, while the same function handed the whole trip
+finds the stop after it. Home now passes `events`. `thenAfter` is the **only** consumer of that
+field (grepped, not assumed) and it keys off `nextAll[0].startsAt` rather than the clock, so
+widening the pool cannot pull in anything earlier than the point it follows.
+
+**This is the answer to "should it be on the lifted hero?": both, and §1 already made the split.**
+The collapsed board carries the point; the lifted hero carries the depth on it, and it already
+resolved place, note, file and tasks for a cross-day next. §12 is not strained — no third slot, no
+new way in. `אחר כך` stays one quiet line that has stopped stopping at midnight.
+
+### 8. What this does not do
+
+- **No suggestions on an empty day.** `GlanceCard` is Home's "what could we do" surface (§10); a
+  hero growing into it competes with something already shipped.
+- **No separate "about to leave" state.** The countdown already swaps to the leave-by (ADR-0206
+  §Z1). A title state would say it twice, and would turn a passed clock into a claim about a person.
+  **Amended 2026-09-15 — this now refuses the `LIVE` arm only.** Once the leave-by has PASSED the
+  title was not saying it twice but saying the reverse of it, which is `due-out`. See the amendment
+  at the top.
+- **`סוף היום` in both slots on the trip's last day** stays as it is — two ways of saying one
+  nothing, and the only place that phrase now appears. Backlogged rather than fixed here.
+
+## Consequences
+
+- One derivation, two elevations, five characters. `Board` has one caller, so `gap` is an explicit
+  prop rather than a defaulted one — an unwired gap renders nothing, which fails a spec loudly
+  rather than silently reprinting the old `else`.
+- `t.board.gap` is a keyed record, so a sixth character has to say what it prints or the build
+  stops. `open` and `day-done` reuse `freeLabel`/`freeTitle` and `endOfDay` rather than restating
+  them, which is rule 8 applied to copy.
+- **Height:** the recommended `on-the-way` draw is words only; `open` gains a ⁦17px⁩ meta line in a
+  slot that already existed; the night board nets ⁦+3px⁩ (a ⁦23px⁩ rail off, a meta line on);
+  `אחר כך` reaching tomorrow is ⁦30px⁩ against §12's stated ⁦28px⁩ — the difference is the loaded
+  webfont. **Zero new controls**, so nothing to measure against ADR-0017's ⁦44px⁩ floor. One new CSS
+  declaration.
+
+## Alternatives considered
+
+- **The destination becomes the now point, `הבא בתור` moving on to what follows it** (the mockup's
+  §1 option א׳). The richest read, and `in-transit`'s shape exactly. Rejected on cost: ⁦+20px⁩, it
+  takes the countdown tile off the screen, and it pulls `אחר כך` into the second slot — which is
+  §12's Day-tab competition. If it is ever wanted it needs its own ADR section.
+- **`בדרך ל־<destination>` as the title** (option ב׳). Reads best. Rejected because it names the
+  destination twice ⁦28px⁩ apart and `ל־` breaks agreement before a definite article. **Not** for
+  the reason the draft gave: it was rejected as ADR-0118's bidi trap, and probing the rendered
+  title character by character says the order is fine — a Latin run at the _end_ of a Hebrew line
+  reads LTR within itself, and ADR-0118 is about a run in the _middle_. The probe ships as a
+  measurement row in the mockup.
+- **`ישנים` as the night title.** A claim about a person with no sensor behind it.
+- **A separate member for "about to leave".** §8 — **and half of this was reversed on 2026-09-15**:
+  it stands for a leave-by still ahead and does not for one already passed.
+- **Two `at-the-stay` members** instead of one with a band. The stay is the same fact at ⁦02:40⁩ and
+  ⁦06:40⁩; only the hour differs, and an hour is not a character.
+
+## Build log (2026-08-29)
+
+Three things the build changed from the drawing, each recorded rather than quietly done:
+
+1. **The live badge stays `עכשיו` except on `on-the-way`.** The mockup drew `לילה` / `בוקר` /
+   `היום` in the badge _and_ in the label — the same word twice, ⁦20px⁩ apart. The label is the slot
+   that carries meaning; the badge is the live indicator. Only `on-the-way` swaps it, because there
+   the swap is the shipped transit costume rather than a repetition.
+2. **The stay is named by its own title**, not by a resolved place name. `.stay-strip` one surface
+   down renders `<b>{stayNow.title}</b>`, and two names for one bed is what ADR-0138 is about.
+3. **The band's comparison was wrong and a spec caught it** — §3.
+
+Verified: `pnpm typecheck` and the full unit suite green (4953 tests, 276 files), with 14 new specs
+on the derivation, 7 on the two components, and 4 at the Home seam where the wiring is the only
+thing under test.

@@ -5,10 +5,10 @@
 // fills the NOW slot ("in transit"). Pure and clock-driven — nothing stored
 // (ADR-0018). The Home component renders from the discriminated result.
 import {
-  EVENT_STATUS,
   eventTransitionKeys,
   isAmbient,
   isBracketed,
+  isEdgeSettled,
   isJourney,
   windowBoundOf,
   type TripEvent,
@@ -106,6 +106,13 @@ function classify(e: TripEvent, nowMs: number, today: string): HeroBooking | nul
       const shuts = windowBoundOf(e, 'start');
       const closesMs = shuts ? Date.parse(shuts) : null;
       const until = closesMs ?? s + CHECKIN_GRACE_MIN * MS_PER_MIN;
+      // **AN ANSWERED EDGE LEAVES THE BOARD** (ADR-0224 §5), and that is the whole point of
+      // being able to answer: a check-in you have done is not something to do next. The
+      // missed arm below already made half of this test — it excluded a `DONE` check-in from
+      // failing — and the live arm made none at all, so the hero went on offering a check-in
+      // for its whole grace or window after the group said they were in. `isEdgeSettled`
+      // rather than `=== DONE`, because a check-in you are NOT making is equally over.
+      if (isEdgeSettled(e, 'start')) return null;
       if (nowMs <= until) {
         return {
           kind: 'transition-checkin',
@@ -119,8 +126,8 @@ function classify(e: TripEvent, nowMs: number, today: string): HeroBooking | nul
       }
       // Past the ceiling, and only a window HAS one — so this branch cannot fire for an
       // ordinary floor, which is what keeps ADR-0171 §6's "a floor never fails" intact.
-      // A settled check-in is not a miss; it is done.
-      if (closesMs != null && e.status !== EVENT_STATUS.DONE) {
+      // A settled check-in is not a miss; the guard above has already returned for it.
+      if (closesMs != null) {
         return {
           kind: 'transition-checkin',
           event: e,
@@ -131,11 +138,15 @@ function classify(e: TripEvent, nowMs: number, today: string): HeroBooking | nul
       }
     }
     const endDay = e.endDate ?? e.date;
+    // **And the same for the closing edge** (ADR-0224 §5) — the case the ADR was reported
+    // from. `CHECKOUT_LEAD_MIN` is 180, so a check-out made at 08:30 owned this slot until
+    // 11:00 with nothing the group could say to it; now saying it is what clears the board.
     if (
       endDay === today &&
       e.endsAt &&
       nowMs >= end - CHECKOUT_LEAD_MIN * MS_PER_MIN &&
-      nowMs < end
+      nowMs < end &&
+      !isEdgeSettled(e, 'end')
     ) {
       return { kind: 'transition-checkout', event: e, labelKey: trans.endKey };
     }

@@ -21,13 +21,72 @@ ADR-0024 made the trip switcher a **sheet** ("not a route") and, with ADR-0021, 
 - **No trip is live** (all upcoming/past) → **All trips** home. Do not auto-open a future trip.
 - **No trips at all** → Zero-state (unchanged, ADR-0024 §2).
 
-`resolveActiveTrip` keeps its in-progress branch; the upcoming/past fallbacks now feed "which trip is marked, if any" on the All-trips page rather than a forced landing.
+`resolveActiveTrip` keeps its in-progress branch; the upcoming/past fallbacks now feed "which trip is marked, if any" on the All-trips page rather than a forced landing. _(Amended 2026-09-10, below: the landing rule is now "one unambiguous answer opens", and `resolveActiveTrip` is gone.)_
 
 **3. Access from inside a trip (replaces ADR-0024 §5's sheet).** The trip name in the in-trip header (▾) navigates to All trips — one surface, reached both as the landing and as the way "out and across." The switcher **sheet** is dropped; there are not two presentations of the same list.
 
 **4. No "Join with a link" on this surface.** Joining always begins from an external invite link (ADR-0030) — a join button here is redundant. Create only. (Zero-state keeps Join: it's the genuine first-run "open the app first" path.)
 
 **5. Not a dashboard, and no board.** The All-trips page is a navigation list, not a lobby of rich cards. Nothing is "live" on it (a live trip would have opened directly), so it carries **no departure board** — the board stays inside a trip, keeping the "board = the trip is speaking" scarcity (ADR-0028).
+
+## Amendment — a third control on the card, and the gesture that pays for it (2026-08-30)
+
+ADR-0213 put a share action on every All Trips card. The owner reported the consequence:
+_"The share icon is taking much space and is causing a line overflow. Perhaps we need a long
+click instead?"_ Measured in
+[`mockups/the-trip-card-has-room-for-one-more-control-v1.html`](../../mockups/the-trip-card-has-room-for-one-more-control-v1.html);
+decided in [v2](../../mockups/the-trip-card-has-room-for-one-more-control-v2.html).
+
+**§1 · The share leaves the row for a hold.** Not a new gesture: `lib/useHoldToOpen.ts`
+already exists (ADR-0202's 2026-08-22 amendment) for the same trade in the same words — it
+_"costs no pixels, which is the reason a fourth mark in the row's trailing slot was not the
+answer"_ — under the same rule, that a hold is _"a shortcut, never the only way"_ and is paid
+for by a visible twin elsewhere. The twin here is the trip header's share control, which is
+what makes the gesture affordable on this surface. The hook already owns the two hard parts:
+the `selectstart` guard, and swallowing the click that lands on release.
+
+**§2 · The countdown becomes the card's loud element.** With the share gone the trailing slot
+is free, and `בעוד 12 ימים` is the one fact that varies _inside_ its section — the heading
+above already says the state, so what discriminates between two cards is how soon. It spends
+**amber**, which the colour budget files countdowns under, at the recipe `.hdr-anchor.is-back`
+already uses: a tinted ground with `--amber-deep` for edge and ink, because `--amber` as text
+on paper is 1.31:1 and is a fill, never ink. No glow and no pulse — the card stays a nav card
+and does not start reading as the rationed board.
+
+**§3 · `הסתיים` is deleted, not promoted.** Under a `הסתיים` heading, over dates already in
+the past, it repeats its own heading and distinguishes no two cards. Deleting it returns the
+content column to 238px at 360px with the meta on **one** line and the card at 74px — the
+largest single win available, and it applies to most of the list.
+
+**Rejected: the slide-out drawer.** The owner asked for the row to move and the share to be
+revealed beside it. Nothing in this app opens a row sideways, so it is a new mechanism for one
+button — needing its own dismissal, its own back-stack layer (ADR-0090), and an answer for a
+tap outside it. `useHoldToOpen` opens a surface directly, and the surface here is the share
+sheet, which is response enough that there is no silent moment to cover. Drawing it also
+surfaced a cost nobody had named: with the drawer open the card is pushed far enough that the
+**trip's flag leaves the screen** — the card's fastest recognition cue, and the shared element
+the trip handoff flies (ADR-0140 §7).
+
+Also rejected: shrinking the control (44px is ADR-0017's floor and the saving was 6px), and
+letting the meta ellipsise rather than wrap — the first thing cut is the member count, the one
+fact in that row that appears nowhere else on the card.
+
+**Built the same day, at the middle weight.** The mockup left the countdown's loudness
+(`שקט · נייר · מלא`) to a device pass; the owner handed the call back (_"Do what looks best in
+your opinion"_), so it ships as `נייר` — the `.hdr-anchor.is-back` recipe exactly, at 12px and
+`5px 10px`. The solid amber fill was the alternative and was declined on the same ground §2
+already states: an amber _fill_ on a nav card starts borrowing the rationed board's grammar,
+and this list is deliberately glowless. `.chip.past` and its `chipPast` string are gone,
+`.chip` collapsed into the one `.chip.soon` rule it has a consumer for, and `.trip-share-wrap`
+/ `.trip-share-action` / `t.share.entryFor` are deleted with the control they existed for.
+
+What the specs hold, and the split is the usual one: the unit suite (`AllTrips.test.tsx`) has
+the hold firing on the card the finger is on and _not_ firing when the finger moves, since
+jsdom implements no `PointerEvent` and the hook is written for exactly that shape of event.
+The browser (`e2e/trip-share-entry.spec.ts`) has the half jsdom cannot see — that the click
+landing on **release** is swallowed rather than opening the trip behind the sheet — plus the
+width, as the card's height: 74px on the e2e fixture against the 104px the mockup measured on
+the shipped one.
 
 ## Consequences
 
@@ -56,3 +115,51 @@ The fix distinguishes two ways you arrive at the trip surface:
 2. **A cold reopen** (a fresh app launch, no in-session pick) applies the §2 rule directly: a live trip opens, nothing live goes to /trips. The stored last-opened id only wins here when it is **itself** live — that preserves "default to last-opened among overlapping live trips" (ADR-0021) while stopping a stale non-live id from shadowing a trip that is live now.
 
 The two cases are told apart by an in-memory `pickedThisSession` flag on the active-trip state (`frontend/src/state/active-trip-id.tsx`) — set on an explicit pick, absent after a fresh launch, so a reopen is always treated as a cold load. The decision itself is the pure `resolveLanding` helper in `frontend/src/lib/active-trip.ts`. No change to the persisted `tripId` semantics (still per-device, not synced) or to any other landing branch.
+
+## Amendment (2026-09-10) — one unambiguous answer opens; the list is for choosing
+
+Owner: _"When a trip is running (and only one is running), or if there's only one active trip
+(unfinished), opening the app should be on the trip and not on the all trips screen."_
+
+§2 sent every no-live-trip load to All trips, on the ground that an overview beats being
+dropped into a future itinerary. That holds when there is something to overview. With **one**
+upcoming trip and the rest finished, the list has nothing to choose between: it is a page with
+one tappable row, and the tap is a tax on every open in the weeks before departure, which is
+exactly when Plan mode is used most. The cold-reopen rule (`resolveLanding`,
+`frontend/src/lib/active-trip.ts`) is therefore restated as one sentence: **a load opens the
+trip when exactly one trip is the answer, and goes to `/trips` when there are two or more to
+choose between.**
+
+1. **Manual pick this session** — unchanged; honored regardless of the trip's state.
+2. **The last-opened trip is itself live** — unchanged; it opens (last-opened among
+   overlapping live trips, ADR-0021).
+3. **Exactly one live trip** → it opens. **Two or more live and no last-opened tiebreak** →
+   `/trips`. This retires the "earliest start wins" pick ADR-0021 deferred with a ponytail:
+   the list already draws every live trip as an indigo hero under `עכשיו`, so the ambiguity
+   has a surface, and choosing is what that surface is for.
+4. **No live trip, exactly one unfinished (upcoming) trip** → it opens, in Plan mode. This is
+   the reversal of §2's "do not auto-open a future trip", and it is scoped to the case where
+   there is no other trip to weigh it against.
+5. **No live trip, two or more upcoming, or everything finished** → `/trips`, as before. A
+   finished trip is never auto-opened: an archive is not an answer to "what now".
+
+6. **"Live" is read on the device's day.** The first build of this amendment was tested by the
+   owner fifteen hours before a flight, on the start date at home, and still landed on the
+   list: `tripChip` read today in the _trip's_ zone, and for a westward trip the far side was
+   still on the eve. The owner: _"It should use same device day yeah."_ The chip now counts
+   from `DEVICE_TIMEZONE`, the rule ADR-0107's 2026-09-10 correction already gave the list's
+   `בעוד` countdown and the join ticket: a screen with no itinerary loaded is wherever the
+   phone is. This also moves the list's `עכשיו`/`בקרוב`/`הסתיים` buckets onto the device day,
+   retiring the limitation that correction had left standing ("the row is still `בקרוב` and
+   reads `היום`"). Inside the trip nothing changes: the mode still flips on `tripToday`, which
+   reads the itinerary's zone evidence and knows about the outbound flight.
+
+`resolveActiveTrip` (in-progress → nearest upcoming → most recent) is deleted rather than
+kept beside the new rule: the landing was its only consumer, and the All-trips page marks
+nothing with it (the hero comes from `tripChip`). Its "which trip is marked" role §2
+described never materialised.
+
+**What stays true on the list.** Nothing changes on `/trips` itself; what changes is _when_
+you arrive there without asking. `app-shell.md` §5's "landing (no `עכשיו` section)" state is
+now "landing (two or more rows under one heading, or only `הסתיים`)", and the page can be the
+landing with a full `עכשיו` section for the first time, in the overlapping-live case.

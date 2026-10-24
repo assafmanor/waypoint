@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { BookingType, EventCategory, TripEvent } from './entities';
-import { BOOKING_TYPE, BOOKING_TYPE_TO_CATEGORY } from './constants';
+import {
+  BOOKING_TYPE,
+  BOOKING_TYPE_TO_CATEGORY,
+  EVENT_CATEGORY,
+  PLACE_SEARCH_KIND,
+} from './constants';
 import {
   authorsRoundTrip,
   bookingTypeDurationUnit,
@@ -8,11 +13,17 @@ import {
   isTightConnection,
   titlesFromRoute,
   BOOKING_TYPE_PROFILE,
+  placeSearchKindFor,
+  recordCategory,
+  spendsSpanInMotion,
   carriesRoute,
   CATEGORY_TIME_PROFILE,
   defaultKindForBookingType,
   hasSpanSchedule,
   edgeMeaning,
+  edgeStatusOf,
+  edgeOutlivesItsInstant,
+  isEdgeSettled,
   eventDurationUnit,
   eventEndBoundary,
   eventMidSpan,
@@ -23,6 +34,7 @@ import {
   windowBoundOf,
   isJourney,
   isMultiDay,
+  notifyLeadMinutesFor,
   searchVibeIcons,
   typicalMinutesFor,
 } from './icons';
@@ -66,6 +78,8 @@ describe('CATEGORY_TIME_PROFILE', () => {
       midSpan: { kind: 'journey', liveKey: 'transitLive', labelKey: 'transitLabel' },
       durationUnit: 'hours',
       typicalMinutes: 60,
+      // ADR-0198 §3: an airport is the one place where two hours is not paranoid.
+      notifyLeadMinutes: 120,
     });
     expect(CATEGORY_TIME_PROFILE.lodging).toEqual({
       bracketed: true,
@@ -74,7 +88,55 @@ describe('CATEGORY_TIME_PROFILE', () => {
       midSpan: { kind: 'held', liveKey: 'stayLive', labelKey: 'stayLabel' },
       durationUnit: 'nights',
       typicalMinutes: 60,
+      // A check-in you are late for is a phone call, not a lost ticket.
+      notifyLeadMinutes: 60,
     });
+  });
+
+  /**
+   * **The notification lead table** (ADR-0198 §3), pinned as a whole rather than per category.
+   *
+   * It is on this profile and not in a second lookup beside it (root rule 8), so the test that
+   * matters is that every category has an answer and that the answer is the intended one — a
+   * tenth category added without a lead would read `undefined` and notify at the wrong time
+   * rather than failing to compile.
+   */
+  it('gives every category a notification lead, and silence is the default', () => {
+    expect(
+      Object.fromEntries(
+        Object.entries(CATEGORY_TIME_PROFILE).map(([key, profile]) => [
+          key,
+          profile.notifyLeadMinutes,
+        ]),
+      ),
+    ).toEqual({
+      transport: 120,
+      lodging: 60,
+      activity: 60,
+      services: 60,
+      food: 30,
+      // Rarely hard, and when they are the day surfaces carry them.
+      sightseeing: 0,
+      nature: 0,
+      shopping: 0,
+      other: 0,
+    });
+  });
+
+  it('notifies an UNCATEGORISED event not at all', () => {
+    // ADR-0038 allows a null category, and the honest answer for one is silence rather than a
+    // guess at how far ahead somebody wanted to know.
+    expect(notifyLeadMinutesFor({ category: null, icon: null })).toBe(0);
+    expect(notifyLeadMinutesFor({ category: undefined, icon: undefined })).toBe(0);
+  });
+
+  it('reads the event’s own REFINED profile, so a mode could override its lead', () => {
+    // Nothing overrides it today; the seam is the point — a flight already overrides its
+    // transition words through the same table, and the alternative is a second lookup keyed
+    // by glyph that can disagree with this one.
+    expect(notifyLeadMinutesFor({ category: 'transport', icon: '✈️' })).toBe(120);
+    expect(notifyLeadMinutesFor({ category: 'transport', icon: '🚗' })).toBe(120);
+    expect(notifyLeadMinutesFor({ category: 'food', icon: null })).toBe(30);
   });
 
   // `toMatchObject`, not `toEqual`, and the change is the point: since ADR-0161 §5 these
@@ -413,6 +475,30 @@ describe('BOOKING_TYPE_PROFILE (ADR-0154 §2)', () => {
     }
   });
 
+  /** **ADR-0203 §8.** The axis exists to retire a `type === FLIGHT` conditional at a call
+   *  site whose own comment named what it cost — "a train's stop is a station this
+   *  restriction has no type for yet" — so the test that matters is that every route-shaped
+   *  type answers, not that any particular one does. */
+  it('gives a search kind to exactly the types you are CARRIED by', () => {
+    // Not `carriesRoute`, and the car hire is why — the same distinction `inMotion` was
+    // separated for. A hire has two route endpoints, but they are rental COUNTERS: asking
+    // Google for a station there would exclude the only right answers. So the invariant
+    // is `spendsSpanInMotion`, and a car deliberately restricts nothing.
+    for (const type of ALL_TYPES) {
+      if (spendsSpanInMotion(type)) expect(placeSearchKindFor(type)).toBeDefined();
+      else expect(placeSearchKindFor(type)).toBeUndefined();
+    }
+    expect(carriesRoute(BOOKING_TYPE.CAR)).toBe(true);
+    expect(placeSearchKindFor(BOOKING_TYPE.CAR)).toBeUndefined();
+  });
+
+  it('asks for a terminal for a flight and a platform for the two ground modes', () => {
+    expect(placeSearchKindFor(BOOKING_TYPE.FLIGHT)).toBe(PLACE_SEARCH_KIND.AIRPORT);
+    expect(placeSearchKindFor(BOOKING_TYPE.TRAIN)).toBe(PLACE_SEARCH_KIND.TRAIN_STATION);
+    // A bus or a ferry is a quay, not rail — the wider kind, deliberately not TRAIN_STATION.
+    expect(placeSearchKindFor(BOOKING_TYPE.TRANSIT)).toBe(PLACE_SEARCH_KIND.TRANSIT_STATION);
+  });
+
   it('gives the four transport modes a route, and every other type a single place', () => {
     expect(carriesRoute(BOOKING_TYPE.FLIGHT)).toBe(true);
     expect(carriesRoute(BOOKING_TYPE.TRAIN)).toBe(true);
@@ -584,5 +670,80 @@ describe('an authored window is the meaning (ADR-0184 §1)', () => {
     };
     expect(windowBoundOf(both, 'start')).toBe('2026-09-15T18:00:00.000Z');
     expect(windowBoundOf(both, 'end')).toBe('2026-09-18T04:00:00.000Z');
+  });
+});
+
+// **A SPAN HAS TWO MOMENTS AND ONE `status`** (ADR-0224 §1), which is the whole defect: the
+// app had already spent that field on the opening edge — `glance.ts` clears a `not-before` row
+// on `DONE`, `hero-booking.ts` tests it on the missed-check-in arm — so a check-out had
+// nowhere to be written. These pair each edge with its own field, for the reason
+// `windowBoundOf` exists directly above: the pairing reads fine and inverts silently.
+describe('edgeStatusOf / isEdgeSettled', () => {
+  const stay = { status: 'planned' as const };
+
+  it('reads the opening edge from `status` and the closing one from `endStatus`', () => {
+    const both = { status: 'done' as const, endStatus: 'skipped' as const };
+    expect(edgeStatusOf(both, 'start')).toBe('done');
+    expect(edgeStatusOf(both, 'end')).toBe('skipped');
+  });
+
+  it('reports an unwritten closing edge as `planned`, so no caller handles `undefined`', () => {
+    expect(edgeStatusOf(stay, 'end')).toBe('planned');
+    expect(isEdgeSettled(stay, 'end')).toBe(false);
+  });
+
+  it('does not let one edge answer for the other — the defect ADR-0224 is about', () => {
+    const checkedIn = { status: 'done' as const };
+    expect(isEdgeSettled(checkedIn, 'start')).toBe(true);
+    expect(isEdgeSettled(checkedIn, 'end')).toBe(false);
+  });
+
+  it('counts a SKIPPED edge as settled: not happening is an answer, not an absence', () => {
+    expect(isEdgeSettled({ ...stay, endStatus: 'skipped' as const }, 'end')).toBe(true);
+  });
+});
+
+// **THE EDGES A CLOCK CANNOT ANSWER** (ADR-0171 §6 + ADR-0184 §6). Two surfaces read this and
+// they are the two halves of one loop: `glance.ts` holds such an edge in `נותרו היום`, and
+// `StayRow`'s settle pair is the only thing that can take it out again. They were two spellings
+// of one rule and they disagreed about a window — the report in §window below.
+describe('edgeOutlivesItsInstant', () => {
+  const stay = { category: 'lodging' as const, icon: '🏨' };
+
+  it('holds a floor: 15:01 does not mean anybody checked in', () => {
+    expect(edgeOutlivesItsInstant(stay, 'start')).toBe(true);
+  });
+
+  it('lets a deadline answer itself, because 11:01 is missed rather than pending', () => {
+    expect(edgeOutlivesItsInstant(stay, 'end')).toBe(false);
+  });
+
+  // §window — the reported defect: `remaining` counted a check-in booked 17:00–22:00 to its
+  // ceiling while the row that could clear it asked for `not-before` and rendered nothing.
+  it('holds a check-in WINDOW, which is a floor with a ceiling and not a deadline', () => {
+    const windowed = { ...stay, startWindowEnd: '2026-09-15T22:00:00.000Z' };
+    expect(edgeOutlivesItsInstant(windowed, 'start')).toBe(true);
+    // Its own end stays the deadline it always was — a check-out window's ceiling expires.
+    expect(
+      edgeOutlivesItsInstant({ ...windowed, endWindowStart: '2026-09-17T08:00:00.000Z' }, 'end'),
+    ).toBe(false);
+  });
+
+  it('asks nothing of a person about an exact moment, at either end', () => {
+    const flight = { category: 'transport' as const, icon: '✈️' };
+    expect(edgeOutlivesItsInstant(flight, 'start')).toBe(false);
+    expect(edgeOutlivesItsInstant(flight, 'end')).toBe(false);
+  });
+});
+
+describe('recordCategory', () => {
+  it("files a row by its own kind, else its booking's, else other", () => {
+    expect(
+      recordCategory({ category: EVENT_CATEGORY.NATURE }, { type: BOOKING_TYPE.RESTAURANT }),
+    ).toBe(EVENT_CATEGORY.NATURE);
+    expect(recordCategory({ category: null }, { type: BOOKING_TYPE.RESTAURANT })).toBe(
+      EVENT_CATEGORY.FOOD,
+    );
+    expect(recordCategory({})).toBe(EVENT_CATEGORY.OTHER);
   });
 });

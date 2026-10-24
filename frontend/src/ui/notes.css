@@ -21,6 +21,62 @@
   white-space: pre-wrap;
 }
 
+/* …and the SAME element one line down, when the note also has a title (ADR-0153 §4's
+   2026-08-16 amendment). `.wp-listrow-title` is already `flex-wrap: wrap`, so a full-width
+   basis is the whole cost of moving the body out of the meta line — no new class, no new
+   `ListRow` slot, and the clamp, the newlines and the open-state unclamp above all come
+   along because it is the same element. Deliberately NOT a size step: a note's words read
+   the same whether or not somebody gave them a title.
+
+   The negative margin cancels the title flex's `row-gap: var(--space-1)`, which is right
+   between a title and a chip and one notch loose under a title whose line-height already
+   carries the separation. **`* + ` and not a bare child selector**: a body-ONLY note's words
+   are the title line, with no sibling above them and therefore no gap to cancel, so an
+   unscoped rule took 2px off every row on the screen that this change has no business
+   touching (measured: 76.4 → 74.4px). The mockup reported that cost as zero because both of
+   its frames carried the proposed rule — a before/after pair cannot see a regression common
+   to both halves. */
+.wp-listrow-title > .note-body-line {
+  flex: 1 0 100%;
+}
+.wp-listrow-title > * + .note-body-line {
+  margin-top: -2px;
+}
+
+/* **A note row aligns its chrome to the TOP** (ADR-0153 §4's same amendment). `ListRow`
+   centres the row and its trigger, which is right for the fixed two-line rows it was born
+   on (bookings, documents, members) and wrong here, where a row is a title, two clamped
+   lines and a meta — and four times that when it opens: the badge and the `⋯` floated at
+   mid-height, pointing at nothing, which is visible in the owner's screenshot.
+
+   A note's own class rather than a rule in `list-row.css`: bookings, documents and members
+   are fixed at two lines, so changing the shared default would move their `⋯` to fix a
+   screen they are not on. Every note row takes it, not only the tall ones, or the badge
+   would sit at a different height on consecutive rows.
+
+   **The tasks screen is the one row that could now want this too, and deliberately does not
+   have it** (ADR-0191 §8, merged 2026-08-16): a task's meta became two lines — deadline,
+   then host chip and assignee — so its row reaches 95px at 360 and its tick and `⋯` centre
+   26.5px below the title line they act on, which is this rule's own defect one surface over.
+   Not extended here on purpose: that surface shipped hours ago with its own device pass, and
+   whether a TICK should top-align the way a badge does is a question about a control, not a
+   mechanical repeat of this. On the backlog with the measurement.
+
+   The trailing group's inset is derived, not guessed: the kebab's ink is 30px inside a
+   44px box with `margin: -7px`, so its centre lands at `padding + 15`, and the badge's
+   centre sits at `space-3 + 18`.
+
+   `.wp-listrow.note-row` and not a bare `.note-row`: the rule it overrides is
+   `list-row.css`'s own `.wp-listrow`, which is also one class, so a tie would be settled by
+   whichever stylesheet the bundler happened to emit second. Two classes decide it here. */
+.wp-listrow.note-row,
+.note-row .wp-listrow-open {
+  align-items: flex-start;
+}
+.note-row .wp-listrow-right {
+  padding-block-start: calc(var(--space-3) + 3px);
+}
+
 /* A URL-ONLY note. The url is the line, and it is an LTR island inside an RTL row — the
    isolate characters come from `lib/bidi.ts`'s `ltrIsolate`, NOT from `dir="ltr"`, which
    is lint-blocked on anything but an <input> (ADR-0118) and would lay the whole row out
@@ -167,8 +223,10 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.note-chip-t:hover {
-  background: color-mix(in srgb, var(--ink) 4%, transparent);
+@media (hover: hover) and (pointer: fine) {
+  .note-chip-t:hover {
+    background: color-mix(in srgb, var(--ink) 4%, transparent);
+  }
 }
 .note-chip-x {
   flex: 0 0 auto;
@@ -223,43 +281,65 @@
    `.bk-facts` is the sibling it sits under on a booking. */
 .note-sec {
   margin-top: var(--space-4);
+  /* The leading column BOTH sections' rows are measured from — a note's 2px rule and a task's
+     tick occupy the same cell, which is what makes their texts start at the same x. Declared
+     on the section rather than in `tokens.css`: it is this family's geometry, not the app's.
+     `--sec-tick` is the tick's PAINT; its touch target is an `::after` that reaches 44px
+     regardless, so this number can move without the control falling under ADR-0017's floor. */
+  --sec-lead: 26px;
+  --sec-tick: 20px;
 }
-.note-sec-h {
+/* **ONE ROW SHAPE FOR BOTH SECTIONS ON A SURFACE** (ADR-0191 §5, reversed 2026-08-16 on an
+   owner report: "notes and tasks look totally different and have a different allignment").
+   Phase 4 gave tasks a `ListRow`, whose lead column pushed the task's text 40px past the
+   note's — measured in the running app at x=276 against x=316 on the same 31→330 box. The
+   two sections share this grid instead, so a leading control costs the SAME inset on both
+   and neither text moves relative to the other.
+
+   The lead cell holds a note's 2px rule or a task's tick. `--sec-lead` is the one number:
+   wide enough for the tick, and it is what both texts are measured from. */
+.note-item {
+  display: grid;
+  grid-template-columns: var(--sec-lead) 1fr;
+  align-items: start;
+  margin-bottom: var(--space-3);
+}
+.note-item-lead {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  margin-bottom: var(--space-2);
+  justify-content: center;
+  min-height: 20px;
 }
-.note-sec-h .t {
-  font-family: var(--font-head);
-  font-size: 12.5px;
-  color: var(--muted);
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
+/* **A TICK NEEDS AIR WHERE A QUOTE-RULE WANTS NONE** (owner, 2026-08-16: _"no space between
+   the tick and title"_ — measured in the running app at **3px**, which is what a 20px circle
+   centred in a 26px column leaves). The two leading elements legitimately want opposite
+   placement inside the one cell: a note's rule is a quote bar and belongs AGAINST its text
+   (`margin-inline-start: auto`, unchanged), a task's tick is a control and must not touch it.
+
+   So the tick moves to the cell's start rather than the column widening — which is what keeps
+   ADR-0191 §5's actual invariant intact. That invariant is that both TEXTS start at the same
+   x, and it is `--sec-lead` that guarantees it; growing `--sec-lead` would honour it too but
+   would spend 6px of every note's width to fix a task's spacing. This spends none and takes
+   the gap to 6px. */
+.tsk-row .note-item-lead {
+  justify-content: flex-start;
 }
-.note-sec-h .add {
+/* A note's leading element is the rule it always had, now living in the shared cell rather
+   than on the row's own border. `auto` on the start side keeps it against the text, exactly
+   where `border-inline-start` put it. */
+.note-item:not(.tsk-row) .note-item-lead::before {
+  content: '';
+  width: 2px;
+  align-self: stretch;
+  background: var(--line);
+  border-radius: 1px;
   margin-inline-start: auto;
-  font: inherit;
-  font-size: 11.5px;
-  font-weight: 700;
-  color: var(--cta);
-  background: none;
-  border: 0;
-  padding: 4px 6px;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
 }
-.note-sec-h .add .icon {
-  width: 13px;
-  height: 13px;
-}
-.note-item {
-  border-inline-start: 2px solid var(--line);
-  padding-inline-start: var(--space-3);
-  margin-bottom: var(--space-3);
+/* The row's content cell. It exists so the open foot and the meta line stack under the body
+   rather than beside the lead, which a two-cell grid would otherwise do to every child. */
+.note-item-main {
+  display: block;
+  min-width: 0;
 }
 .note-item-b {
   display: block;
@@ -277,6 +357,13 @@
      here does not clamp, so a two-line note must read as two lines. A `<button>` also
      inherits the UA's `white-space: normal` regardless of the page, so it needs saying. */
   white-space: pre-wrap;
+}
+/* The title of a note that has one, above its body (ADR-0152 §6's 2026-08-16 amendment).
+   Its own block so the body starts a line; the weight is the only other thing it needs,
+   since the button around it already owns the size, the colour and the `pre-wrap`. */
+.note-item-t {
+  display: block;
+  font-weight: 700;
 }
 .note-item-m {
   display: block;
@@ -324,21 +411,9 @@
    the words are the content and there may be more of them — but a url has no "more of it"
    worth reading, and letting one wrap printed a share link across three monospace lines
    (owner, 2026-08-02). It stays one line here; the foot below carries the tappable link. */
-/* The open row and its foot are ONE object, so the hairline between them would cut a
-   sentence from its own byline.
-
-   **AND NO FILL.** A wash on the open row was drawn, rendered, and rejected on sight
-   (owner: _"the color for an expanded note is bad … why is it separated from the three
-   dots"_). Both halves of that are one cause: `.wp-listrow` is a flex CONTAINER whose
-   tappable half is `.wp-listrow-open` and whose `⋯` is that button's SIBLING (buttons do
-   not nest, ADR-0139 §3) — so the row's own fill sits under both, while the button's
-   `:hover` adds 4% to the tappable half ALONE. On a pointer that paints the row in two
-   tones with the seam exactly at the kebab. It cannot happen on a phone, which is why it
-   survived the mockup, and it was a bad idea regardless: the foot and the unclamped words
-   already say the row is open, and a state does not need a colour to be legible. */
-.wp-listrow.is-open {
-  border-bottom: 0;
-}
+/* `.wp-listrow.is-open`'s own rule — no hairline, and no fill — moved to
+   `ui/domain/row-open.css` with the foot, since it describes any row that opens rather than
+   a note. Its reasoning went with it. */
 
 /* …and the host chip leaves the meta line while the foot carries it, or the host is
    named twice six pixels apart. The FOOT is the half that can hold a tap target: the
@@ -374,73 +449,329 @@
   height: 13px;
   flex: 0 0 auto;
 }
-.note-open-foot {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 11.5px;
-  color: var(--muted);
-}
 .listcard .note-open-url {
   padding: 0 14px;
 }
-.listcard .note-open-foot {
-  padding: 0 14px 10px;
-  border-bottom: 1px solid var(--line);
+/* The foot itself now lives in `ui/domain/row-open.css` under neutral `.row-open-*` names —
+   tasks is its second host (ADR-0189), and a task wearing `.note-open-foot` would be the
+   copy the rename exists to avoid. Only the URL line above stays here: it is a note's own
+   fact, not a shape two features share. */
+
+/* ── THE PROSE (ADR-0202 §4/§6) ───────────────────────────────────────────────
+   One class, three surfaces, two densities. `lib/note-markdown.ts` decides what a marker
+   means; this decides only what the element looks like, and `--np-base` is the single number
+   a host may move.
+
+   Ported from `mockups/note-full-screen-v1.html`'s proposal block, where the two densities
+   were measured against each other on the same note (273.2px on the screen, 256.7px dense at
+   360px) and the host section turned out to come out SHORTER shaped than raw — a real bullet
+   saves the character and space that were wrapping a line, and a heading saves the blank line
+   between two blocks. */
+.note-prose {
+  /* **`--np-base` is NOT declared here, and that absence is the whole fix for a defect.**
+     A custom property declared on an element SHADOWS the inherited one, so
+     `--np-base: var(--text-body)` here silently beat `.note-full-body`'s
+     `--np-base: var(--text-reading)` — the full screen went on rendering at chrome size and
+     the size fix did nothing at all (owner, 2026-08-22, reported twice). It typechecked, it
+     passed every test, and it changed no pixel; the default belongs in the `var()` FALLBACK,
+     where a host that states nothing gets it and a host that states something wins.
+
+     The fallback is repeated in `.dense` below rather than hoisted into a second property,
+     because a second property is exactly what went wrong here. */
+  --np-size: var(--np-base, var(--text-body));
+  /* A heading inside prose steps up from the PROSE's own base, not from the app's ramp: the
+     base moves per host (reading size on the full screen, a notch below body in a card), and
+     a fixed `--text-h3` would be a heading on one surface and body text on the other. */
+  --np-head: calc(var(--np-size) + 2px);
+  font-size: var(--np-size);
+  /* Prose leading, not chrome leading (owner: "the line heights should be adjusted, see how
+     clumped up this is"). `--leading-normal` is 1.45 and right for a row that must fit in a
+     list; a long text read on its own screen wants air between lines or the paragraph reads
+     as one block. */
+  line-height: 1.75;
+  color: var(--ink);
+  /* **The prose carries its own breaks, so it must not inherit anyone else's rule about
+     them.** `white-space` inherits, and one of this component's two hosts is `.note-item-b`,
+     which declares `pre-wrap` for its own text node — inherited in here that would also
+     preserve every run of spaces inside a pasted paragraph, on top of the `<br />` the
+     renderer already emits per authored line. Stating `normal` is what keeps the two
+     mechanisms from stacking. */
+  white-space: normal;
 }
-/* Inside a host's section the foot hangs under its own note, so it takes the item's own
-   inset rather than the card's. */
-.note-item.is-open .note-open-foot {
-  margin-top: 4px;
+/* **One reset for every block, at (0,1,0)** — and the specificity is the point, not the
+   brevity. Per-element resets (`.note-prose p`, `.note-prose h3`, …) are (0,1,1) and beat
+   `.note-prose > * + *` at (0,1,0) NO MATTER THE ORDER, so every block gap this file has ever
+   declared was dead on arrival: the prose shipped with no spacing between blocks at all, which
+   is what "clumped up" actually was. Found by rendering the reported note under the real
+   stylesheet and reading the computed margins back — 0px where the rule says 16px. */
+.note-prose > * {
+  margin: 0;
 }
-.note-open-sp {
-  margin-inline-start: auto;
+
+/* ── RHYTHM ───────────────────────────────────────────────────────────────────
+   One gap between blocks, and then the rule that does the actual work: **a heading pulls away
+   from what comes before it and stays with what comes after.** Equal gaps everywhere is what
+   "clumped up" was — every block the same distance from every other, so a section heading read
+   as just another line and nothing grouped. The asymmetry is what makes structure visible, and
+   it costs no new tokens. */
+.note-prose > * + * {
+  margin-block-start: var(--space-4);
 }
-.note-open-host,
-.note-open-act {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font: inherit;
-  font-size: 11.5px;
-  background: none;
-  border: 0;
-  padding: 6px 2px;
-  cursor: pointer;
-  position: relative;
+.note-prose > * + :is(h3, h4) {
+  margin-block-start: var(--space-6);
 }
-.note-open-host {
-  font-weight: 600;
-  color: var(--cta);
+/* Last, so a heading immediately under another heading takes the TIGHT gap: two headings in a
+   row are one group, not two sections. */
+.note-prose > :is(h3, h4) + * {
+  margin-block-start: var(--space-2);
 }
-.note-open-act {
+/* **A heading inside a note is a SECTION, not a screen title**, so it spends one step and
+   the tail folds into the body size rather than opening a fourth ramp at 360px. The note's
+   own `title` is the only h1 this surface has.
+
+   And it is the BODY face deliberately: design-language.md marks h1/h2/h3 as Secular One
+   because every one of them is a screen or a card *the app wrote*. A reader's own words in
+   the app's display face read as a heading OF the app. */
+.note-prose h3,
+.note-prose h4 {
+  font-size: var(--np-head);
   font-weight: 700;
-  color: var(--cta);
+  line-height: 1.4;
 }
-/* A 44px target under an 11.5px control, without the line taking 44px of the block — the
-   trick `.map-rename` already uses (ADR-0017). */
-.note-open-host::after,
-.note-open-act::after {
-  content: '';
-  position: absolute;
-  inset: 50% 0 auto 0;
-  transform: translateY(-50%);
-  height: 44px;
+.note-prose h4 {
+  font-size: var(--np-size);
 }
-/* Nowhere to go: the same words, no caret, no target. "Absent, not broken" — the rule
-   this app runs for every affordance with no destination. */
-.note-open-host.plain {
+.note-prose ul,
+.note-prose ol {
+  padding-inline-start: 1.35em;
+}
+.note-prose li + li {
+  margin-block-start: var(--space-2);
+}
+/* The rule a note already wears on a host surface (`.note-item-lead::before` is a 2px
+   `--line` bar against its text), so the app has ONE idea of what a quoted block looks like
+   rather than two that drifted. */
+.note-prose blockquote {
+  padding-inline-start: var(--space-3);
+  border-inline-start: 2px solid var(--line);
   color: var(--muted);
-  font-weight: 400;
-  cursor: default;
+}
+.note-prose hr {
+  border: 0;
+  border-block-start: 1px solid var(--line);
+}
+.note-prose strong {
+  font-weight: 700;
+}
+/* A code chip. The FACE is chosen per span in the parser, not here: design-language.md
+   reserves JetBrains Mono for Latin/numeric runs because it has no Hebrew glyphs at all, and
+   a wifi password is exactly what a code span in a travel note is for while a Hebrew word
+   between backticks is exactly what would have broken the rule. So the chip is shared and
+   the family is not. */
+.note-prose code {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  background: var(--wash);
+  border-radius: var(--radius-8);
+  padding: 1px 5px;
+}
+.note-prose code.note-prose-code-he {
+  font-family: inherit;
+  font-weight: 600;
+}
+/* A detected link. `--cta`, the same hue `.note-open-url` spends, because opening a link is a
+   generic action and not time, place or plan (ADR-0028's budget). It wraps rather than
+   ellipsising: inside a paragraph there is nothing to truncate against.
+
+   There is no rule for a link the reader CANNOT tap — where the body is a `<button>` the
+   parser's link renders as plain isolated text and no element reaches this file at all, which
+   is the honest version of "no promise of a tap that cannot happen" (ADR-0202 §6). */
+.note-prose a {
+  color: var(--cta);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  overflow-wrap: anywhere;
+}
+/* The DENSE density — a host's section, where the prose is one item in a card that also holds
+   facts and verbs. Derived from `--np-base` rather than pinning a number, so the two
+   densities cannot drift apart if the base ever moves. */
+.note-prose.dense {
+  --np-size: calc(var(--np-base, var(--text-body)) - 1.5px);
+  line-height: 1.55;
+}
+.note-prose.dense > * + * {
+  margin-block-start: var(--space-3);
+}
+.note-prose.dense > * + :is(h3, h4) {
+  margin-block-start: var(--space-4);
+}
+.note-prose.dense > :is(h3, h4) + * {
+  margin-block-start: var(--space-1);
+}
+
+/* ── THE FULL SCREEN (ADR-0202 §2/§3) ─────────────────────────────────────────
+   `Modal variant="full"` and nothing else: the surface is the shipped
+   `.modal-overlay[data-variant='full'] > .modal-card` (ADR-0101), the bar is `.mode-chrome` +
+   `.chrome-ghost-btn` + `.chrome-chip` from App.css — the same three `SearchOverlay` borrows —
+   and the foot is `RowOpenFoot`. What is net-new is five rules, and that is the argument: a
+   note reached from five hosts needed a container, not a screen. */
+.note-full {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+/* `.search-overlay-bar`'s padding, copied rather than the class reused: that class is
+   followed by a search field and this one by prose. Same tokens, so the app's two full
+   screens sit at the same height — measured at 56px against 56px, which is a comparison
+   rather than a claim. */
+.note-full-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
+  padding: calc(var(--space-3) + var(--safe-top)) var(--space-4) var(--space-3);
+}
+/* **It says `פתק`, never the note's own words** — ADR-0153 §4's rule for the row, one surface
+   up, and already paid for once: the sheet this replaces printed the host in its head AND in
+   a fact below it, which stuttered on every untitled hosted note. */
+.note-full-t {
+  font-family: var(--font-head);
+  font-size: var(--text-h3);
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.note-full-sp {
+  flex: 1 1 auto;
+}
+.note-full-body {
+  /* **The one surface that reads at reading size** (ADR-0202's 2026-08-22 amendment). Set on
+     the body rather than inside `.note-prose`, so the prose keeps one default and each host
+     states what it is: this one is a document, the section inside a card is not. */
+  --np-base: var(--text-reading);
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-4) var(--space-4) calc(var(--space-6) + var(--safe-bottom));
+}
+/* The note's own title. `--text-h3` in the BODY face for the reason `.note-prose h3` gives. */
+.note-full-title {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-h3);
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--ink);
+}
+/* **The one line the row's foot refuses and this surface owes.** `RowOpenFoot` leaves the
+   author and the elapsed time out because they sit two lines above it; here there is no row
+   above, so the same rule produces the opposite answer. */
+.note-full-meta {
+  margin: 0 0 var(--space-4);
+  font-size: var(--text-caption);
+  color: var(--muted);
+}
+/* Pinned, because a long note scrolls and the way out of it must not be at the end of the
+   reading. `padding-inline` rather than the `.listcard` inset the foot takes in a list: there
+   is no card here, and the foot's own bottom padding would sit inside the safe area. */
+.note-full-foot {
+  flex: 0 0 auto;
+  border-block-start: 1px solid var(--line);
+  padding-inline: var(--space-2);
+  padding-block-end: var(--safe-bottom);
+}
+
+/* ── THE CLIP, AND THE WAY TO THE REST (ADR-0235) ─────────────────────────────
+   A note read inside a card is a preview; a note read on its own screen is the note. Three
+   surfaces print a body — a host's section, the board's lifted hero, the shared page — and
+   all three take these two rules, which is why they live here rather than in each. */
+
+/* **A BOX, NOT A LINE COUNT** (§2). `-webkit-line-clamp` is the reflex and it is not wrong
+   on prose; it is wrong here because it counts what `-webkit-box` calls a line, and a whole
+   `<ul>` that `NoteProse` emits is ONE box in that count — same budget of 6, 170.6px against
+   this rule's 120.8px (measured in the mockup at light/360). The argument that decides it is
+   the other number in that comparison: a `max-height` returns 120.8px for a prose note and a
+   structured one alike, so the section's height becomes a property of the SURFACE rather
+   than of whatever somebody pasted into it. That is what the report was actually about.
+
+   `1lh` is the element's own line box, so the budget follows whatever a host's density does
+   to the leading; a hand-copied `1.55` would drift the first time `.note-prose.dense` moves.
+   Baseline since 2023 (Chrome 109 / Safari 16.4 / Firefox 120).
+
+   **Block gaps are spent from the budget, and that is the right direction**: six lines is
+   six line-heights, and a new paragraph costs `--space-3` out of them, so a note full of
+   headings previews fewer lines than a running one.
+
+   **The fade is part of the mechanism, not decoration.** Because the budget is a box, the
+   cut does not always land on a line boundary, and a hard edge through a glyph reads as a
+   broken layout rather than as "there is more". NOT `styles/edge-fade.css`: that gradient's
+   axis is `to right` and its two variables exist to zero a side with nothing behind it
+   (ADR-0100 §6), which is a different question — prose always continues. */
+.note-clip {
+  display: block;
+  max-height: calc(var(--note-clip-lines) * 1lh);
+  overflow: hidden;
+  /* **The fade's stops are absolute, not percentages, and that is what makes it free.** A
+     `100% - 1.15lh` gradient is relative to the box, so on a note SHORTER than the budget —
+     where the box shrinks to its content and nothing is hidden — it would fade the last line
+     of a note you can already read whole. Measured from the top instead, a short box lies
+     entirely inside the opaque stop and takes no fade at all, with no class to toggle and no
+     measurement to wait for. */
+  --note-clip-fade: calc(var(--note-clip-lines) * 1lh);
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    black calc(var(--note-clip-fade) - 1.15lh),
+    transparent var(--note-clip-fade)
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    black calc(var(--note-clip-fade) - 1.15lh),
+    transparent var(--note-clip-fade)
+  );
+}
+/* The one surface whose control grows the text where it stands, because it has no app under
+   it to open a screen in (§5). `.map-sum.is-decide` has the same shape for the same reason. */
+.note-clip.is-open {
+  max-height: none;
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+
+/* **THE WAY TO THE REST IS `.row-open-act`** — the class, not a copy of its recipe. The foot
+   one line below already wears `תצוגה מלאה` in exactly this chrome (11.5px, weight 700,
+   `--cta`, and a 44px `::after` overlay over a 27px box), and the two are the same verb going
+   to the same screen: painting them differently is how one meaning grows two faces. So this
+   rule adds only what the foot's layout already supplied and a bare row does not — a block of
+   its own, under the body it is about.
+
+   `--cta` and not `--teal`: `.map-know-more` spends teal because the Map's card is a location
+   surface and root rule 4 licenses it there. A note is not a location.
+
+   Deliberately not a pill: a note section already has `＋ פתק` in its header, and a second
+   filled control inside a row reads as a second primary — the reasoning `.map-del` and
+   `.map-know-more` both already follow. */
+.note-more {
+  display: inline-flex;
+  margin-top: 2px;
   padding-inline: 0;
 }
-.note-open-host.plain::after {
-  content: none;
+.note-more .icon {
+  width: 14px;
+  height: 14px;
 }
-.note-open-host .icon,
-.note-open-act .icon {
-  width: 13px;
-  height: 13px;
-  flex: 0 0 auto;
+/* `עוד` / `פחות` point ALONG the text direction on the one surface that grows in place; the
+   glyph is drawn pointing down, so a quarter turn puts it where `.map-know-more`'s caret is.
+   `תצוגה מלאה` wears `Icon name="frame"` instead and needs none of this. */
+.note-more .icon.note-more-fwd {
+  transform: rotate(90deg);
+}
+.note-more .icon.note-more-back {
+  transform: rotate(-90deg);
+}
+
+/* The budget, per surface (§3). A number each host states, because how much of a note reads
+   as "enough to know what this is" is a property of the card it sits in. The hero's own is in
+   `ui/domain/hero-lift.css`, beside the block it bounds. */
+.note-item-b .note-clip {
+  --note-clip-lines: 6;
 }

@@ -55,12 +55,19 @@ describe('FxService.readAndRefresh — serve stale, never block', () => {
   });
 
   it('returns null when nothing is stored, rather than fetching inline', async () => {
-    const { service, fetch } = harness({ stored: null });
-    const before = Date.now();
-    const fx = await service.readAndRefresh();
-    expect(fx).toBeNull();
+    // **The source never answers**, which is what makes this exact: a read that awaited the
+    // refresh could not resolve at all. It used to be a `Date.now()` budget of 50 ms, and a
+    // budget is a guess about a loaded runner rather than a statement about the code
+    // (backend/`CLAUDE.md`'s testing rule). Deliberately left pending — settling it would run
+    // the background upsert this case is not about.
+    const pending = new Promise<FxRates>(() => {
+      // never settles
+    });
+    const fetch = vi.fn().mockReturnValue(pending);
+    const { service } = harness({ stored: null, fetch: fetch as FxProvider['fetch'] });
+
+    await expect(service.readAndRefresh()).resolves.toBeNull();
     // The refresh was STARTED, but the read did not await it.
-    expect(Date.now() - before).toBeLessThan(50);
     expect(fetch).toHaveBeenCalled();
   });
 

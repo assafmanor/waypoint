@@ -25,6 +25,7 @@ import { RevealList } from '../primitives/RevealList';
 import { countVisible, revealRows } from '../../lib/filter-reveal';
 import { SLOT_FILL_CAP, SLOT_FILL_SEARCH_AT } from '../../constants';
 import { reasonText, type RankedIdea } from '../../lib/shelf';
+import type { DayNaming } from '../../lib/time';
 import type { Mode } from '../../lib/mode';
 import { t } from '../../i18n/he';
 import './slot-fill-sheet.css';
@@ -33,8 +34,10 @@ export function SlotFillSheet({
   title,
   sub,
   mode,
-  date,
+  naming,
   ideas,
+  dropped,
+  glyph,
   onPickIdea,
   onNewEvent,
   onClose,
@@ -50,9 +53,22 @@ export function SlotFillSheet({
    *  mechanism, and the same reason, as `.header`/`.mode-chrome`. */
   mode: Mode;
   /** The slot's day, which is what makes a reason readable ("מחר", "היום"). */
-  date: string;
+  /** How a day is named in a ranking reason (`dayLabel`) — anchored on the slot's own
+   *  day, so a live trip's "מחר" is the day after the one being filled. */
+  naming: DayNaming;
   /** Already ranked against this slot's own neighbours, each with its reason. */
   ideas: RankedIdea[];
+  /** **How many ideas the slot could not hold** (ADR-0216 §6) — out of reach and back inside the
+   *  free time, so they are not rows here at all. Stated as a count under the list because an
+   *  empty sheet over a full shelf reads as a fault; never as a row, which is §1's whole point. */
+  dropped?: number;
+  /** **The glyph a row shows**, resolved by the host (`ideaGlyph`) rather than read off the
+   *  idea here: an idea's own icon is only the first rung of the chain — its place's pick and
+   *  its category are the next two — and this layer takes all data via props, so it cannot
+   *  look a place up. Required, not defaulted to `item.icon`: a host that forgot it would
+   *  quietly show the shelf's `💡` beside a categorised pin, which is the defect
+   *  ADR-0165 §4's amendment is about. */
+  glyph: (item: MaybeItem) => string;
   onPickIdea: (m: MaybeItem) => void;
   onNewEvent: () => void;
   onClose: () => void;
@@ -90,13 +106,13 @@ export function SlotFillSheet({
           getKey={({ item }) => item.id}
           renderRow={({ item: m, reason }) => (
             <button className="slotfill-row" onClick={() => onPickIdea(m)}>
-              <span className="slotfill-ic">{m.icon}</span>
+              <span className="slotfill-ic">{glyph(m)}</span>
               <span className="slotfill-main">
                 <span className="slotfill-t">{m.title}</span>
                 {/* The ranking REASON, never a score and never a star: it says which
                     fact put this row here, so a wrong order is arguable instead of
                     magic (ADR-0151 §8). */}
-                <span className="slotfill-m">{reasonText(reason, date)}</span>
+                <span className="slotfill-m">{reasonText(reason, naming)}</span>
               </span>
               <span className="slotfill-add">
                 <Icon name="plus" />
@@ -104,7 +120,21 @@ export function SlotFillSheet({
             </button>
           )}
         />
-        {countVisible(rows) === 0 && <div className="slotfill-empty">{t.slotFill.empty}</div>}
+        {/* **Two empty states, because they are two facts** (ADR-0216 §6): a shelf with nothing on
+            it, and a shelf whose every idea is out of reach of this slot. `אין רעיונות במדף`
+            under fourteen ideas is a sentence the reader would go looking for the bug behind. */}
+        {countVisible(rows) === 0 && (
+          <div className="slotfill-empty">
+            {dropped && !searching ? t.slotFill.noneFit : t.slotFill.empty}
+          </div>
+        )}
+        {/* …and the count itself, wherever the filter took some but not all. Suppressed while
+            SEARCHING, where a short list is the query's doing and not the slot's. */}
+        {!!dropped && countVisible(rows) > 0 && !searching && (
+          <div className="slotfill-dropped">
+            {dropped === 1 ? t.slotFill.droppedOne : t.slotFill.dropped(dropped)}
+          </div>
+        )}
         {hidden > 0 && (
           <button className="slotfill-more" onClick={() => setExpanded(true)}>
             {t.slotFill.all(ideas.length)}

@@ -133,4 +133,21 @@ describe('ChoiceGrid', () => {
       expect(container.querySelector('.choice-grid.pills.compact')).toBeTruthy();
     });
   });
+
+  // The scrolling row's edges fade where the content continues (ADR-0100 §6), through the one
+  // shared mechanism `lib/edge-fade.ts` drives — not a copy of the gradient in this
+  // component's stylesheet, and not on a grid, which does not scroll.
+  describe('the edge fade', () => {
+    it('is carried by the pills row', () => {
+      const { container } = render(
+        <ChoiceGrid options={OPTIONS} value="a" onChange={() => {}} layout="pills" />,
+      );
+      expect(container.querySelector('.choice-grid.pills.edge-fade')).toBeTruthy();
+    });
+
+    it('is not carried by the grid', () => {
+      const { container } = render(<ChoiceGrid options={OPTIONS} value="a" onChange={() => {}} />);
+      expect(container.querySelector('.edge-fade')).toBeNull();
+    });
+  });
 });

@@ -74,12 +74,59 @@ WORKDIR /app
 #
 # `openssl` rides along for Prisma, which logs `failed to detect the libssl/openssl version`
 # on slim images and falls back to guessing an engine. Same class of omission, same fix.
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates openssl \
+#
+# **`chromium` is here for the itinerary PDF** (ADR-0213 §4), and it is a SYSTEM package
+# rather than a Playwright download on purpose: `backend/package.json` depends on
+# `playwright-core`, which ships no browser, so nothing in this build fetches ~150 MB from
+# a CDN at image-build time or (worse) at first request. `PDF_CHROMIUM_PATH` defaults to
+# where this package puts it. `fonts-liberation` is Chromium's own baseline — the app's
+# Hebrew faces are inlined into the document as data URLs, so the PDF does not depend on
+# any system font, but a browser with no fontconfig match at all fails to start.
+#
+# **`fonts-noto-color-emoji` is for the link-preview covers** (ADR-0220's 2026-09-06
+# amendment), and it is a SYSTEM font rather than an inlined face on purpose. A cover draws
+# the trip's own icon, which is very often a country flag, and it is a screenshot — so it
+# wants the glyph in colour, where the paper deliberately wants the monochrome face it
+# inlines (`backend/assets/fonts/README.md`). ~10 MB of image for the one thing a preview is
+# now about.
+#
+# **It does not reach the PDF.** A declared `@font-face` wins over system fallback for every
+# codepoint inside its `unicode-range`, and the paper declares `Noto Emoji` across the whole
+# emoji range — so the document keeps its extractable monochrome glyphs, which is what
+# `scripts/verify-pdf-smoke.mjs` checks.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates openssl chromium fonts-liberation fonts-noto-color-emoji \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=pmtiles /usr/local/bin/pmtiles /usr/local/bin/pmtiles
 # /out carries the prisma CLI + migrations for Railway's pre-deploy migrate.
 COPY --from=build /out ./
-# Served by the backend when <dist>/../public exists (spa-fallback.filter.ts).
+# Served by the backend when <dist>/../public exists (all-exceptions.filter.ts).
 COPY --from=build /repo/frontend/dist ./public
+# The PDF renderer reads these off disk and inlines them into the document; neither source
+# tree is in the runtime image, so both sets are copied to the path
+# `itinerary-pdf.template.ts` looks in first. The second is the emoji face the APP has no
+# use for and the paper does — an event's icon is an emoji, and this base image has no
+# emoji coverage at all, so without it every icon prints as a rectangle
+# (`backend/assets/fonts/README.md`).
+COPY --from=build /repo/frontend/src/assets/fonts ./pdf-fonts
+COPY --from=build /repo/backend/assets/fonts/noto-emoji.woff2 ./pdf-fonts/
+# **The cover templates and the sheets they borrow** (ADR-0220's 2026-09-06 amendment).
+# `scripts/og-covers/` is the ONE source for the two covers: `gen-app-icons.mjs` fills it
+# with generic text at build time into the committed fallback PNGs, and `og-cover.template.ts`
+# fills it with a trip's own facts at request time — so the picture in a chat cannot drift
+# from the screen the link opens. Neither source tree is otherwise in the runtime image, and
+# `app/` is where the flattened stylesheets land because a cover renders the app's SHIPPED
+# rules rather than a transcription of them.
+#
+# **From the build CONTEXT, not from the `build` stage** — that stage copies `packages`,
+# `backend` and `frontend` and has never had `scripts/`, so `--from=build` failed the image
+# build outright (`pdf-smoke`, 2026-09-05). These are sources with no build step of their own,
+# so there is nothing a stage would add; the fonts line above only reads from `build` because
+# `frontend/` happens to be there already.
+COPY scripts/og-covers ./og-covers
+COPY frontend/src/styles/tokens.css \
+     frontend/src/App.css \
+     frontend/src/screens/shared-itinerary.css \
+     ./og-covers/app/
 EXPOSE 3000
 CMD ["node", "dist/main.js"]

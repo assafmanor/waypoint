@@ -14,8 +14,9 @@ import {
 } from '../lib/api';
 import { isNetworkError, isOffline } from '../lib/outbox';
 import { wipeLocalData } from '../lib/cache';
-import { withDeadline } from '../lib/deadline';
-import { API_PHASE, API_TIMEOUT_MS, ME_STORAGE_KEY } from '../constants';
+import { reconcileThisDevice, unsubscribeThisDevice } from '../lib/push';
+import { standInAfter, withDeadline } from '../lib/deadline';
+import { API_PHASE, API_TIMEOUT_MS, ME_STORAGE_KEY, STAND_IN_AFTER_MS } from '../constants';
 
 export type AuthStatus = 'loading' | 'anon' | 'authed';
 
@@ -74,6 +75,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setStatus('anon');
       clearCachedMe();
       void wipeLocalData();
+      // **The push subscription is deliberately NOT revoked here** (ADR-0197 §2.3a). This ran
+      // `logout`'s revoke, and a lapsed cookie is nobody leaving: the local `unsubscribe()`
+      // cannot be undone without a gesture, so a member who had simply not opened the app for
+      // a while found notifications reading OFF for good. Signing back in re-posts the device
+      // through `reconcileThisDevice` below, and a DIFFERENT person signing in re-owns the row.
     });
     return () => setOnSessionExpired(null);
   }, []);
@@ -94,15 +100,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // would turn a slow-but-alive one into a forced sign-out, which is a product call and
       // not this fix's to make. Giving up on the wait costs nothing — it is what a *failed*
       // refresh already does here, and a late one still installs its token for the next call.
-      await withDeadline(API_PHASE.BOOT_REFRESH, API_TIMEOUT_MS.FETCH, () =>
-        refreshAccessToken(),
-      ).catch(() => false);
+      //
+      // **And a bound is only half of it** (owner report, low reception abroad): the wait it
+      // ends is twenty seconds long, and on a link that is alive but crawling the whole boot
+      // spends them on `BootScreen` before the cached identity below is even reachable — that
+      // fallback runs on a FAILURE, and a slow link does not fail. So the two network steps of
+      // this boot are one `live` read that the cached identity stands in for after
+      // `STAND_IN_AFTER_MS`, and `/me` replaces when it lands.
+      const live = (async () => {
+        await withDeadline(API_PHASE.BOOT_REFRESH, API_TIMEOUT_MS.FETCH, () =>
+          refreshAccessToken(),
+        ).catch(() => false);
+        return fetchMe();
+      })();
       try {
-        const who = await fetchMe();
+        // Standing in can put the first API call ahead of the token the refresh above is still
+        // fetching: that call 401s and `apiFetch` retries it behind the SAME in-flight refresh
+        // (`refreshInFlight` coalesces), so it costs a retry and never a sign-out.
+        const who = await standInAfter(
+          STAND_IN_AFTER_MS,
+          live,
+          async () => readCachedMe(),
+          (cached) => {
+            if (cancelled) return;
+            setMe(cached);
+            setStatus('authed');
+          },
+        );
         if (cancelled) return;
         setMe(who);
         setStatus('authed');
         cacheMe(who);
+        // **The mirror of the sign-out above** (ADR-0197 §2.3 leaves; this arrives). A live
+        // session is the moment the server can be told this device is still reachable — and
+        // it has to be told, because the row it holds dies without the phone hearing about
+        // it: pruned when a push service reports the endpoint gone (§10), revoked from
+        // another device's list, rotated. The switch keeps reading on either way, so nothing
+        // else would ever notice. Fire-and-forget: it never throws and never prompts, and a
+        // boot must not wait on it (see `reconcileThisDevice`).
+        void reconcileThisDevice(who.push?.vapidPublicKey);
       } catch (err) {
         if (cancelled) return;
         // Offline cold-load (sync-and-offline.md "Read"): the refresh + /me both
@@ -131,6 +167,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async () => {
+    // **Before `requestLogout`, deliberately** (ADR-0197 §2.3). A push subscription is not
+    // client-local data — it lives on the server and keeps working after the tab closes,
+    // which is the whole point — so `wipeLocalData` cannot reach it, and a phone handed to
+    // somebody else would keep waking with this person's deadlines on the lock screen.
+    // The server half of the revoke needs a session, so it has to happen while there still
+    // is one; the local `unsubscribe()` inside is what makes it true even if that call fails.
+    await unsubscribeThisDevice().catch(() => {});
     await requestLogout();
     await wipeLocalData();
     setMe(null);
@@ -173,4 +216,17 @@ export function useAuth() {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error('useAuth must be used within <AuthProvider>');
   return ctx;
+}
+
+/**
+ * The session if there is one, `null` if this subtree has no `AuthProvider` above it.
+ *
+ * **`useAuth` keeps throwing, and that is not softened here.** For nearly everything a missing
+ * provider is a wiring bug and failing loudly is the right answer. This exists for the one
+ * shape where absence is a real state to render for rather than a fault: a component that must
+ * be **inert** outside a session — the push ask (ADR-0197 §7's second door) is one, because no
+ * session means no device to subscribe and nothing to offer.
+ */
+export function useMaybeAuth() {
+  return useContext(AuthContext) ?? null;
 }

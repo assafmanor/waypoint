@@ -21,6 +21,7 @@
 // category rows needed the same thing (root rule 8) — it is the shared one now.
 import { Fragment } from 'react';
 import { useCenterSelected } from '../../lib/useCenterSelected';
+import { DAY_PHASE, dayPhase } from '../../lib/time';
 import './day-strip.css';
 
 export interface DayStripDay {
@@ -69,6 +70,9 @@ export interface DayStripProps {
    *  the drag's hit-test, not from the pill: a touch pointer is implicitly captured by
    *  the element the touch started on, so `pointerenter` never fires here mid-drag. */
   overDate?: string | null;
+  /** The trip has ended (ADR-0239 §3). A Plan-mode empty day is a gap to go fill, and
+   *  nothing is filled after the trip, so no day is marked empty. */
+  finished?: boolean;
 }
 
 /** Pill state classes, faithful to App.tsx's pillClass (ADR-0043/0028). */
@@ -80,12 +84,14 @@ function pillClass(
     mode,
     hasEvents,
     unscoped,
+    finished,
   }: {
     selected: string;
     today: string;
     mode: DayStripMode;
     hasEvents?: boolean;
     unscoped?: boolean;
+    finished?: boolean;
   },
 ): string {
   const c = ['wp-daypill'];
@@ -94,13 +100,22 @@ function pillClass(
   // markers (Plan) stay.
   const isSelected = date === selected && !unscoped;
   if (mode === 'trip') {
-    if (isSelected) c.push(date === today ? 'on' : date < today ? 'sel-history' : 'sel-future');
-    else if (date === today) c.push('today-anchor');
-    else c.push(date < today ? 'past' : 'future');
+    // One comparison, one place (`lib/time.ts`'s `dayPhase`, ADR-0213's eleventh amendment
+    // §7). This read `date === today ? … : date < today ? …` inline, which is the same
+    // question `DayView` was also answering inline and the public reader now asks too.
+    const phase = dayPhase(date, today);
+    if (isSelected)
+      c.push(
+        phase === DAY_PHASE.TODAY ? 'on' : phase === DAY_PHASE.PAST ? 'sel-history' : 'sel-future',
+      );
+    else if (phase === DAY_PHASE.TODAY) c.push('today-anchor');
+    else c.push(phase === DAY_PHASE.PAST ? 'past' : 'future');
   } else {
     if (isSelected) c.push('on');
-    else if (date < selected) c.push('past');
-    if (!hasEvents) c.push('empty');
+    // Not on a finished trip: every day is behind you there, so dimming them is the wash
+    // ADR-0239 §6 retired (ADR-0240 §3).
+    else if (date < selected && !finished) c.push('past');
+    if (!hasEvents && !finished) c.push('empty');
   }
   return c.join(' ');
 }
@@ -114,13 +129,14 @@ export function DayStrip({
   unscoped,
   dragging,
   overDate,
+  finished,
 }: DayStripProps) {
   // Don't force-scroll to a day that isn't visually selected (all-days, or a
   // trip-wide tab).
   const selectedRef = useCenterSelected<HTMLButtonElement>(selected, { active: !unscoped });
 
   return (
-    <div className="wp-daystrip" data-mode={mode}>
+    <div className="wp-daystrip" data-mode={mode} data-phase={finished ? 'past' : undefined}>
       {days.map((d) => (
         <Fragment key={d.date}>
           {d.monthLabel && (
@@ -133,8 +149,14 @@ export function DayStrip({
             ref={d.date === selected ? selectedRef : undefined}
             type="button"
             className={
-              pillClass(d.date, { selected, today, mode, hasEvents: d.hasEvents, unscoped }) +
-              (dragging && overDate === d.date ? ' drop-over' : '')
+              pillClass(d.date, {
+                selected,
+                today,
+                mode,
+                hasEvents: d.hasEvents,
+                unscoped,
+                finished,
+              }) + (dragging && overDate === d.date ? ' drop-over' : '')
             }
             onClick={() => onSelect(d.date)}
             aria-pressed={d.date === selected && !unscoped}

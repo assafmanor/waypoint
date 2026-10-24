@@ -18,12 +18,37 @@
 // about places, providers or Commons. ADR-0166's Consequences promise the link-preview
 // backlog item reuses this rather than growing a second fetch-and-cache-a-thumbnail machine
 // beside it, and that only holds if this file never learns what a place is.
+//
+// **Its second consumer arrived on 2026-09-12** (ADR-0133 §13, the Google avatar copy), and it
+// cost this file an options bag rather than a fork: the two things an enrichment thumbnail and
+// a profile photo disagree about are the byte cap and the key prefix, and both were constants
+// read inline. A third consumer is now two arguments, not another copy of the fetch-sniff-store
+// sequence — which is what "subject-agnostic" has to mean to be worth anything.
 import { randomUUID } from 'node:crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import { ENRICHMENT_BLOB_KEY_PREFIX, MAX_ENRICHMENT_IMAGE_BYTES } from '@waypoint/shared';
 import { sniffImageMimeType } from '../common/image-sniff';
 import { putObject } from '../common/storage';
 import { EnrichmentFetcher } from './outbound-fetch';
+
+/** The host a log line names — enough to tell an avatar copy from a Commons thumbnail without
+ *  printing a whole URL into the log, now that two callers share these three warnings. */
+function safeHost(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return '<unparseable>';
+  }
+}
+
+/** What a second consumer needs to say. Both default to enrichment's own values, so the
+ *  caller this file was written for passes nothing. */
+export interface StoreImageOptions {
+  /** Byte ceiling for the fetch. An avatar's is the upload cap, not a thumbnail's. */
+  maxBytes?: number;
+  /** Blob-key prefix — `''` for a caller whose content route identifies the blob itself. */
+  keyPrefix?: string;
+}
 
 /** A stored image: where the bytes are, and what they actually turned out to be. */
 export interface StoredImage {
@@ -49,19 +74,20 @@ export class EnrichmentImagePipeline {
    * a socket opens — an image URL that arrived in a third-party API response is exactly the
    * SSRF seat §7 is about, and it is never followed just because a response supplied it.
    */
-  async store(url: string): Promise<StoredImage | null> {
+  async store(url: string, options: StoreImageOptions = {}): Promise<StoredImage | null> {
+    const maxBytes = options.maxBytes ?? MAX_ENRICHMENT_IMAGE_BYTES;
     let bytes: Buffer;
     try {
-      const response = await this.fetcher.fetch(url, { maxBytes: MAX_ENRICHMENT_IMAGE_BYTES });
+      const response = await this.fetcher.fetch(url, { maxBytes });
       if (response.status !== 200) {
-        this.logger.warn(`enrichment image fetch returned ${response.status}`);
+        this.logger.warn(`image fetch returned ${response.status} for ${safeHost(url)}`);
         return null;
       }
       bytes = response.body;
     } catch (err) {
       // A refused host, a timeout, an oversized body, a dead upstream: all the same outcome
       // for the caller — this candidate does not become an image.
-      this.logger.warn(`enrichment image fetch failed: ${(err as Error).message}`);
+      this.logger.warn(`image fetch failed for ${safeHost(url)}: ${(err as Error).message}`);
       return null;
     }
 
@@ -74,13 +100,17 @@ export class EnrichmentImagePipeline {
     // document.
     const mimeType = sniffImageMimeType(bytes);
     if (!mimeType) {
-      this.logger.warn('enrichment image rejected: bytes are not a supported raster image');
+      this.logger.warn(
+        `image rejected from ${safeHost(url)}: bytes are not a supported raster image`,
+      );
       return null;
     }
 
     // Prefixed so the `@Public` content route can tell an enrichment blob from a document's
-    // ciphertext in the one flat keyspace they share.
-    const blobKey = `${ENRICHMENT_BLOB_KEY_PREFIX}${randomUUID()}`;
+    // ciphertext in the one flat keyspace they share. A caller whose own route already
+    // identifies the blob another way (the avatar route carries the user) passes `''`.
+    const prefix = options.keyPrefix ?? ENRICHMENT_BLOB_KEY_PREFIX;
+    const blobKey = `${prefix}${randomUUID()}`;
     await putObject(blobKey, bytes);
     return { blobKey, mimeType, sizeBytes: bytes.byteLength };
   }

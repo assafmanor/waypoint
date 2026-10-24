@@ -3,7 +3,7 @@
 // with an amber anticipation glow and a boarding-pass "ticket" preview card
 // (perforation, countdown-to-departure, playful anonymous avatars). The
 // public preview API returns only { tripName, destination, dates, memberCount }
-// (no member names), so the avatars are generic `GLYPH.anonAvatar` placeholders, not real
+// (no member names), so the avatars are generic `INVITE_AVATARS` placeholders, not real
 // people — matching the mockup's intent.
 //
 // One tap to join, no settings step (Assaf, 2026-07-14): calendarSyncEnabled
@@ -30,7 +30,7 @@
 // instead of showing the "you're invited" ticket to an existing member.
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import type { InvitePreview } from '@waypoint/shared';
+import { INVITE_AVATARS, type InvitePreview } from '@waypoint/shared';
 import { useAuth } from '../state/auth-state';
 import { useActiveTripId } from '../state/active-trip-id';
 import { useIsOffline } from '../lib/outbox';
@@ -45,8 +45,10 @@ import {
   joinTrip,
 } from '../lib/api';
 import { saveIntent } from '../lib/intent';
+import { armInstallAskAfterJoin } from '../lib/install';
 import { dayCount } from '../lib/hebrew';
 import { countdownParts, formatTripDates } from '../lib/time';
+import { daysUntilStartOnDevice } from '../lib/mode';
 import {
   APP_NAME,
   DEFAULT_TRIP_ICON,
@@ -56,6 +58,7 @@ import {
   MS_PER_DAY,
 } from '../constants';
 import { t } from '../i18n/he';
+import { AppMark } from '../ui/AppMark';
 
 type LoadState =
   | { status: 'loading' }
@@ -66,8 +69,6 @@ type LoadState =
 
 // Playful placeholder avatar colors (mockup #s-linkjoin) — the public preview
 // has no real members, so these are anonymous stand-ins.
-const AVATAR_COLORS = ['#5ec5b6', '#e88c8c', '#9c8ce8', '#8cb6e8'];
-const MAX_AVATARS = 4;
 
 export function JoinTrip() {
   const { token = '' } = useParams();
@@ -123,6 +124,10 @@ export function JoinTrip() {
     try {
       const membership = await joinTrip(token);
       setTripId(membership.tripId);
+      // Door A's arm (ADR-0204 §2). Once the trip surface has loaded, the join is history
+      // and a membership looks like any other — so the ONE moment that can know this
+      // happened is this one. A one-shot flag; the next trip surface consumes it.
+      armInstallAskAfterJoin();
       // The stamp lands on the SERVER'S success and never optimistically: a stamp
       // that has to be un-stamped when the join fails is worse than no stamp, so the
       // spinner covers the request and this only runs on a real membership.
@@ -186,51 +191,7 @@ export function JoinTrip() {
     >
       <div className="join-top">
         <div className="join-logo">{APP_NAME}</div>
-        {/* The Travelive mark (see Login.tsx's .land-icon for the rationale) —
-            marker + amber "now" core on a board disc, mirroring
-            public/icon-mark-bright.svg. Inlined so it stays crisp at this size. */}
-        <svg className="join-icon" viewBox="0 0 512 512" aria-hidden="true">
-          <defs>
-            <linearGradient id="jg-teal" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0" stopColor="#37B3A3" />
-              <stop offset="1" stopColor="#1F7D73" />
-            </linearGradient>
-            <linearGradient id="jg-amber" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0" stopColor="#F2B65A" />
-              <stop offset="1" stopColor="#E09A2F" />
-            </linearGradient>
-            <linearGradient id="jg-board" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0" stopColor="#182642" />
-              <stop offset="1" stopColor="#0E1729" />
-            </linearGradient>
-          </defs>
-          <circle cx="256" cy="256" r="256" fill="url(#jg-board)" />
-          <circle
-            cx="256"
-            cy="256"
-            r="246"
-            fill="none"
-            stroke="#3FB3A3"
-            strokeWidth="18"
-            opacity={0.9}
-          />
-          <g transform="translate(256 268) scale(0.66) translate(-256 -260)">
-            <path
-              d="M256 44 C150 44 66 126 66 230 C66 348 206 436 256 476 C306 436 446 348 446 230 C446 126 362 44 256 44 Z"
-              fill="url(#jg-teal)"
-            />
-            <circle
-              cx="256"
-              cy="216"
-              r="96"
-              fill="none"
-              stroke="#F2B65A"
-              strokeWidth="9"
-              opacity={0.42}
-            />
-            <circle cx="256" cy="216" r="60" fill="url(#jg-amber)" />
-          </g>
-        </svg>
+        <AppMark className="join-icon" />
       </div>
 
       {load.status === 'loading' && <PassSkeleton />}
@@ -277,12 +238,13 @@ export function JoinTrip() {
 }
 
 function Ready({ preview, outcome }: { preview: InvitePreview; outcome: string | null }) {
-  const daysUntilStart = Math.ceil(
-    (Date.parse(`${preview.startDate}T00:00:00Z`) - getNow()) / MS_PER_DAY,
-  );
+  // Whole calendar days from the device's own today: nothing of the trip is loaded here, and
+  // the person reading an invite is at home. (Measured to the start date's UTC midnight and
+  // rounded up, an evening east of UTC once counted one day too many.)
+  const daysUntilStart = daysUntilStartOnDevice(preview.startDate, new Date(getNow()));
   const tripDays =
     Math.round((Date.parse(preview.endDate) - Date.parse(preview.startDate)) / MS_PER_DAY) + 1;
-  const avatarCount = Math.min(preview.memberCount, MAX_AVATARS);
+  const avatarCount = Math.min(preview.memberCount, INVITE_AVATARS.MAX);
   // The countdown counts UP to its value (ADR-0143): the number of days until you fly
   // is the most emotive fact on this screen, and it arrived as static text.
   // `countdownParts` may return a rounded month count far out, so the count-up runs on
@@ -367,14 +329,14 @@ function Ready({ preview, outcome }: { preview: InvitePreview; outcome: string |
                   className="ticket-av"
                   style={
                     {
-                      background: AVATAR_COLORS[i % AVATAR_COLORS.length],
+                      background: INVITE_AVATARS.COLORS[i % INVITE_AVATARS.COLORS.length],
                       // Per-avatar stagger index — they land one after another, so the
                       // row reads as people arriving (ADR-0143).
                       '--i': i,
                     } as React.CSSProperties
                   }
                 >
-                  {GLYPH.anonAvatar}
+                  {INVITE_AVATARS.GLYPH}
                 </span>
               ))}
             </div>

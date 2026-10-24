@@ -7,6 +7,8 @@ import type {
   MaybeItem,
   Note,
   Place,
+  Task,
+  TravelModeOverride as PrismaTravelModeOverride,
   Trip,
   User,
 } from '@prisma/client';
@@ -20,13 +22,19 @@ import type {
   Note as SharedNote,
   NoteSource,
   Place as SharedPlace,
+  Task as SharedTask,
+  TaskDerivedKey,
+  TravelModeOverride as SharedTravelModeOverride,
   Trip as SharedTrip,
   TripEvent,
   User as SharedUser,
 } from '@waypoint/shared';
 import { avatarContentPath, resolveAvatarHue } from '@waypoint/shared';
 
-const toDateOnly = (d: Date): string => d.toISOString().slice(0, 10);
+/** A `@db.Date` column as `YYYY-MM-DD`. Exported since ADR-0220: `SharingService`'s
+ *  `previewByCode` needs the same conversion, and a second one-liner beside this one is how
+ *  a preview comes to print a different day than the ticket it advertises. */
+export const toDateOnly = (d: Date): string => d.toISOString().slice(0, 10);
 
 /** The one place a `User` row becomes a wire DTO. It RESOLVES the identity hue
  *  (stored pick, else derived from the id), so a nullable column can never reach a
@@ -40,6 +48,7 @@ export const toUserDto = (u: User): SharedUser => ({
   avatarHue: resolveAvatarHue(u.id, u.avatarHue),
   avatarChoice: u.avatarChoice,
   googleAvatarUrl: u.googleAvatarUrl,
+  googleAvatarCopyUrl: u.googleAvatarKey ? avatarContentPath(u.id, u.googleAvatarKey) : null,
   uploadedAvatarUrl: u.uploadedAvatarKey ? avatarContentPath(u.id, u.uploadedAvatarKey) : null,
   preferredCurrency: u.preferredCurrency,
   createdAt: u.createdAt.toISOString(),
@@ -90,6 +99,7 @@ export const toEventDto = (e: Event): TripEvent => ({
   placeId: e.placeId ?? undefined,
   displayTimezone: e.displayTimezone ?? undefined,
   status: e.status,
+  endStatus: e.endStatus ?? undefined,
   bookingId: e.bookingId ?? undefined,
   sortOrder: e.sortOrder,
   source: e.source,
@@ -98,6 +108,28 @@ export const toEventDto = (e: Event): TripEvent => ({
   updatedBy: e.updatedBy,
 });
 
+/**
+ * **AN EVENT AS A `Change.after` PAYLOAD** — the persisted row, with every absent field stated as
+ * an explicit `null`.
+ *
+ * `sync-and-offline.md` §3 already required the row rather than the request ("build `after` from
+ * what `apply` returned"), and `events.service.ts` was the module that never did: it published
+ * `after: input`, so a field the service DERIVED was invisible to every other device. The reported
+ * cost (owner, 2026-09-01) was a peer's drag — `move` shifts `endsAt` itself to preserve the
+ * duration, the input has no `endsAt`, so peers took the new start, kept the old end and silently
+ * held an event of a different length. `endsAt` is the instant a hole is measured from, so that
+ * day's journeys, free time and total were all then derived from a time the server had replaced.
+ *
+ * **The `null`s are what make it a ROW rather than a patch, and they are the half `toEventDto`
+ * cannot express.** A receiving client merges `after` over what it holds, and `undefined` does not
+ * survive JSON — so a field the server CLEARED (an event's own place, once it is linked to a
+ * booking: ADR-0048's authority invariant) would simply be missing from the payload and the peer
+ * would keep the stale value. `null` is the wire's "unset me", already understood on the far side
+ * by `coerceClearedFields`.
+ */
+export const toEventChangePayload = (e: Event): Record<string, unknown> =>
+  Object.fromEntries(Object.entries(toEventDto(e)).map(([key, value]) => [key, value ?? null]));
+
 export const toBookingDto = (b: Booking): SharedBooking => ({
   id: b.id,
   tripId: b.tripId,
@@ -105,6 +137,8 @@ export const toBookingDto = (b: Booking): SharedBooking => ({
   title: b.title,
   confirmationCode: b.confirmationCode ?? undefined,
   provider: b.provider ?? undefined,
+  flightNumber: b.flightNumber ?? undefined,
+  gate: b.gate ?? undefined,
   placeId: b.placeId ?? undefined,
   fromPlaceId: b.fromPlaceId ?? undefined,
   toPlaceId: b.toPlaceId ?? undefined,
@@ -167,6 +201,35 @@ export const toNoteDto = (n: Note): SharedNote => ({
   updatedBy: n.updatedBy,
 });
 
+/** `derivedKey` and `status` are the two columns the database holds looser than the wire
+ *  does — a `String?` by design (a sixth readiness check must not be a migration) and a
+ *  Prisma enum whose member names are the shared union's values. Both are re-narrowed here,
+ *  which is the same cast `toNoteDto` makes for `source`. */
+export const toTaskDto = (t: Task): SharedTask => ({
+  id: t.id,
+  tripId: t.tripId,
+  title: t.title,
+  body: t.body ?? undefined,
+  dueAt: t.dueAt?.toISOString(),
+  dueHasTime: t.dueHasTime,
+  assigneeUserId: t.assigneeUserId ?? undefined,
+  important: t.important,
+  status: t.status,
+  settledAt: t.settledAt?.toISOString(),
+  settledBy: t.settledBy ?? undefined,
+  derivedKey: (t.derivedKey as TaskDerivedKey | null) ?? undefined,
+  parentTaskId: t.parentTaskId ?? undefined,
+  eventId: t.eventId ?? undefined,
+  bookingId: t.bookingId ?? undefined,
+  placeId: t.placeId ?? undefined,
+  maybeItemId: t.maybeItemId ?? undefined,
+  documentId: t.documentId ?? undefined,
+  createdBy: t.createdBy,
+  createdAt: t.createdAt.toISOString(),
+  updatedAt: t.updatedAt.toISOString(),
+  updatedBy: t.updatedBy,
+});
+
 /** A link row → its wire DTO (ADR-0173 §1). No `updatedAt`/`updatedBy`: a link has no
  *  content, so there is nothing to have edited. */
 export const toDocumentAttachmentDto = (a: DocumentAttachment): SharedDocumentAttachment => ({
@@ -177,6 +240,20 @@ export const toDocumentAttachmentDto = (a: DocumentAttachment): SharedDocumentAt
   bookingId: a.bookingId ?? undefined,
   createdBy: a.createdBy,
   createdAt: a.createdAt.toISOString(),
+});
+
+/** **The override, as the snapshot and the change feed carry it** (ADR-0206 §AM). The pair is
+ *  already canonicalised in storage, so nothing here has to sort — reading it back out in the
+ *  same order it went in is what keeps the client's lookup a single key. */
+export const toTravelModeOverrideDto = (o: PrismaTravelModeOverride): SharedTravelModeOverride => ({
+  id: o.id,
+  tripId: o.tripId,
+  fromPlaceId: o.fromPlaceId,
+  toPlaceId: o.toPlaceId,
+  mode: o.mode as SharedTravelModeOverride['mode'],
+  createdBy: o.createdBy,
+  createdAt: o.createdAt.toISOString(),
+  updatedAt: o.updatedAt.toISOString(),
 });
 
 export const toInvitePreviewDto = (t: Trip, memberCount: number): InvitePreview => ({

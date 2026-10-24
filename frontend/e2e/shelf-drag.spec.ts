@@ -28,10 +28,15 @@ import { test, expect, type Page, type CDPSession } from '@playwright/test';
 import { bootIntoTrip, shortLiveTripDates, todayAt } from './boot';
 import { dispatchTouch } from './touch';
 import {
+  DRAG_DAY_DWELL_MS,
+  DRAG_DAY_EDGE_PX,
+  DRAG_DAY_LIFT_PX,
+  DRAG_DAY_REVERSE_DWELL_MS,
   DRAG_EDGE_SCROLL_RELEASE_PX,
   DRAG_EDGE_SCROLL_ZONE_PX,
   DRAG_GHOST_LIFT_PX,
 } from '../src/constants';
+import { t } from '../src/i18n/he';
 
 // Phone-sized and touch-capable: the drag is a touch gesture on a ~390px screen
 // (ADR-0017), and `hasTouch` is what makes the browser arbitrate scroll-vs-drag
@@ -40,6 +45,10 @@ test.use({ hasTouch: true, isMobile: true, viewport: { width: 390, height: 660 }
 
 const TODAY = new Date().toISOString().slice(0, 10); // trip timezone is UTC
 const TOMORROW = new Date(Date.parse(`${TODAY}T00:00:00.000Z`) + 86_400_000)
+  .toISOString()
+  .slice(0, 10);
+/** The day the surface's TRAILING edge names in RTL — the other half of the mirror. */
+const YESTERDAY = new Date(Date.parse(`${TODAY}T00:00:00.000Z`) - 86_400_000)
   .toISOString()
   .slice(0, 10);
 
@@ -230,9 +239,9 @@ async function bodyBands(page: Page) {
  *  builder — so the mode toggle comes first, then the day tab. Both screens are
  *  lazy chunks, hence waiting on the builder rather than the click. */
 async function openPlanDayBuilder(page: Page) {
-  await page.getByRole('button', { name: 'תכנון', exact: true }).click();
+  await page.getByRole('button', { name: t.mode.plan, exact: true }).click();
   await expect(page.locator('.app')).toHaveAttribute('data-mode', 'plan');
-  await page.locator('nav.nav button', { hasText: 'יום-יום' }).click();
+  await page.locator('nav.nav button', { hasText: t.tabs.days }).click();
   // Generous: the day builder is a lazy chunk, and under the dev server several
   // parallel workers asking for it at once can take a while to transform.
   // `.builder-side` and not `.shelf`: a shelf strip only exists when it has content or
@@ -283,7 +292,7 @@ test.describe('a plain tap on an idea (ADR-0116 §5a)', () => {
     // The sheet is the idea's, not the schedule form's: it names the idea and offers the
     // verb the tap used to perform.
     await expect(sheet.getByText('מגדל אייפל')).toBeVisible();
-    await expect(sheet.locator('.note-sec')).toBeVisible();
+    await expect(sheet.locator('.note-sec:not(.tsk-sec)')).toBeVisible();
     await expect(sheet.locator('.wp-row-action').first()).toContainText('שיבוץ ליום');
 
     // And one press deeper is the day's own positions (ADR-0161 §4) — not the clock the
@@ -308,7 +317,7 @@ test.describe('a plain tap on an idea (ADR-0116 §5a)', () => {
     await expect(page.getByRole('dialog')).toBeVisible();
     // No event was written and no idea consumed: the tap is a read, and the day's rows are
     // the same ones. (The gap chips are what a scheduled idea would have displaced.)
-    await expect(page.locator('[data-bld-id]')).toHaveCount(EVENTS.length);
+    await expect(page.locator('[data-event]')).toHaveCount(EVENTS.length);
     expect(await page.locator(`${POOL_STRIP} .wp-maybecard`).count()).toBe(before);
   });
 });
@@ -536,9 +545,9 @@ test.describe('a day with a wide gap between two events', () => {
   // head — before the first row, where no chip has ever been.
   test('a row dropped on a seam moves into that position', async ({ page }) => {
     const cdp = await page.context().newCDPSession(page);
-    const row = page.locator('[data-bld-id="ev-2"]');
+    const row = page.locator('[data-event="ev-2"]');
     const timeBefore = await row.locator('.bld-time').innerText();
-    const start = (await boxOf(page, '[data-bld-id="ev-2"]'))!;
+    const start = (await boxOf(page, '[data-event="ev-2"]'))!;
 
     await touch(cdp, 'touchStart', start.x + start.width / 2, start.y + 8);
     await expect(page.locator('.bld.dragging')).toBeVisible();
@@ -594,10 +603,10 @@ test.describe('a drag lifted inside an edge band', () => {
     // Park a middle row at the very top of the scroller: its own position is then
     // inside the top band, with plenty of list above it for a runaway to be visible.
     await page
-      .locator('[data-bld-id="ev-5"]')
+      .locator('[data-event="ev-5"]')
       .evaluate((el) => el.scrollIntoView({ block: 'start' }));
     await settleChrome(page);
-    const row = (await page.locator('[data-bld-id="ev-5"]').boundingBox())!;
+    const row = (await page.locator('[data-event="ev-5"]').boundingBox())!;
     const bands = await bodyBands(page);
     const body = await boxOf(page, '.body');
     expect(row.y, 'the row really is in the top band').toBeLessThan(
@@ -632,11 +641,11 @@ test.describe('a drag lifted inside an edge band', () => {
     // A row parked a little way INTO the top band, so there is room to push further
     // toward the edge without leaving `.body` for the header chrome.
     await page
-      .locator('[data-bld-id="ev-5"]')
+      .locator('[data-event="ev-5"]')
       .evaluate((el) => el.scrollIntoView({ block: 'start' }));
     await page.locator('.body').evaluate((el) => (el.scrollTop -= 50));
     await settleChrome(page);
-    const row = (await page.locator('[data-bld-id="ev-5"]').boundingBox())!;
+    const row = (await page.locator('[data-event="ev-5"]').boundingBox())!;
     const body = await boxOf(page, '.body');
     const from = row.y + 8;
     expect(from, 'lifted inside the top band').toBeLessThan(body.y + DRAG_EDGE_SCROLL_ZONE_PX);
@@ -661,10 +670,10 @@ test.describe('a drag lifted inside an edge band', () => {
   test('still reaches the far edge straight away', async ({ page }) => {
     const cdp = await page.context().newCDPSession(page);
     await page
-      .locator('[data-bld-id="ev-5"]')
+      .locator('[data-event="ev-5"]')
       .evaluate((el) => el.scrollIntoView({ block: 'start' }));
     await settleChrome(page);
-    const row = (await page.locator('[data-bld-id="ev-5"]').boundingBox())!;
+    const row = (await page.locator('[data-event="ev-5"]').boundingBox())!;
     const bands = await bodyBands(page);
     const before = await scrollTop(page);
 
@@ -722,7 +731,7 @@ test.describe('a skipped event on the shelf', () => {
     // It leaves the shelf and joins the day's rows — the shelf only holds skipped
     // events, so its absence there IS the restore.
     await expect(page.locator('.wp-maybecard.skipped-card')).toHaveCount(0);
-    await expect(page.locator('[data-bld-id="ev-skip"]')).toBeVisible();
+    await expect(page.locator('[data-event="ev-skip"]')).toBeVisible();
   });
 });
 
@@ -800,14 +809,14 @@ test.describe("a day's edge gaps", () => {
   // it exists already, so there is nothing to choose in a form.
   test('a row dropped there moves in front of the first event', async ({ page }) => {
     const cdp = await page.context().newCDPSession(page);
-    const row = await centre(page, '[data-bld-id="ev-2"]');
+    const row = await centre(page, '[data-event="ev-2"]');
 
     await touch(cdp, 'touchStart', row.x, row.y);
     await expect(page.locator('.bld.dragging')).toBeVisible();
     await holdOver(cdp, page, '.gap[data-gap-start="08:00"]');
     await touch(cdp, 'touchEnd');
 
-    await expect(page.locator('[data-bld-id="ev-2"] .bld-time')).toContainText('08:00');
+    await expect(page.locator('[data-event="ev-2"] .bld-time')).toContainText('08:00');
     await expect(page.getByRole('dialog')).toHaveCount(0);
   });
 });
@@ -823,7 +832,7 @@ test.describe('a builder row, dragged by a hold from anywhere on it', () => {
   // different as a shelf card and a builder row.
   test('lifts a clone of the row that follows the finger', async ({ page }) => {
     const cdp = await page.context().newCDPSession(page);
-    const row = await centre(page, '[data-bld-id="ev-1"]');
+    const row = await centre(page, '[data-event="ev-1"]');
     const ghost = page.locator('.wp-dragghost');
 
     await expect(ghost).toHaveCount(0);
@@ -832,7 +841,7 @@ test.describe('a builder row, dragged by a hold from anywhere on it', () => {
     // It really is the row: same title, and the row's own width rather than a chip's.
     await expect(ghost.locator('.bld-ttl')).toHaveText('בוקר');
     const lifted = (await ghost.boundingBox())!;
-    const source = (await page.locator('[data-bld-id="ev-1"]').boundingBox())!;
+    const source = (await page.locator('[data-event="ev-1"]').boundingBox())!;
     expect(Math.abs(lifted.width - source.width)).toBeLessThan(2);
 
     await touch(cdp, 'touchMove', row.x, row.y - 120);
@@ -842,7 +851,7 @@ test.describe('a builder row, dragged by a hold from anywhere on it', () => {
     // The clone must not answer hit-tests, or the drop target would always be itself.
     await expect(ghost).toHaveCSS('pointer-events', 'none');
     // …and it carries no duplicate of the row's hit-test attribute.
-    await expect(page.locator('[data-bld-id="ev-1"]')).toHaveCount(1);
+    await expect(page.locator('[data-event="ev-1"]')).toHaveCount(1);
 
     await touch(cdp, 'touchEnd');
     await expect(ghost).toHaveCount(0);
@@ -852,7 +861,7 @@ test.describe('a builder row, dragged by a hold from anywhere on it', () => {
   // would otherwise be nothing to aim at, and the two groups mean different days.
   test("dropped on the day's group, the row parks as an idea for that day", async ({ page }) => {
     const cdp = await page.context().newCDPSession(page);
-    const row = await centre(page, '[data-bld-id="ev-1"]');
+    const row = await centre(page, '[data-event="ev-1"]');
 
     await expect(page.locator('.shelf')).toHaveCount(0);
     await touch(cdp, 'touchStart', row.x, row.y);
@@ -863,19 +872,19 @@ test.describe('a builder row, dragged by a hold from anywhere on it', () => {
     await touch(cdp, 'touchEnd');
 
     // Off the day, onto the shelf — and into the day's group, not the pool.
-    await expect(page.locator('[data-bld-id="ev-1"]')).toHaveCount(0);
+    await expect(page.locator('[data-event="ev-1"]')).toHaveCount(0);
     await expect(page.locator('[data-shelf-drop="day"] .wp-maybecard')).toHaveText(/בוקר/);
   });
 
   test('dropped on the pool, it parks as someday instead', async ({ page }) => {
     const cdp = await page.context().newCDPSession(page);
-    const row = await centre(page, '[data-bld-id="ev-1"]');
+    const row = await centre(page, '[data-event="ev-1"]');
 
     await touch(cdp, 'touchStart', row.x, row.y);
     await holdOver(cdp, page, '[data-shelf-drop="pool"]');
     await touch(cdp, 'touchEnd');
 
-    await expect(page.locator('[data-bld-id="ev-1"]')).toHaveCount(0);
+    await expect(page.locator('[data-event="ev-1"]')).toHaveCount(0);
     await expect(page.locator('[data-shelf-drop="pool"] .wp-maybecard')).toHaveText(/בוקר/);
   });
 
@@ -894,7 +903,7 @@ test.describe('a builder row, dragged by a hold from anywhere on it', () => {
     await expect(page.locator('.bld-grip')).toHaveCount(0);
     await expect(page.locator('button.bld-time').first()).toBeVisible();
 
-    const box = await boxOf(page, '[data-bld-id="ev-1"]');
+    const box = await boxOf(page, '[data-event="ev-1"]');
     const spots = [
       { name: 'leading edge', x: box.x + 6, y: box.y + box.height / 2 },
       { name: 'title', x: box.x + box.width * 0.4, y: box.y + box.height / 2 },
@@ -913,7 +922,7 @@ test.describe('a builder row, dragged by a hold from anywhere on it', () => {
   // gesture listens on the window rather than through pointer capture.
   test('dwelling on another day pill switches the day mid-drag', async ({ page }) => {
     const cdp = await page.context().newCDPSession(page);
-    const row = await centre(page, '[data-bld-id="ev-1"]');
+    const row = await centre(page, '[data-event="ev-1"]');
     const before = await dayParam(page);
 
     await touch(cdp, 'touchStart', row.x, row.y);
@@ -925,12 +934,12 @@ test.describe('a builder row, dragged by a hold from anywhere on it', () => {
     await expect(page.locator(`[data-day-pill="${TOMORROW}"]`)).toHaveClass(/drop-over/);
     await expect.poll(() => dayParam(page), { timeout: 3000 }).toBe(TOMORROW);
     // The row it started on belongs to the old day and is gone; the drag is not.
-    await expect(page.locator('[data-bld-id="ev-1"]')).toHaveCount(0);
+    await expect(page.locator('[data-event="ev-1"]')).toHaveCount(0);
     await expect(page.locator('.wp-dragghost')).toBeVisible();
 
     // Released on the pill, the event moves to that day.
     await touch(cdp, 'touchEnd');
-    await expect(page.locator('[data-bld-id="ev-1"]')).toBeVisible();
+    await expect(page.locator('[data-event="ev-1"]')).toBeVisible();
     expect(await dayParam(page)).toBe(TOMORROW);
     expect(before).not.toBe(TOMORROW);
   });
@@ -940,7 +949,7 @@ test.describe('a builder row, dragged by a hold from anywhere on it', () => {
   // as what it already is.
   test('carried onto an empty day, it lands as an event and not as an idea', async ({ page }) => {
     const cdp = await page.context().newCDPSession(page);
-    const row = await centre(page, '[data-bld-id="ev-1"]');
+    const row = await centre(page, '[data-event="ev-1"]');
 
     await touch(cdp, 'touchStart', row.x, row.y);
     await expect(page.locator('.bld.dragging')).toBeVisible();
@@ -953,8 +962,8 @@ test.describe('a builder row, dragged by a hold from anywhere on it', () => {
     await holdOver(cdp, page, '.builder-empty');
     await touch(cdp, 'touchEnd');
 
-    await expect(page.locator('[data-bld-id="ev-1"]')).toBeVisible();
-    await expect(page.locator('[data-bld-id="ev-1"] .bld-time')).toContainText('07:00');
+    await expect(page.locator('[data-event="ev-1"]')).toBeVisible();
+    await expect(page.locator('[data-event="ev-1"] .bld-time')).toContainText('07:00');
     // Not on the shelf: that is what dropping it on a shelf group would have meant.
     await expect(page.locator('.wp-maybecard')).toHaveCount(0);
     expect(await dayParam(page)).toBe(TOMORROW);
@@ -964,7 +973,7 @@ test.describe('a builder row, dragged by a hold from anywhere on it', () => {
   // happen, and a day change is `replace` navigation with no back step to undo it.
   test('a drop on nothing returns to the day the drag started on', async ({ page }) => {
     const cdp = await page.context().newCDPSession(page);
-    const row = await centre(page, '[data-bld-id="ev-1"]');
+    const row = await centre(page, '[data-event="ev-1"]');
 
     await touch(cdp, 'touchStart', row.x, row.y);
     await expect(page.locator('.bld.dragging')).toBeVisible();
@@ -977,7 +986,7 @@ test.describe('a builder row, dragged by a hold from anywhere on it', () => {
     await touch(cdp, 'touchEnd');
 
     await expect.poll(() => dayParam(page)).toBe(null);
-    await expect(page.locator('[data-bld-id="ev-1"]')).toBeVisible();
+    await expect(page.locator('[data-event="ev-1"]')).toBeVisible();
   });
 
   // The reported bug: after the dwell switches days, the first move DOWN into the day
@@ -986,7 +995,7 @@ test.describe('a builder row, dragged by a hold from anywhere on it', () => {
   // question this pins is whether the gesture survives losing its own target.
   test('survives the day switch and can still be dropped in the new day', async ({ page }) => {
     const cdp = await page.context().newCDPSession(page);
-    const row = await centre(page, '[data-bld-id="ev-1"]');
+    const row = await centre(page, '[data-event="ev-1"]');
     const ghost = page.locator('.wp-dragghost');
 
     await touch(cdp, 'touchStart', row.x, row.y);
@@ -1055,7 +1064,7 @@ test.describe('a second gesture on the same element', () => {
     await page.locator('.body').evaluate((el) => (el.scrollTop = el.scrollHeight));
     const bands = await bodyBands(page);
 
-    const first = await centre(page, '[data-bld-id="ev-1"]');
+    const first = await centre(page, '[data-event="ev-1"]');
     await touch(cdp, 'touchStart', first.x, first.y);
     await expect(page.locator('.bld.dragging')).toBeVisible();
     await touch(cdp, 'touchEnd');
@@ -1063,7 +1072,7 @@ test.describe('a second gesture on the same element', () => {
 
     await page.locator('.body').evaluate((el) => (el.scrollTop = el.scrollHeight));
     const before = await scrollTop(page);
-    const again = await centre(page, '[data-bld-id="ev-1"]');
+    const again = await centre(page, '[data-event="ev-1"]');
     await touch(cdp, 'touchStart', again.x, again.y);
     await expect(page.locator('.bld.dragging')).toBeVisible();
     await touch(cdp, 'touchMove', again.x, bands.topBand);
@@ -1072,6 +1081,890 @@ test.describe('a second gesture on the same element', () => {
     await expect.poll(() => scrollTop(page), { timeout: 3000 }).toBeLessThan(before);
     await expect(page.locator('.wp-dragghost')).toBeVisible();
 
+    await touch(cdp, 'touchEnd');
+  });
+});
+
+// ── THE EDGE THAT NAMES ANOTHER DAY (ADR-0116 §2's 2026-08-22 amendment) ─────────────────
+//
+// Owner: _"you could drag from the edge to a different day."_ The unit suite owns which day an
+// edge means (`src/lib/useEdgeDayStep.test.tsx`) — the mirror, the latch, the trip's ends. What
+// only an engine can answer is whether the thing works as a GESTURE: a real finger, the real
+// hit-test, the real dwell, and a card that is still being dragged afterwards.
+test.describe('carrying a card to another day from the surface edge', () => {
+  test.beforeEach(({ page }) => bootBuilder(page, { events: EVENTS, maybeItems: IDEAS }));
+
+  /** Inside the inline band, at a height clear of both vertical bands so the auto-scroll is
+   *  not also running — one gesture, one thing being asserted. */
+  /** Waits for the day the edge is stepping toward, **and does so promptly** — the interval
+   *  is the whole point of the helper.
+   *
+   *  Holding at the edge steps again and again, and §2d put `--t-base` between a turn being
+   *  COMMANDED and its day arriving: the cadence is ~940ms, and the next turn is committed
+   *  240ms before the previous day even appears. `expect.poll`'s default ladder (0, 100, 250,
+   *  500, 1000ms) can then report an arrival a full second late, so a test that acts on what
+   *  it saw is acting on the day before last. Measured on the row case: 2026-08-23 was
+   *  reported at 1850ms and 2026-08-24 landed at 1880. A flat 50ms hands the caller the whole
+   *  dwell to move out of the band in. */
+  const stepsTo = (page: Page, day: string) =>
+    expect
+      .poll(() => dayParam(page), { timeout: DRAG_DAY_DWELL_MS * 4, intervals: [50] })
+      .toBe(day);
+
+  async function edgeOf(page: Page, side: 'left' | 'right') {
+    const box = await boxOf(page, '.day-swipe:not([data-preview])');
+    const bands = await bodyBands(page);
+    const inset = Math.round(DRAG_DAY_EDGE_PX / 4);
+    return {
+      x: side === 'left' ? box.x + inset : box.x + box.width - inset,
+      y: (bands.middleFrom + bands.middleTo) / 2,
+    };
+  }
+
+  /** The clone's centre against the finger it is meant to be under. `DRAG_GHOST_LIFT_PX` is the
+   *  deliberate offset above the touch point, so a healthy clone reads as exactly that. */
+  async function ghostOff(page: Page, at: { x: number; y: number }) {
+    const g = await page.locator('.wp-dragghost').evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      return {
+        cx: r.x + r.width / 2,
+        cy: r.y + r.height / 2,
+        // **The fact under the whole case.** A `position: fixed` box has no offset parent —
+        // unless an ancestor is transformed, which re-parents it, and that is exactly what the
+        // lift did to it.
+        anchored: (el as HTMLElement).offsetParent === null,
+      };
+    });
+    return { dx: g.cx - at.x, dy: g.cy - (at.y - DRAG_GHOST_LIFT_PX), anchored: g.anchored };
+  }
+
+  // **The clone stays under the finger while the page moves under it** (§2d's repair; owner:
+  // _"after moving to a day it no longer is under the finger"_, _"the ghost disappears
+  // sometimes"_).
+  //
+  // A transform makes its element the containing block for every `position: fixed` descendant,
+  // and the ghost rendered inside `.day-page` — the element the lift translates. So the moment
+  // the edge lifted, the clone stopped being positioned against the viewport and took on the
+  // page's own offset: measured 117px down the screen and then 156, with the finger never
+  // leaving y=353. `offsetParent` is the assertion because it is the mechanism rather than a
+  // symptom — a fixed box that reports one is not viewport-anchored, whatever its rect says
+  // this frame.
+  test('the dragged clone stays with the finger through a lift and a turn', async ({ page }) => {
+    const cdp = await page.context().newCDPSession(page);
+    const card = await centre(page, '.wp-maybecard');
+    const host = page.locator('.day-swipe:not([data-preview])');
+
+    await touch(cdp, 'touchStart', card.x, card.y);
+    await expect(page.locator('.wp-maybecard.dragging')).toBeVisible();
+
+    const edge = await edgeOf(page, 'left');
+    await touch(cdp, 'touchMove', edge.x, edge.y);
+    await expect(host).toHaveAttribute('data-edge-lift', '');
+    const lifted = await ghostOff(page, edge);
+    expect(lifted.anchored, 'the clone is positioned against the viewport, not the page').toBe(
+      true,
+    );
+    expect(Math.abs(lifted.dx)).toBeLessThan(2);
+    expect(Math.abs(lifted.dy)).toBeLessThan(2);
+
+    await stepsTo(page, TOMORROW);
+    // A move after the day changed, because the defect's offset GREW with each turn.
+    await touch(cdp, 'touchMove', edge.x, edge.y + 1);
+    const after = await ghostOff(page, { x: edge.x, y: edge.y + 1 });
+    expect(after.anchored).toBe(true);
+    expect(Math.abs(after.dx)).toBeLessThan(2);
+    expect(Math.abs(after.dy)).toBeLessThan(2);
+    await touch(cdp, 'touchEnd');
+  });
+
+  // **One pixel of jitter must not cancel the turn** (§2d's repair; owner: _"doesn't always
+  // move to the next or prev day"_, and _"a weird stutter where it sort of looks like it tries
+  // to complete the swipe but out of place"_).
+  //
+  // The edge re-issues its lift on every move it sees — and on every frame the auto-scroll
+  // scrolls — so the turn's `--t-base` was being cleared by a finger that had not gone
+  // anywhere. Measured before the fix: `dx 382px` / `settling=turn`, one 1px move, `dx 48px`,
+  // and no day change at all.
+  test('a twitch inside the turn does not put the page back', async ({ page }) => {
+    const cdp = await page.context().newCDPSession(page);
+    const card = await centre(page, '.wp-maybecard');
+    const host = page.locator('.day-swipe:not([data-preview])');
+    const dx = () =>
+      host.evaluate((el) => (el as HTMLElement).style.getPropertyValue('--swipe-dx'));
+
+    await touch(cdp, 'touchStart', card.x, card.y);
+    await expect(page.locator('.wp-maybecard.dragging')).toBeVisible();
+    const edge = await edgeOf(page, 'left');
+    await touch(cdp, 'touchMove', edge.x, edge.y);
+    await expect(host).toHaveAttribute('data-swipe-settling', 'turn', {
+      timeout: DRAG_DAY_DWELL_MS * 4,
+    });
+    const travelling = await dx();
+    await touch(cdp, 'touchMove', edge.x, edge.y + 1);
+    // Still travelling: the same offset, still the turn's own settle, and no detent.
+    expect(await dx()).toBe(travelling);
+    await expect(host).toHaveAttribute('data-swipe-settling', 'turn');
+    await expect(host).not.toHaveAttribute('data-edge-lift', '');
+    await stepsTo(page, TOMORROW);
+    await touch(cdp, 'touchEnd');
+  });
+
+  // **Leaving the band inside the turn lets it FINISH** (§2d's fourth repair; owner: _"dragging
+  // to another day and then backing away still does this weird 'going back' animation, but stays
+  // on the same day, and it comes across as super confusing"_).
+  //
+  // It used to rewind, and the recording is why that reads as it does: sampled every frame, the
+  // page went from 247px back to 0 over ~160ms — over half a page of reverse travel, both peeks
+  // moving with it, ending on the day it started on. The dwell had already fired and the page was
+  // most of the way there, so finishing is both shorter and truer. What the withdrawal decides is
+  // where it LANDS: nothing is holding the surface, so it is given back rather than kept claimed.
+  test('leaving the band inside the turn lets the turn finish', async ({ page }) => {
+    const cdp = await page.context().newCDPSession(page);
+    const host = page.locator('.day-swipe:not([data-preview])');
+    const bands = await bodyBands(page);
+
+    // **Every measurement happens BEFORE the window.** The turn lasts `--t-base`, so a
+    // `boundingBox` round trip taken after the settle was observed can spend the whole of it —
+    // which is a test that fails under load for reasons the app has nothing to do with. The
+    // poll is tight for the same reason: what is left inside the window is one CDP dispatch.
+    const box = await boxOf(page, '.day-swipe:not([data-preview])');
+    const middle = { x: box.x + box.width / 2, y: (bands.middleFrom + bands.middleTo) / 2 };
+    /** **The card is measured LAST, and that ordering is the whole of it.** `boxOf` calls
+     *  `scrollIntoViewIfNeeded`, so asking for `.day-swipe` — which is taller than this 660px
+     *  viewport — scrolls the body back up to reveal its top: measured at `scrollTop` 212 → 120,
+     *  which moved the shelf card ⁦144px⁩ down from where a `centre` taken first had found it. The
+     *  touch then lands on nothing and the drag never arms. It only started failing when
+     *  ADR-0219 §2's head made the surface taller, which is what a stale box does — it is
+     *  correct until the page grows (`frontend/CLAUDE.md`'s "a landing position written as a
+     *  constant instead of measured", one step removed). Every OTHER measurement still happens
+     *  before the touch, which is what the turn's window needs. */
+    const card = await centre(page, '.wp-maybecard');
+
+    await touch(cdp, 'touchStart', card.x, card.y);
+    await expect(page.locator('.wp-maybecard.dragging')).toBeVisible();
+    const edge = await edgeOf(page, 'left');
+    await touch(cdp, 'touchMove', edge.x, edge.y);
+    await expect
+      .poll(() => host.getAttribute('data-swipe-settling'), {
+        timeout: DRAG_DAY_DWELL_MS * 4,
+        intervals: [20],
+      })
+      .toBe('turn');
+    const travelling = parseFloat(
+      await host.evaluate((el) => (el as HTMLElement).style.getPropertyValue('--swipe-dx')),
+    );
+    await touch(cdp, 'touchMove', middle.x, middle.y);
+
+    // Forward, never back: the offset never retreats from where the withdrawal found it, and the
+    // day it was travelling to is the day that arrives.
+    await expect
+      .poll(() => host.evaluate((el) => (el as HTMLElement).style.getPropertyValue('--swipe-dx')), {
+        intervals: [16],
+      })
+      .toMatch(/^0px$|^$/);
+    expect(dayParam(page)).toBe(TOMORROW);
+    // …and once it has arrived, nothing is holding it, so the surface is given back.
+    await expect(host).not.toHaveAttribute('data-swiping', '');
+    expect(travelling).toBeGreaterThan(0);
+    await touch(cdp, 'touchEnd');
+  });
+
+  // **Going back is cheaper than going on** (§2d's repair; owner: _"hard to go back"_). The
+  // opposite band, inside the reversal window, pays half the dwell — so this asserts a day
+  // arriving in less time than a first step is allowed to take.
+  test('reversing costs half a dwell', async ({ page }) => {
+    const cdp = await page.context().newCDPSession(page);
+    const bands = await bodyBands(page);
+    const box = await boxOf(page, '.day-swipe:not([data-preview])');
+    const middle = { x: box.x + box.width / 2, y: (bands.middleFrom + bands.middleTo) / 2 };
+    /** **The card is measured LAST, and that ordering is the whole of it.** `boxOf` calls
+     *  `scrollIntoViewIfNeeded`, so asking for `.day-swipe` — which is taller than this 660px
+     *  viewport — scrolls the body back up to reveal its top: measured at `scrollTop` 212 → 120,
+     *  which moved the shelf card ⁦144px⁩ down from where a `centre` taken first had found it. The
+     *  touch then lands on nothing and the drag never arms. It only started failing when
+     *  ADR-0219 §2's head made the surface taller, which is what a stale box does — it is
+     *  correct until the page grows (`frontend/CLAUDE.md`'s "a landing position written as a
+     *  constant instead of measured", one step removed). Every OTHER measurement still happens
+     *  before the touch, which is what the turn's window needs. */
+    const card = await centre(page, '.wp-maybecard');
+
+    await touch(cdp, 'touchStart', card.x, card.y);
+    await expect(page.locator('.wp-maybecard.dragging')).toBeVisible();
+    const forward = await edgeOf(page, 'left');
+    await touch(cdp, 'touchMove', forward.x, forward.y);
+    await stepsTo(page, TOMORROW);
+
+    // **Reaching the far band is not the request — asking for it is** (§2d's seventh repair,
+    // below). So the price is measured from the ask, which is the second entry: the first one
+    // latches the band, leaving releases it, and coming back means it.
+    const back = await edgeOf(page, 'right');
+    await touch(cdp, 'touchMove', back.x, back.y);
+    await touch(cdp, 'touchMove', middle.x, middle.y);
+    await touch(cdp, 'touchMove', back.x, back.y);
+    const at = Date.now();
+    await stepsTo(page, null as unknown as string);
+    /**
+     * **The bound sits between the two answers, which the first version did not.** A reversal
+     * costs half a dwell plus the turn's travel — ~590ms — where a fresh journey costs the full
+     * dwell plus the same travel, ~940ms. Asserting `< DRAG_DAY_DWELL_MS` put the line 110ms
+     * above the expected value: true alone, eaten by two workers, which is how it failed once in
+     * a group run and passed 3/3 on its own. `+100` leaves ~200ms either side.
+     */
+    expect(Date.now() - at).toBeLessThan(DRAG_DAY_DWELL_MS + 100);
+    expect(Date.now() - at).toBeGreaterThan(DRAG_DAY_REVERSE_DWELL_MS - 50);
+    await touch(cdp, 'touchEnd');
+  });
+
+  // **Nothing animates a second time after a landing** (§2d's second repair; owner: _"after
+  // landing on the new day there's like a second animation for switching days"_, and _"moving
+  // multiple days by holding on the edge is not looking good"_ — the same thing, once per day).
+  //
+  // The commit used to hand back the WHOLE offset, so the surface went to level and the edge —
+  // whose finger is still in the band — animated it back to the detent. Recorded in the engine
+  // before the fix, per day: the lift, the turn, then a third `transitionrun` on `.day-page`
+  // 91ms after the URL changed. This counts transitions instead of looking at one, because "a
+  // second animation" is a statement about how many there are.
+  test('a landing does not start a second animation', async ({ page }) => {
+    const cdp = await page.context().newCDPSession(page);
+    const card = await centre(page, '.wp-maybecard');
+    const host = page.locator('.day-swipe:not([data-preview])');
+    await page.evaluate(() => {
+      const w = window as unknown as { __runs: number };
+      w.__runs = 0;
+      document.addEventListener(
+        'transitionrun',
+        (ev) => {
+          const el = ev.target as HTMLElement;
+          if (el.classList?.contains('day-page') || el.classList?.contains('day-peek')) w.__runs++;
+        },
+        true,
+      );
+    });
+
+    await touch(cdp, 'touchStart', card.x, card.y);
+    await expect(page.locator('.wp-maybecard.dragging')).toBeVisible();
+    const edge = await edgeOf(page, 'left');
+    await touch(cdp, 'touchMove', edge.x, edge.y);
+    await stepsTo(page, TOMORROW);
+    const atLanding = await page.evaluate(() => (window as unknown as { __runs: number }).__runs);
+    // Long enough for the old re-lift (it began ~90ms after the day changed and ran 240ms) and
+    // comfortably short of the next dwell.
+    await page.waitForTimeout(400);
+    expect(
+      await page.evaluate(() => (window as unknown as { __runs: number }).__runs),
+      'the arriving day is already at the detent, so nothing has to move',
+    ).toBe(atLanding);
+
+    // And it IS still claimed — at LEVEL, which is what makes the next step continuous AND
+    // leaves nothing to give back if the drag walks away instead (§2d's fourth repair).
+    const state = await host.evaluate((el) => ({
+      dx: parseFloat((el as HTMLElement).style.getPropertyValue('--swipe-dx')),
+      lift: el.hasAttribute('data-edge-lift'),
+      settling: el.getAttribute('data-swipe-settling'),
+      rebase: el.hasAttribute('data-swipe-rebase'),
+    }));
+    expect(state.dx).toBe(0);
+    expect(state.lift).toBe(true);
+    expect(state.settling).toBeNull();
+    // The suppression lasted its one frame and is long gone.
+    expect(state.rebase).toBe(false);
+    await touch(cdp, 'touchEnd');
+  });
+
+  // Holding through several days is the case the report was actually about: _"moving multiple
+  // days by holding on the edge is not looking good"_. **Counted rather than sampled** — one
+  // motion per day is a statement about how many transitions run, and a first version of this
+  // read `--swipe-dx` a frame after each landing, which is a magnitude at a moment and duly
+  // failed under load for reasons the app had nothing to do with.
+  //
+  // Three runs on `.day-page` for two days: the lift, then a turn each. Before the fix it was
+  // five — every landing dropped to level and animated back to the detent.
+  test('holding through two days is one motion per day', async ({ page }) => {
+    const cdp = await page.context().newCDPSession(page);
+    const card = await centre(page, '.wp-maybecard');
+    const host = page.locator('.day-swipe:not([data-preview])');
+    const dayAfter = new Date(Date.parse(`${TOMORROW}T00:00:00.000Z`) + 86_400_000)
+      .toISOString()
+      .slice(0, 10);
+    await page.evaluate(() => {
+      const w = window as unknown as { __page: number };
+      w.__page = 0;
+      document.addEventListener(
+        'transitionrun',
+        (ev) => {
+          const el = ev.target as HTMLElement;
+          // The host's own page only: the panes ride the same offset and would treble the count
+          // without saying anything the page does not.
+          if (
+            el.classList?.contains('day-page') &&
+            el.parentElement?.matches('.day-swipe:not([data-preview])')
+          )
+            w.__page++;
+        },
+        true,
+      );
+    });
+
+    await touch(cdp, 'touchStart', card.x, card.y);
+    await expect(page.locator('.wp-maybecard.dragging')).toBeVisible();
+    const edge = await edgeOf(page, 'left');
+    await touch(cdp, 'touchMove', edge.x, edge.y);
+    await stepsTo(page, TOMORROW);
+    await stepsTo(page, dayAfter);
+    // Past where a re-lift would have started (~90ms after the landing) and short of the next
+    // dwell, so the count is settled and nothing new has been commanded.
+    await page.waitForTimeout(400);
+    expect(
+      await page.evaluate(() => (window as unknown as { __page: number }).__page),
+      'the lift, then one turn per day, and nothing else',
+    ).toBe(3);
+    await expect(host).toHaveAttribute('data-edge-lift', '');
+    await touch(cdp, 'touchEnd');
+  });
+
+  // **Backing away after a landing moves nothing at all** (§2d's fourth repair, and the third
+  // repair's case rewritten — the jitter it fixed was in a motion that should not exist).
+  //
+  // The surface rests at LEVEL between days now: the lift is spent once on entering the band,
+  // and after a turn the edge stays armed at zero. So there is no offset to give back, and a
+  // withdrawal is not a motion. Sampled every frame before this, the same gesture ran the page
+  // from 48px back to 0 — small, backwards, and meaning nothing, which is the report.
+  //
+  // Asserted as "no transition ran", which is what a still surface IS — a magnitude at a moment
+  // would pass just as well on a motion that had merely finished early.
+  test('backing away after a landing does not move the surface', async ({ page }) => {
+    const cdp = await page.context().newCDPSession(page);
+    const host = page.locator('.day-swipe:not([data-preview])');
+    const bands = await bodyBands(page);
+    const box = await boxOf(page, '.day-swipe:not([data-preview])');
+    const middle = { x: box.x + box.width / 2, y: (bands.middleFrom + bands.middleTo) / 2 };
+    /** **The card is measured LAST, and that ordering is the whole of it.** `boxOf` calls
+     *  `scrollIntoViewIfNeeded`, so asking for `.day-swipe` — which is taller than this 660px
+     *  viewport — scrolls the body back up to reveal its top: measured at `scrollTop` 212 → 120,
+     *  which moved the shelf card ⁦144px⁩ down from where a `centre` taken first had found it. The
+     *  touch then lands on nothing and the drag never arms. It only started failing when
+     *  ADR-0219 §2's head made the surface taller, which is what a stale box does — it is
+     *  correct until the page grows (`frontend/CLAUDE.md`'s "a landing position written as a
+     *  constant instead of measured", one step removed). Every OTHER measurement still happens
+     *  before the touch, which is what the turn's window needs. */
+    const card = await centre(page, '.wp-maybecard');
+
+    await page.evaluate(() => {
+      const w = window as unknown as { __runs: number; __watch: () => void };
+      w.__watch = () => {
+        w.__runs = 0;
+        document.addEventListener('transitionrun', (ev) => {
+          const el = ev.target as HTMLElement;
+          if (el.classList?.contains('day-page') || el.classList?.contains('day-peek')) w.__runs++;
+        });
+      };
+    });
+
+    await touch(cdp, 'touchStart', card.x, card.y);
+    await expect(page.locator('.wp-maybecard.dragging')).toBeVisible();
+    const edge = await edgeOf(page, 'left');
+    await touch(cdp, 'touchMove', edge.x, edge.y);
+    await stepsTo(page, TOMORROW);
+    // Armed after the landing rather than before it, so the turn's own motion is not counted.
+    await page.evaluate(() => (window as unknown as { __watch: () => void }).__watch());
+    expect(
+      await host.evaluate((el) => (el as HTMLElement).style.getPropertyValue('--swipe-dx')),
+      'the day it landed on rests at level',
+    ).toBe('0px');
+
+    await touch(cdp, 'touchMove', middle.x, middle.y);
+    await page.waitForTimeout(400);
+    expect(
+      await page.evaluate(() => (window as unknown as { __runs: number }).__runs),
+      'nothing had to move, so nothing did',
+    ).toBe(0);
+    expect(dayParam(page)).toBe(TOMORROW);
+    await touch(cdp, 'touchEnd');
+  });
+
+  // **Turning back during the animation stops, it does not reverse** (§2d's fifth repair;
+  // owner: _"we 'turn back' during the animation, then it does a full animation of going back…
+  // this looks very awkward and confusing"_).
+  //
+  // Recorded, with the pager's commands logged: `turn(1)` at 6229ms · the finger reaching the
+  // opposite band at 6260 while the page travelled · the day arriving at 6501 · then `turn(-1)`
+  // at 7300 and again at 8372, a full page backwards each time. The hand was retreating from
+  // the edge it had just used, which is where a hand goes next.
+  //
+  // Counted rather than sampled: after the day lands, the offset must never travel the other
+  // way, and no further day may arrive on its own.
+  test('turning back during the turn stops, and does not walk back', async ({ page }) => {
+    const cdp = await page.context().newCDPSession(page);
+    const host = page.locator('.day-swipe:not([data-preview])');
+    const bands = await bodyBands(page);
+    const box = await boxOf(page, '.day-swipe:not([data-preview])');
+    const y = (bands.middleFrom + bands.middleTo) / 2;
+    // The far band — where a hand pulling the card back the way it came ends up.
+    const back = { x: box.x + box.width - Math.round(DRAG_DAY_EDGE_PX / 4), y };
+    /** **The card is measured LAST, and that ordering is the whole of it.** `boxOf` calls
+     *  `scrollIntoViewIfNeeded`, so asking for `.day-swipe` — which is taller than this 660px
+     *  viewport — scrolls the body back up to reveal its top: measured at `scrollTop` 212 → 120,
+     *  which moved the shelf card ⁦144px⁩ down from where a `centre` taken first had found it. The
+     *  touch then lands on nothing and the drag never arms. It only started failing when
+     *  ADR-0219 §2's head made the surface taller, which is what a stale box does — it is
+     *  correct until the page grows (`frontend/CLAUDE.md`'s "a landing position written as a
+     *  constant instead of measured", one step removed). Every OTHER measurement still happens
+     *  before the touch, which is what the turn's window needs. */
+    const card = await centre(page, '.wp-maybecard');
+
+    await page.evaluate(() => {
+      const w = window as unknown as { __turns: number; __watch: () => void };
+      w.__watch = () => {
+        w.__turns = 0;
+        const el = document.querySelector('.day-swipe:not([data-preview])') as HTMLElement;
+        // Every time the host is told to travel a page — in either direction.
+        new MutationObserver(() => {
+          if (el.getAttribute('data-swipe-settling') === 'turn') w.__turns++;
+        }).observe(el, { attributes: true, attributeFilter: ['data-swipe-settling'] });
+      };
+    });
+
+    await touch(cdp, 'touchStart', card.x, card.y);
+    await expect(page.locator('.wp-maybecard.dragging')).toBeVisible();
+    const edge = await edgeOf(page, 'left');
+    await touch(cdp, 'touchMove', edge.x, edge.y);
+    await expect
+      .poll(() => host.getAttribute('data-swipe-settling'), {
+        timeout: DRAG_DAY_DWELL_MS * 4,
+        intervals: [16],
+      })
+      .toBe('turn');
+    // Armed after the forward turn was commanded, so only what follows is counted.
+    await page.evaluate(() => (window as unknown as { __watch: () => void }).__watch());
+    await touch(cdp, 'touchMove', back.x, back.y);
+
+    // The turn that was already travelling still arrives — that much is #680's rule.
+    await stepsTo(page, TOMORROW);
+    // Then nothing, for three dwells: no reverse turn, no further day.
+    await page.waitForTimeout(DRAG_DAY_DWELL_MS * 3);
+    expect(
+      await page.evaluate(() => (window as unknown as { __turns: number }).__turns),
+      'the band the hand retreated into is not a request to go back',
+    ).toBe(0);
+    expect(dayParam(page)).toBe(TOMORROW);
+
+    // And it still WORKS as a way back — once the drag asks for it, by leaving and returning.
+    await touch(cdp, 'touchMove', box.x + box.width / 2, y);
+    await touch(cdp, 'touchMove', back.x, back.y);
+    await expect.poll(() => dayParam(page), { timeout: DRAG_DAY_DWELL_MS * 4 }).toBeNull();
+    await touch(cdp, 'touchEnd');
+  });
+
+  // **The hand crossing to the far edge AFTER the landing is not a request to go back either**
+  // (§2d's seventh repair; owner, with a screen recording: _"once the moving animation starts for
+  // dragging, moving the opposite direction shouldn't cancel the operation, undo, or do any other
+  // animation. It should complete the day move and animation. Only after you're on the next day
+  // you should be able to go back."_ And: _"if you move your finger back fast enough — even a
+  // little — it happens every time"_.)
+  //
+  // Read off the recording frame by frame: a step forward from day 2 of 12 to day 3, then, as the
+  // hand crossed to the other edge, a full page travelling back to day 2. The fifth repair
+  // covered the hand that crossed WHILE the page travelled; this is the hand that crosses a frame
+  // after it lands, which is the same motion and read as a fresh request. It is the sixth repair's
+  // case moved from "at the arrival" to "for as long as the step is on screen".
+  //
+  // The case above stops at the turn's own settle; this one waits for the day to arrive first, so
+  // the two windows are asserted separately rather than one covering for the other.
+  test('crossing to the far edge after a landing does not walk back', async ({ page }) => {
+    const cdp = await page.context().newCDPSession(page);
+    const bands = await bodyBands(page);
+    const box = await boxOf(page, '.day-swipe:not([data-preview])');
+    const y = (bands.middleFrom + bands.middleTo) / 2;
+    const back = { x: box.x + box.width - Math.round(DRAG_DAY_EDGE_PX / 4), y };
+    /** **The card is measured LAST, and that ordering is the whole of it.** `boxOf` calls
+     *  `scrollIntoViewIfNeeded`, so asking for `.day-swipe` — which is taller than this 660px
+     *  viewport — scrolls the body back up to reveal its top: measured at `scrollTop` 212 → 120,
+     *  which moved the shelf card ⁦144px⁩ down from where a `centre` taken first had found it. The
+     *  touch then lands on nothing and the drag never arms. It only started failing when
+     *  ADR-0219 §2's head made the surface taller, which is what a stale box does — it is
+     *  correct until the page grows (`frontend/CLAUDE.md`'s "a landing position written as a
+     *  constant instead of measured", one step removed). Every OTHER measurement still happens
+     *  before the touch, which is what the turn's window needs. */
+    const card = await centre(page, '.wp-maybecard');
+
+    await page.evaluate(() => {
+      const w = window as unknown as { __turns: number; __watch: () => void };
+      w.__watch = () => {
+        w.__turns = 0;
+        const el = document.querySelector('.day-swipe:not([data-preview])') as HTMLElement;
+        new MutationObserver(() => {
+          if (el.getAttribute('data-swipe-settling') === 'turn') w.__turns++;
+        }).observe(el, { attributes: true, attributeFilter: ['data-swipe-settling'] });
+      };
+    });
+
+    await touch(cdp, 'touchStart', card.x, card.y);
+    await expect(page.locator('.wp-maybecard.dragging')).toBeVisible();
+    const edge = await edgeOf(page, 'left');
+    await touch(cdp, 'touchMove', edge.x, edge.y);
+    // The day has ARRIVED — not merely been commanded, which is the other case's window.
+    await stepsTo(page, TOMORROW);
+    await page.evaluate(() => (window as unknown as { __watch: () => void }).__watch());
+    await touch(cdp, 'touchMove', back.x, back.y);
+
+    // Three dwells of nothing: no page travels, and the day the step landed on is the day that
+    // stays. Before this repair the reverse fired ~590ms in — half a dwell, because the app
+    // priced it as an undo — and the owner watched a step they had just made come apart.
+    await page.waitForTimeout(DRAG_DAY_DWELL_MS * 3);
+    expect(
+      await page.evaluate(() => (window as unknown as { __turns: number }).__turns),
+      'the band the hand crossed into is not a request to go back',
+    ).toBe(0);
+    expect(dayParam(page)).toBe(TOMORROW);
+
+    // And the second half of the owner's sentence: going back is still there to be asked for.
+    await touch(cdp, 'touchMove', box.x + box.width / 2, y);
+    await touch(cdp, 'touchMove', back.x, back.y);
+    await expect.poll(() => dayParam(page), { timeout: DRAG_DAY_DWELL_MS * 4 }).toBeNull();
+    await touch(cdp, 'touchEnd');
+  });
+
+  // **The page a turn arrived on is handed back in ONE paint, never animated back** (§2d's
+  // sixth repair).
+  //
+  // `hold(null)` writes the offset to 0, and the unwind rule — `--t-quick`/`--ease-exit`,
+  // written for giving back a 48px detent — animated a whole PAGE when the release landed after
+  // a committed turn. Measured on the PAINTED transform: `382 → 372 → 347 → 312 → 268 → 159 → 0`
+  // with the heading flipping to the arriving day partway through, so what you watched was the
+  // day you had just reached sliding backwards into place. Four failures in six runs before the
+  // fix; six of six after.
+  //
+  // **Two things about how this is asserted, both of which cost rounds to learn.** It samples
+  // the PAINT, never `--swipe-dx`: the variable is a transition's destination and reads `0px`
+  // while the picture is still a page away, which is why four earlier probes reported clean.
+  // And the reverse here is a slow glide, because the window is the gap between the commit and
+  // React drawing the arriving day — a fast flick leaves the band while the turn is still
+  // travelling, where `hold` correctly does nothing (measured: that variant passes with the fix
+  // and without it, on a desktop runner and throttled 6x). The owner's own gesture is the fast
+  // one, so **this case is not proof that their report is answered** — it is proof of one defect
+  // that produced their words.
+  test('the page a turn arrived on is handed back, not animated back', async ({ page }) => {
+    const cdp = await page.context().newCDPSession(page);
+    const host = page.locator('.day-swipe:not([data-preview])');
+    const bands = await bodyBands(page);
+    const box = await boxOf(page, '.day-swipe:not([data-preview])');
+    const y = (bands.middleFrom + bands.middleTo) / 2;
+    const edge = { x: box.x + Math.round(DRAG_DAY_EDGE_PX / 4), y };
+    const middle = box.x + box.width / 2;
+    // Measured last: the two above move the page, and a coordinate captured before them lands
+    // on nothing by the time the touch is dispatched.
+    const card = await centre(page, '.wp-maybecard');
+
+    await page.evaluate(() => {
+      const w = window as unknown as { __runs: number; __paint: string[]; __watch: () => void };
+      w.__watch = () => {
+        w.__runs = 0;
+        w.__paint = [];
+        const el = document.querySelector('.day-swipe:not([data-preview])') as HTMLElement;
+        document.addEventListener('transitionrun', (ev) => {
+          if ((ev.target as HTMLElement).classList?.contains('day-page')) w.__runs++;
+        });
+        setInterval(() => {
+          const pg = el.querySelector(':scope > .day-page') as HTMLElement;
+          if (!pg) return;
+          w.__paint.push(
+            `${Math.round(new DOMMatrixReadOnly(getComputedStyle(pg).transform).m41)}@${new URL(location.href).searchParams.get('day') ?? 'today'}`,
+          );
+        }, 16);
+      };
+    });
+
+    // Armed before the gesture, so the count is the whole motion: the lift, then the turn.
+    await page.evaluate(() => (window as unknown as { __watch: () => void }).__watch());
+    await touch(cdp, 'touchStart', card.x, card.y);
+    await expect(page.locator('.wp-maybecard.dragging')).toBeVisible();
+    const steps = Math.round((card.x - edge.x) / 8);
+    for (let i = 1; i <= steps; i++) {
+      await touch(cdp, 'touchMove', card.x + ((edge.x - card.x) * i) / steps, y);
+      await page.waitForTimeout(8);
+    }
+    await expect
+      .poll(() => host.getAttribute('data-swipe-settling'), {
+        timeout: DRAG_DAY_DWELL_MS * 4,
+        intervals: [8],
+      })
+      .toBe('turn');
+    const back = Math.round((middle - edge.x) / 8);
+    for (let i = 1; i <= back; i++) {
+      await touch(cdp, 'touchMove', edge.x + ((middle - edge.x) * i) / back, y);
+      await page.waitForTimeout(8);
+    }
+    await stepsTo(page, TOMORROW);
+    await page.waitForTimeout(400);
+
+    const [runs, paint] = await page.evaluate(() => [
+      (window as unknown as { __runs: number }).__runs,
+      (window as unknown as { __paint: string[] }).__paint,
+    ]);
+    // The lift on the way in, and the turn. A third is the reverse slide this case forbids.
+    expect(runs, 'the lift and the turn, and nothing else').toBe(2);
+    const arrived = paint.findIndex((f) => f.endsWith(TOMORROW));
+    expect(arrived, 'the day never arrived').toBeGreaterThan(-1);
+    const between = paint
+      .slice(arrived)
+      .map((f) => Math.abs(Number(f.split('@')[0])))
+      .filter((px) => px > 40 && px < 340);
+    expect(between, `the page was painted mid-way back: ${between.join(',')}`).toEqual([]);
+    expect(dayParam(page)).toBe(TOMORROW);
+    await touch(cdp, 'touchEnd');
+  });
+
+  test('holding at the edge steps the day, and keeps stepping', async ({ page }) => {
+    const cdp = await page.context().newCDPSession(page);
+    const card = await centre(page, '.wp-maybecard');
+    expect(dayParam(page)).toBeNull();
+
+    await touch(cdp, 'touchStart', card.x, card.y);
+    await expect(page.locator('.wp-maybecard.dragging')).toBeVisible();
+
+    // In RTL the next day lies to the LEFT — the side its peek pane sits on — so dragging a
+    // card that way is dragging it toward tomorrow.
+    const edge = await edgeOf(page, 'left');
+    await touch(cdp, 'touchMove', edge.x, edge.y);
+    await stepsTo(page, TOMORROW);
+
+    // **And the card is still in hand.** A day switch unmounts most of the screen; the whole
+    // point of arriving there mid-drag is that you can now drop on this day's own targets.
+    await expect(page.locator('.wp-dragghost')).toBeVisible();
+
+    // Held, not re-moved: the finger has not travelled since the last `touchMove`, so the
+    // second step can only come from the neighbours having shifted under it.
+    const dayAfter = new Date(Date.parse(`${TOMORROW}T00:00:00.000Z`) + 86_400_000)
+      .toISOString()
+      .slice(0, 10);
+    await stepsTo(page, dayAfter);
+
+    await touch(cdp, 'touchEnd');
+  });
+
+  // **THE LIFT (ADR-0116 §2d).** §2c animated the incoming pane over the whole dwell and the
+  // owner rejected it: 48px over 700ms is 1.1px per frame, a static offset with a timer. The
+  // STRIP is lifted to a detent instead, briskly, and the dwell completes the turn. Asserted as
+  // states and distances, never as a sampled frame.
+  test('the page lifts to a detent, stops there, and the dwell completes the turn', async ({
+    page,
+  }) => {
+    const cdp = await page.context().newCDPSession(page);
+    const card = await centre(page, '.wp-maybecard');
+    const host = page.locator('.day-swipe:not([data-preview])');
+
+    await touch(cdp, 'touchStart', card.x, card.y);
+    await expect(page.locator('.wp-maybecard.dragging')).toBeVisible();
+    expect(await page.locator('.day-peek').count()).toBe(0);
+
+    const edge = await edgeOf(page, 'left');
+    await touch(cdp, 'touchMove', edge.x, edge.y);
+
+    // ① The lift: the host says it is held at a detent, and the panes are mounted — through
+    // the pager's OWN `live`, because a commanded lift is a page turn that has begun.
+    await expect(host).toHaveAttribute('data-edge-lift', '');
+    await expect(host).toHaveAttribute('data-swiping', '');
+    await expect(page.locator('.day-peek')).toHaveCount(2);
+
+    // The distance is the detent, on the strip's own channel — and it is the WHOLE strip, which
+    // is the difference from §2c: the page moves, so `--swipe-dx` is what carries it.
+    const aim = await host.evaluate((el) => ({
+      dx: parseFloat((el as HTMLElement).style.getPropertyValue('--swipe-dx')),
+      // The page and the incoming pane are one thing: both transitions are the detent's.
+      pageEase: getComputedStyle(el.querySelector(':scope > .day-page')!).transitionTimingFunction,
+      paneEase: getComputedStyle(el.querySelector('.day-peek[data-day="next"]')!)
+        .transitionTimingFunction,
+      dur: getComputedStyle(el.querySelector(':scope > .day-page')!).transitionDuration,
+    }));
+    expect(Math.abs(aim.dx)).toBe(DRAG_DAY_LIFT_PX);
+    expect(aim.pageEase).toBe(aim.paneEase);
+    expect(aim.dur).not.toBe('0s');
+
+    // ② and ③: it stops there, and the dwell finishes the turn on the swipe's own settle.
+    await expect(host).toHaveAttribute('data-swipe-settling', 'turn', {
+      timeout: DRAG_DAY_DWELL_MS * 4,
+    });
+    await stepsTo(page, TOMORROW);
+    await touch(cdp, 'touchEnd');
+  });
+
+  test('and leaving the band puts the page back without turning the day', async ({ page }) => {
+    const cdp = await page.context().newCDPSession(page);
+    const card = await centre(page, '.wp-maybecard');
+    const host = page.locator('.day-swipe:not([data-preview])');
+    const bands = await bodyBands(page);
+
+    await touch(cdp, 'touchStart', card.x, card.y);
+    await expect(page.locator('.wp-maybecard.dragging')).toBeVisible();
+    const edge = await edgeOf(page, 'left');
+    await touch(cdp, 'touchMove', edge.x, edge.y);
+    await expect(host).toHaveAttribute('data-edge-lift', '');
+
+    const box = await boxOf(page, '.day-swipe:not([data-preview])');
+    await touch(cdp, 'touchMove', box.x + box.width / 2, (bands.middleFrom + bands.middleTo) / 2);
+    // The detent is released and the offset goes back to zero — the unwind itself is CSS.
+    await expect(host).not.toHaveAttribute('data-edge-lift', '');
+    await expect
+      .poll(() => host.evaluate((el) => (el as HTMLElement).style.getPropertyValue('--swipe-dx')))
+      .toMatch(/^0px$|^$/);
+    await page.waitForTimeout(DRAG_DAY_DWELL_MS * 2);
+    expect(dayParam(page)).toBeNull();
+    await touch(cdp, 'touchEnd');
+  });
+
+  // **A ROW, whose own element is what the day switch unmounts.** The card case above proves
+  // the gesture; this proves the trap ADR-0116 §2 lists first — with `setPointerCapture` the
+  // browser releases capture when the captured element goes away, so a drag that held one
+  // would freeze mid-air. The edge reaches the same dwell from a different side of the screen,
+  // so it inherits that answer rather than needing its own; asserted because "inherits" is a
+  // claim about code, and the ghost outliving its source is a fact about the screen.
+  test('a ROW carried to the edge survives the day it is dragged out of', async ({ page }) => {
+    const cdp = await page.context().newCDPSession(page);
+    const row = await centre(page, '[data-event]');
+    const ghost = page.locator('.wp-dragghost');
+
+    await touch(cdp, 'touchStart', row.x, row.y);
+    await expect(page.locator('.bld.dragging')).toBeVisible();
+    const edge = await edgeOf(page, 'left');
+    await touch(cdp, 'touchMove', edge.x, edge.y);
+    await stepsTo(page, TOMORROW);
+
+    // The row it came off no longer exists — tomorrow has none — and the drag is still live.
+    // **Scoped to the surface you are ON**, because §2c's lean mounts the peeks during a drag
+    // and every row class then exists three times over (ADR-0200 §7's own warning, which this
+    // assertion walked straight into: it counted tomorrow's rows inside a peek pane).
+    await expect(
+      page.locator('.day-swipe:not([data-preview]) > .day-page [data-event]'),
+    ).toHaveCount(0);
+    await expect(ghost, 'the drag survived the day it was lifted from').toBeVisible();
+
+    // And it can still be put down on the day it was carried to.
+    //
+    // **Scoped with `:not(.day-peek *)`, and the obvious scope does not work.** A live lean
+    // mounts the peeks, so `[data-shelf-drop="pool"]` matches three strips — and
+    // `.day-swipe:not([data-preview]) …` matches all three too, because every pane lives
+    // INSIDE the non-preview host, so `closest` finds it from a pane as readily as from the
+    // real strip. Measured: `.first()` resolved to the pane parked off the far edge, which
+    // put the finger deep in the opposite band and walked the day back to the trip's first
+    // day (2026-08-19). Excluding by peek ancestry is the only scope that holds.
+    await holdOver(cdp, page, '[data-shelf-drop="pool"]:not(.day-peek *)');
+    await touch(cdp, 'touchEnd');
+    // By its title, not by a count: this describe seeds the pool, so the row parks BESIDE
+    // three ideas that were always there.
+    await expect(
+      page.locator(`[data-shelf-drop="pool"] .wp-maybecard`).filter({ hasText: 'בוקר' }),
+    ).toHaveCount(1);
+    expect(dayParam(page)).toBe(TOMORROW);
+  });
+
+  // ADR-0116 §2's asymmetry, which the edge inherits by feeding the same dwell: the day switch
+  // is scaffolding for the drag, so a gesture that resolves to nothing takes it back.
+  test('a drag that comes to nothing puts the day back', async ({ page }) => {
+    const cdp = await page.context().newCDPSession(page);
+    const card = await centre(page, '.wp-maybecard');
+
+    await touch(cdp, 'touchStart', card.x, card.y);
+    await expect(page.locator('.wp-maybecard.dragging')).toBeVisible();
+    const edge = await edgeOf(page, 'left');
+    await touch(cdp, 'touchMove', edge.x, edge.y);
+    await stepsTo(page, TOMORROW);
+
+    // Released at a height with nothing on it: the edge NAVIGATES and offers no slot of its
+    // own, so this drag resolved no target at all. Note what it is NOT — the band is not
+    // fenced off from the surface's targets, which is the case below.
+    await touch(cdp, 'touchEnd');
+    await expect.poll(() => dayParam(page)).toBeNull();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+  });
+
+  // **AND A TARGET RESOLVED BEFORE THE TURN IS NOT COMMITTED AFTER IT.** The band and the day's
+  // gap chips overlap by design: a chip spans the surface, so its last `DRAG_DAY_EDGE_PX` lie
+  // inside one, and `PlanDay` prefers the chip on purpose — a drop meant for that slot must not
+  // silently become "aim at another day". Which means a finger can rest at the edge with a chip
+  // under it, and by the time it lets go the chip belongs to the day the turn has just left. It
+  // scheduled into it: the sheet opened on `2 בספט׳`'s slot with day 5 on screen.
+  //
+  // **Aimed at a chip on purpose, and the premise asserted before the release.** The case above
+  // passes because its height happens to have nothing on it — and it happened to have a chip for
+  // one commit, when ADR-0217 took a row out of the list and moved every chip 30px up. A
+  // regression test for this cannot be left to depend on that.
+  test('a target resolved before the turn is not committed after it', async ({ page }) => {
+    const cdp = await page.context().newCDPSession(page);
+    const card = await centre(page, '.wp-maybecard');
+    await touch(cdp, 'touchStart', card.x, card.y);
+    await expect(page.locator('.wp-maybecard.dragging')).toBeVisible();
+
+    // A chip at a height clear of BOTH vertical bands, so nothing scrolls under the finger
+    // while it rests there — one gesture, one thing being asserted. Measured after the arm:
+    // arming reveals the seams, and this needs the geometry the finger will actually meet.
+    const bands = await bodyBands(page);
+    const host = await boxOf(page, '.day-swipe:not([data-preview])');
+    const chips = await page
+      .locator('.day-swipe:not([data-preview]) > .day-page .gap')
+      .evaluateAll((els) =>
+        els.map((el) => {
+          const r = el.getBoundingClientRect();
+          return r.y + r.height / 2;
+        }),
+      );
+    const y = chips.find((cy) => cy > bands.middleTo && cy < bands.middleFrom);
+    expect(y, 'a gap chip clear of both vertical bands').toBeDefined();
+    const point = { x: host.x + Math.round(DRAG_DAY_EDGE_PX / 4), y: Math.round(y!) };
+
+    await touch(cdp, 'touchMove', point.x, point.y);
+    // The premise: the finger is on a chip AND the chip knows it. Without this the test can
+    // quietly become the one above.
+    await expect(
+      page.locator('.day-swipe:not([data-preview]) > .day-page .gap.drop-over'),
+    ).toHaveCount(1);
+    await stepsTo(page, TOMORROW);
+
+    // Let go without moving: the slot under the finger was on the day we left, so the drag
+    // comes to nothing and takes the day switch back with it.
+    await touch(cdp, 'touchEnd');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect.poll(() => dayParam(page)).toBeNull();
+    // …and the card is still an idea on the shelf, on neither day.
+    await expect(page.locator(`[data-shelf-drop="pool"] .wp-maybecard`)).toHaveCount(IDEAS.length);
+  });
+
+  // The latch, in the engine: a card whose own box reaches into a band must not set the days
+  // running before the finger has asked. Vertically this was "you pressed, held, and the list
+  // took off"; here it would be a day flipping under a stationary finger.
+  //
+  // **The lift point is measured, and the premise is asserted rather than assumed.** A first
+  // attempt lifted 9px from the CARD's leading edge on the theory that this was near the
+  // screen's — and in RTL the first pool card sits at x 234-374, so that point was 100px clear
+  // of any band and the "does not step" half passed for no reason at all. The card's TRAILING
+  // edge is the one flush with the surface's, and an event row spans the whole width, so a
+  // drag lifted inside a band is the ordinary case rather than a contrived one.
+  test('a card lifted inside the band does not step until the drag asks', async ({ page }) => {
+    const cdp = await page.context().newCDPSession(page);
+    const host = await boxOf(page, '.day-swipe:not([data-preview])');
+    const card = await boxOf(page, '.wp-maybecard');
+    const bands = await bodyBands(page);
+    const midY = (bands.middleFrom + bands.middleTo) / 2;
+    // Inside the trailing band with room left to push deeper than the release distance.
+    const lift = {
+      x: host.x + host.width - DRAG_EDGE_SCROLL_RELEASE_PX - 4,
+      y: card.y + card.height / 2,
+    };
+    expect(host.x + host.width - lift.x).toBeLessThan(DRAG_DAY_EDGE_PX);
+    expect(lift.x).toBeGreaterThan(card.x);
+
+    await touch(cdp, 'touchStart', lift.x, lift.y);
+    await expect(page.locator('.wp-maybecard.dragging')).toBeVisible();
+    // Carried down to the middle of the scroller without leaving the band, and held there for
+    // twice the dwell: the day must not move.
+    await touch(cdp, 'touchMove', lift.x, midY);
+    await page.waitForTimeout(DRAG_DAY_DWELL_MS * 2);
+    expect(dayParam(page)).toBeNull();
+
+    // Now it asks — by pushing deeper into the same band than it was lifted at. The trailing
+    // edge is the PREVIOUS day in RTL, which is the other half of the mirror this file's
+    // sibling unit test pins.
+    await touch(cdp, 'touchMove', lift.x + DRAG_EDGE_SCROLL_RELEASE_PX, midY);
+    await stepsTo(page, YESTERDAY);
     await touch(cdp, 'touchEnd');
   });
 });

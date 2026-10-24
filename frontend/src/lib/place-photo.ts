@@ -13,7 +13,16 @@
 // Lives here rather than inside `PlaceBadge` because the badge cannot tell a picked glyph from
 // a derived one — it receives rendered children. The distinction is the *place's*, so the
 // question is answered where the place is known.
-import type { DeliveredEnrichmentFields, DeliveredImageValue, Place } from '@waypoint/shared';
+import {
+  eventStopPlaceId,
+  type Booking,
+  type DeliveredEnrichmentFields,
+  type DeliveredImageValue,
+  type Place,
+  type TripEnrichments,
+  type TripEvent,
+} from '@waypoint/shared';
+import { pickedIcon } from '../constants';
 
 /**
  * The image that should fill this badge, or `undefined` for the glyph.
@@ -28,4 +37,48 @@ export function badgePhoto(
 ): DeliveredImageValue | undefined {
   if (place.icon) return undefined;
   return enrichment?.image;
+}
+
+/**
+ * **The image that should fill a DAY ROW's badge**, or `undefined` for the glyph (ADR-0219 §1).
+ *
+ * The same rule as `badgePhoto`, asked one level higher: an icon a human picked **on the
+ * event** is the trip's opinion exactly as one picked on the place, so it beats a fetched
+ * photo too. ADR-0167 §2 could only test `place.icon` because its host was the Map, where
+ * a pin has no event behind it; a day row has both, and answering only half the question
+ * would let a background fetch overwrite a glyph someone chose on the event.
+ *
+ * **`pickedIcon`, not `chosenIcon`** — the gate needs the sharper question. `chosenIcon` knows
+ * only `📌` and `💡`, and the form persists `iconForCategory(category)` on save, so a nature
+ * row stores `⛰️` nobody chose. Reading that as a pick suppressed the photograph on every
+ * categorised row while the same place on the Map showed it, since the Map asks about the
+ * PLACE's icon and a place's icon is only stored on a real pick (ADR-0147).
+ *
+ * It resolves the place itself rather than taking one: every host holds `places` and
+ * `enrichments` and would otherwise write the same lookups. The **booking** comes in resolved,
+ * because the third host has one and no array — the bookings index row IS a booking, and
+ * handing it `[booking]` to be searched would be a lookup invented to satisfy a signature.
+ *
+ * **Through `eventStopPlaceId`, and the first cut read `event.placeId` alone.** That column is
+ * authoritative only for an event no booking backs (ADR-0048 clears it on save), so every
+ * hotel, restaurant and ticket on the trip wore its category glyph while the same place on the
+ * Map wore its photograph — the owner's _"places don't have their image as the icon (like on
+ * the map)"_, reported against a booked zip line. What the first cut was right about is kept by
+ * the same call: a LEG answers with neither end, so a flight's badge is still a flight's and
+ * never its origin airport's picture.
+ */
+export function rowPhoto(
+  event: Pick<TripEvent, 'icon' | 'placeId' | 'category'> | undefined,
+  booking: Booking | undefined,
+  places: Place[],
+  enrichments: TripEnrichments,
+): DeliveredImageValue | undefined {
+  // **The event is optional, and its absence is not a pick.** A booking with no linked row
+  // still has a place and still has a photograph; there is simply no glyph anybody could have
+  // chosen on it.
+  if (event && pickedIcon(event.icon, event.category)) return undefined;
+  const placeId = eventStopPlaceId(event ?? {}, booking);
+  if (!placeId) return undefined;
+  const place = places.find((p) => p.id === placeId);
+  return place && badgePhoto(place, enrichments[place.id]);
 }

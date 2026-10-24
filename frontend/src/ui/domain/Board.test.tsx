@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { Board } from './Board';
+import { Board, type BoardCountdown, type BoardGap, type BoardProps } from './Board';
+import { GAP_CHARACTER, NIGHT_BAND } from '../../lib/gap-character';
+import { TIME_FACT, parseTimeFacts, statedTime } from '../../lib/time-claim';
 import { t } from '../../i18n/he';
 
 describe('Board', () => {
@@ -15,7 +17,7 @@ describe('Board', () => {
         nowKind="hard"
         nowTitle={<span>טיסה לטוקיו</span>}
         nowUntil="16:00"
-        next={{ title: <span>מלון</span>, time: '17:00', hard: true, code: 'ABC123' }}
+        next={{ title: <span>מלון</span>, time: '17:00', hard: true }}
         countdown={{ value: '2:30', unit: 'שעות' }}
         progress={40}
         windowStartHour="07:00"
@@ -31,7 +33,9 @@ describe('Board', () => {
     expect(container.querySelector('.wp-board-next-row')).toBeTruthy();
     expect(container.querySelector('.wp-board-progress')).toBeTruthy();
     expect(container.querySelector('.wp-board-countdown .t')?.textContent).toBe('2:30');
-    expect(container.querySelector('.wp-board-next-meta .code')?.textContent).toBe('ABC123');
+    // **No confirmation code on this surface at all** (ADR-0223 §2). It used to ride this
+    // line; the board is not where a booking is looked up.
+    expect(container.querySelector('.wp-board-next-meta .code')).toBeNull();
   });
 
   it('now + soft: the label reads soft (not hard)', () => {
@@ -43,10 +47,197 @@ describe('Board', () => {
     expect(label?.textContent).not.toContain(t.event.hard);
   });
 
-  it('free: the calm empty hero, no now-title event', () => {
-    const { container } = render(<Board variant="free" clock="14:30" next={null} />);
-    expect(screen.getByText(t.board.freeTitle)).toBeTruthy();
-    expect(container.querySelector('.wp-board-now-label')?.textContent).toBe(t.board.freeLabel);
+  // ── THE GAP'S CHARACTER (ADR-0211) ─────────────────────────────────────────
+  // `זמן חופשי` used to be this component's final `else`, so it printed on a bus, in bed and
+  // on a day nobody planned. The board no longer decides: it draws the answer the screen
+  // derived, and each of these is one `read` away from the next.
+  describe('the gap says which gap it is', () => {
+    const gapBoard = (gap: BoardGap, extra?: Partial<BoardProps>) =>
+      render(<Board variant="free" clock="14:30" next={null} gap={gap} {...extra} />).container;
+
+    it('open: a real gap keeps the words it always had, and finally says until when', () => {
+      const until = statedTime({
+        kind: TIME_FACT.FREE_UNTIL,
+        atMs: Date.parse('2026-08-03T14:20:00.000Z'),
+        zone: 'Europe/Rome',
+        of: 'ev-dinner',
+      });
+      const c = gapBoard({ read: { kind: GAP_CHARACTER.OPEN }, until });
+      expect(c.querySelector('.wp-board-now-label')?.textContent).toBe(t.board.freeLabel);
+      expect(c.querySelector('.wp-board-now-title')?.textContent).toBe(t.board.freeTitle);
+      // The meta line the `free` branch never rendered, while `GlanceCard` said it two
+      // inches lower (§5).
+      expect(c.querySelector('.wp-board-now-meta')?.textContent).toContain('16:20');
+      // **And it carries the instant it derived** (ADR-0226), which is what lets the agreement
+      // suite hold this ceiling against the departure another surface states for one subject.
+      expect(
+        parseTimeFacts(c.querySelector('.wp-board-now-meta')?.getAttribute('data-facts')),
+      ).toEqual([
+        {
+          kind: 'free-until',
+          atMs: Date.parse('2026-08-03T14:20:00.000Z'),
+          zone: 'Europe/Rome',
+          of: 'ev-dinner',
+        },
+      ]);
+    });
+
+    it('on the way: the reported contradiction, from the side that was wrong', () => {
+      const c = gapBoard({ read: { kind: GAP_CHARACTER.ON_THE_WAY } });
+      expect(c.querySelector('.wp-board-now-label')?.textContent).toBe(t.board.gap.onTheWay.label);
+      expect(c.querySelector('.wp-board-now-title')?.textContent).toBe(t.board.gap.onTheWay.title);
+      expect(c.textContent).not.toContain(t.board.freeTitle);
+      // The teal register, and it is the shipped one: `in-transit` already paints
+      // `כרגע · בדרך` this way. A journey a person asserted is the same fact as one the
+      // plan brackets, so it must not read amber over a teal line two rows down.
+      expect(c.querySelector('.wp-board-now-label')?.className).toContain('loc');
+      expect(c.querySelector('.wp-board-live')?.className).toContain('loc');
+      // **The BLIP is the live mark; the word is the title's** (amending ADR-0211's build log
+      // §1, 2026-09-20). That log kept the badge swapping to the gap's own title here because
+      // it was "the shipped transit costume rather than a repetition" — true while the title
+      // had nothing under it, and false the moment the journey's numbers landed below it:
+      // rendered, `בדרך` printed twice ⁦85px⁩ apart.
+      expect(c.querySelector('.wp-board-live')?.textContent).toBe(t.common.now);
+    });
+
+    // ── THE JOURNEY, ON THE COLLAPSED CARD (2026-09-20) ──────────────────────
+    // `heroTravel` has carried these two facts to the LIFTED hero since ADR-0206 §V1.2 and
+    // this component had no slot for them at all, so the one surface you read from a moving
+    // car said less about the drive than the one you have to open.
+    describe('and says what the journey is doing', () => {
+      const arrival = statedTime(
+        {
+          kind: TIME_FACT.ARRIVE_AT,
+          atMs: Date.parse('2026-08-03T16:19:00.000Z'),
+          zone: 'Europe/Rome',
+          of: 'ev-viewpoint',
+        },
+        (clock) => `~${clock}`,
+      );
+
+      it('prints what is left and where it lands, in the meta slot that already existed', () => {
+        const c = gapBoard({
+          read: { kind: GAP_CHARACTER.ON_THE_WAY },
+          journey: { remaining: '~1:12 שע׳', arrival },
+        });
+        const metas = c.querySelectorAll('.wp-board-now-meta');
+        expect(metas).toHaveLength(1);
+        expect(metas[0]!.textContent).toContain(t.travel.remaining('~1:12 שע׳'));
+        expect(metas[0]!.textContent).toContain('18:19');
+        // Tagged with the instant it derived (ADR-0226), so the agreement suite can hold it
+        // against the point's own clock — which is what the late ink is made of.
+        expect(parseTimeFacts(metas[0]!.getAttribute('data-facts'))).toEqual([
+          {
+            kind: 'arrive-at',
+            atMs: Date.parse('2026-08-03T16:19:00.000Z'),
+            zone: 'Europe/Rome',
+            of: 'ev-viewpoint',
+          },
+        ]);
+      });
+
+      it('puts the miss ink on the ARRIVAL alone, never on the driving', () => {
+        const c = gapBoard({
+          read: { kind: GAP_CHARACTER.ON_THE_WAY },
+          journey: { remaining: '~1:12 שע׳', arrival, late: true },
+        });
+        const eta = c.querySelector('.wp-board-now-meta .eta');
+        expect(eta?.className).toContain('miss');
+        expect(eta?.textContent).toContain('18:19');
+        // What is late is where you land; how much driving is left cannot be late.
+        expect(eta?.textContent).not.toContain('1:12');
+      });
+
+      it('draws nothing with no position behind it — a mark says where, not how far along', () => {
+        const c = gapBoard({ read: { kind: GAP_CHARACTER.ON_THE_WAY }, journey: {} });
+        expect(c.querySelector('.wp-board-now-meta')).toBeNull();
+      });
+    });
+
+    // The state the fix could never reach before: you are there, and it has not started.
+    it('arrived: the teal costume, and NO meta line under it', () => {
+      const c = gapBoard({ read: { kind: GAP_CHARACTER.ARRIVED } });
+      expect(c.querySelector('.wp-board-now-label')?.textContent).toBe(t.board.gap.arrived.label);
+      expect(c.querySelector('.wp-board-now-title')?.textContent).toBe(t.board.gap.arrived.title);
+      expect(c.querySelector('.wp-board-now-label')?.className).toContain('loc');
+      expect(c.querySelector('.wp-board-live')?.className).toContain('loc');
+      // **`מתחיל ב־17:30` was drawn and cut**: the next row says that clock ⁦40px⁩ lower and the
+      // tile counts to it, so a meta line here prints one fact three times — the duplication
+      // ADR-0214 §3 removed from this card once already.
+      expect(c.querySelector('.wp-board-now-meta')).toBeNull();
+    });
+
+    // The 2026-09-15 amendment to §8: the reported card said `פנוי · זמן חופשי` above its own
+    // red `12 דקות באיחור ליציאה`.
+    it("due out: the title stops contradicting the tile, and stays in the clock's register", () => {
+      const c = gapBoard({ read: { kind: GAP_CHARACTER.DUE_OUT } });
+      expect(c.querySelector('.wp-board-now-label')?.textContent).toBe(t.board.gap.dueOut.label);
+      expect(c.querySelector('.wp-board-now-title')?.textContent).toBe(t.board.gap.dueOut.title);
+      expect(c.textContent).not.toContain(t.board.freeTitle);
+      // Amber, not teal: `on-the-way` says where you are and this one is waiting to find out.
+      expect(c.querySelector('.wp-board-now-label')?.className).not.toContain('loc');
+      expect(c.querySelector('.wp-board-live')?.className).not.toContain('loc');
+      expect(c.querySelector('.wp-board-live')?.textContent).toBe(t.common.now);
+    });
+
+    it('at the stay: a PLACE and an hour, never a claim about sleeping', () => {
+      const night = gapBoard({
+        read: { kind: GAP_CHARACTER.AT_THE_STAY, band: NIGHT_BAND.NIGHT },
+        stayName: 'Rooms Hotel Tbilisi',
+      });
+      expect(night.querySelector('.wp-board-now-label')?.textContent).toBe(t.board.gap.band.night);
+      expect(night.querySelector('.wp-board-now-title')?.textContent).toBe('Rooms Hotel Tbilisi');
+      // `לילה` is a claim about the CLOCK, and the clock is amber's (root rule 4).
+      expect(night.querySelector('.wp-board-now-label')?.className).not.toContain('loc');
+      expect(night.querySelector('.wp-board-live')?.textContent).toBe(t.common.now);
+
+      const morning = gapBoard({
+        read: { kind: GAP_CHARACTER.AT_THE_STAY, band: NIGHT_BAND.MORNING },
+        stayName: 'Rooms Hotel Tbilisi',
+      });
+      expect(morning.querySelector('.wp-board-now-label')?.textContent).toBe(
+        t.board.gap.band.morning,
+      );
+    });
+
+    it('a day that is over and a day nobody planned read differently', () => {
+      expect(
+        gapBoard({ read: { kind: GAP_CHARACTER.DAY_DONE } }).querySelector('.wp-board-now-title')
+          ?.textContent,
+      ).toBe(t.board.endOfDay);
+      expect(
+        gapBoard({ read: { kind: GAP_CHARACTER.EMPTY_DAY } }).querySelector('.wp-board-now-title')
+          ?.textContent,
+      ).toBe(t.board.gap.emptyDay.title);
+    });
+
+    // The rail clamps (`dayProgress`), so at 02:40 it drew a knob at 0% under a label
+    // reading `עכשיו` — the board placing somebody in bed at 07:00.
+    it('the rail is drawn only where the day is the frame you are in', () => {
+      const withRail = gapBoard({ read: { kind: GAP_CHARACTER.OPEN } }, { showRail: true });
+      expect(withRail.querySelector('.wp-board-progress')).toBeTruthy();
+      const night = gapBoard(
+        { read: { kind: GAP_CHARACTER.AT_THE_STAY }, stayName: 'X' },
+        { showRail: false },
+      );
+      expect(night.querySelector('.wp-board-progress')).toBeNull();
+    });
+  });
+
+  // `deriveNow` has no date filter, so this slot has always crossed midnight — and said
+  // nothing about it, which is what makes `07:00` at 22:40 read as this morning.
+  it('the next slot says which day it is, beside the time it qualifies', () => {
+    const { container } = render(
+      <Board
+        variant="free"
+        clock="22:40"
+        gap={{ read: { kind: GAP_CHARACTER.DAY_DONE } }}
+        next={{ title: <span>טיסה לבטומי</span>, time: '07:00', day: 'מחר' }}
+      />,
+    );
+    const meta = container.querySelector('.wp-board-next-meta');
+    expect(meta?.textContent).toContain('07:00');
+    expect(meta?.textContent).toContain('מחר');
   });
 
   it('group-split: concurrent soft events read as equals', () => {
@@ -378,5 +569,297 @@ describe('Board', () => {
       <Board variant="free" clock="14:30" next={null} onLift={() => {}} />,
     );
     expect(container.querySelector('.wp-board')!.className).not.toContain('is-lifted');
+  });
+});
+
+describe('Board — a stop that is two places names the second (ADR-0225 §6)', () => {
+  it('one peer is named on the meta line, in the day’s own word', () => {
+    const { container } = render(
+      <Board
+        variant="free"
+        clock="20:57"
+        next={{
+          title: <span>Seljalandsfoss</span>,
+          time: '08:30',
+          peers: [<span key="g">Gljúfrabúi</span>],
+        }}
+      />,
+    );
+    const peer = container.querySelector('.wp-board-next-meta .peer');
+    expect(peer?.textContent).toBe(`${t.day.concurrent} · Gljúfrabúi`);
+    // One loud element: the title still names only the primary.
+    expect(container.querySelector('.wp-board-next-title')?.textContent).toBe('Seljalandsfoss');
+  });
+
+  it('several peers are counted, not listed', () => {
+    const { container } = render(
+      <Board
+        variant="free"
+        clock="20:57"
+        next={{
+          title: <span>A</span>,
+          time: '08:30',
+          peers: [<span key="b">B</span>, <span key="c">C</span>],
+        }}
+      />,
+    );
+    expect(container.querySelector('.wp-board-next-meta .peer')?.textContent).toBe(
+      `${t.day.concurrent} · ${t.board.peersMore(2)}`,
+    );
+  });
+
+  it('draws nothing for a stop that is one place', () => {
+    const { container } = render(
+      <Board
+        variant="free"
+        clock="20:57"
+        next={{ title: <span>A</span>, time: '08:30', peers: [] }}
+      />,
+    );
+    expect(container.querySelector('.wp-board-next-meta .peer')).toBeNull();
+  });
+});
+
+describe('Board — the countdown swaps what it counts to (ADR-0206 §Z1)', () => {
+  const board = (countdown: BoardCountdown) =>
+    render(
+      <Board
+        variant="free"
+        clock="17:22"
+        next={{ title: <span>ארוחת ערב</span>, time: '18:00' }}
+        countdown={countdown}
+      />,
+    );
+
+  // The `unit` slot has said what the minutes are left OF since ADR-0184 §6's `לסגירה`; a live
+  // leave-by is the same fact pointed one step earlier. One tile, three referents.
+  it('is the SAME tile under all three units, never a second box', () => {
+    for (const unit of ['דקות', t.board.leaveIn, t.board.lateBy('דקות')]) {
+      const { container, unmount } = board({ value: '10', unit });
+      expect(container.querySelectorAll('.wp-board-countdown')).toHaveLength(1);
+      expect(container.querySelector('.wp-board-countdown .u')?.textContent).toBe(unit);
+      unmount();
+    }
+  });
+
+  it('paints the tile --miss once the leave-by has passed, and only then', () => {
+    const live = board({ value: '10', unit: t.board.leaveIn });
+    expect(live.container.querySelector('.wp-board-countdown.missed')).toBeNull();
+    live.unmount();
+    const passed = board({ value: '7', unit: t.board.lateBy('דקות'), missed: true });
+    expect(passed.container.querySelector('.wp-board-countdown.missed')).toBeTruthy();
+  });
+
+  // **ADR-0208 §1.** Three parts will not fit on one line inside the tile's own ⁦48px⁩, so the
+  // sentence wraps: the number, then what it measures, then what it is late FOR. Explicit lines
+  // rather than a `max-width` and a hope — a font fallback would wrap where nothing measured it.
+  it('carries a second unit line, and only when it is given one', () => {
+    const passed = board({
+      value: '7',
+      unit: t.board.lateBy('דקות'),
+      unitBelow: t.board.leaveIn,
+      missed: true,
+    });
+    const lines = [...passed.container.querySelectorAll('.wp-board-countdown .u')].map(
+      (u) => u.textContent,
+    );
+    expect(lines).toEqual([t.board.lateBy('דקות'), t.board.leaveIn]);
+    passed.unmount();
+    const live = board({ value: '10', unit: t.board.leaveIn });
+    expect(live.container.querySelectorAll('.wp-board-countdown .u')).toHaveLength(1);
+  });
+
+  // ── TOMORROW IS THE NIGHT BOARD'S SUBJECT (ADR-0214) ───────────────────────
+  // Three states, and the rule that generates them is one line: rank 1 is whichever slot holds
+  // tomorrow. So the shapes differ because the DATA differs, not because the board has three
+  // branches about the clock.
+  const RIBBON = {
+    blocks: [
+      {
+        key: 'a',
+        startFrac: 0.01,
+        endFrac: 0.17,
+        hard: true,
+        point: false,
+        nextDay: false,
+        composite: false,
+        // Tomorrow is a day nobody has lived: `spent` cannot be true and `skipped` is filtered
+        // out before the ribbon (ADR-0215 §2's own invariant, asserted in `tomorrow.test.ts`).
+        spent: false,
+        skipped: false,
+        cue: true,
+      },
+      {
+        key: 'b',
+        startFrac: 0.25,
+        endFrac: 0.41,
+        hard: false,
+        point: false,
+        nextDay: false,
+        composite: false,
+        spent: false,
+        skipped: false,
+        cue: false,
+      },
+    ],
+    marks: [{ key: 'a', frac: 0.01, icon: '🚄' }],
+    count: 2,
+  };
+  const tomorrowProps: Partial<BoardProps> = {
+    variant: 'free',
+    clock: '22:40',
+    gap: { read: { kind: GAP_CHARACTER.DAY_DONE } },
+    next: { title: <span>רכבת לקיוטו</span>, time: '07:12', day: 'מחר', hard: true },
+    countdown: { value: '8:32', unit: 'שעות' },
+  };
+
+  it('a planned tomorrow takes rank 1, and the day-done words are not drawn at all', () => {
+    const { container } = render(
+      <Board {...(tomorrowProps as BoardProps)} tomorrow={{ label: 'מחר', ribbon: RIBBON }} />,
+    );
+    // The next slot IS the first slot: it wears rank 1 and there is no now-slot above it.
+    expect(container.querySelector('.wp-board-next-label')?.getAttribute('data-rank')).toBe('1');
+    expect(container.querySelector('.wp-board-next-label')?.textContent).toBe('מחר');
+    expect(container.querySelector('.wp-board-next-title')?.getAttribute('data-rank')).toBe('1');
+    expect(container.querySelector('.wp-board-now-title')).toBeNull();
+    expect(container.textContent).not.toContain(t.board.endOfDay);
+    // Nothing above it to divide from.
+    expect(container.querySelector('.wp-board-divider')).toBeNull();
+    // The rail's slot carries the shape instead of a bar with nothing left to measure.
+    expect(container.querySelector('.wp-board-progress.wp-track')).toBeTruthy();
+    expect(container.querySelectorAll('.wp-track-blk')).toHaveLength(2);
+    expect(container.querySelector('.wp-track-blk.hard.cue')).toBeTruthy();
+    expect(container.querySelectorAll('.wp-board-progress .knob')).toHaveLength(0);
+  });
+
+  // The three subtractions, and the day token is the one that DEPENDS on the rank swap: the
+  // label above now says `מחר`, so keeping it prints one word twice.
+  it('at rank 1 the code, the gate, the lock and the day token come off the meta row', () => {
+    const { container } = render(
+      <Board
+        {...(tomorrowProps as BoardProps)}
+        next={{ ...tomorrowProps.next!, gate: 'רציף 14' }}
+        tomorrow={{ label: 'מחר', ribbon: RIBBON }}
+      />,
+    );
+    const meta = container.querySelector('.wp-board-next-meta');
+    expect(meta?.textContent).toContain('07:12');
+    expect(meta?.querySelector('.code')).toBeNull();
+    // **The gate goes the same way, on the same guard** (ADR-0222 §4). A gate three hours out
+    // cannot also be a day away, so rank 1 needed no branch of its own — and this is the
+    // assertion that says so rather than leaving it to be rediscovered.
+    expect(meta?.querySelector('.tlabel.loc')).toBeNull();
+    expect(meta?.querySelector('.lockmini')).toBeNull();
+    expect(meta?.textContent?.match(/מחר/g) ?? []).toHaveLength(0);
+    // …and the label is where that word now lives, exactly once on the card.
+    expect(container.textContent?.match(/מחר/g)).toHaveLength(1);
+  });
+
+  it('the same board WITHOUT a tomorrow keeps every one of them', () => {
+    const { container } = render(<Board {...(tomorrowProps as BoardProps)} />);
+    const meta = container.querySelector('.wp-board-next-meta');
+    expect(meta?.querySelector('.lockmini')).toBeTruthy();
+    expect(meta?.textContent).toContain('מחר');
+    expect(container.querySelector('.wp-board-now-title')?.textContent).toBe(t.board.endOfDay);
+    expect(container.querySelector('.wp-board-next-label')?.getAttribute('data-rank')).toBeNull();
+  });
+
+  it('an unplanned tomorrow keeps its words in the now-slot, and the far point keeps rank 2', () => {
+    const { container } = render(
+      <Board
+        {...(tomorrowProps as BoardProps)}
+        next={{ title: <span>טיסה לאוסקה</span>, time: '09:00', day: 'מחרתיים' }}
+        tomorrow={{ label: 'מחר', ribbon: { blocks: [], marks: [], count: 0 } }}
+      />,
+    );
+    expect(container.querySelector('.wp-board-now-label')?.textContent).toBe('מחר');
+    expect(container.querySelector('.wp-board-now-title')?.textContent).toBe(
+      t.board.gap.emptyDay.title,
+    );
+    // No swap: the point is a day or more out, so it stays `הבא בתור` — and it keeps the day
+    // token, because the label above it does not say it.
+    expect(container.querySelector('.wp-board-next-label')?.getAttribute('data-rank')).toBeNull();
+    expect(container.querySelector('.wp-board-next-meta')?.textContent).toContain('מחרתיים');
+    // A dashed strip, and no blocks to draw.
+    expect(container.querySelector('.wp-track-empty')).toBeTruthy();
+    expect(container.querySelectorAll('.wp-track-blk')).toHaveLength(0);
+    expect(container.querySelector('.wp-board-divider')).toBeTruthy();
+    // And no day rail under it: two bands for two things with nothing left to measure is
+    // what the running app showed, so the spent rail goes here as well.
+    expect(container.querySelector('.wp-board-progress:not(.wp-track)')).toBeNull();
+  });
+
+  it('the bed is named only when the screen passes it', () => {
+    const { container: without } = render(
+      <Board {...(tomorrowProps as BoardProps)} tomorrow={{ label: 'מחר', ribbon: RIBBON }} />,
+    );
+    expect(without.querySelector('.wp-board-tmr-sleep')).toBeNull();
+    cleanup();
+    const { container: withBed } = render(
+      <Board
+        {...(tomorrowProps as BoardProps)}
+        tomorrow={{ label: 'מחר', ribbon: RIBBON, sleeps: 'Hotel Kanra' }}
+      />,
+    );
+    expect(withBed.querySelector('.wp-board-tmr-sleep')?.textContent).toContain('Hotel Kanra');
+  });
+
+  // The strip is a READOUT: the board is a `<button>`, and ADR-0160 §4 is the record of what a
+  // nested one does to it (Chrome closes the board at the inner button and reparents the rest).
+  it('the strip contains no control, so a tappable board keeps its children', () => {
+    const { container } = render(
+      <Board
+        {...(tomorrowProps as BoardProps)}
+        tomorrow={{ label: 'מחר', ribbon: RIBBON, sleeps: 'Hotel Kanra' }}
+        onLift={() => {}}
+      />,
+    );
+    const board = container.querySelector('button.wp-board');
+    expect(board).toBeTruthy();
+    expect(board?.querySelectorAll('button')).toHaveLength(0);
+    // Everything after the strip is still inside the board.
+    expect(board?.querySelector('.wp-track')).toBeTruthy();
+    expect(board?.querySelector('.wp-board-tmr-sleep')).toBeTruthy();
+  });
+});
+
+/* ── THE GATE INHERITS THE CODE'S SLOT (ADR-0222 §4) ────────────────────────────────────
+   Not a width concession: the line is already two bands and was measured with room for both.
+   The swap is about meaning — the code is the fact you cannot act on at the gate, and Home's
+   `הכרטיס הבא` tile carries it lower on the same screen. `Board` never asks what time it is;
+   the caller resolves the window (`gateIsDue`) and hands it whichever fact is due. */
+describe('the board’s one booking-fact slot', () => {
+  const board = (next: Partial<BoardProps['next']>) =>
+    render(
+      <Board
+        variant="now"
+        clock="14:30"
+        nowKind="soft"
+        nowTitle={<span>ראמן</span>}
+        next={{ title: <span>טיסה</span>, time: '17:00', ...next } as BoardProps['next']}
+      />,
+    ).container;
+
+  it('says nothing in the slot when no gate is due', () => {
+    const c = board({});
+    expect(c.querySelector('.wp-board-next-meta .tlabel.loc')).toBeNull();
+    expect(c.querySelector('.wp-board-next-meta .code')).toBeNull();
+  });
+
+  // **The gate no longer INHERITS this slot, it simply occupies it** (ADR-0222 §4 as amended
+  // by ADR-0223 §3): the code it used to displace is not on this surface at all any more, so
+  // the branch that chose between them is gone.
+  it('draws the gate once it is due, and never a code beside it', () => {
+    const c = board({ gate: 'שער B7' });
+    expect(c.querySelector('.wp-board-next-meta .tlabel.loc')?.textContent).toBe('שער B7');
+    expect(c.querySelector('.wp-board-next-meta .code')).toBeNull();
+  });
+
+  // Teal because a gate is a place (rule 4), on `.tlabel.loc`'s existing recipe — the
+  // selector this ADR extended to a line that had never carried a location before.
+  it('draws the gate in the location register, not the amber code one', () => {
+    const c = board({ gate: 'שער B7' });
+    const chip = c.querySelector('.wp-board-next-meta .tlabel');
+    expect(chip?.className).toContain('loc');
   });
 });

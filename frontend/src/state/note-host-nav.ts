@@ -1,6 +1,11 @@
 // **"Take me to what this note is about"** — one call, five kinds (ADR-0153 §8's way-in
 // amendment).
 //
+// **And its second caller is not a note** (2026-08-20): the Map's place card lists what happens
+// at a place, and an event entry there wants exactly this — the day, plus the id that opens and
+// lands the one card (ADR-0121 §8's amendment). The name stays because the dispatch it owns is
+// the note ADR's; what it answers is "where does this entity live", which was never note-shaped.
+//
 // Composed here for the same reason `useShowPlaceOnMap` is: it is a surface telling another
 // tab something, and every one of those already lives beside the scope it talks to. What this
 // adds is the dispatch — a note's host is one of five entity types with five different

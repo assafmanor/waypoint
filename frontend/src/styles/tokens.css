@@ -42,6 +42,12 @@
   --plan: #6e59d6; /* plan-mode accent — plan/builder actions only */
   --plan-deep: #5747b4;
   --plan-tint: rgba(110, 89, 214, 0.1);
+  /* A finished trip's hue (ADR-0240), shaped like plan's: a fill, its ink, a wash. Rose is the
+     last wide gap on the hue wheel: its nearest meaning is --miss at ~20 ΔE00, where the app's
+     tightest shipped pair (teal against --ok) sits at 11.6. A finished trip only. */
+  --memory: #a9507f;
+  --memory-deep: #86395f;
+  --memory-tint: rgba(169, 80, 127, 0.1);
   --indigo-tint: rgba(27, 42, 74, 0.1); /* chrome-accent wash — active nav pill in Trip mode */
   --cta: var(--ink); /* neutral primary button; amber/teal/plan are semantic, never CTAs */
   --cta-text: var(--on-fill); /* the CTA is just one more fill — see --on-fill below */
@@ -87,6 +93,41 @@
   --on-dark: #eaf0ff; /* body ink on a dark surface */
   --on-dark-dim: #93a2c4; /* secondary, labels, meta */
   --on-dark-faint: #7688ac; /* tertiary — rail ends, footnotes */
+
+  /* ── The app mark's edge on the dark chrome (ADR-0087 amendment) ──
+     The mark stopped drawing its own outer stroke, so its three inline hosts
+     (.land-icon, .join-icon, .sh-brand-mark) separate the dark disc from the dark
+     bar with a hairline instead. A border, not a brand mark: white-alpha rather
+     than teal, so it reads as the container's edge and cannot be mistaken for
+     part of the logo the way the teal ring was. Two hosts already carried this
+     literal; this is the name for it. */
+  --mark-edge: rgba(255, 255, 255, 0.15);
+
+  /* ── The ink on PLAN's violet, which that surface always had (ADR-0193 §5) ──
+     Not a new family — a NAME for one. `.prep` has inked itself in white-alpha
+     since it was drawn, as six literals scattered through `screens.css`; §3
+     above says the ink a surface carries is a token, and this is the one
+     surface that never got it. Same four rungs as --on-dark-* so a component
+     moving between the two grounds swaps a prefix, not a vocabulary.
+
+     WHY WHITE-ALPHA AND NOT --on-dark-*, which is the question this answers:
+     the lifted plan hero is a GRADUAL ramp from --plan-surface down to
+     --plan-surface-3, so its top is bright violet — where --on-dark-faint is
+     1.45:1 and --on-dark-dim 2.02:1. A cool blue-grey cannot survive the upper
+     half of that ramp however deep its bottom gets. White-alpha can, because
+     it composites TOWARD the ground rather than against it, which is why this
+     surface was written that way in the first place.
+
+     Theme-independent, like --on-dark-* and for the same reason: both grounds
+     this ramp paints on are dark violet. The alphas are set from measured
+     ratios at the BRIGHTEST point any row sits on, not from taste — --faint is
+     0.80 because 0.76 measured exactly 4.5:1 there, and a rung on the floor is
+     one that fails the next time a stop moves. */
+  --on-plan-strong: #ffffff; /* the countdown numeral */
+  --on-plan: rgba(255, 255, 255, 0.94); /* titles, body */
+  --on-plan-dim: rgba(255, 255, 255, 0.84); /* deadlines, dates, secondary */
+  --on-plan-faint: rgba(255, 255, 255, 0.8); /* band labels, kickers */
+  --on-plan-track: rgba(255, 255, 255, 0.18); /* the readiness track's groove */
 
   /* ── The chrome's contract (ADR-0158 §5) ───────────────────────────────────
      53 colour declarations on the trip chrome assume it is DARK, and only four
@@ -143,6 +184,8 @@
      value and App.css only knows about modes. Violet needs no help — --plan is
      chroma 73.6 — so this one stays a mix and simply matches trip's weight. */
   --chrome-bg-plan: #dcd5f2;
+  /* The archive's band (ADR-0240 §3). Read by `.app[data-phase='past']` exactly as plan's is. */
+  --chrome-bg-memory: #efd9e2;
   --chrome-ink: #16233d; /* titles, active glyphs — also the wash base */
   --chrome-ink-mid: #2c3a56; /* control glyphs: the back chevron, the +N count */
   --chrome-ink-num: #3c4763; /* numerals — the day number, the anchor's value */
@@ -159,6 +202,23 @@
      gradient they replace, so light mode does not move. */
   --plan-surface: #6e59d6;
   --plan-surface-2: #5747b4;
+  /* **The FAR end of the lifted plan hero's ramp** (ADR-0193 §5, amended 2026-08-17 on the
+     owner's report that the lifted card reads too heavy in light theme).
+     
+     It used to be "the deep end" in both themes, and that was the defect: `.prep` itself
+     already ramps WITH the theme — light goes #5747b4 → #6e59d6, i.e. *lighter* downward,
+     while dark goes #332866 → #2a2158, darker — and the lifted card was the one surface
+     darkening in both. So this token follows the theme too: a touch lighter than
+     --plan-surface-2 in light, deeper in dark.
+     
+     ADR-0158 §4's rule still holds and is worth checking rather than assuming: the dark
+     value is DARKER than the light one, so the surface does not brighten on dark.
+     
+     **The light value is a ceiling, not a taste.** The lifted card's ink is the white-alpha
+     --on-plan-* ramp, and white at 0.80 clears 4.5:1 only on a ground below L 0.112. This is
+     #5f4dbf (L 0.107). --plan-surface itself (L 0.153) is already past it — which is why the
+     card cannot simply ramp to the collapsed hero's own brightest violet. */
+  --plan-surface-3: #5f4dbf;
   /* Status mini-palette (distinct from the semantic trio) */
   --ok: #3c9a6b;
   --miss: #c2584e;
@@ -172,6 +232,9 @@
      phase did not do, and the backlog carries them. Naming it is what stops
      the 37th from being another literal. */
   --miss-deep: #96443c;
+  /* --ok AS INK, the same split (ADR-0240 §2). `.tag-done` wrote --ok at 10px on its own tint
+     at 3.03:1; on a finished trip that chip is the only done mark, so it has to read. */
+  --ok-deep: #2b7050;
 
   /* Category pin palette (ADR-0038 §2 / ADR-0028 decorative palette) — 5 pastel
      hues, "never amber or teal": colour = category on the Map list badge + pin
@@ -205,13 +268,13 @@
 
   /* Motion — duration ramp + easings (design-language "Motion & designed
      transitions"). New motion picks from this ramp, the same discipline the
-     type ramp and color budget enforce. Budget rule: exactly one --t-cinematic
-     moment exists — the Plan→Trip switch. Everything under prefers-reduced-motion
+     type ramp and color budget enforce. Budget rule: one --t-cinematic moment at
+     each end of a trip — the Plan→Trip switch and coming home (ADR-0241 §3). Everything under prefers-reduced-motion
      collapses to instant (App.css). */
   --t-quick: 140ms; /* nav settle, toggles, hovers, focus */
   --t-base: 240ms; /* tab cross-fade, toast, ripple bar, sheets */
   --t-deliberate: 400ms; /* return-gesture slide; Trip→Plan stand-down */
-  --t-cinematic: 600ms; /* Plan→Trip going-live — the only cinematic moment */
+  --t-cinematic: 600ms; /* going live, and coming home — one per end of a trip */
   --ease-standard: cubic-bezier(0.2, 0, 0, 1); /* default / entrances / hue melts */
   --ease-exit: cubic-bezier(0.4, 0, 1, 1); /* exits — toast out, glow extinguishing */
   --ease-emphasized: cubic-bezier(0.16, 1, 0.3, 1); /* the glow ignite */
@@ -257,6 +320,13 @@
   --space-5: 20px;
   --space-6: 24px;
 
+  /* **The height a sheet form's sticky action bar occupies**, so the scroll container it pins
+     to can keep `scrollIntoView` from parking anything underneath it (ADR-0196 §13,
+     `form-actions.css`). A pair that must stay true: the bar measures ~55px and this covers it
+     with slack, and if the bar ever grows past this the clearance stops working silently —
+     which is why both numbers are asserted together in `form-actions.contract.test.ts`. */
+  --form-actions-h: 68px;
+
   /* Type ramp (design-language "Type ramp"). Assistant unless the call site
      sets --font-head (Secular One for display/h1/h2/h3). Values are the
      documented steps; off-ramp sizes in legacy CSS converge onto these. */
@@ -264,6 +334,13 @@
   --text-h1: 26px; /* screen titles */
   --text-h2: 21px; /* board now-title */
   --text-h3: 17px; /* card titles (17–18) */
+  /* **A step ABOVE body, for the one surface that is a document** (ADR-0202's 2026-08-22
+     amendment; owner: the note's full screen is "too small"). `--text-body` is sized for app
+     chrome — a row, a fact, a meta line — where the job is to fit several facts on a phone
+     line. A note read on its own screen has the opposite job: one long text, nothing beside
+     it, and a reader who is reading rather than scanning. It is a ramp step and not a local
+     number so the next reading surface takes the same size instead of picking its own. */
+  --text-reading: 16px; /* prose on a surface that holds nothing else */
   --text-body: 14.5px; /* default text */
   --text-secondary: 13px; /* meta, descriptions (12–13) */
   --text-caption: 11px; /* labels, hints */
@@ -384,6 +461,29 @@ body.wp-dragging * {
   user-select: none !important;
   -webkit-user-select: none !important;
 }
+/* …and the other half of the same subject, which the comment above used to point at while
+   the rule itself was copied per component (ADR-0199 §4). **A day or shelf row is a
+   control, not a document**: a press on one is a gesture in every mode — a drag on a soft
+   row, an answered refusal on a hard one (`BEAT.PINNED`), a tap everywhere else — and a
+   long press that starts selecting text or opens the iOS callout is the platform answering
+   in the app's place.
+
+   It was keyed on `.draggable` in `screens.css` and `maybe-card.css`, and the key is what
+   made it a bug rather than a gap: the two rows that never drag — a hard `.bld`, and every
+   `.wp-event`, which has no drag in any mode — were the two that selected. Owner report,
+   2026-08-21.
+
+   One selector list rather than three declarations, so they cannot drift the way ADR-0139's
+   four axes did; a fourth row type joins by being added here. Note this handles the press
+   only: cancelling `selectstart` mid-gesture is `useHoldToDrag`'s `selection.suppress()`,
+   because `user-select: none` does not stop a long press ASKING to select. */
+.bld,
+.wp-event,
+.wp-maybecard {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
 /* Ownership of the finger is enforced in JS, not here (lib/useHoldToDrag.ts's
    mount-time non-passive `touchmove` guard). Two CSS routes were tried first and
    both are dead ends, so they are documented rather than reintroduced:
@@ -451,6 +551,26 @@ body.wp-dragging .wp-maybecard.dragging {
 html,
 body,
 #root {
+  /* **`100%` here is the LARGE viewport, and that mismatch is the empty band**
+     (field report: space below the tab bar on Home, reachable by swiping down
+     from it). A percentage height on the root resolves against the initial
+     containing block, which a mobile browser sizes to the viewport with its
+     toolbars HIDDEN — while `.app` is `100dvh`, the viewport as it is right now.
+     With the toolbars showing the two disagree by their height, so the document
+     is ~125px taller than the frame inside it, and the band of `--screen` under
+     the tab bar is the document's own overflow.
+
+     **It is fixed by the `overflow` below, and deliberately NOT by sizing
+     this in `dvh`.** `dvh` can never EXCEED the containing block (`dvh <= lvh`,
+     and the ICB is `lvh`), so the frame can never overflow this box and the
+     surplus is always below the fold — make the root unscrollable and the band
+     is unreachable and never painted, which is the whole of the report. Sizing
+     the document in `dvh` buys nothing on top of that and is not free: `dvh` is
+     re-resolved whenever the dynamic viewport is, and here that is a relayout of
+     the WHOLE document at an unpredictable moment during load — which lands on
+     `lib/land-at-top.ts`, a `requestAnimationFrame` watch whose entire subject is
+     a surface that has not settled yet. A length that does not need to be dynamic
+     should not be. */
   height: 100%;
   /* App-shell scrolls inside .body, not the document. Stop overscroll from
      chaining to the page so the browser's native pull-to-refresh never fires
@@ -460,6 +580,48 @@ body,
      the image preview opts back in via its own touch-action). manipulation still
      allows panning + the day-strip pan-x scroll. */
   touch-action: manipulation;
+}
+
+/* **The public reader opts out of all three** (see `lib/public-reader-chrome.ts`). A shared
+   itinerary is a document in a browser tab, not the app: it may be pinched to a size its
+   reader can actually read, and a pull at the top is the browser's refresh rather than a
+   gesture this page swallows. A variant block AFTER `:root`, never inside it — putting a
+   selector on that block is how the whole token set was once lost to `[dir='ltr']`. */
+:root[data-public-reader],
+:root[data-public-reader] body {
+  overscroll-behavior-y: auto;
+  touch-action: auto;
+  /* **And the document scrolls, which is the half that was missing** (owner, 2026-08-31:
+     refresh still did not work after the two lines above shipped). `overscroll-behavior` only
+     decides what happens when a scroll container runs out of content; `overflow: clip` below
+     means the viewport is not a scroll container at all, so there was never an overscroll for
+     the browser's refresh gesture to read. The reader's own page therefore stops being a
+     100dvh inner scroller too (`shared-itinerary.css`) — the two changes are one fix and
+     neither works alone. Higher specificity than the `html, body` rule below, so source order
+     does not decide this. */
+  overflow: visible;
+}
+
+/* **The document itself never scrolls**, which is what closes the empty band above:
+   every scroll in this app is `.body`'s, a sheet's own list, or a strip's. On the
+   root this propagates to the viewport, so it is the enforcement of the sentence in
+   the block above rather than a second opinion about it. Safe for every overlay:
+   `Modal`, `MediaViewer` and the toast are all `position: fixed` with their own
+   inner scroller.
+
+   **`clip`, not `hidden`.** `hidden` makes an element a scroll CONTAINER that merely
+   refuses the user: it still has a scrollport, and `scrollIntoView` walks every scroll
+   container between an element and the viewport. So `hidden` here would put a second,
+   empty scroll target in front of `.body` on the one path in this app that aims a smooth
+   scroll at a surface still settling (`lib/land-at-top.ts`). `clip` is not a scroll
+   container at all — nothing to scroll, nothing to walk, identical propagation to the
+   viewport — so it says only what is meant. Chosen on that reasoning and not on a
+   measurement: `hidden` was tried and no run separated the two (see ADR-0200 §1, which
+   also records the wrong turn taken while looking). Same distinction `map.css` draws for
+   its own track. */
+html,
+body {
+  overflow: clip;
 }
 
 body {
@@ -505,6 +667,7 @@ textarea {
      with white on it. */
   --plan-surface: #2a2158;
   --plan-surface-2: #332866;
+  --plan-surface-3: #1a1442;
 
   /* The chrome, restated — and it has to be, now that light's is light. §5 read
      the chrome as theme-fixed and phase 6 refuted that: once light mode got its
@@ -520,6 +683,9 @@ textarea {
      which lifts the band clear of the screen and restores the plane order. */
   --chrome-bg: color-mix(in srgb, var(--indigo) 12%, var(--card));
   --chrome-bg-plan: color-mix(in srgb, var(--plan) 12%, var(--card));
+  /* A LITERAL, not plan's recipe: --card is a blue, and rose mixed off it lands at hue 292–305°,
+     --plan's own angle (ΔE00 3.6 against plan's band, measured in mockups/past-trip-v1.html). */
+  --chrome-bg-memory: #33202b;
   --chrome-ink: #ffffff;
   --chrome-ink-mid: #dce3f2;
   --chrome-ink-num: #b9c4de;
@@ -550,6 +716,9 @@ textarea {
   --plan: #8b79e8;
   --plan-deep: #a99af2; /* used as text — lighter on dark */
   --plan-tint: rgba(139, 121, 232, 0.14);
+  --memory: #dc8ab5;
+  --memory-deep: #eba5c9; /* used as text — lighter on dark */
+  --memory-tint: rgba(220, 138, 181, 0.14);
   --indigo-tint: rgba(141, 168, 232, 0.16); /* brightened for the dark nav bar */
   --cta: #e7eaf2;
   --cta-text: var(--on-fill); /* tracks the family; the CTA is one more fill */
@@ -558,6 +727,7 @@ textarea {
   /* Deep means FURTHER FROM THE GROUND, not darker — on dark that is lighter,
      the same inversion --amber-deep and --plan-deep already make. */
   --miss-deep: #e3877d;
+  --ok-deep: #6fd49f;
   /* Category pins, nudged brighter so the pastels clear the dark board (dark is
      readiness-only today, ADR-0028/0105 — inert until data-theme=dark is set). */
   /* Identity ramp, lifted like the pin hues so a pastel ground still carries the

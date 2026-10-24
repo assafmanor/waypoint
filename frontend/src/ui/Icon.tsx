@@ -18,14 +18,29 @@ export type IconName =
   | 'close'
   | 'locate'
   | 'frame'
+  | 'compass'
+  // Replay's two states (ADR-0241 §2). Media glyphs are never mirrored, in any locale.
+  | 'play'
+  | 'pause'
   | 'pin'
   | 'external'
+  | 'eye'
   | 'camera'
   | 'check'
   | 'skip'
   | 'cloud-check'
   | 'cloud-up'
   | 'cloud-bang'
+  // A task's MARK on a host row (ADR-0191 §1) — a checkbox rather than the bare `check`
+  // the tick uses, because since the automatic row lost its badge a `check` on a task row
+  // means the completion control and nothing else, so a bare ✓ on a booking row would read
+  // "this is done" rather than "there is a task here".
+  | 'checkbox'
+  // The SAME box with nothing in it — for a surface that names ONE open task rather than
+  // counting a host's (ADR-0160 §U, amended 2026-08-16). A ✓ inside the box is fine on a
+  // mark that means "there are tasks here"; beside a single title it is read as that task's
+  // own state, which is the opposite of what the hero is there to say.
+  | 'checkbox-empty'
   // ── The emoji sweep (ADR-0138). Every shape below replaces an emoji that was
   // drawing a CONTROL. Grouped by what they replace, not alphabetically, so the
   // sweep's boundary stays legible from the type alone.
@@ -48,6 +63,18 @@ export type IconName =
   | 'clipboard'
   | 'currency'
   | 'ticket'
+  // ── The three travel modes (ADR-0206 §AA3). A mode is UI and not content, so it is a
+  // glyph rather than a word — the owner reversed §Z5 §M5's "not the place to mint three"
+  // on the review that asked for the journey to be "crystal clear". `ticket` above stands
+  // in for a declared תחב״צ leg (§AA4) rather than a fourth being minted for a mode with
+  // no provider.
+  | 'walking'
+  | 'cycling'
+  | 'driving'
+  // The fourth mode's own glyph (ADR-0206 §AL2). `ticket` above is NOT it — `constants.ts`'s
+  // `booking: 'ticket'` already spends that shape on "a booking" in four screens, and two
+  // meanings behind one glyph is the drift this sweep exists to end (see `sync` above).
+  | 'transit'
   | 'wifi'
   | 'documents'
   | 'share'
@@ -103,6 +130,16 @@ const PATHS: Record<IconName, string> = {
   // CONFUSABLE silhouettes, and these two share none).
   frame:
     'M4 9V6a2 2 0 0 1 2-2h3 M15 4h3a2 2 0 0 1 2 2v3 M20 15v3a2 2 0 0 1-2 2h-3 M9 20H6a2 2 0 0 1-2-2v-3',
+  // Which way is up (ADR-0234) — the band's third camera control. A north arrow: the
+  // cartographer's mark, and a SOLID one, so it joins `FILLED` below beside `star` and
+  // `flight`. Its silhouette is what keeps three icon-only controls apart at a glance —
+  // the crosshair is round, the frame rectangular, and this is a point. The notch in its
+  // base is not decoration: it is what makes the arrow read as a needle with a tail rather
+  // than as a play triangle, and it is the only asymmetry telling the reader which end is
+  // north when the whole glyph is rotated to an arbitrary angle.
+  compass: 'M12 2.6 18 21.4 12 17.2 6 21.4Z',
+  play: 'M8 5.4v13.2L18.6 12Z',
+  pause: 'M8.4 5.4v13.2 M15.6 5.4v13.2',
   // `מפה` — show a place on OUR map (ADR-0121 §8). Deliberately the Waypoint
   // marker's own silhouette (ADR-0087: a teardrop, tip down, with a centre dot), so
   // the control wears the shape of the thing it takes you to. A real SVG, never the
@@ -114,6 +151,11 @@ const PATHS: Record<IconName, string> = {
   // glyph: `pin` above already means "our map", and two map-shaped marks on one row would
   // compete. What this control says is where you END UP, which is the honest distinction.
   external: 'M14 4h6v6 M20 4 11 13 M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4',
+  // Look, but do not touch — the read-only half of the share sheet's audience fork
+  // (ADR-0213's 2026-08-30 amendment). Added rather than reaching for 👀: this is a
+  // control, and the rule is that a glyph with a sibling control drawing an icon is one
+  // (ADR-0138's 2026-08-01 amendment). Nothing in the set meant "look" before it.
+  eye: 'M2.6 12S6.6 5.4 12 5.4 21.4 12 21.4 12 17.4 18.6 12 18.6 2.6 12 2.6 12Z M14.6 12a2.6 2.6 0 1 1-5.2 0 2.6 2.6 0 0 1 5.2 0Z',
   // The badge on the avatar hero that changes your picture (ADR-0133 §6/§12): a body
   // with the raised shutter hump, plus the lens. The one affordance on a profile
   // surface that needs no label — and a real SVG, because `FilePicker` still draws 📷
@@ -194,6 +236,12 @@ const PATHS: Record<IconName, string> = {
   // The kebab itself. Three dots, drawn as zero-length capped segments so the
   // round linecap IS the dot. Replaces ⋯.
   more: 'M6 12h.02 M12 12h.02 M18 12h.02',
+  checkbox:
+    'M5.5 4.5h13a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-13a1 1 0 0 1-1-1v-13a1 1 0 0 1 1-1Z M8.5 12l2.5 2.5 4.5-5',
+  // The box alone — literally `checkbox` minus its ✓ segment, so the two cannot drift into
+  // being two different boxes.
+  'checkbox-empty':
+    'M5.5 4.5h13a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-13a1 1 0 0 1-1-1v-13a1 1 0 0 1 1-1Z',
   // ── The three section markers the first sweep left behind, because `GLYPH` had
   // them filed as content. They are not: each sits on a TILE you tap, and the
   // Home quick-action row proved it by ending up with three emoji beside one SVG
@@ -203,8 +251,35 @@ const PATHS: Record<IconName, string> = {
   // A ticket with its stub perforation. Replaces 🎫.
   ticket:
     'M3.4 8.6V6.8a1.6 1.6 0 0 1 1.6-1.6h14a1.6 1.6 0 0 1 1.6 1.6v1.8a2.2 2.2 0 0 0 0 4.4v1.8a1.6 1.6 0 0 1-1.6 1.6H5a1.6 1.6 0 0 1-1.6-1.6v-1.8a2.2 2.2 0 0 0 0-4.4Z M14.4 5.2v1.9 M14.4 10.2v1.9 M14.4 15.1v1.9',
+  // ── THE THREE TRAVEL MODES (ADR-0206 §AA3, drawn in `a-travel-time-between-two-points-v2.html`)
+  // Drawn on the same 24 grid at the same stroke weight as everything above, and each carries a
+  // CONTENT rule (ADR-0138 §4), which is what makes them icons rather than pictures: the glyph
+  // says which mode a duration was measured on, and forty minutes is a different fact walking and
+  // driving. They serve the day's journey block and M8's mode control from one place — a second
+  // set is how the list and the control start disagreeing about what a leg is.
+  //
+  // A walker: head, torso, both legs and the leading arm.
+  walking:
+    'M14.6 4.4a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0 M12.6 8.4 10.2 13l2.6 2.2 1 5.4 M10.2 13 7.2 20.4 M12.9 9.6 16.4 11.4 M12.4 9.4 9 10.8',
+  // Two wheels, a frame and the bars.
+  cycling:
+    'M6.2 20a3.4 3.4 0 1 0 0-6.8 3.4 3.4 0 0 0 0 6.8Z M17.8 20a3.4 3.4 0 1 0 0-6.8 3.4 3.4 0 0 0 0 6.8Z M6.2 16.6h4.6l3.4-6.4 M10.8 16.6h4.4 M14.2 10.2h-2.4 M14.2 10.2l3.6 6.4 M15.6 7.2h2.2',
+  // A cabin over a body, two wheels under it.
+  driving:
+    'M4.4 16.2h15.2 M6 16.2l1.5-4.8a1.7 1.7 0 0 1 1.6-1.2h5.8a1.7 1.7 0 0 1 1.6 1.2l1.5 4.8 M5.4 16.2v2.6h2.4v-2.6 M16.2 16.2v2.6h2.4v-2.6 M8 13.4h8',
   // Signal arcs — `offline` above is this shape with a slash through it, which is
   // the point: the pair reads as one state and its negation.
+  // **A vehicle FROM THE FRONT** (ADR-0206 §AL2): body, windscreen band, two headlights, two
+  // mirrors. Front-facing is the decision, not a style: every other member of this set is a side
+  // view, so a side-view bus differs from `driving` only by a cabin arch against a wheel box —
+  // ~3px at the 21px the day's badge column paints. A front is the one silhouette here that cannot
+  // be confused with another member of the set. The mirrors are what make it a bus rather than a
+  // train, and תחב״צ is buses AND trains; a train front declares rail, the narrower claim.
+  //
+  // **And it needs no RTL variant**, because a front has no facing — which is the same choice
+  // paying twice (ADR-0138 §10.2, and it is why `MIRRORED` below has two members and not three).
+  transit:
+    'M8 3.4h8a2 2 0 0 1 2 2v12.2a1.8 1.8 0 0 1-1.8 1.8H7.8A1.8 1.8 0 0 1 6 17.6V5.4a2 2 0 0 1 2-2Z M6 11h12 M9 14.6h.02 M15 14.6h.02 M4.4 8.2v2.8 M19.6 8.2v2.8',
   wifi: 'M12 19.6h.02 M8.6 16.2a4.8 4.8 0 0 1 6.8 0 M5.2 12.8a9.6 9.6 0 0 1 13.6 0 M2 9.4a14.4 14.4 0 0 1 20 0',
   // An ID page — portrait block plus lines. Replaces 🛂, which was passport CONTROL
   // signage rather than the documents themselves. The per-type badges inside the
@@ -315,8 +390,29 @@ const PATHS: Record<IconName, string> = {
   // Authored opening to the LEFT: the cluster's rows sit to the trailing side in RTL.
   bracket: 'M16.4 4.2h-4.8a2 2 0 0 0-2 2v11.6a2 2 0 0 0 2 2h4.8 M9.6 12H5.4',
 };
-const FILLED: ReadonlySet<IconName> = new Set(['caret', 'flight', 'star']);
+const FILLED: ReadonlySet<IconName> = new Set(['caret', 'compass', 'flight', 'star']);
 const ROTATE: Record<Dir, number> = { down: 0, left: 90, up: 180, right: 270 };
+
+/**
+ * **The glyphs whose FACING follows the reading direction** (ADR-0138 §10, drawn in
+ * `mockups/the-mode-set-and-transit-declared-v1.html` §5). Owner: _"all glyphs that have a
+ * direction should have RTL variants — the person should be facing left, not right, if the app is
+ * in Hebrew. The bike as well."_
+ *
+ * Mirrored in CSS off `--dir`, `tokens.css`'s "one place a direction is named" — so the paths stay
+ * authored right-facing (the icon-set convention, and what already shipped) and nothing here
+ * hard-codes a sign. `NavArrow` is the same move one layer down.
+ *
+ * **An ALLOWLIST, never "mirror what looks asymmetric", and `clock` is the witness**: its hand
+ * reads ~1:10 and mirrored it reads a DIFFERENT TIME, in an app whose whole subject is time. A
+ * mirrored `check` is not a ✓ either. Measured over all 58 entries, 30 are asymmetric and only 9
+ * have a facing (§10.2) — the gap is why this is a list.
+ *
+ * **A member may not also take `dir`** (§10.3): the rotation below is an INLINE transform and
+ * would win over the stylesheet, so a glyph cannot be both rotated and mirrored. The spec asserts
+ * the two sets are disjoint rather than leaving it to notice.
+ */
+export const MIRRORED: ReadonlySet<IconName> = new Set(['walking', 'cycling']);
 
 export function Icon({
   name,
@@ -339,6 +435,7 @@ export function Icon({
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
+      {...(MIRRORED.has(name) ? { 'data-mirror': '' } : {})}
     >
       <path d={PATHS[name]} />
     </svg>

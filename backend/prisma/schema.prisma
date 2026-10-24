@@ -33,6 +33,12 @@ enum EventStatus {
   skipped
 }
 
+enum TaskStatus {
+  open
+  done
+  dismissed
+}
+
 enum EventSource {
   manual
   gmail
@@ -68,6 +74,14 @@ enum EventCategory {
 enum BookingSource {
   manual
   gmail
+}
+
+/// How much of a trip its public link reveals (ADR-0213 §1). Three reading intents, not
+/// three amounts: Summary inspires, Full orients, Everything operates.
+enum ShareDetailLevel {
+  summary
+  full
+  everything
 }
 
 enum MembershipRole {
@@ -110,6 +124,11 @@ model User {
   // The provider's `picture`, refreshed at each sign-in. Kept even while the user
   // is on `initials`, so "use my Google photo" has somewhere to come back from.
   googleAvatarUrl   String?
+  // **Our own copy of that photo** (ADR-0133 §13) — the blob key, so the face is served
+  // from our origin at an immutable URL and survives a flight with no network. The URL
+  // above is what it was fetched FROM and is what decides when to refetch; the two are
+  // separate columns because a mirror that failed must still leave a hotlink to render.
+  googleAvatarKey   String?
   uploadedAvatarKey String? // set by ADR-0133's Phase 4 only
   // The member's HOME currency (ADR-0184 §2) — the other side of every trip
   // conversion. Nullable because "never chosen" is a real state the client
@@ -118,6 +137,25 @@ model User {
   // default would be the mistake `avatarColor` already made here: one value
   // that is wrong for everyone outside the country that picked it.
   preferredCurrency String?
+  // **Which categories of notification this person wants** (ADR-0198 §6). On `User` and not
+  // on `PushSubscription`, so they follow a person to a new phone the way
+  // `preferredCurrency` does: the subscription is per DEVICE, the preference is per person.
+  //
+  // Default `true`, and that is not an opt-in by stealth — the real opt-in is the device's
+  // own permission, which nothing here can grant. A person who has allowed notifications
+  // and then finds task reminders switched off would be looking at a switch that lied.
+  //
+  // Phases A and B. `notifyGroup` arrives only if phase D is ever built (ADR-0198 §6,
+  // amended 2026-08-21) — an unused column would be a preference for a feature that may
+  // never come.
+  notifyTasks       Boolean      @default(true)
+  // Phase B: hard events, span edges, and the evening-before send. A separate switch from
+  // `notifyTasks` because they are different registers — one is what a person wrote down,
+  // the other is what the itinerary already committed them to. Somebody may well want the
+  // flight and not the chores.
+  notifyObligations Boolean      @default(true)
+  // The anniversary push (ADR-0239 §8): the one send for joy rather than duty, so its own switch.
+  notifyMemories    Boolean      @default(true)
 
   createdAt DateTime @default(now())
 
@@ -130,7 +168,10 @@ model User {
   calendarEventLinks  CalendarEventLink[]
   tripBlocks          TripBlock[]
   notes               Note[]
+  tasks               Task[]
   documentAttachments DocumentAttachment[]
+  pushSubscriptions   PushSubscription[]
+  notificationSends   NotificationSend[]
 }
 
 // Provider identity + that provider's OAuth material, one per (user, provider). ADR-0020.
@@ -185,7 +226,7 @@ model Trip {
   updatedAt                DateTime @updatedAt
   updatedBy                String
 
-  creator     User         @relation(fields: [createdBy], references: [id])
+  creator     User                 @relation(fields: [createdBy], references: [id])
   memberships Membership[]
   events      Event[]
   bookings    Booking[]
@@ -194,10 +235,14 @@ model Trip {
   places      Place[]
   changes     Change[]
   invite      Invite?
+  shares      TripShare[]
+  narratives  ItineraryNarrative[]
   blocks      TripBlock[]
   notes       Note[]
+  tasks       Task[]
 
   documentAttachments DocumentAttachment[]
+  travelModeOverrides TravelModeOverride[]
 
   @@index([createdBy])
 }
@@ -272,6 +317,12 @@ model Event {
   placeId         String? // authoritative only for unlinked events; cleared when bookingId is set (ADR-0048)
   displayTimezone String? // manual display-zone override; null trusts the derived zone (ADR-0107 §7)
   status          EventStatus    @default(planned)
+  // What a human said about the CLOSING edge — a check-out, a car return, a landing
+  // (ADR-0224 §1). `status` above is already spoken for: two derivations read it as the
+  // OPENING edge's answer, so a check-out written through it says "we checked in".
+  // Nullable rather than defaulted, so "nobody has answered" stays distinguishable and no
+  // backfill claims anything about a trip that already happened.
+  endStatus       EventStatus?
   bookingId       String?        @unique // strict 1:1 with Booking (ADR-0047)
   sortOrder       Int            @default(0)
   source          EventSource    @default(manual)
@@ -282,11 +333,16 @@ model Event {
   trip                Trip                 @relation(fields: [tripId], references: [id], onDelete: Cascade)
   booking             Booking?             @relation(fields: [bookingId], references: [id], onDelete: SetNull)
   notes               Note[]
+  tasks               Task[]
   place               Place?               @relation("EventPlace", fields: [placeId], references: [id], onDelete: SetNull)
   calendarLinks       CalendarEventLink[]
   documentAttachments DocumentAttachment[]
 
   @@index([tripId, date])
+  /// The same reason as `Task`'s: a kind asking "which hard commitments start soon, anywhere"
+  /// is a range scan on this, and every other index here leads with `tripId`, which a
+  /// cross-trip query cannot use.
+  @@index([startsAt])
 }
 
 model Booking {
@@ -296,6 +352,12 @@ model Booking {
   title                String
   confirmationCode     String?
   provider             String?
+  // The service's own number and where you board it (ADR-0222 §1). Two columns rather
+  // than `details` keys: `flightNumber` joins the booking search blob, and splitting a
+  // matched pair across a column and JSON is a seam with no reason behind it. The WORD
+  // for each is per-type and lives in the client's label `Record`, never here.
+  flightNumber         String?
+  gate                 String?
   placeId              String? // single-place types (hotel/restaurant/…); mutually exclusive with from/to
   fromPlaceId          String? // transport origin (map-pin/nav target of the linked Event) — ADR-0048
   toPlaceId            String? // transport destination — ADR-0048
@@ -315,6 +377,7 @@ model Booking {
   fromPlace Place? @relation("BookingFromPlace", fields: [fromPlaceId], references: [id], onDelete: SetNull)
   toPlace   Place? @relation("BookingToPlace", fields: [toPlaceId], references: [id], onDelete: SetNull)
   notes     Note[]
+  tasks     Task[]
 
   documentAttachments DocumentAttachment[]
 
@@ -362,8 +425,48 @@ model Place {
   bookingsTo   Booking[]   @relation("BookingToPlace")
   maybeItems   MaybeItem[] @relation("MaybeItemPlace")
   notes        Note[]
+  tasks        Task[]
+
+  travelOverridesFrom TravelModeOverride[] @relation("TravelOverrideFromPlace")
+  travelOverridesTo   TravelModeOverride[] @relation("TravelOverrideToPlace")
 
   @@unique([tripId, googlePlaceId])
+  @@index([tripId])
+}
+
+// **How you get between two places on this trip, where a person has said** (ADR-0206 §V1.6 as
+// amended by §Z2; keyed per §AM).
+//
+// The default mode is DERIVED (`derivedTravelMode`) and there is deliberately **no
+// `defaultTravelMode` column** — §Z2 forbids one. This table is the only persisted half, and it
+// holds a row only where somebody actually overrode the derivation for one journey.
+//
+// **Keyed on the place PAIR, canonicalised** (§AM1/§AM2): `fromPlaceId <= toPlaceId`, enforced by
+// `travelOverridePair` in `@waypoint/shared` and by the unique constraint below, so one row serves
+// the pair in both directions. An event key was rejected because it dies on every reorder and is
+// finer than the coordinate-keyed estimate cache it modifies.
+//
+// `mode` is a `LegTravelMode` — the three routable modes plus `transit`, which no provider ever
+// sees (§AA4). Stored as a string for the same reason every other enum here is: the zod schema in
+// `packages/shared` is the validator, and widening a Postgres enum needs a migration where
+// widening a union does not.
+model TravelModeOverride {
+  id          String   @id @default(cuid())
+  tripId      String
+  fromPlaceId String
+  toPlaceId   String
+  mode        String
+  createdBy   String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  trip      Trip  @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  // Cascade, because the row's whole meaning is the pair: a dangling override would be a mode
+  // for a journey that no longer has two ends (§AM4).
+  fromPlace Place @relation("TravelOverrideFromPlace", fields: [fromPlaceId], references: [id], onDelete: Cascade)
+  toPlace   Place @relation("TravelOverrideToPlace", fields: [toPlaceId], references: [id], onDelete: Cascade)
+
+  @@unique([tripId, fromPlaceId, toPlaceId])
   @@index([tripId])
 }
 
@@ -398,8 +501,10 @@ model Document {
 
   trip  Trip   @relation(fields: [tripId], references: [id], onDelete: Cascade)
   notes Note[]
+  tasks Task[]
 
   attachments DocumentAttachment[]
+  sharedIn    TripShareDocument[]
 
   @@index([tripId])
 }
@@ -466,6 +571,7 @@ model MaybeItem {
   user  User   @relation(fields: [createdBy], references: [id], onDelete: Cascade)
   place Place? @relation("MaybeItemPlace", fields: [placeId], references: [id], onDelete: SetNull)
   notes Note[]
+  tasks Task[]
 
   @@index([tripId])
 }
@@ -520,6 +626,102 @@ model Note {
   @@index([placeId])
   @@index([maybeItemId])
   @@index([documentId])
+}
+
+// A task is an obligation with a deadline and optionally a doer (tasks brief §1). Notes'
+// sibling structurally — same host block, same cascade discipline (ADR-0152 §2).
+model Task {
+  id              String     @id @default(cuid())
+  tripId          String
+  title           String
+  body            String?
+  // The deadline as a UTC instant. `dueHasTime` is not derivable from it: a deadline of
+  // "Thursday" and one of "Thursday 00:00" are the same instant and different obligations.
+  dueAt           DateTime?
+  dueHasTime      Boolean    @default(false)
+  // The zone the deadline was TYPED in (2026-08-17, reversing brief §10's "nothing is
+  // stored per task"). Null = derived through ADR-0107's resolver, which is every task
+  // written before this. Deriving is right until somebody can CHOOSE, and then a resolver
+  // that answers "the zone you will be in when this falls due" renders a wall-clock nobody
+  // typed — which is exactly what `Event.displayTimezone` exists to prevent.
+  displayTimezone String?
+  // Null = the group's ("one of us"). A plain column rather than a User relation, like
+  // `Event.updatedBy`: the trip's roster is what resolves a name, and a FK here would owe
+  // a cascade answer for a case (the assignee's account is deleted) nobody has asked.
+  assigneeUserId  String?
+  // **When somebody ELSE put this on the assignee** (ADR-0198 §2, `task.assigned`).
+  //
+  // A transition, not a clock — which is why it has to be stored. ADR-0197 §3 derives every
+  // schedule from state rather than enqueueing it, and that works because a deadline IS a
+  // state; "you were just assigned this" is not, and no combination of `updatedAt` and
+  // `assigneeUserId` can tell it from a title edit. So the FACT is recorded and the send is
+  // still derived, which keeps §3's principle rather than bending it.
+  //
+  // **Null when the actor assigned themselves**, so the "the actor is not the assignee" rule
+  // is applied where the actor is actually known instead of being guessed from `updatedBy`
+  // by the sweep. Null also on un-assign, which retracts a send that has not gone out yet.
+  // Null on every task written before this column, which is the right answer: we do not
+  // announce an assignment that happened before anyone could be told.
+  assignedAt      DateTime?
+  important       Boolean    @default(false)
+  status          TaskStatus @default(open)
+  settledAt       DateTime?
+  settledBy       String?
+  // Which readiness check this row overlays (brief §4). A String and NOT a Prisma enum on
+  // purpose: the five ids belong to `computeReadiness`, so a sixth check must be a code
+  // change and never a migration. The closed set is enforced by the shared zod schema at
+  // both edges (ADR-0023), the same way the host union below is.
+  derivedKey      String?
+  // **The task this one is a step of** (ADR-0196 §1). Null = a top-level task, which is
+  // every task written before this. `onDelete: Cascade` on the relation below, so deleting a
+  // parent takes its steps with it in one statement — and, exactly like the five host FKs,
+  // that cascade writes NO `Change` rows, which is why the client owes its own applier
+  // (`dropTasksForHostChange`, ADR-0152 §2 extended by ADR-0157 §3).
+  //
+  // Depth is capped at one level and the SERVER enforces it: `TasksService.create` refuses a
+  // parent that is itself a step. A self-relation cannot express that, and a client-only cap
+  // is one the outbox can replay past.
+  parentTaskId    String?
+  // At most one is set — the same closed union `Note` carries, enforced the same way.
+  // Nothing reads these until phase 4; they are here in the first migration because a
+  // nullable column is free today and a second migration on a live synced entity is not.
+  eventId         String?
+  bookingId       String?
+  placeId         String?
+  maybeItemId     String?
+  documentId      String?
+  createdBy       String
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  updatedBy       String
+
+  trip      Trip       @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  user      User       @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+  event     Event?     @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  booking   Booking?   @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  place     Place?     @relation(fields: [placeId], references: [id], onDelete: Cascade)
+  maybeItem MaybeItem? @relation(fields: [maybeItemId], references: [id], onDelete: Cascade)
+  document  Document?  @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  // The self-relation. Named, because Prisma needs a name to tell the two sides apart.
+  parent    Task?      @relation("TaskSubtasks", fields: [parentTaskId], references: [id], onDelete: Cascade)
+  subtasks  Task[]     @relation("TaskSubtasks")
+
+  @@index([tripId])
+  @@index([eventId])
+  @@index([bookingId])
+  @@index([placeId])
+  @@index([maybeItemId])
+  @@index([documentId])
+  @@index([parentTaskId])
+  /// **The notification sweep's index** (ADR-0197 §3). The sweep asks "which deadlines fall
+  /// in this narrow window, across every trip" — one range scan, not a walk over trips — and
+  /// without this it is a full table scan every minute forever. `status` leads because it is
+  /// the selective half: most rows are settled and can never be due again.
+  @@index([status, dueAt])
+  /// The same shape for `task.assigned`, whose window is the last few hours of assignments
+  /// rather than the next few minutes of deadlines. `assignedAt` is null for almost every
+  /// row ever written, which is what makes this one cheap.
+  @@index([status, assignedAt])
 }
 
 // The sync/undo/feed substrate; seq is a strictly-increasing cursor (ADR-0019).
@@ -624,4 +826,300 @@ model FxRateSet {
   /// the chosen source's terms require visible, linked attribution.
   provider    String
   providerUrl String
+}
+
+/// One day's forecast at one coordinate cell (ADR-0218 §1/§3).
+///
+/// **`PlaceEnrichment`'s store with `FxService`'s policy**, and this table is the store
+/// half. `FxRateSet` above needs no bound because there is exactly one document; a
+/// forecast is keyed by place AND day, so it is a bounded, expiring, many-row table.
+///
+/// **Global, and outside the change log** — the same three reasons `PlaceEnrichment` is
+/// (ADR-0166 §6): no `tripId`, no client writes it, and it is ordered against nothing, so
+/// it carries no `Change` and never appears in the change feed. Keying on a rounded cell
+/// rather than a `placeId` is what makes that true: `Place` is trip-scoped by decision, so
+/// a `placeId` key would fetch the same hotel once per trip.
+///
+/// **The per-fetch columns repeat on every day of a cell**, which is deliberate and not an
+/// oversight: one MET response yields ~10 rows, and the alternative is a parent table whose
+/// only job is to hold four columns for a store nothing joins on. The composite key the
+/// design fixes is `(cell, date)`, and this keeps it the whole key.
+model WeatherForecast {
+  /// `forecastCell(lat, lng)` from @waypoint/shared — `"35.7,139.7"`, the 0.1° grid.
+  /// A string because it is a key column, a Map key and a JSON object key on three sides
+  /// of the wire, and every one of those wants one scalar.
+  cell String
+
+  /// `YYYY-MM-DD` **in `zone`**, not in UTC. Every instant MET publishes is `Z`, so
+  /// bucketing them into the day's own zone is the roll-up's whole job (ADR-0107).
+  date String
+
+  /// The IANA zone the day above is measured in, resolved from the cell's own coordinate
+  /// via `geo-tz` — the same source `Place.timezone` comes from, so the two cannot drift.
+  zone String
+
+  /// MET's own `symbol_code` for the day's dominant block, stored verbatim: it is the
+  /// provenance, it carries the day/night variant, and a change to the glyph table must not
+  /// require a re-fetch.
+  symbolCode String
+
+  /// Celsius. The response's `meta.units` is checked rather than assumed — the app has no
+  /// Fahrenheit surface, and an assumption there is invisible until it is not.
+  tempMax Float
+  tempMin Float
+
+  /// **Millimetres, and there is no probability.** MET publishes an amount only, so no copy
+  /// on any surface may imply a chance (ADR-0218's consequences).
+  precipMm Float
+
+  /// **The model's issue time (`meta.updated_at`) — the clock §4's shelf life runs from.**
+  /// Not the fetch time, and the difference is the whole point of the rule: a `304` refresh
+  /// moves `fetchedAt` and `expiresAt` and leaves this alone, because nothing was published.
+  issuedAt DateTime
+
+  /// Ours, for diagnostics and for bounding retries. Never rendered.
+  fetchedAt DateTime
+
+  /// The response's own `Expires`, which is MET's caching contract rather than a TTL we
+  /// invented — measured ~22 minutes out on a live response. This is what makes a refresh
+  /// due; the 6h/24h shelf life above is a separate, longer question about what may be SHOWN.
+  expiresAt DateTime
+
+  /// The response's `Last-Modified`, **verbatim**, to send back as `If-Modified-Since`.
+  /// MET's docs ask for the previous value rather than an arbitrary timestamp, and a `304`
+  /// is a successful refresh rather than a miss.
+  lastModified String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@id([cell, date])
+}
+
+/// A device this user can be reached on (ADR-0197 §2). Control plane, not data plane:
+/// no `tripId`, no `Change` row, no broadcast, never client-mutated beyond its own
+/// create/delete — the same three reasons `PlaceEnrichment` sits outside `ChangeService`
+/// (ADR-0166 §6). There is nothing here to undo and nothing to reconcile.
+model PushSubscription {
+  id String @id @default(cuid())
+
+  userId String
+
+  /// **The push service's own URL, and the row's real identity.** Unique because the
+  /// endpoint already is: the browser issues one per (profile, origin, subscription), so
+  /// inventing a device id of our own would be a second name for the same thing — and a
+  /// re-subscribe after a key rotation would leave the old row addressable.
+  endpoint String @unique
+
+  /// The client's P-256 public key and auth secret, base64url as the browser hands them
+  /// over. Not secrets of ours: they are the halves that let only this device decrypt the
+  /// payload, and without them the endpoint is useless to us.
+  p256dh String
+  auth   String
+
+  /// So a person can recognise the row in settings ("this phone" vs "the laptop").
+  /// Nullable — a client that sends none still gets a working subscription.
+  userAgent String?
+
+  createdAt DateTime @default(now())
+
+  /// Diagnostics, and the two facts a settings surface can honestly show. Deliberately
+  /// NOT a failure counter: a `404`/`410` deletes the row outright (§10), because that is
+  /// a subscription's normal death rather than an error to count.
+  lastSentAt   DateTime?
+  lastFailedAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/// **What was already sent** (ADR-0197 §3), and the whole of the epic's exactly-once
+/// mechanism. Control plane, like `PushSubscription` above.
+///
+/// This table records the PAST, which is the half that cannot go stale — the deliberate
+/// alternative to a queue of future jobs, which would be a second copy of a schedule
+/// Postgres already holds (`Task.dueAt`, `Event.startsAt`) that every edit path would have
+/// to keep honest.
+///
+/// The unique key IS the mechanism: the sweep inserts the row and sends inside one
+/// transaction, so a unique violation means another tick — or another backend instance —
+/// already has it. No leader election, no advisory lock, and nothing that assumes one
+/// process.
+model NotificationSend {
+  id String @id @default(cuid())
+
+  userId String
+
+  /// ADR-0198's catalogue id (`task.due`, `event.hard.soon`, …). A String and NOT a Prisma
+  /// enum, the same call `Task.derivedKey` makes: the kinds belong to the code that derives
+  /// them, so a sixth kind is a code change and never a migration.
+  kind String
+
+  /// The task / event / trip the send is about.
+  subjectId String
+
+  /// **The instant the send was AIMED at**, bucketed to the minute — and this is the field
+  /// that makes edits behave. Dedup on (whom, what, WHICH INSTANT) rather than (whom, what):
+  /// a deadline moved from 18:00 to 20:00 is a new key, so it re-arms; a title edited is the
+  /// same key, so nothing re-sends.
+  fireKey String
+
+  sentAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, kind, subjectId, fireKey])
+  /// Also what enforces ADR-0198 §5's per-day cap, which is a count of this user's recent rows.
+  @@index([userId, sentAt])
+}
+
+/// **A route we asked somebody else for, kept so we never ask again** (ADR-0205 §4) — the third
+/// table of exactly this shape, after `PlaceEnrichment` (ADR-0166 §6) and `FxRateSet` (ADR-0180
+/// §7), and their reasoning transfers verbatim: no `tripId`, one writer (us), never mutated by a
+/// client. So there is no LWW to arbitrate, no undo to offer, no per-trip ordering to keep, and
+/// **nothing here goes through `ChangeService`** — the one hard boundary in the backend, which
+/// this sits outside of rather than making an exception to.
+///
+/// It does not violate ADR-0018/0027's ban on persisting derived state, and §4 says why: a route
+/// is not derived from our data at all, it is an answer from outside that we would otherwise have
+/// to re-ask. Nothing a person authored lives here, which is what licenses evicting it freely.
+model RouteLeg {
+  /// `routeLegKey(from, to, mode)` from `@waypoint/shared`, and the key is **directional on
+  /// purpose**: one-way streets, turn restrictions and toll geometry make A→B and B→A different
+  /// answers. One spelling of it, in the shared package, because the client's own Dexie table
+  /// (ADR-0205 §7) reads what this writes — two spellings is a client that can never hit a row.
+  key String @id
+
+  /// Denormalised out of `key` so the row is legible and evictable without parsing its own id.
+  /// **Coordinates, never a `placeId`**: a `Place` is trip-scoped (ADR-0147), so two trips that
+  /// both save Senso-ji hold two rows and a `placeId` key would never hit across them (§4).
+  mode    String
+  fromLat Float
+  fromLng Float
+  toLat   Float
+  toLng   Float
+
+  /// Seconds and metres, matching `travelEstimateSchema`. `Float` rather than `Int` because
+  /// `/route` answers fractional seconds and rounding at the boundary would make the same leg
+  /// differ by which call fetched it — ADR-0206 §D3's ladder is what rounds, at the surface.
+  durationSeconds Float
+  distanceMeters  Float
+
+  /// The drawable line, and **the precision travels with it** (ADR-0205 §1): decoded at 5 rather
+  /// than Valhalla's 6, a Tokyo walk comes back as a well-formed pair of numbers ten times off,
+  /// with no error and a line drawn nowhere. Null together — the matrix answers durations and no
+  /// geometry at all, so most rows have no shape until something asks to draw one.
+  shapeEncoded   String?
+  shapePrecision Int?
+
+  /// Who answered, so a provider swap (ADR-0205 §Y1) leaves evidence of which rows came from
+  /// where instead of a silently mixed table.
+  provider String
+
+  /// **The provider's tileset date — ADR-0205 §Z5's invalidation signal**, which §4 said a route
+  /// has and a clock does not. A walking route between two fixed points is invalidated by an OSM
+  /// refresh and by nothing else, so this is what M12 evicts on rather than guessing a TTL.
+  /// Nullable: a provider that will not state its vintage yields a row with no eviction handle,
+  /// which still holds a correct estimate.
+  tilesetAt DateTime?
+
+  /// Provenance, **not an expiry** — there is no TTL to compare it against.
+  computedAt DateTime @default(now())
+
+  /// The only non-key query this table has: M12's eviction sweep on a tileset roll.
+  @@index([tilesetAt])
+}
+
+/// **One reconfigurable public link per trip** (ADR-0213 §5).
+///
+/// Deliberately the same durable-row technique as `Invite` rather than a signed payload:
+/// the URL carries no trip id and nothing to verify, so rotating `code` invalidates the old
+/// link in one write.
+///
+/// **One row per POLICY, not per trip and not per level** (ADR-0213's tenth amendment). A
+/// level does not determine a projection: Summary and Full have one policy each because
+/// there is nothing in them to tune, while `everything` is a family of `2^3` switch
+/// combinations times every subset of the trip's files. So the key is `policyHash` — and
+/// the counts 1 / 1 / many fall out of it rather than being three cases written down.
+///
+/// **No itinerary is stored here.** Every public read projects the live trip rows; this row
+/// is policy only, which is why revoking it is sufficient to stop disclosure.
+model TripShare {
+  id                      String           @id @default(cuid())
+  tripId                  String
+  code                    String           @unique
+  /// SHA-256 over the canonical policy — level, the three switches, and the sorted
+  /// document ids (`share-policy.ts`). A hash rather than a column list because the files
+  /// live in a join table and cannot enter a unique constraint themselves.
+  ///
+  /// It is also what keeps `PUT /trips/:id/share` idempotent, which the share sheet's
+  /// no-Save design depends on: the same policy twice is the same hash, the same row and
+  /// the same code. Same technique as `ItineraryNarrative.inputHash` below.
+  policyHash              String
+  detailLevel             ShareDetailLevel @default(full)
+  /// Each sensitive family, independently chosen and off by default. Only meaningful at
+  /// `everything`; the shared zod schema refuses a true value below it at both edges.
+  includeBookingSecrets   Boolean          @default(false)
+  includeNotesAndTasks    Boolean          @default(false)
+  includeTravelerIdentity Boolean          @default(false)
+  /// **A list, not the trip** (ADR-0242 §3): one kind of the record, at Summary. Null on every
+  /// trip link. It enters the hash only when set, so no link that predates it changed hash.
+  scopeCategory           EventCategory?
+  createdBy               String
+  createdAt               DateTime         @default(now())
+  updatedAt               DateTime         @updatedAt
+  /// Stopping a share keeps the row (and so the policy that produced it) while making every
+  /// public read a 404. Re-sharing the same policy REUSES this row with a fresh code rather
+  /// than reviving the old one — the uniqueness above spans revoked rows too, and a revived
+  /// code would silently reopen a URL somebody has already pasted somewhere.
+  revokedAt               DateTime?
+
+  trip      Trip                @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  documents TripShareDocument[]
+
+  @@unique([tripId, policyHash])
+  @@index([tripId])
+}
+
+/// A single file the owner chose to publish. Explicit rows rather than a "share my
+/// documents" flag: a promise about a whole folder is one nobody can check later.
+model TripShareDocument {
+  shareId    String
+  documentId String
+
+  share    TripShare @relation(fields: [shareId], references: [id], onDelete: Cascade)
+  document Document  @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@id([shareId, documentId])
+  @@index([documentId])
+}
+
+/// A validated generated narrative, keyed by exactly what produced it (ADR-0213 §2).
+///
+/// The compound unique is the eligibility rule made structural: a result is usable only for
+/// the same trip, locale, input hash and skill version. Change any of them — an event was
+/// renamed, the locale differs, the skill was revised — and there is simply no row to find,
+/// so the deterministic fallback serves while regeneration runs in the background. That is
+/// why staleness needs no expiry column and no sweeper.
+///
+/// **Keyed by the TRIP, not the share** (ADR-0213's tenth amendment §6). The input is built
+/// from Summary-public text only and is level-invariant by construction, so two links on one
+/// trip describe the same trip and must not pay for two generations — and this survives a
+/// rotation or a re-share, where per-share keying started cold every time.
+model ItineraryNarrative {
+  id           String   @id @default(cuid())
+  tripId       String
+  locale       String
+  inputHash    String
+  skillVersion String
+  /// Provenance from the adapter, never from model-authored text.
+  provider     String
+  model        String
+  output       Json
+  generatedAt  DateTime @default(now())
+
+  trip Trip @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@unique([tripId, locale, inputHash, skillVersion])
 }

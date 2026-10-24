@@ -86,18 +86,20 @@ export function descriptorAwareSimilarity(
   ourName: string,
   candidateName: string,
   classNouns: readonly string[] | undefined,
+  placeNouns?: readonly string[],
 ): number {
-  return similarityAgainst(ourName, candidateName, classNouns);
+  return similarityAgainst(ourName, candidateName, classNouns, placeNouns);
 }
 
 function similarityAgainst(
   a: string,
   b: string,
   classNouns: readonly string[] | undefined,
+  placeNouns?: readonly string[],
 ): number {
   let best = 0;
   for (const left of nameVariants(a, classNouns)) {
-    for (const right of nameVariants(b)) {
+    for (const right of candidateVariants(b, placeNouns)) {
       best = Math.max(best, tokenSimilarity(left, right));
       if (best === 1) return best;
     }
@@ -148,6 +150,48 @@ function nameVariants(name: string, classNouns?: readonly string[]): string[] {
     }
   }
   return [...new Set([...written, ...written.map(transliterate)])].filter((v) => v.length > 0);
+}
+
+/**
+ * **4. A CANDIDATE'S TITLE THAT SAYS WHERE IT IS** (owner report, 2026-09-28: the Pantheon never
+ * matched). Hebrew Wikipedia calls it `הפנתאון ברומא` — "the Pantheon in Rome" — and English
+ * `Pantheon, Rome`; Google saves `הפנתאון`, six metres from the item. One shared word over
+ * `sqrt(1 × 2)` is 0.707, under the floor, so the name route refused it and the coordinate route
+ * let the same name veto it.
+ *
+ * The extra word is a disambiguator naming the candidate's **own** location, so this variant
+ * drops a trailing `, Y` or Hebrew `בY`/`ב-Y` — **only when Y is the label of a place the item
+ * itself says it is in** (`P131`/`P17`, the `placeNouns` the caller read). That is what keeps
+ * §16's direction guard intact: `Piccadilly Circus tube station`'s extra words are not a place
+ * the station is located in, so it keeps refusing. Candidate side only; our name never loses a
+ * word this way.
+ */
+function candidateVariants(name: string, placeNouns?: readonly string[]): string[] {
+  const variants = nameVariants(name);
+  if (!placeNouns?.length) return variants;
+  const places = placeNouns.map((noun) => [...tokenize(noun)].join(' ')).filter(Boolean);
+  const unqualified = variants.flatMap((variant) => {
+    const stripped = stripLocationQualifier(variant, places);
+    return stripped ? [stripped] : [];
+  });
+  return [...new Set([...variants, ...unqualified])];
+}
+
+/** `Pantheon, Rome` → `Pantheon`; `הפנתאון ברומא` / `הפנתאון ב-רומא` → `הפנתאון`. */
+function stripLocationQualifier(name: string, places: readonly string[]): string | undefined {
+  const comma = name.lastIndexOf(',');
+  if (comma > 0 && places.includes([...tokenize(name.slice(comma + 1))].join(' '))) {
+    return name.slice(0, comma).trim() || undefined;
+  }
+  const words = name.trim().split(/\s+/u);
+  for (let at = 1; at < words.length; at++) {
+    const place = /^ב-?(.+)$/u.exec(words[at]!)?.[1];
+    if (!place) continue;
+    if (places.includes([...tokenize([place, ...words.slice(at + 1)].join(' '))].join(' '))) {
+      return words.slice(0, at).join(' ');
+    }
+  }
+  return undefined;
 }
 
 /** The name with every word that names the candidate's own type removed — or `undefined` when
@@ -261,7 +305,12 @@ function sharedTokens(left: Set<string>, right: Set<string>): { exact: number; n
   let near = 0;
   for (const token of left) {
     if (right.has(token)) continue;
-    const at = unspent.findIndex((other) => tokensNear(token, other));
+    // An inflection is the same word bent, as a spelling variant is the same word misspelt —
+    // `מפלי דטיפוס` (construct plural) against Wikipedia's `מפל דטיפוס`. Same near credit, so
+    // it corroborates a multi-word name and never carries a one-word one.
+    const at = unspent.findIndex(
+      (other) => tokensNear(token, other) || isInflectionOf(token, other),
+    );
     if (at >= 0) {
       unspent.splice(at, 1);
       near += 1;
@@ -343,9 +392,23 @@ function tokenize(name: string): Set<string> {
       .normalize('NFD')
       .replace(/\p{M}/gu, '')
       .split(/[^\p{L}\p{N}]+/u)
-      .filter(Boolean),
+      .filter(Boolean)
+      .map(withoutHebrewArticle),
   );
 }
+
+/**
+ * **Hebrew writes "the" as a letter glued to the word** (owner report, 2026-09-28): Google saves
+ * `הפנתאון` where Wikidata's alias is `פנתאון`, and as whole tokens those share nothing. So a
+ * leading `ה` is dropped on both sides before comparing. Only the article — `ב`/`ל`/`מ`/`ו`/`ש`
+ * begin too many roots to strip blind — and only when three letters remain, so a short word is
+ * never reduced to a fragment. Folded identically on both sides, a root that really begins with
+ * `ה` still equals itself.
+ */
+const withoutHebrewArticle = (token: string): string =>
+  token.length >= 4 && token.startsWith('ה') && /^\p{Script=Hebrew}+$/u.test(token)
+    ? token.slice(1)
+    : token;
 
 /** 0–1 proximity credit: full inside `MATCH_NEAR_METERS`, decaying linearly to nothing at
  *  `MATCH_FAR_METERS`. */
@@ -367,6 +430,9 @@ export interface ProximityConfidence {
 export interface CandidateName {
   name: string;
   classNouns?: readonly string[];
+  /** Labels of the places the candidate says it is in (`P131`/`P17`) — licenses dropping a
+   *  location qualifier from ITS name (`candidateVariants`). */
+  placeNouns?: readonly string[];
 }
 
 /**
@@ -378,7 +444,12 @@ export function nameProximityConfidence(
   place: { name: string; lat?: number; lng?: number },
   candidate: CandidateName & { lat?: number; lng?: number },
 ): ProximityConfidence {
-  const similarity = descriptorAwareSimilarity(place.name, candidate.name, candidate.classNouns);
+  const similarity = descriptorAwareSimilarity(
+    place.name,
+    candidate.name,
+    candidate.classNouns,
+    candidate.placeNouns,
+  );
   const from = asLatLng(place);
   const to = asLatLng(candidate);
 
@@ -523,9 +594,12 @@ export function namesComparable(a: string, b: string): boolean {
  * Asymmetric, so the argument order is the whole meaning: **ours first, theirs second.**
  */
 export function nameCanRefuse(ourName: string, candidate: CandidateName | string): boolean {
-  const { name, classNouns } = typeof candidate === 'string' ? { name: candidate } : candidate;
+  const { name, classNouns, placeNouns } =
+    typeof candidate === 'string' ? ({ name: candidate } as CandidateName) : candidate;
   if (!namesComparable(ourName, name)) return false;
-  if (descriptorAwareSimilarity(ourName, name, classNouns) >= MATCH_MIN_NAME_SIMILARITY) {
+  if (
+    descriptorAwareSimilarity(ourName, name, classNouns, placeNouns) >= MATCH_MIN_NAME_SIMILARITY
+  ) {
     return true;
   }
   return !surplusIsOnlyTypeWords(ourName, name, classNouns);
@@ -550,7 +624,7 @@ export function nameCanRefuse(ourName: string, candidate: CandidateName | string
  *
  * Its default is the safe one: told nothing about the candidate's type, there is no word that
  * can be surplus, so the name refuses exactly as it did before §21 — and the caller that could
- * have looked the type up is the one route that ever needs this (`descriptorCouldRescue`).
+ * have looked the type up is the one route that ever needs this (`contextCouldRescue`).
  */
 function surplusIsOnlyTypeWords(
   ours: string,

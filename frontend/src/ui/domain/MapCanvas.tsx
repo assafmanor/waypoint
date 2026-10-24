@@ -172,8 +172,26 @@ export function MapCanvas({
           // is not optional (ADR-0186's Consequences). See `.map-attrib` in `MapPane`.
           attributionControl: false,
           // ADR-0121 §12's decisions, which stop being suppressions and become choices:
-          // there is no vendor POI layer and no vendor UI to disable here.
+          // there is no vendor POI layer and no vendor chrome to disable here.
           keyboard: false,
+          // **`doubleClickZoom` is deliberately LEFT ON, and turning it off is a regression
+          // that has already shipped once** (#605, reverted here).
+          //
+          // The tidy-looking argument for switching it off: `useCanvasGestures` reimplements
+          // the double-tap (ADR-0145), so MapLibre's `ClickZoomHandler`/`TapZoomHandler` are
+          // a second recogniser for one input, held off only by our capture-phase guard.
+          //
+          // **What that argument misses is that `TapZoomHandler` is two gestures, not one.**
+          // It holds `_zoomIn` (one finger, two taps — the one we replace) *and* `_zoomOut`
+          // (TWO fingers, one tap — the one we never implemented and nobody wrote down). The
+          // option, and `DoubleClickZoomHandler.disable()` behind it, is all-or-nothing over
+          // both, so switching off the duplicate takes the two-finger zoom-out with it. There
+          // is no public way to reach one and not the other.
+          //
+          // So the duplicate stays, starved of events by the capture guard exactly as
+          // `TapDragZoomHandler` is — that one cannot be switched off either, since MapLibre
+          // enables it with `touchZoomRotate`, i.e. with the pinch. One guard covers both, and
+          // `useCanvasGestures`'s `SUPPRESSED` list is where it lives.
         });
         mapRef.current = map;
 

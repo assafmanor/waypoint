@@ -15,10 +15,16 @@
 // `min`/`max`, the calendar, and `input[type="date"]` as the thing tests and forms
 // address all stay.
 //
+// **The wrapper takes the press, not the input** — `usePickFile`'s shape: a visible thing you
+// tap opens a native control it holds. A tap target that is an invisible native input laid
+// over the face is only as wide as each engine decides to lay a form control out, and a
+// Galaxy S25 Ultra's Chrome decided differently twice: only the token's left end opened
+// anything. What the reader sees is now what takes the tap, on every engine.
+//
 // Two things the platform does that never become app values (field reports #36, #38):
 // a CLEAR is a cancellation, not an empty date, and a FOCUS is not an edit. Both are
 // handled here rather than at five hosts — see `rollBack` and `typing` below.
-import { useRef, useState } from 'react';
+import { useRef, useState, type MouseEvent } from 'react';
 import { formatDayDate, formatDayMonthYear } from '../../lib/time';
 import { APP_LOCALE } from '../../constants';
 import { t } from '../../i18n/he';
@@ -100,11 +106,34 @@ export function DateField({
     setTyping(next);
   };
 
+  const inputRef = useRef<HTMLInputElement>(null);
+  const openPicker = (e: MouseEvent) => {
+    const input = inputRef.current;
+    // Mid-entry the input is opaque and takes its own pointer events (`date-field.css`), so a
+    // press there is the segments' business, not a request for the calendar.
+    if (!input || typingRef.current || e.target === input) return;
+    latch();
+    try {
+      input.showPicker();
+    } catch {
+      // No `showPicker` (an older engine) or not allowed here: the activation the platform
+      // itself answers — iOS opens on focus, Android Chrome on a click during the user's tap.
+      input.focus({ preventScroll: true });
+      input.click();
+      return;
+    }
+    // Focus too, so the keyboard and the focus-within chrome follow the press.
+    input.focus({ preventScroll: true });
+  };
+
   return (
+    // The input inside is the focusable, labelled control a keyboard and a screen reader use;
+    // this handler only widens where a pointer reaches it.
     <span
       className={className ? `df ${className}` : 'df'}
       data-invalid={invalid}
       data-typing={typing ? '' : undefined}
+      onClick={openPicker}
     >
       {/* `dir="auto"` and nothing else (ADR-0118): a numeric date is a neutral run that
           reads left-to-right, a Hebrew placeholder reads right-to-left, and each aligns
@@ -126,9 +155,12 @@ export function DateField({
         className="df-input"
         lang={APP_LOCALE}
         min={min}
-        max={max}
+        // A floor past the ceiling (a stay's check-in after the trip's last day) is a range with
+        // no days in it. Android Chrome's Material picker builds its calendar from these two
+        // without normalising them, so the floor wins and the ceiling is dropped.
+        max={min && max && min > max ? undefined : max}
+        ref={inputRef}
         value={shown}
-        onPointerDown={latch}
         onFocus={latch}
         onKeyDown={(e) => {
           if (e.key !== 'Tab') setTypingTo(true);

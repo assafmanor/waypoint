@@ -9,8 +9,16 @@
 // migration touches. UI copy (group labels) lives in the frontend i18n, keyed
 // by `IconGroup.id` — never here (this package is shapes + data, ADR-0009).
 
-import { BOOKING_TYPE_TO_CATEGORY } from './constants';
-import type { BookingType, EventCategory, EventKind, TripEvent } from './entities';
+import { BOOKING_TYPE_TO_CATEGORY, EVENT_CATEGORY, PLACE_SEARCH_KIND } from './constants';
+import type {
+  Booking,
+  BookingType,
+  EventCategory,
+  EventKind,
+  EventStatus,
+  PlaceSearchKind,
+  TripEvent,
+} from './entities';
 import { matchesAnyTerm } from './search-terms';
 
 /** A browse-group in the picker. `category` is the canonical semantic value
@@ -96,6 +104,35 @@ export const TRIP_ICON_CLUSTERS: readonly (readonly string[])[] = [
 /** Flattened view for any consumer that just needs the membership list. */
 export const TRIP_ICON_SET: readonly string[] = TRIP_ICON_CLUSTERS.flat();
 
+/** **The glyph a trip with no chosen icon is drawn with** — `TRIP_ICON_CLUSTERS`' own first
+ *  member, stated separately because three surfaces reach for it by name.
+ *
+ *  Here rather than in `frontend/constants.ts`, where it lived while the frontend was its
+ *  only reader: the link-preview cover is rendered by the BACKEND (ADR-0220's 2026-09-06
+ *  amendment) and draws the same ticket the join screen does, so a default that disagreed
+ *  would show one glyph in the chat and another on the screen the chat links to. */
+export const DEFAULT_TRIP_ICON = TRIP_ICON_CLUSTERS[0][0];
+
+/**
+ * **The invite ticket's row of faces** (ADR-0067's join screen), here because two renderers
+ * draw it: `screens/JoinTrip.tsx` and the link-preview cover the backend cuts for that same
+ * ticket (ADR-0220's 2026-09-06 amendment).
+ *
+ * They are **placeholders, not people** — the pre-join preview carries a member COUNT and no
+ * names, deliberately (a stranger holding an invite code learns how many are in, never who).
+ * So every face is the same anonymous glyph and only the colours vary, and `MAX` is where the
+ * row stops widening; the sentence beside it carries the real number.
+ *
+ * The cover got this wrong first and the owner caught it in a render: three faces beside
+ * `נוסע אחד כבר בפנים`. A count and a row of faces are the same fact drawn twice, so they
+ * cannot be authored twice.
+ */
+export const INVITE_AVATARS = {
+  GLYPH: '🙂',
+  COLORS: ['#5ec5b6', '#e88c8c', '#9c8ce8', '#8cb6e8'],
+  MAX: 4,
+} as const;
+
 /** Search terms (Hebrew + English) per vibe glyph, so the trip picker's search
  *  matches style icons too — not only country flags. */
 export const TRIP_VIBE_TERMS: Record<string, readonly string[]> = {
@@ -179,6 +216,15 @@ export const categoryForBookingType = (type: BookingType): EventCategory =>
 
 export const iconForCategory = (category: EventCategory): string => CATEGORY_DEFAULT_ICON[category];
 
+/** **The kind a row is filed under in the trip's record**: its own category, else its
+ *  booking's, else `other`. The memory Home's chips and a list share (ADR-0242) both read it,
+ *  so a booked restaurant with no category of its own is in the food list it is counted in. */
+export const recordCategory = (
+  event: { category?: EventCategory | null },
+  booking?: { type: BookingType } | null,
+): EventCategory =>
+  event.category ?? (booking ? categoryForBookingType(booking.type) : EVENT_CATEGORY.OTHER);
+
 /** Reverse lookup: the canonical category a chosen glyph belongs to (the picker
  *  records this alongside the glyph). `undefined` for a glyph not in the set. */
 export const categoryForIcon = (icon: string): EventCategory | undefined =>
@@ -220,6 +266,16 @@ export interface CategoryTimeProfile {
    *  live badge (`בטיסה`) and the slot label (`כרגע · בדרך`). Same rule as
    *  `transitions` — a mode states whatever it disagrees with, and every time-aware
    *  surface picks it up with no per-screen branching. */
+  /**
+   * **How far ahead a hard event of this category is notified** (ADR-0198 §3), in minutes.
+   * `0` means this category is not notified ahead of time at all.
+   *
+   * One field on the table every time-aware surface already reads, rather than a second
+   * lookup beside it (root rule 8) — so a tenth category, or a per-MODE override through
+   * `ICON_TIME_PROFILE` the way a flight already overrides its transition words, is a
+   * one-line addition and not a table that can disagree with this one.
+   */
+  notifyLeadMinutes: number;
   midSpan?: {
     kind: 'journey' | 'held';
     /** The live badge while you are inside it (`בטיסה` / `בדרך` / `הרכב אצלנו`). */
@@ -258,6 +314,10 @@ const ORDINARY_PROFILE: CategoryTimeProfile = {
   ambientWhenMultiDay: false,
   durationUnit: 'auto',
   typicalMinutes: TYPICAL_MINUTES_DEFAULT,
+  // **The default is silence.** `sightseeing`, `nature`, `shopping` and `other` are rarely
+  // hard, and when they are the day surfaces carry them — so an uncategorised event
+  // (ADR-0038) inherits "no advance notification" rather than a guess (ADR-0198 §3).
+  notifyLeadMinutes: 0,
 };
 
 export const CATEGORY_TIME_PROFILE: Record<EventCategory, CategoryTimeProfile> = {
@@ -269,6 +329,8 @@ export const CATEGORY_TIME_PROFILE: Record<EventCategory, CategoryTimeProfile> =
   transport: {
     bracketed: true,
     ambientWhenMultiDay: true,
+    // Two hours. An airport is the one place where that is not paranoid (ADR-0198 §3).
+    notifyLeadMinutes: 120,
     transitions: { startKey: 'departure', endKey: 'arrival' },
     // Every mode that CARRIES you is a journey, and the generic word for its middle is
     // the generic one — `בטיסה` belongs to ✈️ below, not to the category, which is why a
@@ -280,6 +342,8 @@ export const CATEGORY_TIME_PROFILE: Record<EventCategory, CategoryTimeProfile> =
   lodging: {
     bracketed: true,
     ambientWhenMultiDay: true,
+    // A check-in you are late for is a phone call, not a lost ticket.
+    notifyLeadMinutes: 60,
     transitions: { startKey: 'checkIn', endKey: 'checkOut' },
     // A multi-day stay is ambient and never reaches this (its middle is the stay strip,
     // ADR-0059 §2). A SAME-DAY one does, and it is a held span rather than a journey:
@@ -291,12 +355,16 @@ export const CATEGORY_TIME_PROFILE: Record<EventCategory, CategoryTimeProfile> =
   // The categories that actually differ. Values are the owner's to re-tune and carry no
   // reasoning beyond "a meal is not a hike": a sit-down meal runs to an hour and a half, a
   // museum or a hike to two or three hours, an errand to an hour.
-  food: { ...ORDINARY_PROFILE, typicalMinutes: 90 },
+  // `notifyLeadMinutes` where it is not the ordinary silence (ADR-0198 §3): a reservation
+  // half an hour out, a booked slot with a person waiting an hour out.
+  food: { ...ORDINARY_PROFILE, typicalMinutes: 90, notifyLeadMinutes: 30 },
   sightseeing: { ...ORDINARY_PROFILE, typicalMinutes: 120 },
   nature: { ...ORDINARY_PROFILE, typicalMinutes: 180 },
-  activity: { ...ORDINARY_PROFILE, typicalMinutes: 120 },
+  activity: { ...ORDINARY_PROFILE, typicalMinutes: 120, notifyLeadMinutes: 60 },
   shopping: { ...ORDINARY_PROFILE, typicalMinutes: 90 },
-  services: ORDINARY_PROFILE,
+  // No longer the shared `ORDINARY_PROFILE` object: `services` is a booked slot somebody is
+  // waiting at, so it differs from `other` in exactly one field now.
+  services: { ...ORDINARY_PROFILE, notifyLeadMinutes: 60 },
   other: ORDINARY_PROFILE,
 };
 
@@ -354,6 +422,18 @@ const timeProfileFor = (event: Pick<TripEvent, 'category' | 'icon'>): CategoryTi
   return refinement ? { ...base, ...refinement } : base;
 };
 
+/**
+ * **How far ahead this event is notified**, in minutes — `0` for never (ADR-0198 §3).
+ *
+ * Reads the event's own **refined** profile rather than its category's, so a mode that
+ * disagrees can say so in `ICON_TIME_PROFILE` and every reader picks it up, exactly as a
+ * flight already overrides its transition words. Nothing overrides it today; the seam is the
+ * point, because the alternative is a second table keyed by glyph that can disagree with this
+ * one.
+ */
+export const notifyLeadMinutesFor = (event: Pick<TripEvent, 'category' | 'icon'>): number =>
+  timeProfileFor(event).notifyLeadMinutes;
+
 /** The two i18n transition keys for a bracketed event's ends, or `undefined`
  *  when its category isn't bracketed. Resolves finer than category so wording is
  *  by mode, not hard-coded: an event's own glyph (`ICON_TIME_PROFILE`) wins
@@ -390,7 +470,21 @@ export const isJourney = (event: Pick<TripEvent, 'category' | 'icon'>): boolean 
  *  - `window` — BOTH bounds are known and neither is the moment. Check-in 17:00–21:00.
  *    Added by ADR-0184, and it is the closed form of the two flexible values above
  *    rather than a fourth kind of thing. */
-export type TimeMeaning = 'exact' | 'not-before' | 'not-after' | 'window';
+export const TIME_MEANING = {
+  EXACT: 'exact',
+  NOT_BEFORE: 'not-before',
+  NOT_AFTER: 'not-after',
+  WINDOW: 'window',
+} as const;
+/** The four, in the order above — for a `z.enum` that cannot drift from the object beside it
+ *  (the sharing contract needs one, ADR-0213's 2026-08-31 amendment). */
+export const TIME_MEANINGS = [
+  TIME_MEANING.EXACT,
+  TIME_MEANING.NOT_BEFORE,
+  TIME_MEANING.NOT_AFTER,
+  TIME_MEANING.WINDOW,
+] as const;
+export type TimeMeaning = (typeof TIME_MEANING)[keyof typeof TIME_MEANING];
 
 /** **What one END of this event's time means**, resolved from the profile that already
  *  answers it under another name: `midSpan.kind` (ADR-0171 §2).
@@ -415,9 +509,9 @@ export const edgeMeaning = (
   event: Pick<TripEvent, 'category' | 'icon' | 'startWindowEnd' | 'endWindowStart'>,
   edge: 'start' | 'end',
 ): TimeMeaning => {
-  if (windowBoundOf(event, edge) != null) return 'window';
-  if (timeProfileFor(event).midSpan?.kind !== 'held') return 'exact';
-  return edge === 'start' ? 'not-before' : 'not-after';
+  if (windowBoundOf(event, edge) != null) return TIME_MEANING.WINDOW;
+  if (timeProfileFor(event).midSpan?.kind !== 'held') return TIME_MEANING.EXACT;
+  return edge === 'start' ? TIME_MEANING.NOT_BEFORE : TIME_MEANING.NOT_AFTER;
 };
 
 /** The authored other-bound of this edge's window, if there is one. One accessor rather
@@ -429,6 +523,49 @@ export const windowBoundOf = (
 ): string | undefined =>
   (edge === 'start' ? event.startWindowEnd : event.endWindowStart) ?? undefined;
 
+/** **What a human said about THIS edge** (ADR-0224 §1), and the accessor exists for exactly
+ *  the reason `windowBoundOf` above does: the two fields are not spelled alike, so pairing an
+ *  edge to its field at six call sites is the kind of thing that reads fine and inverts
+ *  silently. `status` answers the opening edge (two derivations already read it that way) and
+ *  `endStatus` the closing one.
+ *
+ *  **`planned` and absent are the same answer and this returns it as `planned`**, so a caller
+ *  can compare against `EVENT_STATUS` without also handling `undefined` — the settled/unsettled
+ *  question is `!== EVENT_STATUS.PLANNED`, one test at every edge. */
+export const edgeStatusOf = (
+  event: Pick<TripEvent, 'status' | 'endStatus'>,
+  edge: 'start' | 'end',
+): EventStatus => (edge === 'start' ? event.status : (event.endStatus ?? 'planned'));
+
+/** Is this edge answered at all? The one predicate the hero, the day row and the day's count
+ *  all ask, so none of them restates "done or skipped" in its own words. */
+export const isEdgeSettled = (
+  event: Pick<TripEvent, 'status' | 'endStatus'>,
+  edge: 'start' | 'end',
+): boolean => edgeStatusOf(event, edge) !== 'planned';
+
+/** **An edge the clock cannot answer for you** (ADR-0171 §6 + ADR-0184 §6), and it is one
+ *  predicate because two surfaces have to give one answer: the day's count keeps such an edge
+ *  past its instant, and the stay's row is the only place anybody can say it happened.
+ *
+ *  A floor is owed all day — ⁦15:01⁩ does not mean anybody checked in — and a check-in WINDOW
+ *  until it shuts. A deadline and an exact moment answer themselves by passing, so they are
+ *  false here and neither surface asks anything of a person.
+ *
+ *  **The two spellings disagreed, and that is what this exists to stop.** `remaining` was
+ *  widened to hold a windowed check-in to its ceiling while `StayRow`'s `היינו` stayed gated on
+ *  `not-before`, so a hotel booked ⁦17:00–22:00⁩ sat in `נותר דבר אחד היום` all evening with
+ *  nothing on screen able to clear it (owner, 2026-09-15). */
+export const edgeOutlivesItsInstant = (
+  event: Pick<TripEvent, 'category' | 'icon' | 'startWindowEnd' | 'endWindowStart'>,
+  edge: 'start' | 'end',
+): boolean => {
+  const meaning = edgeMeaning(event, edge);
+  return (
+    meaning === TIME_MEANING.NOT_BEFORE || (meaning === TIME_MEANING.WINDOW && edge === 'start')
+  );
+};
+
 /** Does this end name a moment the app actually KNOWS? The one predicate the day's
  *  ordering and the map's numbering both ask (ADR-0171 §10a/§10b) — and they must ask
  *  the same one, or a row can hold a position its pin refuses to number.
@@ -439,7 +576,7 @@ export const windowBoundOf = (
 export const isExactEdge = (
   event: Pick<TripEvent, 'category' | 'icon' | 'startWindowEnd' | 'endWindowStart'>,
   edge: 'start' | 'end',
-): boolean => edgeMeaning(event, edge) === 'exact';
+): boolean => edgeMeaning(event, edge) === TIME_MEANING.EXACT;
 
 /* `edgeHoldsPosition` lived here and is GONE (2026-08-13, amending ADR-0171 §10a and
    ADR-0184 §4). Every span edge holds a position now — a floor is placed at the instant the
@@ -473,6 +610,26 @@ export const isMultiDay = (event: Pick<TripEvent, 'date' | 'endDate'>): boolean 
  *  ambient-when-multi-day AND it is currently multi-day (ADR-0054, rebased). */
 export const isAmbient = (event: TimedEvent): boolean =>
   profileFor(event.category).ambientWhenMultiDay && isMultiDay(event);
+
+/**
+ * **Is this event a way of GETTING somewhere, rather than somewhere to be?**
+ *
+ * Asked of the booking first, because a booking states its type, and of the category only for
+ * an event no booking backs. Both vocabularies already exist and `BOOKING_TYPE_TO_CATEGORY`
+ * maps between them, so this names no third set — which is the correction it carries: the
+ * sharing projection wrote the same rule out as a literal list of four types, beside a comment
+ * saying it should not. Now both layers ask it here (ADR-0219 §7's move, extended).
+ *
+ * Its one caller-facing rule: a day's REGION and KIND are voted on by the settled stops only,
+ * since an airport's region would name a travel day after the municipality of its runway.
+ */
+export const isTransportEvent = (
+  event: Pick<TripEvent, 'category'>,
+  booking?: Pick<Booking, 'type'>,
+): boolean =>
+  booking
+    ? BOOKING_TYPE_TO_CATEGORY[booking.type] === EVENT_CATEGORY.TRANSPORT
+    : event.category === EVENT_CATEGORY.TRANSPORT;
 
 /** The closing edge of an event: the boundary past which it is behind you, for
  *  every now-relative "is this over?" question (the Index past/upcoming split,
@@ -576,6 +733,29 @@ export interface BookingTypeProfile {
    *  carries a route and is *called* Hertz — came out named `נריטה ← נריטה`. Read through
    *  `titlesFromRoute`, never by asking whether the type has a route. */
   titleFrom: 'route' | 'name';
+  /** **Is the WHOLE of this type's span time spent in motion, being carried?**
+   *  (ADR-0061's 2026-08-14 amendment.) A flight, a train and a bus hold you for their
+   *  entire length — which is why a night inside one is a night nobody books a bed for.
+   *
+   *  **Not `carriesRoute`, and the car hire is why.** A hire carries a route and spans
+   *  two instants like the three above, but its span is a period you HOLD the vehicle,
+   *  most of which is parked while you sleep somewhere; reading it as motion would tell
+   *  a five-day rental that it needs no lodging at all. Optional, so the table carries
+   *  only the types this is true of. Read through `spendsSpanInMotion`. */
+  inMotion?: boolean;
+  /** **What kind of place this type's ROUTE endpoints are** (ADR-0203 §8). A flight's leg
+   *  wants an airport, a train's wants a platform.
+   *
+   *  This replaces a conditional at the call site, and that is the reason it is here rather
+   *  than staying there. `BookingSheet.findPlace` asked `type === BOOKING_TYPE.FLIGHT` and
+   *  its own comment named what that cost: _"a train's stop is a station this restriction
+   *  has no type for yet"_ — so a train, a bus and a ferry endpoint searched the whole
+   *  corpus. One column, and a new transport mode answers it by existing.
+   *
+   *  Optional, because it is a property of a ROUTE and `places: 'single'` types have none
+   *  to restrict — a hotel's place is a hotel, and a restaurant's is a restaurant. Read
+   *  through `placeSearchKindFor`. */
+  searchKind?: PlaceSearchKind;
 }
 
 /** **The clock the day is assumed to begin on** (owner, field report #11: _"most events
@@ -624,8 +804,12 @@ const MINUTES_PER_HOUR = 60;
 /** A route-shaped type: two endpoints, a round trip is a mirror of them, and a
  *  connection is a sequence of them. The window differs per type, so each type
  *  supplies its own below rather than sharing this one. */
-const transportProfile = (sequence: ConnectionWindow): BookingTypeProfile => ({
+const transportProfile = (
+  sequence: ConnectionWindow,
+  searchKind: PlaceSearchKind,
+): BookingTypeProfile => ({
   places: 'route',
+  searchKind,
   schedule: 'span',
   defaultKind: 'hard',
   legs: { mirrored: true, sequence },
@@ -633,6 +817,9 @@ const transportProfile = (sequence: ConnectionWindow): BookingTypeProfile => ({
   times: { kind: 'none' },
   // Nobody names a flight or a train (ADR-0059 §3) — the route IS the name.
   titleFrom: 'route',
+  // You are carried for the whole of it, so a night inside one needs no bed. Set here
+  // rather than per row, so a future carried mode inherits it by being one of these.
+  inMotion: true,
 });
 
 /** No second journey of any shape. */
@@ -640,12 +827,22 @@ const ONE_JOURNEY = { mirrored: false, sequence: null } as const;
 
 export const BOOKING_TYPE_PROFILE = {
   // A layover, by the aviation line that separates one from a stopover.
-  flight: transportProfile({ maxGapMinutes: 24 * MINUTES_PER_HOUR, tightMinutes: 90 }),
-  train: transportProfile({ maxGapMinutes: 6 * MINUTES_PER_HOUR, tightMinutes: 20 }),
+  flight: transportProfile(
+    { maxGapMinutes: 24 * MINUTES_PER_HOUR, tightMinutes: 90 },
+    PLACE_SEARCH_KIND.AIRPORT,
+  ),
+  train: transportProfile(
+    { maxGapMinutes: 6 * MINUTES_PER_HOUR, tightMinutes: 20 },
+    PLACE_SEARCH_KIND.TRAIN_STATION,
+  ),
   // **The third transport mode** (ADR-0156). It carries a route, spans two instants, is a
   // real commitment, can be bought as a round trip and can be changed halfway — exactly
   // like the two above, and on a platform's timescale rather than an airport's.
-  transit: transportProfile({ maxGapMinutes: 6 * MINUTES_PER_HOUR, tightMinutes: 20 }),
+  transit: transportProfile(
+    { maxGapMinutes: 6 * MINUTES_PER_HOUR, tightMinutes: 20 },
+    // A bus or a ferry stops at a platform or a quay, not a rail station — the wider kind.
+    PLACE_SEARCH_KIND.TRANSIT_STATION,
+  ),
   // **The fourth transport mode** (ADR-0162) — and the first that is NOT
   // `transportProfile`, which is the whole point of it. A hire carries a route
   // (pick-up → drop-off) and spans two instants like the three above, but the `legs`
@@ -725,9 +922,30 @@ export const carriesRoute = (type: BookingType): boolean =>
 export const titlesFromRoute = (type: BookingType): boolean =>
   BOOKING_TYPE_PROFILE[type].titleFrom === 'route';
 
+/** **What kind of place this type's route endpoints are** (ADR-0203 §8), or `undefined` for
+ *  a type whose place is not a route endpoint at all. See `BookingTypeProfile.searchKind`. */
+export const placeSearchKindFor = (type: BookingType): PlaceSearchKind | undefined => {
+  // Widened to the interface deliberately, same as `bookingTypeDurationUnit` and
+  // `spendsSpanInMotion`: `as const satisfies` narrows each row to its own shape, on which
+  // an OPTIONAL field simply isn't a property to read.
+  const profile: BookingTypeProfile = BOOKING_TYPE_PROFILE[type];
+  return profile.searchKind;
+};
+
 /** Two-endpoint schedule (start + end, may span days) rather than a point on a day. */
 export const hasSpanSchedule = (type: BookingType): boolean =>
   BOOKING_TYPE_PROFILE[type].schedule === 'span';
+
+/** **Is this type's span time spent being carried** rather than time spent somewhere
+ *  (ADR-0061's 2026-08-14 amendment)? The one question behind "was there a bed-shaped
+ *  gap in this night" — see `BookingTypeProfile.inMotion` for why it is not `carriesRoute`. */
+export const spendsSpanInMotion = (type: BookingType): boolean => {
+  // Widened to the interface deliberately, same as `bookingTypeDurationUnit` above:
+  // `as const satisfies` narrows each row to its own shape, on which an OPTIONAL field
+  // simply isn't a property to read.
+  const profile: BookingTypeProfile = BOOKING_TYPE_PROFILE[type];
+  return profile.inMotion === true;
+};
 
 /** The commitment a fresh booking of this type opens with (ADR-0011 / ADR-0136 §4). */
 export const defaultKindForBookingType = (type: BookingType): EventKind =>

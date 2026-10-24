@@ -3,20 +3,25 @@
 // the profile, ADR-0063) + booking title + mono time, amber (time + commitment).
 // Tapping opens the read-only booking detail (ADR-0053), where edit/delete live;
 // it carries no inline delay/swap verbs (mutating half a derived span is ambiguous)
-// — but it DOES settle a floor, since 2026-08-13, when floors moved into the list
-// from the strip that used to carry that control. See `onDone` below for why that is
-// a count rather than a nicety. Shared by the Trip-mode day view and the Plan-mode
+// — but it DOES settle THIS EDGE, since 2026-08-13 for a floor and since ADR-0224 for
+// every edge. See `onDone` below for why the floor-only gate was a count rule wearing a
+// control's clothes. Shared by the Trip-mode day view and the Plan-mode
 // builder so the grammar can't diverge. A start edge (check-in / departure) offers Navigate —
 // but only when a caller supplies `onNavigate` (Trip mode, live day, and the
 // booking has a mappable location). Plan mode has no live "now", so it passes
 // none; a read-only past day, or a location-less booking, passes none too.
-import { CATEGORY_DEFAULT_ICON, edgeMeaning, EVENT_STATUS, type Booking } from '@waypoint/shared';
-import { SettleControl, type SettleOutcome } from './domain/SettleControl';
+import { CATEGORY_DEFAULT_ICON, edgeMeaning, type Booking } from '@waypoint/shared';
+import { SettleControl } from './domain/SettleControl';
 import { chosenIcon, DEFAULT_EVENT_ICON } from '../constants';
 import { ZoneShiftPill } from './ZoneShiftPill';
 import { TitleLabel } from './TitleLabel';
 import { PlaceBadge } from './domain/PlaceBadge';
-import { edgeTimePhrase, transitionLabel } from '../lib/transitions';
+import {
+  edgeSettleProps,
+  edgeTimePhrase,
+  relativeDayWord,
+  transitionLabel,
+} from '../lib/transitions';
 import { parseRouteTitle } from '../lib/route-title';
 import { placeLabelOf } from '../lib/place-label';
 import { usePlaceLabels } from '../state/place-labels';
@@ -53,17 +58,18 @@ export function TransitionRow({
    *  place on the map as where you check in, and orientation is not a live-only
    *  question the way directions are. */
   onShowOnMap?: () => void;
-  /** **The settle pair, on a FLOOR only** — inherited wholesale from
-   *  `UnplacedCommitment` when floors moved from the strip into the list (2026-08-13),
-   *  and it is load-bearing rather than parity: `glance.ts` keeps a `not-before` edge in
-   *  `נותרו היום` until it is `DONE`, because 15:01 does not mean anybody checked in
-   *  (ADR-0171 §6). Without a way to say `היינו` here the number the owner reported on
-   *  2026-08-04 sticks all evening. A ceiling and a window expire by their own clock and
-   *  need none; Trip mode supplies these and Plan supplies nothing, which is ADR-0171
-   *  §10e's posture difference and not a fact.
+  /** **The settle pair, on EVERY edge** — inherited wholesale from `UnplacedCommitment` when
+   *  floors moved from the strip into the list (2026-08-13), and it was gated on a FLOOR until
+   *  ADR-0224 §4. That gate was load-bearing for the count and was never about the control:
+   *  `glance.ts` keeps a `not-before` edge in `נותרו היום` until it is `DONE`, because 15:01
+   *  does not mean anybody checked in (ADR-0171 §6), and the note here read "a ceiling and a
+   *  window expire by their own clock and need none".
    *
-   *  This is the one thing the header comment above still says this row does not do — so:
-   *  it settles a floor, and only a floor. */
+   *  True of the COUNT, and false of the board — `CHECKOUT_LEAD_MIN` is 180, so a check-out
+   *  you made at 08:30 owns the hero until 11:00 with nothing you can say to it. A rule about
+   *  a count was being applied to a control, so the gate is gone and ADR-0171 §6 is untouched.
+   *  Trip mode supplies these and Plan supplies nothing, which is ADR-0171 §10e's posture
+   *  difference and not a fact. */
   onDone?: () => void;
   onSkip?: () => void;
   onUndo?: () => void;
@@ -101,6 +107,9 @@ export function TransitionRow({
   // render in this edge's own zone, like the single clock does.
   const meaning = edgeMeaning(event, edge);
   const time = edgeTimePhrase(event, edge, atMs, zone ?? tz);
+  /** The relative day, derived from the entry rather than taken as a prop — four call
+   *  sites render this row and none of them should have to know the rule. */
+  const dayNote = entry.dayOffset ? relativeDayWord(entry.dayOffset) : undefined;
   return (
     <div className="transition-row">
       <button
@@ -135,7 +144,27 @@ export function TransitionRow({
               Cost, stated because it is charged to every transition row now and not only to
               a windowed one: ~20px of height. */}
           <span className="tr-time">
-            {time}
+            {/* **The clock says what KIND of bound it is** (ADR-0210 §2). `meaning` is
+                already in hand a few lines up — `edgeTimePhrase` asks the same question to
+                choose the word — so the shape costs a wrapper and an attribute, and it
+                cannot drift from the word beside it. The attribute carries the derivation's
+                own value rather than a mapped class name, so a fifth `TimeMeaning` would
+                arrive here as a stylesheet question and not a TypeScript one.
+                `ZoneShiftPill` stays OUTSIDE the box: it annotates the clock, it is not
+                part of the bound. */}
+            <span className="tr-clock" data-bound={meaning}>
+              {time}
+            </span>
+            {/* **Which day this moment is actually on, when the row is hosting it** (ADR-0236
+                §4). Present only for an end whose own day the trip does not have — the flight
+                home landing after the last day — so it is absent on every ordinary row.
+
+                **The RAIL's vocabulary, not the board's**, and that is a correctness point
+                rather than a preference: `למחרת` means "the day after the one this is
+                anchored to", which is what a hosted row means, while the board's `מחר` means
+                "tomorrow from now" and would be a lie the moment you opened the last day in
+                advance. ADR-0203 §2 minted these words for exactly this relation. */}
+            {dayNote && <span className="tr-day">{dayNote}</span>}
             {deltaMinutes != null && (
               <ZoneShiftPill minutes={deltaMinutes} className="tr-tzdelta" />
             )}
@@ -145,16 +174,14 @@ export function TransitionRow({
       {/* `compact` is the density `UnplacedCommitment` already picked for this exact row
           shape — icon-only beside a label that needs the width — so nothing new is minted
           (ADR-0139's Consequences: four settle affordances drifted before one collected
-          them). Gated on the MEANING, not on the props alone: only a floor is cleared by
-          being settled. */}
-      {meaning === 'not-before' && onDone && onSkip && (
+          them). **Every edge, and THIS edge's own answer** (ADR-0224 §1/§4): `edgeSettleProps`
+          reads `status` at the start and `endStatus` at the end, so a check-out row stops
+          reporting what the check-in said, and gives the pair the transition's own verb —
+          `יצאנו` where it used to say `היינו`. */}
+      {onDone && onSkip && (
         <SettleControl
           variant="compact"
-          outcome={
-            event.status === EVENT_STATUS.DONE || event.status === EVENT_STATUS.SKIPPED
-              ? (event.status as SettleOutcome)
-              : undefined
-          }
+          {...edgeSettleProps(event, edge)}
           onDone={onDone}
           onSkip={onSkip}
           onUndo={onUndo}

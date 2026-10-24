@@ -38,6 +38,11 @@
 }
 
 .pp-clear {
+  /* ADR-0017's 44px floor via the overlay `value-token.css` established: the box stays 32px
+     so no row grows, and the reach lands in the row's own gap, which nothing else occupies.
+     It has been 32px since it shipped — measured while ADR-0203 §4 made this button a stop's
+     REMOVE, where a missed target is a row you cannot get out of. */
+  position: relative;
   flex: none;
   width: 32px;
   height: 32px;
@@ -47,6 +52,11 @@
   color: var(--muted);
   font-size: 0.9rem;
   cursor: pointer;
+}
+.pp-clear::after {
+  content: '';
+  position: absolute;
+  inset: -6px;
 }
 
 .pp-sheet {
@@ -103,9 +113,13 @@
   cursor: pointer;
 }
 
-.pp-result:hover:not(:disabled),
 .pp-result:focus-visible {
   background: var(--line);
+}
+@media (hover: hover) and (pointer: fine) {
+  .pp-result:hover:not(:disabled) {
+    background: var(--line);
+  }
 }
 
 .pp-result:disabled {
@@ -174,6 +188,8 @@
   cursor: pointer;
   white-space: nowrap;
 }
-.pp-addbtn:hover {
-  border-color: var(--muted);
+@media (hover: hover) and (pointer: fine) {
+  .pp-addbtn:hover {
+    border-color: var(--muted);
+  }
 }

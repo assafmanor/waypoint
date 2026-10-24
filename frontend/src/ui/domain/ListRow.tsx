@@ -11,6 +11,7 @@
 // props; no trip-state, no domain types beyond ReactNode. Rows live inside the
 // screen's `.listcard` container, which owns the card frame + row dividers.
 import { type MouseEvent, type ReactNode } from 'react';
+import type { HoldToOpenProps } from '../../lib/useHoldToOpen';
 import { Sheet } from '../Sheet';
 import { Icon, type IconName } from '../Icon';
 import { PlaceBadge } from './PlaceBadge';
@@ -21,9 +22,29 @@ import './list-row.css';
 export type BadgeTone = 'stay' | 'trans';
 
 export interface ListRowProps {
-  /** Leading badge content — an emoji/icon (content, not a UI control). */
-  icon: ReactNode;
+  /** Leading badge content — an emoji/icon (content, not a UI control). **Optional since
+   *  ADR-0188:** a row with a `lead` has no badge, because the control IS its leading
+   *  element and a task has no icon slot to fill. */
+  icon?: ReactNode;
+  /** **A fetched photograph to fill the badge's interior** (ADR-0167 §1, extended to this row
+   *  2026-09-05). `PlaceBadge` has taken this since the Map first filled it; the row simply
+   *  never forwarded it, so the bookings index wore a ticket glyph for a place the day surface
+   *  was already showing a photograph of. Resolved by the host through `lib/place-photo`'s
+   *  `rowPhoto` — only a host knows whether a glyph was PICKED, which is what beats a photo. */
+  photoUrl?: string;
   badgeTone?: BadgeTone;
+  /** **A control at the row's leading edge, as a SIBLING of the trigger** (ADR-0188 §1) —
+   *  the kebab's twin at the other end, and rendered before it for the same reason the
+   *  kebab is rendered after: buttons do not nest. Chrome closes `.wp-listrow-open` at a
+   *  nested `<button>` and reparents everything after it (ADR-0160 §4, reproduced live),
+   *  and a `role="button"` span inside would have to swallow the row's own tap on every
+   *  press — affordable for `PlaceBadge`'s occasional verb, not for the one pressed on
+   *  every row of a to-do list.
+   *
+   *  A task's tick is the only consumer. Anything put here owes ADR-0188 §2's hit box: a
+   *  rounded SQUARE, never a circle, because `border-radius` clips the hit region as well
+   *  as the paint and the four corners fall through to the trigger underneath. */
+  lead?: ReactNode;
   /** Opens the row's primary target (a detail view / viewer).
    *
    *  Receives the click, because `onClick={onOpen}` has always passed it and a caller
@@ -31,6 +52,15 @@ export interface ListRowProps {
    *  thing you tapped is one `overlayOriginOffset(e.currentTarget)` away. Widening a
    *  `() => void` is backwards compatible, so no existing call site changes. */
   onOpen: (event: MouseEvent<HTMLButtonElement>) => void;
+  /** **Pointer handlers for a HOLD on the open body** (ADR-0202's 2026-08-22 amendment) —
+   *  `lib/useHoldToOpen.ts`'s output, spread as-is. A slot rather than an `onHold` callback so
+   *  this primitive stays ignorant of the gesture: it does not own the timer, the selection
+   *  guard or the click swallow, and a row with nothing to hold for spreads `{}`.
+   *
+   *  On the OPEN BODY and not on the row, deliberately: the trailing group holds the `⋯`, the
+   *  sync badge and any mark, and holding a menu button to open something else is a mistap
+   *  waiting to happen. */
+  hold?: HoldToOpenProps;
   /** Accessible name for the open button (the row's title as a string). */
   openLabel: string;
   /** Disables the open button (e.g. a still-uploading document). */
@@ -66,8 +96,11 @@ export interface ListRowProps {
 
 export function ListRow({
   icon,
+  photoUrl,
   badgeTone,
+  lead,
   onOpen,
+  hold,
   openLabel,
   disabled,
   title,
@@ -86,19 +119,24 @@ export function ListRow({
         'wp-listrow' + (unsynced ? ' is-unsynced' : '') + (className ? ` ${className}` : '')
       }
     >
+      {lead != null && <div className="wp-listrow-lead">{lead}</div>}
       <button
         type="button"
         className="wp-listrow-open"
         onClick={onOpen}
+        {...hold}
         disabled={disabled}
         aria-label={openLabel}
       >
-        <PlaceBadge
-          className={'wp-listrow-badge' + (badgeTone ? ` ${badgeTone}` : '')}
-          onShowOnMap={onShowOnMap}
-        >
-          {icon}
-        </PlaceBadge>
+        {icon != null && (
+          <PlaceBadge
+            className={'wp-listrow-badge' + (badgeTone ? ` ${badgeTone}` : '')}
+            onShowOnMap={onShowOnMap}
+            photoUrl={photoUrl}
+          >
+            {icon}
+          </PlaceBadge>
+        )}
         <span className="wp-listrow-main">
           <span className="wp-listrow-title">{title}</span>
           {meta != null && <span className="wp-listrow-meta">{meta}</span>}
@@ -223,7 +261,7 @@ export function RowActionList({ actions }: { actions: RowAction[] }) {
 
   return (
     <>
-      <div className="wp-row-actions">{safe.map(item)}</div>
+      {safe.length > 0 && <div className="wp-row-actions">{safe.map(item)}</div>}
       {danger.length > 0 && (
         <div className="wp-row-actions wp-row-actions-danger">{danger.map(item)}</div>
       )}

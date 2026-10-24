@@ -44,7 +44,15 @@ export const ENRICHMENT_SOURCE = {
  *  that TLV serves Tel Aviv — so they belong in this global store rather than on the
  *  trip-scoped `Place` row, and they arrive from the same Wikidata item the identity pass
  *  already settles. */
-export const enrichmentFieldSchema = z.enum(['image', 'summary', 'hours', 'iata', 'servedCity']);
+export const enrichmentFieldSchema = z.enum([
+  'image',
+  'summary',
+  'hours',
+  'iata',
+  'servedCity',
+  'kind',
+  'region',
+]);
 export type EnrichmentField = z.infer<typeof enrichmentFieldSchema>;
 
 export const ENRICHMENT_FIELD = {
@@ -53,6 +61,24 @@ export const ENRICHMENT_FIELD = {
   HOURS: 'hours',
   IATA: 'iata',
   SERVED_CITY: 'servedCity',
+  /** **What this place IS, as a common noun** — `מפל`, `מכתש`, `שדה לבה`. Wikidata's `P31`
+   *  ("instance of"), resolved to a label.
+   *
+   *  The pipeline has been fetching this since ADR-0166 shipped and throwing it away: the
+   *  matcher resolves class nouns to decide whether a candidate is the right KIND of thing
+   *  (`descriptorCouldRescue`, `nameCanRefuse`) and memoizes 256 of them, then keeps none.
+   *  Storing it costs a key in a Json column that is already there, and it is what lets a
+   *  day of four waterfalls be named for what they are rather than for two of their names. */
+  KIND: 'kind',
+  /** **Where this place is, administratively** — Wikidata's `P131` ("located in the
+   *  administrative territorial entity"), resolved to a label.
+   *
+   *  Deliberately NOT parsed out of `Place.address`, which was the first proposal: an
+   *  Icelandic address really does carry `806 Bláskógabyggð` in a consistent shape, and a
+   *  parser for it is a parser for one country. `P131` is one more claim on an entity read
+   *  the pass already makes, answers structurally, and carries a Hebrew label wherever
+   *  Wikidata has one. */
+  REGION: 'region',
 } as const satisfies Record<string, EnrichmentField>;
 
 /** Fields whose value is a map of localized **variants** rather than one value (§11.6).
@@ -65,6 +91,10 @@ export const ENRICHMENT_FIELD = {
 export const TEXT_VARIANT_FIELDS = [
   ENRICHMENT_FIELD.SUMMARY,
   ENRICHMENT_FIELD.SERVED_CITY,
+  // A class noun and a region name are prose in exactly the way a city name is — `waterfall`
+  // and `מפל` are the same fact in two languages — so they are stored the same way.
+  ENRICHMENT_FIELD.KIND,
+  ENRICHMENT_FIELD.REGION,
 ] as const satisfies readonly EnrichmentField[];
 
 export function isTextVariantField(field: EnrichmentField): boolean {
@@ -153,6 +183,11 @@ export const FIELD_SOURCE_PRECEDENCE = {
   // fall through to — a place with no airport-classed Wikidata item simply has neither.
   iata: [ENRICHMENT_SOURCE.WIKIDATA],
   servedCity: [ENRICHMENT_SOURCE.WIKIDATA],
+  // `P31` and `P131`, and like the airport pair there is no second source to fall through
+  // to: Google has no "what kind of thing is this" field beyond its own opaque type list,
+  // and no administrative parent at all.
+  kind: [ENRICHMENT_SOURCE.WIKIDATA],
+  region: [ENRICHMENT_SOURCE.WIKIDATA],
 } as const satisfies Record<EnrichmentField, readonly EnrichmentSource[]>;
 
 /** How long a stored value of this field is fresh (ADR-0166 §6.1: summary effectively
@@ -168,6 +203,10 @@ export const ENRICHMENT_FIELD_TTL_MS = {
   // `enrichmentValueTtlMs` takes the tighter of the two anyway.
   iata: 365 * DAY_MS,
   servedCity: 365 * DAY_MS,
+  // A waterfall does not stop being a waterfall, and a valley does not change municipality
+  // often. As stable as the airport pair, and capped by the source's year the same way.
+  kind: 365 * DAY_MS,
+  region: 365 * DAY_MS,
 } as const satisfies Record<EnrichmentField, number>;
 
 /** **Negative caching is mandatory, not an optimization** (ADR-0166 §6.4). "We looked;
@@ -196,7 +235,25 @@ export const ENRICHMENT_MISS_TTL_MS = {
   // counterpart: a restaurant does not become an airport.
   iata: 180 * DAY_MS,
   servedCity: 180 * DAY_MS,
+  // The miss is the answer for a car park and a rented apartment, which is most of a trip.
+  // Same reasoning as the airport pair: a car park does not become a waterfall.
+  kind: 180 * DAY_MS,
+  region: 180 * DAY_MS,
 } as const satisfies Record<EnrichmentField, number>;
+
+/** **Bump when the matcher or the pipeline gets materially better at finding things.**
+ *  A miss concluded by an older pipeline is re-asked on the next read instead of being
+ *  believed for its full miss TTL — otherwise a recall fix reaches a place already saved
+ *  30 days (180 for `kind`/`region`) after it ships. Only misses are re-asked; a present
+ *  value keeps its own TTL. Not a counter to tidy up: lowering it silently re-trusts misses.
+ *
+ *  2 — Hebrew definite article, location-qualified labels, local-language names, the
+ *      `thumb.wikimedia.org` allowlist (2026-09-28). */
+export const ENRICHMENT_PIPELINE_VERSION = 2;
+
+/** How soon an `unavailable` miss is retried — long enough not to hammer a rate limiter
+ *  from every snapshot read, short enough that a 429 costs an hour instead of a month. */
+export const ENRICHMENT_UNAVAILABLE_RETRY_MS = 60 * 60 * 1000;
 
 /** How long a value of `field` from `source` is trusted: the tighter of the field's own
  *  freshness need and the source's ceiling. The field usually wins — the exception that
@@ -305,7 +362,7 @@ export const MATCH_REFUSAL = {
  *  for most places is the *common* one rather than an error (§Context 2). */
 export const enrichmentAbsenceReasonSchema = z.union([
   matchRefusalSchema,
-  z.enum(['not_found', 'unstorable', 'attribution_missing']),
+  z.enum(['not_found', 'unstorable', 'attribution_missing', 'unavailable']),
 ]);
 export type EnrichmentAbsenceReason = z.infer<typeof enrichmentAbsenceReasonSchema>;
 
@@ -318,6 +375,11 @@ export const ENRICHMENT_ABSENCE_REASON = {
   /** The value requires visible credit and arrived without any, so it cannot be rendered
    *  lawfully — refused rather than stored as an obligation we cannot discharge. */
   ATTRIBUTION_MISSING: 'attribution_missing',
+  /** A source this field needed **failed** (a 429, a timeout, an outage) — so nobody was
+   *  actually asked. Not a fact about the place, and retried on its own short clock
+   *  (`ENRICHMENT_UNAVAILABLE_RETRY_MS`) rather than believed for a month: Wikimedia
+   *  rate-limits a shared cloud IP readily, and one 429 used to blank a place for 30 days. */
+  UNAVAILABLE: 'unavailable',
 } as const satisfies Record<string, EnrichmentAbsenceReason>;
 
 /** The width asked of Commons' own thumbnailer (`iiurlwidth`).
@@ -481,6 +543,9 @@ export const enrichmentAbsenceSchema = z.object({
   attemptedAt: z.iso.datetime({ offset: true }),
   sources: z.array(enrichmentSourceSchema),
   reason: enrichmentAbsenceReasonSchema,
+  /** The `ENRICHMENT_PIPELINE_VERSION` that concluded this. Absent on rows written before
+   *  the stamp existed, which read as version 1. */
+  pipeline: z.number().int().optional(),
 });
 export type EnrichmentAbsence = z.infer<typeof enrichmentAbsenceSchema>;
 
@@ -514,6 +579,10 @@ export const enrichmentFieldsSchema = z.object({
    *  is Hebrew-first — `תל אביב · TLV` is the label, not `Tel Aviv · TLV`, wherever Wikidata
    *  has the Hebrew label. Storing one value would throw the other language away. */
   servedCity: fieldStateSchema(textVariantsSchema).optional(),
+  /** Variants for the same reason the city is: a class noun and a region name are prose,
+   *  and this app is Hebrew-first — `מפל` where Wikidata has the Hebrew label. */
+  kind: fieldStateSchema(textVariantsSchema).optional(),
+  region: fieldStateSchema(textVariantsSchema).optional(),
 });
 export type EnrichmentFields = z.infer<typeof enrichmentFieldsSchema>;
 
@@ -554,6 +623,8 @@ export const deliveredEnrichmentFieldsSchema = z.object({
   hours: enrichedHoursValueSchema.optional(),
   iata: enrichedCodeValueSchema.optional(),
   servedCity: textVariantsSchema.optional(),
+  kind: textVariantsSchema.optional(),
+  region: textVariantsSchema.optional(),
 });
 export type DeliveredEnrichmentFields = z.infer<typeof deliveredEnrichmentFieldsSchema>;
 

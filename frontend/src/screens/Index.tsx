@@ -1,4 +1,5 @@
-// Index tab — a landing with three peer tiles (ADR-0098/0152): bookings, documents and notes
+// Index tab — a landing with four peer tiles (ADR-0098/0152, tasks brief §11): bookings,
+// tasks, documents and notes
 // (ADR-0047/0049) each push their own dedicated full screen instead of sharing
 // one long page. The sub-screens are LOCAL VIEW STATE here, not routes — Index
 // already renders inside the one TripProvider the trip Shell mounts, and a
@@ -7,31 +8,60 @@
 // Content is identical in Plan/Trip mode (ADR-0049) — mode only tints chrome.
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { BOOKING_TYPE } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
+import { useMode } from '../state/mode-state';
 import { useClock } from '../lib/useClock';
-import { splitBookings, scheduleLabel } from '../lib/index-bookings';
+import { countByCategory, splitBookings, scheduleLabel } from '../lib/index-bookings';
 import { groupDocuments } from '../lib/documents';
 import { noteTitleText, sortNotes } from '../lib/notes';
+import { taskDue, taskPreview, type TaskDueClock } from '../lib/tasks';
+import { useAutomaticTasks } from '../lib/useAutomaticTasks';
 import { BookingTitle } from '../ui/BookingTitle';
 import { IndexBookingsView } from '../ui/IndexBookingsView';
 import { IndexDocumentsView } from '../ui/IndexDocumentsView';
 import { IndexNotesView } from '../ui/IndexNotesView';
-import { IndexTile } from '../ui/domain';
+import { IndexTasksView } from '../ui/IndexTasksView';
+import { ArchiveBanner, IndexTile } from '../ui/domain';
 import { Icon } from '../ui/Icon';
-import { BOOKING_PARAM, DOCUMENT_PARAM, FOCUS_PARAM, INDEX_FOCUS } from '../state/nav-state';
+import { useSettledHosts } from '../ui/HostTasks';
+import {
+  BOOKING_PARAM,
+  DOCUMENT_PARAM,
+  FOCUS_PARAM,
+  INDEX_FOCUS,
+  TASK_PARAM,
+} from '../state/nav-state';
+import { DOT_SEPARATOR } from '../constants';
 import { t } from '../i18n/he';
 
-type IndexView = 'landing' | 'bookings' | 'documents' | 'notes';
+type IndexView = 'landing' | 'bookings' | 'documents' | 'notes' | 'tasks';
 
 export function Index() {
-  const { trip, bookings, places, events, documents, notes, users } = useTrip();
+  const {
+    trip,
+    bookings,
+    places,
+    events,
+    documents,
+    notes,
+    tasks,
+    users,
+    zoneCrossings,
+    zoneEvidence,
+  } = useTrip();
   const now = useClock();
+  const { isFinished, phase } = useMode();
+  const { automatic } = useAutomaticTasks();
   const [view, setView] = useState<IndexView>('landing');
   // Set alongside `view` by the ?booking= deep-link below, and handed to a
   // freshly-mounted IndexBookingsView so it opens that booking's detail. A
   // manual tile tap clears it first, so re-entering the bookings screen later
   // doesn't reopen a stale detail from an earlier deep link.
   const [pendingBookingId, setPendingBookingId] = useState<string | undefined>();
+  // The same shape for a task, and its one producer is a notification (ADR-0197 §6): a
+  // reminder about a deadline has to open THAT deadline, not the list it sits in.
+  const [pendingTaskId, setPendingTaskId] = useState<string | undefined>();
   /** The same shape one kind over: `?doc=<id>` opens the documents screen with that document
    *  open, which is where a note about it sends you (ADR-0153 §8's way-in amendment). */
   const [pendingDocumentId, setPendingDocumentId] = useState<string | undefined>();
@@ -44,8 +74,9 @@ export function Index() {
   useEffect(() => {
     const id = params.get(BOOKING_PARAM);
     const docId = params.get(DOCUMENT_PARAM);
+    const taskId = params.get(TASK_PARAM);
     const focus = params.get(FOCUS_PARAM);
-    if (!id && !docId && !focus) return;
+    if (!id && !docId && !taskId && !focus) return;
     if (id) {
       setPendingBookingId(id);
       setView('bookings');
@@ -57,6 +88,15 @@ export function Index() {
     if (focus === INDEX_FOCUS.DOCS) {
       setView('documents');
     }
+    // The Trip Home band's rows and its overflow row both land here (ADR-0188 §6) — the
+    // band is a band, so the list it is a window onto is where a task actually lives.
+    if (focus === INDEX_FOCUS.TASKS) {
+      setView('tasks');
+    }
+    if (taskId) {
+      setPendingTaskId(taskId);
+      setView('tasks');
+    }
     // …and MOUNTING the bookings screen is itself a destination (session 172): a booking
     // errand returns here so the screen can take the pending answer and re-open its form.
     // No id — the answer says which booking, and what was typed.
@@ -67,9 +107,15 @@ export function Index() {
     const next = new URLSearchParams(params);
     next.delete(BOOKING_PARAM);
     next.delete(DOCUMENT_PARAM);
+    next.delete(TASK_PARAM);
     next.delete(FOCUS_PARAM);
     setParams(next, { replace: true });
   }, [params, setParams]);
+
+  // Above the early returns below: this is a HOOK, and the four `view` branches would make
+  // it conditional — which React reports as "rendered fewer hooks than expected", and seven
+  // shipped specs did.
+  const settledHosts = useSettledHosts();
 
   const openBookings = () => {
     setPendingBookingId(undefined);
@@ -102,14 +148,36 @@ export function Index() {
       </div>
     );
   }
+  if (view === 'tasks') {
+    // The passport check's verb lands on this screen's own sibling rather than on Home
+    // (ADR-0190 §3), so the Index hands the way in.
+    return (
+      <div className="index">
+        <IndexTasksView
+          onClose={backToLanding}
+          onOpenDocuments={openDocuments}
+          initialTaskId={pendingTaskId}
+        />
+      </div>
+    );
+  }
 
   const { upcoming, past } = splitBookings(bookings, events, trip.timezone, now.getTime());
   const next = upcoming[0];
-  const bookingsSubtitle = next ? (
+  // **A finished trip names what it had** (ADR-0239 §4), the documents tile's grammar: once
+  // every booking is past there is no "next", and `none yet` beside a count is false.
+  const bookingCounts = countByCategory(bookings);
+  const bookingTypesHad = Object.values(BOOKING_TYPE)
+    .filter((type) => bookingCounts[type] > 0)
+    .map((type) => t.index.bookingType[type])
+    .join(` ${DOT_SEPARATOR} `);
+  const bookingsSubtitle = isFinished ? (
+    bookingTypesHad || t.index.tile.noBookings
+  ) : next ? (
     <>
       <Icon name="link" /> {t.index.tile.nextPrefix}{' '}
       <BookingTitle booking={next.booking} places={places} />
-      {next.event && <> · {scheduleLabel(next.event, next.booking, trip, now)}</>}
+      {next.event && <> · {scheduleLabel(next.event, next.booking, zoneEvidence, now, trip)}</>}
       {past.length > 0 && <> · {t.index.tile.pastCount(past.length)}</>}
     </>
   ) : (
@@ -122,6 +190,8 @@ export function Index() {
       <>
         <Icon name="lock" /> {docGroups.map((g) => t.docs.group[g.type]).join(' · ')}
       </>
+    ) : isFinished ? (
+      t.index.tile.noDocuments
     ) : (
       t.index.tile.emptyDocuments
     );
@@ -137,10 +207,57 @@ export function Index() {
     : '';
   const notesSubtitle = latestNote
     ? t.notes.tile.latest(latestAuthor, noteTitleText(latestNote))
-    : t.notes.tile.empty;
+    : isFinished
+      ? t.notes.tile.none
+      : t.notes.tile.empty;
+
+  // **The next thing due, with an overdue count when there is one** (brief §13). A task
+  // collection has no "newest" worth a glance the way notes do and no type groups the way
+  // documents do — what it has is a deadline that is about to bite, which is also the only
+  // line here that moves on its own. Rejected: a raw open-count, which barely changes.
+  const clock: TaskDueClock = {
+    nowMs: now.getTime(),
+    crossings: zoneCrossings,
+    primaryZone: trip.timezone,
+    trip,
+    phase,
+  };
+  // The readiness checks count toward the tile (owner, 2026-08-16, amending ADR-0190 §1):
+  // a trip nobody has prepared has five things to do, and the tile is what says so.
+  const preview = taskPreview(tasks, automatic, clock, settledHosts);
+  const nextDue = preview.next ? taskDue(preview.next, clock) : undefined;
+  // **Nothing dated is not nothing open** (backlog, noticed 2026-08-16). `next` is the dated
+  // half of the answer, so a trip whose open work is undated — or is the readiness checks,
+  // which carry no deadline at all — used to read `אין משימות פתוחות` beside a count of 5.
+  // `lead` is the other half: the row the screen behind this tile leads with, named in the
+  // same `הבאה:` shape because that is what it is, one list and one order (ADR-0190 §2).
+  const tasksLead = preview.next
+    ? nextDue?.time
+      ? `${preview.next.title} · ${nextDue.day} ${nextDue.time}`
+      : preview.next.title
+    : preview.lead;
+  const tasksSubtitle = tasksLead ? (
+    <>
+      {/* The glyph says "deadline", so it goes where there is one — every other tile's
+          leading icon names what its line is about, and a clock over an undated row names
+          something the row does not have. */}
+      {preview.next && (
+        <>
+          <Icon name="clock" />{' '}
+        </>
+      )}
+      {t.tasks.tile.next(tasksLead)}
+      {preview.overdue > 0 && <> · {t.tasks.tile.overdue(preview.overdue)}</>}
+    </>
+  ) : (
+    t.tasks.tile.empty
+  );
 
   return (
     <div className="index">
+      {/* ADR-0049 §2's banner, built as ADR-0240 §6 drew it: Trip's past-day banner in the
+          archive's hue, and no wash over the tiles. */}
+      {isFinished && <ArchiveBanner label={t.index.archiveBanner} memory />}
       {/* Offline status is a page-level fact — shown once, on the landing. */}
       <div className="index-status">
         <span className="badge-offline">
@@ -155,6 +272,19 @@ export function Index() {
         subtitle={bookingsSubtitle}
         onOpen={openBookings}
       />
+      {/* Second, and the order below it is one rule: AFTER the spine, tiles run by whether
+          they can be LATE (owner, 2026-08-15). A task expires and a missed one costs the
+          thing it was guarding (brief §11); a document does not change; a note never expires
+          at all. Bookings keeps the lead it has held since ADR-0047/0049 — it is the trip's
+          spine and the most-consulted tile on the ground, and a task's prominence is already
+          paid for by the Home bands (phases 2–3) rather than owed by this landing. */}
+      <IndexTile
+        icon={<Icon name="check" />}
+        title={t.tasks.title}
+        count={preview.open}
+        subtitle={tasksSubtitle}
+        onOpen={() => setView('tasks')}
+      />
       <IndexTile
         icon={<Icon name="documents" />}
         title={t.docs.title}
@@ -162,8 +292,8 @@ export function Index() {
         subtitle={documentsSubtitle}
         onOpen={openDocuments}
       />
-      {/* The third tile ADR-0098 measured its landing at five for, discharging the
-          deferred content type and its `מחקר` naming debt — by not spending the word. */}
+      {/* The tile ADR-0098 measured its landing at five for, discharging the deferred
+          content type and its `מחקר` naming debt — by not spending the word. */}
       <IndexTile
         icon={<Icon name="clipboard" />}
         title={t.notes.title}

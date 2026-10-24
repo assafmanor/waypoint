@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { EVENT_CATEGORY, EVENT_KIND, EVENT_STATUS, type TripEvent } from '@waypoint/shared';
 import {
+  DAY_PHASE,
+  dayPhase,
   addDays,
   buildTimeTree,
   clampDate,
@@ -18,6 +20,8 @@ import {
   weekdayName,
   formatTripDates,
   relativeDay,
+  dayLabel,
+  tripDayNumber,
   hardConflicts,
   isCalendarDay,
   isoToTimeInput,
@@ -32,8 +36,12 @@ import {
   crossesMidnightZoned,
   formatZoneDelta,
   zoneOffsetMinutes,
+  byPeer,
+  peerEntry,
+  peerExit,
+  clusterAround,
 } from './time';
-import { withoutBidiControls } from './bidi';
+import { ltrIsolate, withoutBidiControls } from './bidi';
 import { DEMO_NOW, EVENTS, TRIP } from '../fixtures';
 
 const tz = TRIP.timezone;
@@ -71,8 +79,10 @@ describe('formatTripDates', () => {
   });
 
   it('prose+year, same month & year: day range + one month + year', () => {
+    // The day range is an isolated LTR island (ADR-0118): without it the RTL hero drew
+    // `22–11`, which is what the owner's screenshot showed.
     expect(formatTripDates('2026-09-11', '2026-09-22', { style: 'prose', withYear: true })).toBe(
-      '11–22 בספטמבר 2026',
+      `${ltrIsolate('11–22')} בספטמבר 2026`,
     );
   });
 
@@ -96,7 +106,9 @@ describe('formatTripDates', () => {
 
   // Prose without year — hero surfaces (PlanHome) stay year-free in every case.
   it('prose without year: collapses a same-month range to one month name', () => {
-    expect(formatTripDates('2026-07-20', '2026-07-29', { style: 'prose' })).toBe('20–29 ביולי');
+    expect(formatTripDates('2026-07-20', '2026-07-29', { style: 'prose' })).toBe(
+      `${ltrIsolate('20–29')} ביולי`,
+    );
   });
 
   it('prose without year: names both ends across a month boundary', () => {
@@ -275,10 +287,20 @@ describe("the app renders dates in its own locale, not the device's", () => {
   });
 
   it('names a timed moment in Hebrew, day then clock', () => {
-    const out = formatDayTime('2026-07-18T09:30:00Z', 'Asia/Jerusalem');
+    const out = withoutBidiControls(formatDayTime('2026-07-18T09:30:00Z', 'Asia/Jerusalem'));
     expect(out).toMatch(/[֐-׿]/);
     expect(out).not.toMatch(/[A-Za-z]/);
     expect(out.endsWith('12:30')).toBe(true);
+  });
+
+  // The owner's report (2026-08-21): the event sheet read `19:30–18:30` for a 90-minute
+  // event, because the end was concatenated onto this formatter's RESULT — two numeric
+  // islands either side of a dash, which an RTL flow lays out second-first. The window is
+  // one island now, the same way `clockRange` already carried the day card's.
+  it('keeps a window in start–end order, as one LTR island', () => {
+    const out = formatDayTime('2026-07-18T09:30:00Z', 'Asia/Jerusalem', '13:00');
+    expect(withoutBidiControls(out).endsWith('12:30–13:00')).toBe(true);
+    expect(out).toContain(ltrIsolate('12:30–13:00'));
   });
 });
 
@@ -490,6 +512,82 @@ describe('relativeDay', () => {
   });
 });
 
+describe('dayLabel (ADR-0085 amendment: off the ground, a day has a number)', () => {
+  const trip = { trip: { startDate: '2026-12-11', endDate: '2026-12-22' } };
+
+  it('numbers the day before the trip starts, where relative would only re-encode it', () => {
+    // The bug this exists for: from 2026-11-29 the first four trip days read
+    // `עוד 12/13/14/15 ימים` — the day numbers plus a constant nothing states.
+    const naming = { ...trip, today: '2026-11-29' };
+    expect(dayLabel('2026-12-11', naming)).toBe('יום 1');
+    expect(dayLabel('2026-12-13', naming)).toBe('יום 3');
+    expect(dayLabel('2026-12-22', naming)).toBe('יום 12');
+  });
+
+  it('numbers the days of a finished trip too', () => {
+    expect(dayLabel('2026-12-13', { ...trip, today: '2027-02-01' })).toBe('יום 3');
+  });
+
+  it('stays relative while the trip is live, on every day of it', () => {
+    expect(dayLabel('2026-12-14', { ...trip, today: '2026-12-13' })).toBe('מחר');
+    expect(dayLabel('2026-12-11', { ...trip, today: '2026-12-11' })).toBe('היום');
+    expect(dayLabel('2026-12-22', { ...trip, today: '2026-12-22' })).toBe('היום');
+    expect(dayLabel('2026-12-11', { ...trip, today: '2026-12-14' })).toBe('לפני 3 ימים');
+  });
+
+  it('measures live-trip relatives from `anchor` when the surface names a day on screen', () => {
+    const naming = { ...trip, today: '2026-12-13', anchor: '2026-12-15' };
+    expect(dayLabel('2026-12-16', naming)).toBe('מחר');
+  });
+
+  it('ignores `anchor` off-trip — a day number is not measured from anything', () => {
+    const naming = { ...trip, today: '2026-11-29', anchor: '2026-12-15' };
+    expect(dayLabel('2026-12-16', naming)).toBe('יום 6');
+  });
+
+  it('falls back to relative for a date outside the trip window', () => {
+    const naming = { ...trip, today: '2026-11-29' };
+    expect(dayLabel('2026-12-01', naming)).toBe('מחרתיים');
+    expect(dayLabel('2026-12-23', naming)).toBe('עוד 24 ימים');
+  });
+});
+
+describe('dayPhase (ADR-0213 eleventh amendment §7)', () => {
+  it('answers the one comparison three surfaces were making in two spellings', () => {
+    expect(dayPhase('2026-09-14', '2026-09-15')).toBe(DAY_PHASE.PAST);
+    expect(dayPhase('2026-09-15', '2026-09-15')).toBe(DAY_PHASE.TODAY);
+    expect(dayPhase('2026-09-16', '2026-09-15')).toBe(DAY_PHASE.FUTURE);
+  });
+
+  it('treats a row that spans two days as today while EITHER of them is', () => {
+    // The shared reader's card for a journey that leaves at 02:00 and lands the next
+    // afternoon (`SharedDay.endDate`). Comparing only the start date would retire it a day
+    // early, which is why the span is a parameter rather than something a caller guesses.
+    expect(dayPhase('2026-09-21', '2026-09-21', '2026-09-22')).toBe(DAY_PHASE.TODAY);
+    expect(dayPhase('2026-09-21', '2026-09-22', '2026-09-22')).toBe(DAY_PHASE.TODAY);
+    expect(dayPhase('2026-09-21', '2026-09-23', '2026-09-22')).toBe(DAY_PHASE.PAST);
+    expect(dayPhase('2026-09-21', '2026-09-20', '2026-09-22')).toBe(DAY_PHASE.FUTURE);
+  });
+
+  it('crosses a month and a year on string order alone', () => {
+    // Both sides are trip-local `YYYY-MM-DD`, so there is no zone to re-read the day and no
+    // arithmetic to drift across DST.
+    expect(dayPhase('2026-12-31', '2027-01-01')).toBe(DAY_PHASE.PAST);
+    expect(dayPhase('2027-01-01', '2026-12-31')).toBe(DAY_PHASE.FUTURE);
+  });
+});
+
+describe('tripDayNumber', () => {
+  it('is 1-based from the trip start', () => {
+    expect(tripDayNumber('2026-12-11', '2026-12-11')).toBe(1);
+    expect(tripDayNumber('2026-12-13', '2026-12-11')).toBe(3);
+  });
+
+  it('crosses a DST boundary without drifting (UTC-midnight arithmetic)', () => {
+    expect(tripDayNumber('2026-11-05', '2026-10-25')).toBe(12);
+  });
+});
+
 describe('countdownParts', () => {
   it('reads near days as standalone words (no "בעוד" connective)', () => {
     expect(countdownParts(0)).toEqual({ value: '', unit: 'היום', prefix: '' });
@@ -541,6 +639,54 @@ describe('hardConflicts', () => {
 
   it('returns nothing for a hard event itself', () => {
     expect(hardConflicts(ichiran, EVENTS)).toEqual([]);
+  });
+
+  // ── A HELD SPAN IS NOT A COLLISION (ADR-0227's 2026-09-14 amendment) ─────────
+  //
+  // Reported against the deployed build: at 18:47 a supermarket run of 18:30–20:00 carried
+  // `⚠ חופף ל-The Garage (קשיח) · 16:00` — a warning about the hotel it was being done FROM,
+  // naming a check-in nearly three hours in the past.
+  const held = (id: string, cat: 'lodging' | 'transport', icon: string): TripEvent =>
+    ({
+      ...shinjuku,
+      id,
+      title: id,
+      kind: EVENT_KIND.HARD,
+      category: cat,
+      icon,
+      startsAt: '2026-07-07T16:00:00+09:00',
+      endsAt: '2026-07-08T11:00:00+09:00',
+      endDate: '2026-07-08',
+    }) as TripEvent;
+  const evening: TripEvent = {
+    ...shinjuku,
+    id: 'x-shop',
+    kind: EVENT_KIND.SOFT,
+    startsAt: '2026-07-07T18:30:00+09:00',
+    endsAt: '2026-07-07T20:00:00+09:00',
+  };
+
+  it('does not flag the stay an evening is spent inside', () => {
+    expect(hardConflicts(evening, [evening, held('x-stay', 'lodging', '🏨')])).toEqual([]);
+  });
+
+  it('does not flag a car hire either — you have the car, that is not a clash', () => {
+    expect(hardConflicts(evening, [evening, held('x-hire', 'transport', '🚗')])).toEqual([]);
+  });
+
+  /** The other half, and it is what stops this becoming "never warn about anything hard":
+   *  a JOURNEY's ends are `exact` (ADR-0171), and you cannot be shopping and on the plane. */
+  it('still flags a flight, whose ends are exact', () => {
+    const flight: TripEvent = {
+      ...shinjuku,
+      id: 'x-flight',
+      kind: EVENT_KIND.HARD,
+      category: 'transport',
+      icon: '✈️',
+      startsAt: '2026-07-07T19:00:00+09:00',
+      endsAt: '2026-07-07T22:00:00+09:00',
+    };
+    expect(hardConflicts(evening, [evening, flight]).map((e) => e.id)).toEqual(['x-flight']);
   });
 });
 
@@ -654,6 +800,26 @@ describe('buildTimeTree — containment forest + per-level clustering', () => {
     const tree = buildTimeTree([done, skipped, unscheduled, ev('A', '13:00', '14:00')]);
     expect(shape(tree)).toEqual(['D', 'A']);
   });
+
+  // A finished trip's archive keeps what was skipped in the record, where it was planned
+  // (ADR-0044); before this option PlanDay kept the row and the layout dropped it (ADR-0240 §5).
+  it('keeps skipped events in place when asked to, and still drops the unscheduled', () => {
+    const done = { ...ev('D', '09:00', '10:00'), status: EVENT_STATUS.DONE };
+    const skipped = { ...ev('S', '11:00', '12:00'), status: EVENT_STATUS.SKIPPED };
+    const unscheduled = ev('U', null, null);
+    const tree = buildTimeTree([done, skipped, unscheduled, ev('A', '13:00', '14:00')], {
+      keepSkipped: true,
+    });
+    expect(shape(tree)).toEqual(['D', 'S', 'A']);
+  });
+
+  it('never clusters or nests a kept skipped event: it did not happen, so it overlapped nothing', () => {
+    const done = { ...ev('D', '21:30', '22:30'), status: EVENT_STATUS.DONE };
+    const skipped = { ...ev('S', '22:00', '22:45'), status: EVENT_STATUS.SKIPPED };
+    const inner = { ...ev('I', '21:40', '21:50'), status: EVENT_STATUS.SKIPPED };
+    const tree = buildTimeTree([done, skipped, inner], { keepSkipped: true });
+    expect(shape(tree)).toEqual(['D', 'I', 'S']);
+  });
 });
 
 describe('deriveNow — concurrent now/next sets', () => {
@@ -701,5 +867,136 @@ describe('deriveNow — concurrent now/next sets', () => {
     const { next, nextAll } = deriveNow([p, q, later], at('12:00'));
     expect(next?.id).toBe('q');
     expect(nextAll.map((e) => e.id)).toEqual(['q', 'p']);
+  });
+
+  // ── A CLUSTER IS ONE STOP (ADR-0225 §7) ─────────────────────────────────────
+  it('nextAll is the overlap cluster, not the shared start — a later-starting peer is in it', () => {
+    const first = ev('first', '08:30', '10:00');
+    const peer = ev('peer', '09:00', '10:30');
+    const after = ev('after', '10:45', '11:30');
+    const { next, nextAll } = deriveNow([first, peer, after], at('07:00'));
+    expect(next?.id).toBe('first');
+    expect(nextAll.map((e) => e.id)).toEqual(['first', 'peer']);
+  });
+
+  it('touching is not overlap: a back-to-back event is the next stop, not a peer', () => {
+    const first = ev('first', '08:30', '10:00');
+    const touching = ev('touching', '10:00', '11:00');
+    const { nextAll } = deriveNow([first, touching], at('07:00'));
+    expect(nextAll.map((e) => e.id)).toEqual(['first']);
+  });
+
+  it('a chain of overlaps is one stop', () => {
+    const a = ev('a', '08:00', '09:00');
+    const b = ev('b', '08:45', '09:45');
+    const c = ev('c', '09:30', '10:30');
+    const { nextAll } = deriveNow([a, b, c], at('07:00'));
+    expect(nextAll.map((e) => e.id).sort()).toEqual(['a', 'b', 'c']);
+  });
+
+  // ── A HELD SPAN IS NEVER A PEER (ADR-0227 §A) ───────────────────────────────
+  /** The owner's reported night: a stay from ⁦16:00⁩ to ⁦11:00⁩ the next morning, with the
+   *  evening and the next morning happening inside it. */
+  const stay = () =>
+    ({
+      ...ev('stay', '16:00', '16:30', EVENT_KIND.HARD),
+      category: EVENT_CATEGORY.LODGING,
+      endsAt: '2027-02-03T11:00:00Z',
+      endDate: '2027-02-03',
+    }) as TripEvent;
+
+  it('a held span does not pull what happens INSIDE it into its stop', () => {
+    const shop = ev('shop', '18:30', '20:00');
+    const aurora = ev('aurora', '22:00', '23:30');
+    const { next, nextAll } = deriveNow([stay(), shop, aurora], at('15:31'));
+    expect(next?.id).toBe('stay');
+    // Five, before this rule: the board printed `בו-זמנית · ועוד 4` about a night.
+    expect(nextAll.map((e) => e.id)).toEqual(['stay']);
+  });
+
+  it('a held span is not dragged into somebody else s stop either', () => {
+    const dinner = ev('dinner', '18:00', '19:30');
+    const { nextAll } = deriveNow([dinner, stay()], at('15:31'));
+    expect(clusterAround(dinner, [dinner, stay()]).map((e) => e.id)).toEqual(['dinner']);
+    // The stay starts first, so it leads — and it goes in alone.
+    expect(nextAll.map((e) => e.id)).toEqual(['stay']);
+  });
+
+  /** **The case that falsified the alternative**, kept as a guard rather than as a comment.
+   *  Excluding CONTAINMENT instead of held-ness looks like the same fix and is not:
+   *  `spanContains` needs one strict edge, so these two — which start together and are
+   *  plainly one stop — stop being peers under it. */
+  it('two stops that start together are still one stop, whichever ends first', () => {
+    const longer = ev('longer', '08:30', '10:00');
+    const shorter = ev('shorter', '08:30', '09:30');
+    const { nextAll } = deriveNow([longer, shorter], at('07:00'));
+    expect(nextAll.map((e) => e.id).sort()).toEqual(['longer', 'shorter']);
+  });
+});
+
+describe('byPeer / peerEntry / peerExit (ADR-0225 §1, §5)', () => {
+  const iso = (hhmm: string) => `2026-08-03T${hhmm}:00Z`;
+  const ev = (id: string, start: string, end: string, over: Partial<TripEvent> = {}): TripEvent =>
+    ({
+      id,
+      tripId: 't',
+      date: '2026-08-03',
+      title: id,
+      kind: EVENT_KIND.SOFT,
+      startsAt: iso(start),
+      endsAt: iso(end),
+      status: EVENT_STATUS.PLANNED,
+      sortOrder: 0,
+      source: 'manual',
+      createdAt: iso('00:00'),
+      updatedAt: iso('00:00'),
+      updatedBy: 'u',
+      ...over,
+    }) as TripEvent;
+
+  it('equal spans with the default sortOrder fall to createdAt — the one you added first', () => {
+    const second = ev('second', '08:30', '10:00', { createdAt: iso('00:02') });
+    const first = ev('first', '08:30', '10:00', { createdAt: iso('00:01') });
+    expect([second, first].sort(byPeer).map((e) => e.id)).toEqual(['first', 'second']);
+    // …and never alphabetical: `first` < `second` here happens to agree, so flip the names.
+    const zed = ev('zed', '08:30', '10:00', { createdAt: iso('00:01') });
+    const alpha = ev('alpha', '08:30', '10:00', { createdAt: iso('00:02') });
+    expect([alpha, zed].sort(byPeer).map((e) => e.id)).toEqual(['zed', 'alpha']);
+  });
+
+  it("the user's own sortOrder outranks creation, and a hard peer outranks both", () => {
+    const early = ev('early', '08:30', '10:00', { sortOrder: 2, createdAt: iso('00:01') });
+    const late = ev('late', '08:30', '10:00', { sortOrder: 1, createdAt: iso('00:02') });
+    const hard = ev('hard', '08:30', '10:00', { kind: EVENT_KIND.HARD, sortOrder: 9 });
+    expect([early, late, hard].sort(byPeer).map((e) => e.id)).toEqual(['hard', 'late', 'early']);
+  });
+
+  it('entry is the first start and exit the last end; equal spans give two different peers', () => {
+    const s = ev('s', '08:30', '10:00', { createdAt: iso('00:01') });
+    const g = ev('g', '08:30', '10:00', { createdAt: iso('00:02') });
+    expect(peerEntry([g, s]).id).toBe('s');
+    expect(peerExit([g, s]).id).toBe('g');
+    const later = ev('later', '09:00', '10:30');
+    expect(peerEntry([later, s]).id).toBe('s');
+    expect(peerExit([s, later]).id).toBe('later');
+  });
+
+  it('clusterAround grows through overlaps and answers in byPeer order', () => {
+    const a = ev('a', '08:00', '09:00', { createdAt: iso('00:03') });
+    const b = ev('b', '08:00', '09:00', { createdAt: iso('00:01') });
+    const c = ev('c', '08:50', '09:30');
+    const far = ev('far', '12:00', '13:00');
+    expect(clusterAround(a, [a, b, c, far]).map((e) => e.id)).toEqual(['b', 'a', 'c']);
+  });
+});
+
+describe('weekdayLetter — the geresh is ICU’s, not ours', () => {
+  // A copy wrapper appended a second one and the day strip rendered `ש׳׳` (owner report,
+  // 2026-09-03). Pinned here rather than at a call site, because the fact belongs to the
+  // formatter: any surface printing a narrow Hebrew weekday must not add punctuation to it.
+  it('already includes the geresh, so a caller must add none', () => {
+    expect(weekdayLetter('2026-09-05')).toBe('ש׳');
+    expect(weekdayLetter('2026-09-06')).toBe('א׳');
+    expect(weekdayLetter('2026-09-03')).toBe('ה׳');
   });
 });

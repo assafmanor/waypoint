@@ -176,6 +176,36 @@ describe('openTripStream', () => {
     close();
   });
 
+  // **The signal a boot that stood in on cached data has no other way to get.** A `hello`
+  // level with our cursor means the socket is live AND we are already current: nothing to
+  // fetch, so neither `onResync` nor the catch-up runs, and without this nothing would ever
+  // tell the caller it is online again.
+  it('says it is live on a hello that is not ahead, on the first connect', () => {
+    vi.stubGlobal('WebSocket', FakeWebSocket);
+    const onLive = vi.fn();
+    const onResync = vi.fn();
+    const close = openTripStream('trip-japan-26', '7', { onChange: vi.fn(), onResync, onLive });
+    FakeWebSocket.instances[0].open();
+    FakeWebSocket.instances[0].emit({ type: 'hello', latestSeq: '7' });
+    expect(onLive).toHaveBeenCalledTimes(1);
+    expect(onResync).not.toHaveBeenCalled();
+    close();
+  });
+
+  // The two are one decision, so a hello that IS ahead must take the resync branch alone —
+  // `onLive` there would clear an offline cue while the data behind it is still stale.
+  it('resyncs instead of saying live when the hello is ahead of our cursor', () => {
+    vi.stubGlobal('WebSocket', FakeWebSocket);
+    const onLive = vi.fn();
+    const onResync = vi.fn();
+    const close = openTripStream('trip-japan-26', '7', { onChange: vi.fn(), onResync, onLive });
+    FakeWebSocket.instances[0].open();
+    FakeWebSocket.instances[0].emit({ type: 'hello', latestSeq: '9' });
+    expect(onResync).toHaveBeenCalledTimes(1);
+    expect(onLive).not.toHaveBeenCalled();
+    close();
+  });
+
   it('delivers an enrichment nudge with its place and fields', () => {
     vi.stubGlobal('WebSocket', FakeWebSocket);
     const onEnrichment = vi.fn();

@@ -85,9 +85,12 @@ const SNAPSHOT: TripSnapshot = {
   maybeItems: [],
   places: [],
   notes: [note('n1', { eventId: 'e1' }), note('n2', { eventId: 'e2' }), note('n3')],
+  tasks: [],
+  travelModeOverrides: [],
   documentAttachments: [],
   enrichments: {},
   fxRates: null,
+  forecast: null,
   latestSeq: '10',
 };
 

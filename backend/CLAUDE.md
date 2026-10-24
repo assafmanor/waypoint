@@ -75,6 +75,17 @@ service (logic; `PrismaService` is the only DB access) + `*.module.ts` wiring
   `env.ts` — the fragility ADR intent behind `env.ts`'s existence.
 - class-validator DTOs alongside the zod schemas — two sources of truth for
   the same shape is exactly what `packages/shared` exists to prevent.
+- **Handing a Prisma row to a derivation from `@waypoint/shared` — `as never` or
+  otherwise — instead of mapping it through `src/trips/trips.mapper.ts`
+  (`toEventDto`, `toBookingDto`, `toPlaceDto`, `toDocumentSummaryDto`).** The
+  shapes mirror each other field-for-field and disagree about types: a
+  `DateTime` column is a `Date` where the shared entity says `string`. The
+  derivations that compare **day keys** as strings then match nothing and
+  report an empty, confident answer — `readiness.nudge` told a trip its lodging
+  and route were missing while the tasks screen showed both complete (owner,
+  2026-09-04), and `sharing-projection` framed every card in the wrong zone one
+  defect earlier. `as never` is what stops the compiler saying so; if a cast
+  feels necessary, the mapper is the missing call.
 - A manual DB edit instead of a Prisma migration.
 - `"type": "module"` in `backend/package.json` — flips emit to ESM and breaks
   the Nest runtime (`NodeNext`/CommonJS is deliberate).
@@ -86,3 +97,15 @@ Vitest. Unit-test services; the hard-event guard, ripple, LWW reconciliation,
 `CLAUDE.md`/`conventions.md`). A new shared guard util (`trip-scope.util.ts`-
 style) gets its own spec, not only indirect coverage through the services that
 call it.
+
+**Never assert an elapsed duration against the real clock.** `politeness.limiter.spec.ts`
+asserted its pacing as real `Date.now()` gaps with a ±5 ms tolerance and CI read **19 ms for a
+30 ms gap** — shorter than the `setTimeout` that produced it, so a slow runner cannot explain
+it and no tolerance can cover it (a wall clock under NTP correction steps backwards). Anything
+whose behaviour is a delay, a gap or a timeout goes on `vi.useFakeTimers()` +
+`await vi.advanceTimersByTimeAsync(ms)`, which makes the numbers exact — so the assertion is
+`toEqual`, not a `toBeGreaterThanOrEqual` with slack. Widening the slack is the repair that
+hides the next one. Where the delay is not ours to fake — `change.service.spec.ts` proves the
+per-trip lock with a real `pg_sleep` — the real clock stays, and the assertion is an **ordering**
+between two events rather than a duration. And a "did not await it" claim needs no clock at all:
+give the dependency a promise that never settles, as `fx.service.spec.ts` does.

@@ -18,7 +18,9 @@
 //     the app's own first-paint signal clears. It is skipped unless `MAP_TILES_E2E=1`, because a
 //     spec that reaches the public internet is a flake in CI and a false green when it is offline.
 import { expect, test } from '@playwright/test';
+import { MAP_LOAD_TIMEOUT_MS } from '../src/constants';
 import { bootIntoTrip, shortLiveTripDates, todayAt } from './boot';
+import { t } from '../src/i18n/he';
 
 const TRIP_ID = 't1';
 const today = () => new Date().toISOString().slice(0, 10);
@@ -50,8 +52,21 @@ const events = [
 ];
 
 /** Protomaps' daily planet build, read by byte range. 127.88 GiB at the far end and a handful of
- *  requests at this one — which is the whole property PMTiles has and ADR-0186 §3 is built on. */
-const PLANET = 'https://build.protomaps.com/20260813.pmtiles';
+ *  requests at this one — which is the whole property PMTiles has and ADR-0186 §3 is built on.
+ *
+ *  **Resolved, never written down** (the 2026-08-21 bug, from the far side of the wire): upstream
+ *  keeps about a week of dailies, so a date pinned here rots exactly the way the shipped one did —
+ *  and this test would then only ever prove that a 404 renders nothing. */
+async function planetUrl(): Promise<string> {
+  const day = 24 * 60 * 60 * 1000;
+  for (let i = 0; i < 8; i += 1) {
+    const build = new Date(Date.now() - i * day).toISOString().slice(0, 10).replace(/-/g, '');
+    const url = `https://build.protomaps.com/${build}.pmtiles`;
+    const res = await fetch(url, { headers: { Range: 'bytes=0-6' } }).catch(() => null);
+    if (res?.status === 206) return url;
+  }
+  throw new Error('no readable daily planet build upstream');
+}
 
 async function openMap(page: import('@playwright/test').Page) {
   await page.setViewportSize({ width: 390, height: 844 });
@@ -69,7 +84,7 @@ async function openMap(page: import('@playwright/test').Page) {
   // (ADR-0126 §6), and it sits exactly where the failure chrome does. Dismissed the way a person
   // would, rather than clicked through with `force` — a `force` here would hide the real question
   // of whether the diagnostic is reachable.
-  const notNow = page.getByRole('button', { name: 'לא עכשיו' });
+  const notNow = page.getByRole('button', { name: t.map.near.prompt.notNow });
   if (await notNow.isVisible()) await notNow.click();
 }
 
@@ -164,7 +179,9 @@ test('a ground that cannot be read is REPORTED, not left blank', async ({ page }
   // **All three affordances, which is the whole point.** Before the fix the pane latched
   // `tilesPainted` off `load` + `idle` — both of which settle on a map whose every tile failed —
   // so a blank canvas carried no cue, no retry and no diagnostic at all.
-  await expect(page.locator('.map-loading')).toContainText('הטעינה איטית מהרגיל');
+  await expect(page.locator('.map-loading')).toContainText(t.map.loadingSlow, {
+    timeout: MAP_LOAD_TIMEOUT_MS.TILES + 5_000,
+  });
   await expect(page.getByRole('button', { name: /נסו שוב/ })).toBeVisible();
   await expect(page.getByText('פרטים')).toBeVisible();
 
@@ -185,9 +202,10 @@ test('the ground draws from a real archive', async ({ page }, testInfo) => {
   // pointing only the world at a real archive would leave the detail source dead and test the
   // wrong shape. The planet build stands in for both: a z0–15 archive is what a trip extract is a
   // slice of, so this is the layer stack the app actually ships.
+  const planet = await planetUrl();
   for (const pattern of ['**/map/world.pmtiles', '**/map/planet-*.pmtiles']) {
     await page.route(pattern, async (route) => {
-      const upstream = await route.fetch({ url: PLANET });
+      const upstream = await route.fetch({ url: planet });
       await route.fulfill({ response: upstream });
     });
   }

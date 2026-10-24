@@ -46,9 +46,11 @@ button.day-gap:focus-visible {
   display: inline-flex;
   color: var(--faint);
 }
-button.day-gap:hover .day-gap-add,
-button.day-gap:hover .day-gap-lbl {
-  color: var(--muted);
+@media (hover: hover) and (pointer: fine) {
+  button.day-gap:hover .day-gap-add,
+  button.day-gap:hover .day-gap-lbl {
+    color: var(--muted);
+  }
 }
 .day-gap-line {
   flex: 1;
@@ -79,7 +81,15 @@ button.day-gap:hover .day-gap-lbl {
   margin-bottom: 10px;
   background: var(--card);
 }
-.journey > .wp-event {
+/* **AND `.now-here` IS TRANSPARENT TO THIS SELECTOR** (ADR-0217). `NowMarker` wraps the row the
+   moment is inside, so a leg inside a journey RUN that holds it becomes
+   `.journey > .now-here > .wp-event` — and a child combinator stops matching, which hands the
+   leg its border, its radius and its ⁦10px⁩ margin back INSIDE the block. Exactly the defect
+   ADR-0212 §6's build log records one rule down ("the rule named `.wp-event` alone, which is
+   true while a run is one card and false the moment two legs group inside `.journey`"), so it is
+   named here rather than found again. `styles/now-marker.contract.test.ts` asserts it. */
+.journey > .wp-event,
+.journey > .now-here > .wp-event {
   border: 0;
   border-radius: 0;
   margin: 0;
@@ -87,7 +97,8 @@ button.day-gap:hover .day-gap-lbl {
 }
 /* A soft leg keeps its hatch (it is the card's background, not its border) but
    loses the dashed edge the container now draws. */
-.journey > .wp-event.soft {
+.journey > .wp-event.soft,
+.journey > .now-here > .wp-event.soft {
   border: 0;
 }
 .journey-stop {
@@ -112,8 +123,529 @@ button.day-gap:hover .day-gap-lbl {
 .journey-stop.tight {
   background: color-mix(in srgb, var(--amber) 17%, transparent);
 }
-/* The now-line inside a journey keeps the block's inset, so it reads as a row OF
-   the block rather than a rule laid across it. */
-.journey .nowline {
-  margin: 9px 12px;
+/* **THE MARK INSIDE A JOURNEY BLOCK KEEPS THE BLOCK'S INSIDE** — which replaces the
+   `.journey .nowline` margin that said the same thing about a rule laid between two legs
+   (ADR-0217; the mark is no longer a row, so there is nothing to inset).
+   `.journey` clips (`overflow: hidden`, for its own radius), so a mark reaching past its box is
+   a mark with no arrow at all: `--now-bleed: 0` puts the arrow in the card's own face padding
+   instead of in the day's margin. Lives here rather than in `now-marker.css` because the
+   clipping is this block's, and so is the reason. */
+.journey .now-here {
+  --now-bleed: 0px;
+  /* **AND THE BLOCK'S GROUND IS THE BLOCK'S, NOT THE LIST'S** — the one known mismatch
+     `now-marker.css` names beside the halo, answered here because the ground is this block's
+     fact. A leg inside a journey sits on `.journey`'s `--card`, so the halo that stops the rule
+     behind a run of text has to be painted in that colour or it is a `--screen` patch on a card.
+     The sheet's own instruction: "a host that needs it different sets `--now-ground`". */
+  --now-ground: var(--card);
+}
+
+/* ── THE JOURNEY BLOCK (ADR-0206 §V1.1/§V1.3/§V1.4, drawn in
+   `a-travel-time-between-two-points-v2.html` §1) ────────────────────────────
+
+   Deliberately the same shape language as `.journey` above: a bordered container
+   with an amber-tinted interior, so a journey BETWEEN two events and a journey
+   inside one booking read as the same kind of thing. What it is not is a rail —
+   ADR-0159 §3 tried a rail between two cards and it did not survive a phone,
+   because a connector has to touch both things it connects and one that keeps the
+   list's rhythm floats between them. A block has nothing to sit between.
+
+   It REPLACES `.day-gap` in a hole with a journey in it; the strip above is
+   untouched and is still what a hole with no estimate reads as (§D4). */
+/* **A LEG IS A LINE, NOT A CARD** (ADR-0210 §3, drawn in
+   `a-day-has-three-shapes-v1.html` §2). The block above described itself as
+   "deliberately the same shape language as `.journey`" — correct locally, and the
+   sum of three such decisions was a day where five of six rows were one silhouette
+   (ADR-0210 §1, measured). A leg is the one row that is not a place you go to, so
+   it is the one that gives its box up: everything the border carried moves onto a
+   TRACK in the badge column, and the mark stays in the column, so `.day-trv-ic`'s
+   own rule — the day has ONE leading edge for icons — still holds.
+
+   `overflow: visible` because the track deliberately overshoots this box, on every
+   arm — since 2026-08-28 there is no arm that takes `hidden` back. */
+.day-trv {
+  position: relative;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  margin: 0 0 10px;
+  overflow: visible;
+}
+/* **EVERY ARM IS THE LINE — there is no carded arm** (owner, 2026-08-28, correcting
+   ADR-0210's build log). The build kept the box for `miss`, for an open disclosure
+   and for any arm carrying the acts row, reasoning that a block with contents needs
+   a container. Seen on a real day that reasoning is backwards: the two `miss` legs
+   were the only cards in a list of tracks, so the ONE shape the eye uses to tell a
+   leg from a stop was spent on a state instead — _"the rows for being late should be
+   adapted to the same style... also when on the way. Basically all leftovers."_
+
+   The tone still lands: it rides the track, the glyph and the ink, which is where
+   ADR-0210 §3 put it in the first place. What a state may not do is change what KIND
+   of row this is.
+
+   **The track therefore hangs off the BLOCK, not off the badge tile.** It used to sit
+   on `.day-trv-ic::before`, which lives inside the face — so on a block with a modes
+   or acts row the line stopped at the face's foot and the rest of the block hung off
+   nothing. On the block it spans every row the leg owns. The offset is the badge
+   column's centre, stated once: the face's ⁦12px⁩ inline padding plus half of
+   `.day-trv-ic`'s ⁦38px⁩. */
+.day-trv,
+.day-thread {
+  /* **THE CARD'S COLUMN, NOT THIS ROW'S OWN** (ADR-0212 §2), and it moved because a LINE finally
+     had to cross both. The event card's badge centre is its `1px` border plus `15px` of face
+     padding plus half of a `40px` badge — ⁦36px⁩ — and this block sat at ⁦31px⁩. Measured, not read:
+     the stylesheets alone say ⁦4px⁩ and the rendered difference is ⁦5px⁩, because the border is
+     easy to forget and a ruler is not.
+
+     ⁦5px⁩ was invisible while these were two badges sitting still, which is exactly why
+     `.day-trv-ic`'s claim that the day has ONE leading edge for icons read as true for a year. A
+     track that runs from a card into a leg and out again is the first thing that could tell, and
+     what it drew was two parallel lines. The face's padding and the mark's box below take the
+     card's numbers so the mark stays ON the track; moving the card instead would move every
+     event badge in the app. */
+  --trv-track: calc(16px + 20px);
+}
+/* It crosses the ⁦10px⁩ gutter this block already owns, so it reaches the card above
+   and the card below — the whole difference from ADR-0159 §3's rail, which kept the
+   list's rhythm and therefore touched neither of the two things it connected. */
+.day-trv::before {
+  content: '';
+  position: absolute;
+  inset-block: -10px;
+  inset-inline-start: calc(var(--trv-track) - 1px);
+  inline-size: 0;
+  border-inline-start: 2px dashed color-mix(in srgb, var(--amber) 60%, transparent);
+}
+
+/* ── THE THREAD THROUGH A CARRIED LEG (ADR-0212 §1) ─────────────────────────
+   A flight is a movement AND the day's strongest commitment, so it is the one row that is both
+   of ADR-0210's families at once. It keeps the box — §1 there reserved that for commitments on
+   purpose — and gains the line: a bead on a string.
+
+   **The track is SOLID, and that distinction is spent rather than minted.** `DayConnector` wrote
+   it down before any of this existed — dashed because a straight segment is not the route you
+   will walk, _"which also leaves solid + amber unspent for a real Routes polyline later"_ — and
+   ADR-0206 §D1 spent it on the routed map line. So: dashed is a line we guessed, solid is a line
+   somebody can stand behind. A booked flight is the second.
+
+   A wrapper and not a rule on the card, because `.wp-event` and `.journey` both carry
+   `overflow: hidden` and this track has to overshoot the gutter at both ends the way
+   `.day-trv::before` does — clipped, it stops at the card's edge and connects nothing. */
+.day-thread {
+  position: relative;
+}
+.day-thread::before {
+  content: '';
+  position: absolute;
+  inset-block: -10px;
+  inset-inline-start: calc(var(--trv-track) - 1px);
+  inline-size: 0;
+  border-inline-start: 2px solid color-mix(in srgb, var(--amber) 60%, transparent);
+}
+/* **BOTH children, and the second is the defect the mockup nearly shipped** (ADR-0212 §6). The
+   rule named `.wp-event` alone, which is true while a run is one card and false the moment two
+   legs group inside `.journey` — the selector stops matching, and the track paints OVER the
+   cards instead of behind them. Same class as the specificity tie in ADR-0210's build log. */
+/* `.now-here` joins this list for the same reason it joins `.journey`'s above: the mark wraps
+   the row, so a carried leg holding the moment is `.day-thread > .now-here > .wp-event` and the
+   thread would paint OVER it. The wrapper is the positioned box here — it already carries
+   `position: relative`, and `.now-here > *` lifts its child above the rule. */
+.day-thread > .wp-event,
+.day-thread > .journey,
+.day-thread > .now-here {
+  position: relative;
+  z-index: 1;
+}
+/* The face is the button, not the block — because the `בדרך` control is a button too and one
+   inside the other is invalid. Same reason the acts row is a sibling rather than a child of the
+   face. Everything a button brings with it comes back off, exactly as on `button.day-gap`: what
+   changed is that the fact ANSWERS when asked, not how loud it is. */
+.day-trv-face {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  /* ⁦3px⁩ on every arm — a line needs no inset, and the block measures ⁦58px⁩ → ⁦40px⁩
+     against the ⁦70px⁩ event card it sits between. That gap was an inverted hierarchy
+     nobody had named: the connector was nearly as tall as the thing connected.
+
+     The INLINE ⁦12px⁩ became ⁦16px⁩ with ADR-0212 §2 — see `--trv-track` above; the mark has to
+     land on the line, so the column moves as one thing rather than the rule moving alone. */
+  padding: 3px 16px;
+  width: 100%;
+  text-align: start;
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+}
+button.day-trv-face {
+  cursor: pointer;
+}
+button.day-trv-face:focus-visible {
+  outline: 2.5px solid var(--cta);
+  outline-offset: -2px;
+  border-radius: 14px;
+}
+/* The mode mark sits in the badge column, at the badge's own size, so the journey lines up with
+   the two cards it sits between — the day has ONE leading edge for icons and this joins it
+   rather than starting a second. */
+/* The COLUMN survives, the tile does not (ADR-0210 §3). Same ⁦38px⁩ width, so the
+   leg still lines up with the two cards it sits between; `align-self: stretch` is
+   what lets the track span the row. */
+.day-trv-ic {
+  flex: 0 0 auto;
+  /* The composited mark hangs off this tile's corner (ADR-0206 §AK2/§AL4). */
+  position: relative;
+  /* ⁦38px⁩ → ⁦40px⁩ (ADR-0212 §2): the badge's own box, so the leg's mark and the card's badge are
+     one column rather than two that nearly agree. */
+  width: 40px;
+  align-self: stretch;
+  min-height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 0;
+  background: none;
+  color: var(--amber-deep);
+}
+/* The glyph rides ON the track, so the rule stops behind it instead of running
+   through it. The halo is the LIST's ground and not `--card`: this row has no card
+   under it any more, which is exactly the kind of thing that is right in source and
+   wrong on screen. */
+.day-trv-ic .icon {
+  width: 19px;
+  height: 19px;
+  position: relative;
+  border-radius: 50%;
+  background: var(--screen);
+  box-shadow: 0 0 0 4.5px var(--screen);
+}
+/* THE TARGET STAYS WHERE THE PAINT SHRANK — `button.day-gap::after`'s trick, for
+   `button.day-gap`'s reason: this row's height is the list's rhythm, and ⁦44px⁩ of
+   real box here would push the two events it connects apart. Measured ⁦48px⁩. */
+.day-trv button.day-trv-face {
+  position: relative;
+}
+.day-trv button.day-trv-face::after {
+  content: '';
+  position: absolute;
+  inset: -4px 0;
+}
+
+/* **THE WARNING MARK, INLINE AT THE HEAD** (ADR-0206 §AK2 amended 2026-08-28; the
+   reasoning is in `DayJoinRow.tsx` at the render site).
+
+   It used to be `PlaceBadge`'s corner-mark geometry hung off the ⁦38px⁩ mode tile.
+   ADR-0210 removed that tile, and a ⁦15px⁩ badge on the ⁦19px⁩ glyph that replaced it is
+   79% of its host: measured, it covered 23% of the glyph outright and its halo hid
+   most of the rest, so the mark was obliterating the very mode glyph §AK1 exists to
+   protect.
+
+   Inline it needs none of that machinery — no absolute placement, no overhang ratio,
+   and **no halo**: a corner badge needed one because it sat on a tinted tile, and this
+   sits on the row's own ground. (The halo it carried was `--card`, which was already
+   the wrong ground for this arm — the same mistake the glyph's own halo had, fixed in
+   ADR-0210 and missed here.)
+
+   It takes no hue of its own (§AK3.1): the head is already `--miss-deep` on the arm
+   that can carry it. */
+.day-trv-flag {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  color: inherit;
+  /* **`.day-trv-hd` is `align-items: baseline`, and an inline SVG has no baseline** —
+     the trap `docs/backlog.md` records from an owner report on a real phone (2026-08-09).
+     A flex item that is itself a flex box takes its first child's baseline, and an
+     `<svg>` supplies none, so the mark would hang off the line box's bottom edge
+     instead of sitting on the words. `center` is the fix, stated rather than
+     inherited. */
+  align-self: center;
+}
+.day-trv-flag .icon {
+  width: var(--trv-flag, 14px);
+  height: var(--trv-flag, 14px);
+}
+
+/* **THE MODE ROW, BEHIND A DISCLOSURE** (ADR-0206 §AL10, drawn in the same mockup's §6).
+   Owner: _"if it expands ... it should have a small downward facing arrow like we already use for
+   events"_.
+
+   The caret is `.wp-event-chev`'s, re-pointed: same trailing position, same `rotate(180deg)` when
+   open, same `--t-base`. The container is `ui/primitives/Collapsible`, so this adds no mechanism.
+
+   **Why a disclosure and not an always-on row**: measured, the row is 55px per block, so a
+   four-hole day pays 452px against 232px collapsed - most of a 640px screen, on the surface this
+   ADR calls the densest in the app, for a control most days never touch. §Z5 §M5's "selected or
+   next leg only" cannot work here either: the day LIST has no leg selection (that is the Map's
+   model, §AC2), and the override is keyed on a place PAIR set while planning.
+
+   Measured: the collapsed block is 58px, identical to the statement block that has no row at all -
+   the caret rides the existing flex line and costs nothing. */
+.day-trv-chev {
+  flex: 0 0 auto;
+  align-self: center;
+  margin-inline-start: var(--space-2);
+  color: #b5bcc9;
+  font-size: var(--text-secondary);
+  display: grid;
+  place-items: center;
+  transition: transform var(--t-base);
+}
+.day-trv.open .day-trv-chev {
+  transform: rotate(180deg);
+}
+.day-trv-modes {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  /* **Indented to the TEXT column, so the chips clear the track** (2026-08-28): the
+     leg's line now runs the full height of the block, and a control sitting on top of
+     it reads as threaded onto the rule. ⁦61px⁩ is the face's own arithmetic — ⁦12px⁩ of
+     inline padding, the ⁦38px⁩ badge column, the ⁦11px⁩ gap — so the chips start where
+     the words above them start. */
+  padding: 0 12px 9px;
+  padding-inline-start: 61px;
+  /* **A guard, not a layout wish.** `.wp-chip` is `flex: 0 0 auto` with `nowrap`, so a row
+     that does not fit would be CLIPPED — a control cut in half, with no error anywhere.
+     The mockup drew exactly that before this line. (It used to say the clipping came from
+     `.day-trv`'s `overflow: hidden`; that box is gone since 2026-08-28, and the guard is
+     kept because the reason it exists never depended on it.) */
+  flex-wrap: wrap;
+}
+/* GLYPH ONLY, and the render decided it (§AL7). Not on width alone - glyph-and-word is 327px
+   against the block's 308px inner box at 360 - but on the TOUCH FLOOR: a labelled chip paints
+   29-31px against ADR-0017's 44, and this one is 44 exactly while taking 194px of 308, so a fifth
+   mode can never break the row. `.wp-chip.touch` already IS "a chip that is its surface's primary
+   control, therefore 44px", so the chips carry it and this only squares them. */
+.day-trv-modes .wp-chip {
+  width: 44px;
+  justify-content: center;
+  padding-inline: 0;
+}
+.day-trv-modes .wp-chip .icon {
+  width: 17px;
+  height: 17px;
+}
+.day-trv-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.day-trv-hd {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--amber-deep);
+}
+.day-trv-meta {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 2px;
+  font-size: 11.5px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.day-trv .sep {
+  opacity: 0.55;
+  font-weight: 400;
+}
+/* **THE SLOT THE DURATION IS ABOUT TO LAND IN** (ADR-0206 §AU1). Sized to `~40 דק׳` at this
+   line's own metrics, so the row does not resize when the number arrives — the whole reason this
+   is a sized placeholder and not a spinner. `Skeleton` brings its own shimmer and its own
+   reduced-motion behaviour; nothing here adds a second animation, because `.nowline` is the app's
+   one live mark (§D6). */
+.day-trv-hd .day-trv-wait {
+  inline-size: 52px;
+  block-size: 9px;
+  border-radius: 5px;
+  align-self: center;
+}
+/* The leave-by is a time you owe, so it is the clock's hue (§D1). */
+.day-trv-leave {
+  color: var(--amber-deep);
+}
+/* **WHERE A SPANNING LEG LEAVES FROM** (ADR-0232 R3). A place name, so it may wear neither the
+   clock's amber (§D1, and root rule 4) nor the map's teal, which is a location CONTROL's: it takes
+   the `--muted` standing `.day-trv-dist` gives a fact that is context rather than commitment. A
+   block, so the meta line's own `nowrap` + `overflow: hidden` ellipsises IT rather than clipping a
+   long hotel name mid-glyph. */
+.day-trv-from {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--muted);
+  font-weight: 600;
+}
+/* **AN ORIGIN AND A SENTENCE NEVER SHARE THE LINE**, and the render is what asked for this rule
+   (`mockups/a-journey-is-between-two-placed-stops-v1.html`): `.day-trv-meta` is one `nowrap` flex
+   line whose `overflow: hidden` clips a second child silently — `text-overflow: ellipsis` on a flex
+   container does nothing for its items — so `מ-Fancy Sheep` beside `חסרות 21 דק׳ לדרך` lost the
+   digits at 360 with no mark. They stack, one fact per line, at a measured ⁦+15px⁩ only on the arms
+   that carry a sentence beside the origin. */
+.day-trv-meta:has(.day-trv-from) {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+}
+/* The routed distance — `formatDistance` over `distanceMeters`, per mode, never the crow-flies
+   helper (a 1.9 km crow-flies leg is a 2.4 km walk). `--muted` because a distance is context
+   rather than a commitment: the amber in this block is already spent on the time. */
+.day-trv-dist {
+  flex: 0 0 auto;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--muted);
+  white-space: nowrap;
+}
+/* **THE DISTANCE IS THE WAY TO THE LEG ON THE MAP** (owner, 2026-08-27) — the trailing slot
+   was measured in `a-travel-time-between-two-points-v2.html` §1d/§1e and the distance won it
+   over the route thumbnail: four real legs read as four wiggly lines at 46×26, where a
+   distance is a fact you can act on and the shape itself is one tap away on the surface built
+   to draw it.
+
+   `PlaceBadge`'s grammar, not a second one: the hue rides the MARK and the words stay
+   `--muted`, so no sentence is asked to carry teal at 3.35:1 (§AC/§3d's own measurement). The
+   44px target is an `::after` overlay for ADR-0177's reason — meeting ADR-0017's floor must
+   not grow the line the block is trying to keep to one row. */
+.day-trv-map {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+.day-trv-map-mark {
+  display: inline-flex;
+  color: var(--teal);
+}
+.day-trv-map-mark .icon {
+  width: 13px;
+  height: 13px;
+}
+/* The touch target, over the line rather than in it. */
+.day-trv-map::after {
+  content: '';
+  position: absolute;
+  inset: 50% 50%;
+  min-width: 44px;
+  min-height: 44px;
+  transform: translate(50%, -50%);
+}
+.day-trv-map:focus-visible {
+  outline: 2.5px solid var(--cta);
+  outline-offset: 3px;
+  border-radius: var(--radius-8, 8px);
+}
+/* THE LEAVE-BY HAS GONE BY (§V1.4). Ink and word, never a fill on the block, no glow and no
+   pulse — the app has one live mark and `.now-here` is it (§D6; `.nowline` until ADR-0217). `--miss-deep` is the ink
+   because `--miss` itself fails AA as text (§D7, design-language). */
+/* **A missed leg is still a leg** (owner, 2026-08-28, reversing ADR-0210's build log).
+   It keeps the line and takes `--miss` on the track, the glyph and the words — and it
+   still carries the `warn` mark, which is the shape doing the work that the box was
+   doing. `--miss-deep` is the ink because `--miss` itself fails AA as text (§D7). */
+.day-trv.miss::before {
+  border-color: color-mix(in srgb, var(--miss) 70%, transparent);
+}
+.day-trv.miss .day-trv-ic {
+  color: var(--miss-deep);
+}
+.day-trv.miss .day-trv-hd,
+.day-trv.miss .day-trv-leave {
+  color: var(--miss-deep);
+}
+/* ON THE WAY — the state the traveller themselves put the app into, or that a fix withdrew the
+   mark for (ADR-0207 §2). Teal, which is where-you-are and nothing else (rule 4), exactly as the
+   board's own journey words are (`.tlabel.loc`, ADR-0141). Not amber: the clock has stopped being
+   the question. */
+/* **The hue rides the mark, and there is one silhouette to ride** (owner,
+   2026-08-28). The box this arm used to take when it grew an acts row is gone with
+   every other box; teal takes the track, the glyph and the mode word, and the
+   sentence beside it stays `--muted` (the measured split below). */
+.day-trv.on-way::before {
+  border-color: color-mix(in srgb, var(--teal) 70%, transparent);
+}
+.day-trv.on-way .day-trv-ic {
+  color: var(--teal);
+}
+.day-trv.on-way .day-trv-hd {
+  color: var(--teal);
+}
+/* **The hue rides the MODE WORD, and the sentence beside it stays `--muted`** — the same split the
+   v2 mockup argued for `עדיין כאן` and the same numbers, measured here in Chromium: `--teal` as ink
+   on this arm's own tinted ground is 3.08:1, which clears the 3:1 a graphic owes and misses the 4.5
+   a sentence does, while `--muted` on that ground is 5.12:1. The head is one word on this arm (the
+   duration moves into the labelled run), so it is the two-word-label case `.wp-event-act.go`
+   already spends teal on; `בדרך · נותרו ~12 דק׳` is prose and takes the readable ink. */
+.day-trv.on-way .day-trv-leave {
+  color: var(--muted);
+}
+/* The located tier (ADR-0207 §2 / v2 §3d), on the ACTS row rather than the meta line — measured
+   at 360, it is 187.09px of ink in a 180.75px box beside the passed leave-by, and the row it sits
+   on now costs it nothing.
+
+   The hue rides the GLYPH and not the sentence: `--teal` measures 3.35:1 on `--card`, which clears
+   the 3:1 a graphic owes what it crosses and misses the 4.5 a sentence does — so the words stay
+   `--muted` and the pin carries the location semantics. */
+.day-trv-here {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--muted);
+}
+.day-trv-here .icon {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 auto;
+  color: var(--teal);
+}
+/* The row the one control sits on. `margin-inline-start: auto` on the act is what leaves M8's
+   four mode chips (§AA4) a one-line addition at the row's leading edge rather than a reshape. */
+.day-trv-acts {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  /* The text column, for `.day-trv-modes`' reason: the track runs past this row now. */
+  padding: 0 12px 10px;
+  padding-inline-start: 61px;
+}
+.day-trv-act {
+  margin-inline-start: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  border: 1px solid var(--teal);
+  color: var(--teal);
+  background: transparent;
+  border-radius: 999px;
+  padding: 6px 14px;
+  cursor: pointer;
+  position: relative;
+}
+/* 44px of target on a ⁦29px⁩ paint — `button.day-gap::after`'s trick, for the same reason: the
+   block's height is the list's rhythm and 44px of real box here would push the two events it
+   sits between apart. */
+.day-trv-act::after {
+  content: '';
+  position: absolute;
+  inset: -8px 0;
+}
+.day-trv-act .icon {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+}
+.day-trv-act:focus-visible {
+  outline: 2.5px solid var(--cta);
+  outline-offset: 3px;
 }

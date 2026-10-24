@@ -1,0 +1,242 @@
+/* The lifted PLAN hero (ADR-0193 §4/§5) — `hero-lift.css`'s skeleton on plan's own
+   ground. Short on purpose: the horizon's ROWS are `.hero-task*`, which already ship,
+   so nothing here describes what a task looks like. If this file grows past the card's
+   own box and its ramp, a rule was copied instead of reused. */
+
+/* ── ONE RAMP, NO SEAM (ADR-0193 §5) ─────────────────────────────────────────────
+   The owner's call in two parts: violet all the way ("definitely all violet"), and
+   then, against the first drawing, "much much much more gradual, and like violet to
+   dark violet". The first drawing resolved the darkening in 44px at the top of the
+   BODY, which is an EDGE — and an edge at the head/body join is the one place a card
+   claiming to be one object cannot have one.
+
+   So the ramp belongs to the CARD, not to either half, and both halves are transparent
+   over it. It opens on `.prep`'s own two stops in `.prep`'s own order, which is what
+   keeps the top of the lifted card the violet the collapsed hero already was — the FLIP
+   has nothing to cross-fade — and then falls away to `--plan-surface-3` over the rest.
+
+   THE COST, NAMED BECAUSE IT DECIDED THE INK: the ground is now position-dependent, so
+   the top of the list sits on a much brighter violet than the bottom. That is why these
+   rows are inked in `--on-plan-*` and not the board's `--on-dark-*` — a cool blue-grey
+   measures 1.45:1 at the top of this ramp however deep its bottom gets, where white-alpha
+   composites toward the ground instead of against it. A FLAT deep ground would not have
+   needed that, which is the trap: the shape of the gradient chose the ink, not its colour.
+
+   Overriding `background`, not adding to it: `.prep` is on this element (it is the same
+   object), and its own two-stop gradient is what this replaces. */
+.prep.prep-lifted {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  /* `--lift-max-h` from `modal.css`'s lift variant, inherited — never `100%`, whose
+     percentage resolves against a parent that has only a `max-height` and computes to
+     `none`, letting the card grow straight past the cap (ADR-0160 §T). */
+  max-height: var(--lift-max-h);
+  /* **TWO STOPS, AND THE RAMP FOLLOWS THE THEME** (ADR-0193 §5, amended 2026-08-17 —
+     owner: in light theme _"the gradient should become lighter instead of darker to fit the
+     theme better"_).
+     
+     `.prep` itself already does this and the lifted card was the one surface that did not:
+     light goes `--plan-surface-2` → `--plan-surface` (lighter downward), dark goes
+     `#332866` → `#2a2158` (darker). The lifted card darkened in BOTH, which is why it read
+     as a dark-mode artefact sitting in a light theme. Now it ramps `-2` → `-3`, and `-3` is
+     the token that follows the theme.
+     
+     **The middle stop is gone, and so are the px positions.** Both existed for a ramp that
+     crossed from bright violet to near-black: the px stops kept a row's ground independent
+     of how long the list was, because a percentage ramp put the top rows on the bright end
+     when the card was short. That whole hazard is gone — light now spans L 0.098→0.107 and
+     dark 0.031→0.013, so EVERY point on either ramp is inside the band white-alpha ink
+     survives, and where a row sits no longer changes whether it is legible. Measured worst
+     ink in light: **4.75:1**.
+     
+     Keep that reasoning if the ramp is ever widened again: percentages are safe only while
+     both ends are. */
+  background: linear-gradient(180deg, var(--plan-surface-2) 0%, var(--plan-surface-3) 100%);
+  box-shadow: var(--elevation-floating);
+}
+/* **THE CORNER SHEEN SURVIVES THE LIFT, AND IT MUST** — it is part of being the same
+   object, which is the whole claim the promotion rests on. ADR-0160 §D learned this on the
+   other hero from a device: the lifted card had dropped `.wp-board`'s `transit` class, so
+   mid-flight it glowed amber over a board glowing teal, and the mismatch is visible in the
+   gap between the two boxes. Dropping the glow entirely is the same error with the volume
+   turned up.
+
+   What DOES have to be corrected is that it scales. `.prep::before` is
+   `radial-gradient(90% 60% at 85% 0%, …)` over `inset: 0`, and percentages resolve against
+   the pseudo-element's own box — so on a ~150px collapsed hero that is a top-corner sheen,
+   and on a ~540px lifted card the same declaration paints ~320px down and reads as a smear
+   across the first two bands.
+
+   So the gradient is untouched and its BOX is pinned to the height the collapsed hero has.
+   The sheen then renders at exactly the geometry it was tuned at, and a future retune of
+   `.prep::before` moves both surfaces together — which restating the gradient here would
+   have quietly broken. */
+.prep.prep-lifted::before {
+  bottom: auto;
+  height: var(--prep-collapsed-h);
+}
+
+.prep-lift-head {
+  flex: 0 0 auto;
+  padding: 16px 18px 14px;
+}
+/* The countdown is the same numeral one elevation up, but the lifted card owes its space
+   to the list rather than to the hero it grew out of — 34px of `Secular One` against a
+   pinned head is a third of the card before a task appears. */
+.prep-lift-head .prep-count {
+  font-size: 26px;
+}
+.prep-lift-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+/* A real 44×44 target (ADR-0017) with a visually smaller mark, and negative margin so the
+   target does not push the countdown off its row — `.hero-x`'s own recipe. */
+.prep-lift-x {
+  width: 44px;
+  height: 44px;
+  margin: -10px -12px -10px 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.prep-lift-x .icon {
+  width: 19px;
+  height: 19px;
+}
+
+.prep-lift-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  /* The lifted card is the top layer; a scroll that reaches its end must not become a
+     scroll of Plan Home behind it. */
+  overscroll-behavior: contain;
+  padding: 0 18px 16px;
+}
+/* The rows are `hero-lift.css`'s, which inks them from
+   `--on-dark-*` for the board. On violet that ramp does not survive (see the note on the
+   card above), so the three rungs are re-pointed at this surface's own ink — the same four
+   names, one prefix apart, which is why `--on-plan-*` was given the shape it has. */
+.prep-lift-body .hero-task-hd {
+  color: var(--on-plan);
+}
+.prep-lift-body .hero-task-ic,
+.prep-lift-body .hero-task-star {
+  color: var(--on-plan-faint);
+}
+.prep-lift-body .hero-task-due {
+  color: var(--on-plan-dim);
+}
+/* The `ועוד N` line, which is `--on-dark-faint` by default and measured **3.89:1** on this
+   ramp — found by sweeping every ink in the card rather than by reading, after the band
+   labels (the other `--on-dark-faint` consumer) were deleted and took the override with
+   them. `hero-lift.spec.ts` now sweeps the whole body for AA, so the next rung that leaks in
+   fails a test instead of shipping. */
+.prep-lift-body .hero-task-more {
+  color: var(--on-plan-faint);
+}
+/* Overdue keeps its own hue rather than the ramp, because it is a STATUS (rule 4). Neither
+   the paper ink (`--miss-deep`, ~2.4:1 on any of these grounds) nor the BOARD's answer
+   travels here — `#f0a09b` is `.wp-settle.board`'s ink at 7.82:1 on `--board`, and every
+   violet ground in this card is far brighter than navy.
+
+   **Retuned 2026-08-17 with the ramp** (§5's amendment). `#ffc4be` was set against the old
+   dark-ward ramp; on the light-theme ramp's far end it measures **4.21:1** and fails. This
+   is the lightest salmon that still reads as one — measured **4.89:1** at the overdue row
+   and 4.65 at the ramp's worst point, against a 4.5 floor. Any lighter and it is white with
+   a pink cast, which stops saying "late" at all; that is the ceiling this value sits under
+   rather than a preference. */
+.prep-lift-body .hero-task-due.late {
+  color: #ffd2cd;
+}
+
+/* ── THE LIFTED CARD INHERITS THE TIER (ADR-0221 §7) ──────────────────────────────
+   Same object, one elevation up: `data-tier` rides on `.prep-lifted` too, and the head is
+   `PrepHeroCount` — the collapsed card's own block — so the word in the value slot, the
+   runway, the eve's flap clock and the horizon arrive by being the same component. The
+   first build typed this head by hand and the lifted card missed every one of them (owner,
+   2026-09-09, with a screenshot: `מחרתיים` in the 15px rung over a plain white bar).
+
+   What the lift owes its space to is the LIST, so the headline steps down one size from the
+   collapsed card's at every tier, as the 26px rung above always did against 34px. */
+.prep-lifted[data-tier='week'] .prep-lift-head .prep-count {
+  font-size: 34px;
+}
+.prep-lifted[data-tier='eve2'] .prep-lift-head .prep-count {
+  font-size: 36px;
+}
+.prep-lifted[data-tier='eve'] .prep-lift-head .prep-count {
+  font-size: 40px;
+}
+/* The eve's flap cells, at the head's smaller rung. */
+.prep-lift-head .prep-flap {
+  width: 28px;
+  height: 40px;
+  font-size: 24px;
+}
+.prep-lift-head .prep-flap.sec {
+  width: 22px;
+  height: 32px;
+  font-size: 18px;
+}
+.prep-lift-head .prep-flap-sep {
+  font-size: 22px;
+}
+/* THE HORIZON IS THE CARD'S FOOT — and the lifted card's foot is under the list, not the
+   collapsed height the sheen's box is pinned to (above). `::before` is one layer with both
+   gradients on the collapsed card; here it paints the sheen alone and the horizon moves to
+   `::after` at the real foot. `.prep-lift-body`'s 16px bottom padding keeps the last row's
+   ink above the 14px glow — the same two numbers ADR-0221 §1 measured on the collapsed
+   card, re-measured for this card in the mockup's §10. */
+.prep.prep-lifted[data-tier]::before {
+  background: radial-gradient(90% 60% at 85% 0%, rgba(255, 255, 255, 0.1), transparent 60%);
+}
+.prep.prep-lifted[data-tier]::after {
+  content: '';
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 14px;
+  pointer-events: none;
+}
+.prep.prep-lifted[data-tier='week']::after {
+  background: linear-gradient(
+    0deg,
+    rgba(233, 166, 60, 0.3) 0,
+    rgba(233, 166, 60, 0.08) 5px,
+    transparent 12px
+  );
+}
+.prep.prep-lifted[data-tier='eve2']::after {
+  background: linear-gradient(
+    0deg,
+    rgba(233, 166, 60, 0.5) 0,
+    rgba(233, 166, 60, 0.12) 6px,
+    transparent 13px
+  );
+}
+.prep.prep-lifted[data-tier='eve']::after {
+  background: linear-gradient(
+    0deg,
+    rgba(233, 166, 60, 0.95) 0,
+    rgba(233, 166, 60, 0.7) 2px,
+    rgba(233, 166, 60, 0.16) 8px,
+    transparent 14px
+  );
+}
+/* The lift has its own flight (`useLiftFlight`); the eve card's `prep-arrive` is the
+   collapsed card's alone. The eve's amber cast joins the floating elevation instead of
+   replacing it. */
+.prep.prep-lifted[data-tier='eve'] {
+  animation: none;
+  box-shadow:
+    var(--elevation-floating),
+    0 26px 44px -22px rgba(233, 166, 60, 0.5);
+}

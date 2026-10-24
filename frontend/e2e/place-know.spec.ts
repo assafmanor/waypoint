@@ -15,6 +15,7 @@
 // floors are all real here.
 import { test, expect, type Page } from '@playwright/test';
 import { bootIntoTrip, shortLiveTripDates, todayAt, TRIP_ID } from './boot';
+import { t } from '../src/i18n/he';
 
 const WIDTHS = [390, 360]; // ADR-0017's primary band, both ends
 const today = () => new Date().toISOString().slice(0, 10);
@@ -287,6 +288,10 @@ for (const width of WIDTHS) {
     test('gives all three footer controls their floor, and drops only the destructive one', async ({
       page,
     }) => {
+      // **All-days**, because `שיבוץ ליום` is absent for a place already slotted on the day in
+      // scope (ADR-0191 §7a) — and this spec is about what three controls do to the footer,
+      // so it needs all three on screen rather than two.
+      await page.getByRole('button', { name: /כל הימים/ }).click();
       await selectKnown(page);
       const m = await measure(page);
       expect(m.footItems).toHaveLength(3);
@@ -330,7 +335,7 @@ test('a place we know nothing about draws no block, and still offers עוד בג
   await blank.click();
   await expect(blank).toHaveClass(/selected/);
   await expect(blank.locator('.map-sum')).toHaveCount(0);
-  const google = blank.getByRole('link', { name: 'עוד בגוגל' });
+  const google = blank.getByRole('link', { name: t.map.know.moreOnGoogle });
   await expect(google).toBeVisible();
   // A different question from `נווט`, which the row still carries — and it opens away from us.
   await expect(google).toHaveAttribute('target', '_blank');
@@ -419,7 +424,7 @@ test.describe('the selected card scrolls to its top @390', () => {
     const row = knownRow(page);
     await row.click();
     await expect(page.locator('.map-sum')).toBeVisible();
-    await page.getByRole('button', { name: 'עוד', exact: true }).click();
+    await page.getByRole('button', { name: t.map.know.more, exact: true }).click();
     await expect(page.locator('.map-hero')).toBeVisible();
 
     await expect(async () => {
@@ -445,7 +450,7 @@ test.describe('the research card @390', () => {
     // Collapsed: two clamped lines, the notes section, the references, the footer's three verbs.
     expect(before.prose.h).toBeLessThanOrEqual(Math.round(2 * before.lineHeight) + 1);
 
-    await page.getByRole('button', { name: 'עוד', exact: true }).click();
+    await page.getByRole('button', { name: t.map.know.more, exact: true }).click();
     const hero = page.locator('.map-hero');
     await expect(hero).toBeVisible();
 
@@ -464,7 +469,9 @@ test.describe('the research card @390', () => {
         lineClamp: getComputedStyle(prose).webkitLineClamp,
         credit: (row.querySelector('.map-credit') as HTMLElement | null)?.textContent ?? null,
         // **The itinerary blocks are not on screen at the same time.**
-        hasNotes: !!row.querySelector('.note-sec'),
+        // `:not(.tsk-sec)` because tasks share this section's geometry and read above it
+        // (ADR-0191 §5) — a bare `.note-sec` now means "notes or tasks".
+        hasNotes: !!row.querySelector('.note-sec:not(.tsk-sec)'),
         hasRefs: !!row.querySelector('.map-refs'),
         back: !!row.querySelector('.map-backrow'),
       };
@@ -485,7 +492,7 @@ test.describe('the research card @390', () => {
   // bug was making the element LTR, which orphaned it to the opposite edge.
   test('keeps the credit on the card’s own edge', async ({ page }) => {
     await selectKnown(page);
-    await page.getByRole('button', { name: 'עוד', exact: true }).click();
+    await page.getByRole('button', { name: t.map.know.more, exact: true }).click();
     const edges = await page.evaluate(() => {
       const row = document.querySelector('.map-list .place.selected') as HTMLElement;
       const credit = row.querySelector('.map-credit') as HTMLElement;
@@ -517,7 +524,7 @@ test.describe('the research card @390', () => {
   // see it: this is two boxes' centres, which is why it is measured here.
   test('centres the way back against the Google exit beside it', async ({ page }) => {
     await selectKnown(page);
-    await page.getByRole('button', { name: 'עוד', exact: true }).click();
+    await page.getByRole('button', { name: t.map.know.more, exact: true }).click();
     const m = await page.evaluate(() => {
       const row = document.querySelector('.map-list .place.selected') as HTMLElement;
       const foot = row.querySelector('.map-backrow') as HTMLElement;
@@ -537,17 +544,17 @@ test.describe('the research card @390', () => {
 
   test('comes back to the itinerary detail', async ({ page }) => {
     await selectKnown(page);
-    await page.getByRole('button', { name: 'עוד', exact: true }).click();
-    await page.getByRole('button', { name: 'חזרה לפרטי המקום', exact: true }).click();
+    await page.getByRole('button', { name: t.map.know.more, exact: true }).click();
+    await page.getByRole('button', { name: t.map.know.back, exact: true }).click();
     await expect(page.locator('.map-hero')).toHaveCount(0);
-    await expect(page.locator('.map-list .place.selected .note-sec')).toBeVisible();
+    await expect(page.locator('.map-list .place.selected .note-sec:not(.tsk-sec)')).toBeVisible();
   });
 
   // §11.1 keeps the full-screen preview as the level below, reached from the hero — the app's own
   // viewer, which is ADR-0062's one permitted zoom.
   test('opens the full picture from the hero, credited', async ({ page }) => {
     await selectKnown(page);
-    await page.getByRole('button', { name: 'עוד', exact: true }).click();
+    await page.getByRole('button', { name: t.map.know.more, exact: true }).click();
     await page.locator('.map-hero').click();
     await expect(page.locator('.doc-viewer')).toBeVisible();
     await expect(page.locator('.doc-viewer-caption')).toContainText('CC BY-SA 4.0');

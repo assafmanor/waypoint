@@ -4,6 +4,7 @@ import {
   EVENT_KIND,
   EVENT_STATUS,
   eventEndBoundary,
+  eventMidSpan,
   typicalMinutesFor,
   type TripEvent,
 } from '@waypoint/shared';
@@ -40,27 +41,32 @@ export const toMin = (hhmm: string) => {
 };
 export const toHHMM = (min: number) => `${pad(Math.floor(min / 60))}:${pad(min % 60)}`;
 
-export function todayInTz(timeZone: string, at: Date): string {
-  return new Intl.DateTimeFormat('en-CA', { timeZone }).format(at);
-}
+// `todayInTz` moved to `@waypoint/shared`'s `zones.ts` (ADR-0197 §5, phase 2) — the zone
+// model needs it and the server now reads that model. Re-exported here because 14 files
+// import it from `lib/time`, and one definition with a familiar path beats a second copy:
+// two implementations of "which calendar day is this, over there" is precisely how a
+// notification comes to fire on a different day than the row it is about.
+// Imported for this file's own use (three call sites below) as well as re-exported.
+import {
+  addDays,
+  todayInTz,
+  tripDates,
+  tripRangeShape,
+  zoneOffsetMinutes,
+  zonedIso,
+} from '@waypoint/shared';
 
-/** Add whole days to a YYYY-MM-DD date string. */
-export function addDays(date: string, delta: number): string {
-  const d = new Date(`${date}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + delta);
-  return d.toISOString().slice(0, 10);
-}
-
-/** **Every calendar day of a trip**, inclusive, as `YYYY-MM-DD`. Calendar dates, so read in
- *  UTC like every other date here — a trip's span is not an instant.
- *
- *  One derivation because there are three readers now: the header's day strip built this inline,
- *  and the two shelves need the same list to ask which day a dateless idea fits (ADR-0151's
- *  2026-08-04 amendment). Three copies of a `+ 1` is how two of them end up off by a day. */
-export function tripDates(startDate: string, endDate: string): string[] {
-  const total = Math.round((Date.parse(endDate) - Date.parse(startDate)) / MS_PER_DAY) + 1;
-  return Array.from({ length: Math.max(0, total) }, (_, i) => addDays(startDate, i));
-}
+// `addDays`, `tripDates` and `zonedIso` moved to `@waypoint/shared`'s `trip-dates.ts` with
+// `computeReadiness` (ADR-0198 phase C) — the server derives the same readiness the card
+// shows, and it needs all three. Re-exported for the same reason `todayInTz` is: 22 files
+// import them from here.
+//
+// **`zoneOffsetMinutes` joined them on 2026-09-03**, and unlike the others nothing in this
+// file reads it — it is here for the four files that import it from `lib/time`. It was
+// defined here over `zoneOffsetAt`, whose own docblock had been naming that arrangement; the
+// server had meanwhile grown a private second copy, and the day-consensus derivation promoted
+// the same day needs a third. One probe, three readers.
+export { addDays, todayInTz, tripDates, zoneOffsetMinutes, zonedIso };
 
 /** Clamp a YYYY-MM-DD date string into [min, max] — lexical compare is valid
  *  since ISO date strings sort chronologically. */
@@ -84,6 +90,18 @@ const weekdayNarrow = new Intl.DateTimeFormat(APP_LOCALE, { weekday: 'narrow', t
  *  `T00:00:00Z` instant, so for a trip zone west of UTC every pill named the day before. */
 export function weekdayLetter(date: string): string {
   return weekdayNarrow.format(new Date(`${date}T00:00:00Z`));
+}
+
+/**
+ * **The day of the month, two digits** — the numeral the day head stamps (ADR-0219 §2).
+ *
+ * Sliced out of `YYYY-MM-DD` without building a `Date`, so a browser in any zone reads the
+ * same day the string names: parsing it as a date would shift the label across the date line.
+ * The reader's own head reads this too, which is what keeps the app's `13` and the reader's
+ * `13` the same two characters.
+ */
+export function dayOfMonth(date: string): string {
+  return date.slice(8, 10);
 }
 
 /** A trip day's full weekday name, in the trip's own zone — read at that day's **noon**,
@@ -139,19 +157,34 @@ const EN_DASH = '–';
  *    different month, 1 year → "27 בספטמבר – 3 באוקטובר 2026"
  *    different years        → "27 בדצמבר 2026 – 3 בינואר 2027"
  *  Without `withYear`, the same shape drops every year (hero surfaces). */
-function proseTripRange(start: Date, end: Date, withYear: boolean): string {
+function proseTripRange(startDate: string, endDate: string, withYear: boolean): string {
+  const start = new Date(`${startDate}T00:00:00Z`);
+  const end = new Date(`${endDate}T00:00:00Z`);
   const dayMonthEnd = withYear ? tripDateDayMonthYear : tripDateDayMonth;
-  const sameYear = start.getUTCFullYear() === end.getUTCFullYear();
-  const sameMonth = sameYear && start.getUTCMonth() === end.getUTCMonth();
-  const sameDay = sameMonth && start.getUTCDate() === end.getUTCDate();
 
-  if (sameDay) return dayMonthEnd.format(start);
-  if (sameMonth) return `${tripDateDay.format(start)}${EN_DASH}${dayMonthEnd.format(end)}`;
-  if (sameYear) return `${tripDateDayMonth.format(start)} ${EN_DASH} ${dayMonthEnd.format(end)}`;
-  // Crossing a year: name the year on both ends so neither is ambiguous — but
-  // only when years are shown at all; the no-year hero mode stays year-free.
-  const startFmt = withYear ? tripDateDayMonthYear : tripDateDayMonth;
-  return `${startFmt.format(start)} ${EN_DASH} ${dayMonthEnd.format(end)}`;
+  // The four cases are `tripRangeShape`'s now, not this function's (ADR-0220 §4): the link
+  // preview composes the same range in Nest, where a crawler that runs no JS is the reader,
+  // and two copies of this branching is how the invite ticket and the preview that
+  // advertised it come to disagree about one trip. The WORDS stay here — product formatting
+  // and the ambient locale are the consumer's, per `packages/shared/CLAUDE.md`.
+  switch (tripRangeShape(startDate, endDate)) {
+    case 'same-day':
+      return dayMonthEnd.format(start);
+    case 'same-month': {
+      // **The one shape with a neutral between two numbers**, and so the one that reversed
+      // in RTL prose (ADR-0221 §5; the owner's own screenshot read `22–11 בספטמבר`). The
+      // isolate goes around the numeric island alone — never the sentence holding it, which
+      // is how ADR-0220's preview flipped a cross-month range the other way.
+      const range = ltrIsolate(`${tripDateDay.format(start)}${EN_DASH}${tripDateDay.format(end)}`);
+      return dayMonthEnd.format(end).replace(/^\d+/, range);
+    }
+    case 'same-year':
+      return `${tripDateDayMonth.format(start)} ${EN_DASH} ${dayMonthEnd.format(end)}`;
+    case 'cross-year':
+      // Name the year on both ends so neither is ambiguous — but only when years are shown
+      // at all; the no-year hero mode stays year-free.
+      return `${(withYear ? tripDateDayMonthYear : tripDateDayMonth).format(start)} ${EN_DASH} ${dayMonthEnd.format(end)}`;
+  }
 }
 
 /** Formats a trip's calendar date range for display. `numeric` is the compact
@@ -165,9 +198,9 @@ export function formatTripDates(
   endDate: string,
   { style = 'numeric', withYear = false }: { style?: TripDateStyle; withYear?: boolean } = {},
 ): string {
+  if (style === 'prose') return proseTripRange(startDate, endDate, withYear);
   const start = new Date(`${startDate}T00:00:00Z`);
   const end = new Date(`${endDate}T00:00:00Z`);
-  if (style === 'prose') return proseTripRange(start, end, withYear);
   const range = `${tripDateNumeric.format(start)}${EN_DASH}${tripDateNumeric.format(end)}`;
   return withYear ? `${range} ${DOT_SEPARATOR} ${end.getUTCFullYear()}` : range;
 }
@@ -208,15 +241,23 @@ export function formatDayDate(date: string): string {
 
 /** An instant as its named day plus its clock (`יום ו׳, 11 בספט׳ · 14:30`), in `timeZone`.
  *  Lived in `ui/BookingDetail` — a formatter, in a component, that a second component
- *  imported from the first. */
-export function formatDayTime(iso: string, timeZone: string): string {
+ *  imported from the first.
+ *
+ *  **`endClock` makes it a window** (`… · 14:30–16:00`), and it is a parameter here rather
+ *  than a caller's own `` `${a}–${b}` `` because that concatenation is the bug: two clocks
+ *  either side of a dash in an RTL flow are two numeric islands, and the layout puts the
+ *  SECOND one first — so the event sheet read `19:30–18:30` for a 90-minute event (owner,
+ *  2026-08-21), the exact reversal {@link clockRange} was extracted to end, on the one call
+ *  site that had concatenated instead of calling it. Already FORMATTED, because an end can be
+ *  read in a different zone from its start (a flight's arrival). */
+export function formatDayTime(iso: string, timeZone: string, endClock?: string | null): string {
   const day = new Intl.DateTimeFormat(APP_LOCALE, {
     weekday: 'short',
     day: 'numeric',
     month: 'short',
     timeZone,
   }).format(new Date(iso));
-  return `${day} ${DOT_SEPARATOR} ${formatTime(iso, timeZone)}`;
+  return `${day} ${DOT_SEPARATOR} ${clockRange(formatTime(iso, timeZone), endClock)}`;
 }
 
 /** Wall-clock parts for an instant, rendered in a specific IANA timezone. */
@@ -293,22 +334,110 @@ function nowEndOf(event: Pick<TripEvent, 'startsAt' | 'endsAt' | 'category'>): n
     : start + typicalMinutesFor(event.category) * MS_PER_MINUTE;
 }
 
+/**
+ * **The one order for the members of a cluster** (ADR-0225 §1) — hard first (the anchor,
+ * ADR-0011), then start, then the user's own `sortOrder`, then `createdAt`, then `id`.
+ *
+ * It exists because four consumers of ADR-0041's cluster each broke the tie their own way:
+ * `buildTimeTree` by storage order, `buildDayStopSequence` alphabetically, `byPrimaryNow` by
+ * storage order and `nextDestination` by first-in-array. Every new event carries
+ * `sortOrder: 0`, so on a real day the TAIL was the whole decision — and the map numbered one
+ * waterfall first while the day listed the other. `createdAt` is the tail because "the one you
+ * added first" is an order a person can reconstruct; alphabetical over mixed Hebrew and Latin
+ * names is not, and storage order is not promised to agree between two devices.
+ */
+export function byPeer(a: TripEvent, b: TripEvent): number {
+  const hard = (e: TripEvent) => (e.kind === EVENT_KIND.HARD ? 0 : 1);
+  if (hard(a) !== hard(b)) return hard(a) - hard(b);
+  const startOf = (e: TripEvent) => (e.startsAt ? Date.parse(e.startsAt) : 0);
+  if (startOf(a) !== startOf(b)) return startOf(a) - startOf(b);
+  if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
+  const created = (e: TripEvent) => e.createdAt ?? '';
+  if (created(a) !== created(b)) return created(a) < created(b) ? -1 : 1;
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+}
+
+/** **The peer a stop is entered through** — the one that starts first, ties by `byPeer`
+ *  (ADR-0225 §5). The day's journey row measures INTO it, the map's route arrives at it and
+ *  the hero's leg is timed to it; it is the first card under the brace. */
+export function peerEntry(peers: readonly TripEvent[]): TripEvent {
+  return [...peers].sort(
+    (a, b) => Date.parse(a.startsAt!) - Date.parse(b.startsAt!) || byPeer(a, b),
+  )[0]!;
+}
+
+/** **The peer a stop is left from** — the one that ends last, ties by `byPeer` reversed, so
+ *  that with equal spans the entry and the exit are two different peers and the brace reads
+ *  top to bottom the way the route runs (ADR-0225 §5). */
+export function peerExit(peers: readonly TripEvent[]): TripEvent {
+  const endOf = (e: TripEvent) => Date.parse(e.endsAt ?? e.startsAt!);
+  return [...peers].sort((a, b) => endOf(b) - endOf(a) || byPeer(b, a))[0]!;
+}
+
+/**
+ * **Everything that shares a stop with `seed`** — the overlap-connected component around it,
+ * over `pool`'s timed events, in `byPeer` order (ADR-0225 §7). The same overlap rule
+ * `buildTimeTree` clusters with (`spansOverlap`: touching is not overlap), so the hero's
+ * `nextAll` and the day's brace cannot disagree about who is in the stop.
+ *
+ * **A HELD SPAN IS NEVER A PEER** (ADR-0227 §A), and without that this claimed the opposite of
+ * what ADR-0041 decided. `spansOverlap` is true of CONTAINMENT too, so a stay running
+ * ⁦16:00⁩ → ⁦11:00⁩ the next morning pulled the supermarket run, the aurora and two of tomorrow's
+ * stops into the check-in's stop — measured, five members — and the board printed
+ * `בו-זמנית · ועוד 4` about four things that happen INSIDE the stay rather than beside it.
+ * ADR-0041's forest has always said containment is a nest and partial overlap is a cluster;
+ * `buildTimeTree` still says it, and `DayView` drops ambient stays before even asking, so the
+ * paragraph above was false the day it was written.
+ *
+ * **The discriminator is `midSpan.kind`, not containment**, and that is a measurement rather
+ * than a preference: `spanContains` needs only ONE strict edge, so excluding containment
+ * breaks `08:30–10:00` beside `08:30–09:30` — two waterfalls that start together and ARE one
+ * stop (`groups nextAll by the earliest upcoming start`, which went red when it was tried).
+ * A held span is a resource you are holding, whose ends matter and whose middle is passive
+ * (ADR-0063), so nothing that happens while you hold it is happening *with* it. It therefore
+ * neither joins another stop nor drags anything into its own.
+ */
+export function clusterAround(seed: TripEvent, pool: readonly TripEvent[]): TripEvent[] {
+  const held = (e: TripEvent) => eventMidSpan(e)?.kind === 'held';
+  if (held(seed)) return [seed];
+  const timed = pool.filter((e) => e.startsAt && !held(e));
+  const members = new Set<TripEvent>([seed]);
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const e of timed) {
+      if (members.has(e)) continue;
+      if ([...members].some((m) => spansOverlap(spanOf(m), spanOf(e)))) {
+        members.add(e);
+        grew = true;
+      }
+    }
+  }
+  return [...members].sort(byPeer);
+}
+
 /** Orders concurrent events so the "loudest" is first: a hard commitment beats a
  *  soft plan; then the one ending soonest (most urgent to leave); then the
- *  earliest start; then sortOrder. Drives which event owns the board hero. */
+ *  earliest start; then `byPeer`'s tail (ADR-0225 §1). Drives which event owns the board hero. */
 function byPrimaryNow(a: TripEvent, b: TripEvent): number {
   const hard = (e: TripEvent) => (e.kind === EVENT_KIND.HARD ? 0 : 1);
   if (hard(a) !== hard(b)) return hard(a) - hard(b);
   if (nowEndOf(a) !== nowEndOf(b)) return nowEndOf(a) - nowEndOf(b);
   const startOf = (e: TripEvent) => Date.parse(e.startsAt!);
   if (startOf(a) !== startOf(b)) return startOf(a) - startOf(b);
-  return a.sortOrder - b.sortOrder;
+  return byPeer(a, b);
 }
 
 /** The events in progress (start ≤ now < end) and the next upcoming ones. Returns
  *  the full concurrent sets (nowAll/nextAll) plus their primaries (now/next) so
- *  the board can show one hero + "ועוד N". Derived from the clock, never stored
- *  (ADR-0018). */
+ *  the board can show one hero + its peers. Derived from the clock, never stored
+ *  (ADR-0018).
+ *
+ *  **`nextAll` is the STOP, not the instant** (ADR-0225 §7). It used to be "everything sharing
+ *  the earliest upcoming start", while ADR-0041's brace is "everything that overlaps" — so for
+ *  `08:30–10:00` beside `09:00–10:30` the day braced the pair and the lifted hero printed the
+ *  second as `אחר כך`. It is now the overlap-connected cluster around the earliest upcoming
+ *  start (`clusterAround`, the tree's own rule), primary-first. */
 export function deriveNow(events: TripEvent[], at: Date): NowNext {
   const t = at.getTime();
   const timed = events.filter((e) => e.startsAt && e.status === EVENT_STATUS.PLANNED);
@@ -320,12 +449,8 @@ export function deriveNow(events: TripEvent[], at: Date): NowNext {
     .sort(byPrimaryNow);
   const future = timed
     .filter((e) => Date.parse(e.startsAt!) > t)
-    .sort((a, b) => Date.parse(a.startsAt!) - Date.parse(b.startsAt!));
-  const nextStart = future.length ? Date.parse(future[0].startsAt!) : undefined;
-  const nextAll =
-    nextStart === undefined
-      ? []
-      : future.filter((e) => Date.parse(e.startsAt!) === nextStart).sort(byPrimaryNow);
+    .sort((a, b) => Date.parse(a.startsAt!) - Date.parse(b.startsAt!) || byPeer(a, b));
+  const nextAll = future.length ? clusterAround(future[0]!, future).sort(byPrimaryNow) : [];
   return { now: nowAll[0], next: nextAll[0], nowAll, nextAll };
 }
 
@@ -408,15 +533,109 @@ export function relativeDay(delta: number): string {
   return delta > 0 ? `עוד ${dayPhrase(delta)}` : `לפני ${dayPhrase(-delta)}`;
 }
 
+/**
+ * **Whole calendar days between two `YYYY-MM-DD`**, UTC-anchored so DST never shifts a
+ * count (a calendar date carries no zone).
+ *
+ * One line, and it had been written five times in four spellings — `dayDiff` in
+ * `booking-timing` and again in `journey-legs`, `dayCount` in `glance`,
+ * `calendarDaysBetween` in `mode`, and inline in `relativeDayLabel` just below. Named here
+ * on the way past because the sixth caller was about to be a sixth copy (CLAUDE.md rule 8).
+ */
+export const calendarDaysBetween = (from: string, to: string): number =>
+  Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / MS_PER_DAY);
+
 /** {@link relativeDay} for a calendar date against today — the form every surface
  *  actually wants. Both are trip-local `YYYY-MM-DD`, so the diff is whole-day and
  *  DST-safe (a calendar date carries no zone). Read by the Index booking rows and
  *  the Map row's meta when its list spans more than one day. */
 export function relativeDayLabel(date: string, today: string): string {
-  const delta = Math.round(
-    (Date.parse(`${date}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / MS_PER_DAY,
+  return relativeDay(calendarDaysBetween(today, date));
+}
+
+/**
+ * **Where a calendar day sits relative to today**, and the one comparison three surfaces were
+ * making in two spellings (ADR-0213's eleventh amendment §7).
+ *
+ * `DayView` declared this union privately and computed it inline; `DayStrip`'s `pillClass`
+ * computed the same thing again with `date === today ? … : date < today ? …`; the public
+ * shared reader is the third host. Two half-built copies of one comparison is exactly what
+ * root rule 8 / ADR-0096 is about, so it lives here beside {@link relativeDayLabel} — which
+ * asks the same question and answers it in words.
+ */
+export const DAY_PHASE = {
+  PAST: 'past',
+  TODAY: 'today',
+  FUTURE: 'future',
+} as const;
+export type DayPhase = (typeof DAY_PHASE)[keyof typeof DAY_PHASE];
+
+/**
+ * {@link DAY_PHASE} for a date against today. Both are trip-local `YYYY-MM-DD`, so this is a
+ * string comparison and no zone re-reads the day — the caller owns which zone `today` came
+ * from (`todayInTz`), which is the whole reason this takes it rather than reading a clock.
+ *
+ * `endDate` is for a row that covers MORE THAN ONE calendar day — the shared reader's card for
+ * a journey that leaves at 02:00 and lands the next afternoon (`SharedDay.endDate`). Such a
+ * card is **today while either of its days is today**, and past only once both are behind,
+ * which is why the span is a parameter and not something a caller can approximate by
+ * comparing ordinals.
+ */
+export function dayPhase(date: string, today: string, endDate?: string): DayPhase {
+  if ((endDate ?? date) < today) return DAY_PHASE.PAST;
+  return date <= today ? DAY_PHASE.TODAY : DAY_PHASE.FUTURE;
+}
+
+/** **Which day of the trip a date is** (1-based, `startDate` = day 1). Trip-local
+ *  calendar arithmetic on UTC midnights, so no timezone re-reads the day. Five
+ *  surfaces had hand-rolled this same line (the header anchor, Plan Home, the two
+ *  day-view headings, the automatic-task checks); it is one function now, and
+ *  {@link dayLabel} is its sixth reader.  */
+export function tripDayNumber(date: string, startDate: string): number {
+  return (
+    Math.round(
+      (Date.parse(`${date}T00:00:00Z`) - Date.parse(`${startDate}T00:00:00Z`)) / MS_PER_DAY,
+    ) + 1
   );
-  return relativeDay(delta);
+}
+
+/** Everything naming a day needs: the trip's window, and the clock read against it.
+ *  Shaped to take the `Trip` itself so a surface holding one passes `{ trip, today }`. */
+export interface DayNaming {
+  trip: { startDate: string; endDate: string };
+  /** Trip-local today. Inside the trip's window the trip is live — the same window
+   *  test as `tripPhase`, inlined because `lib/mode.ts` reads this file. */
+  today: string;
+  /** What "מחר" counts from while the trip is live; defaults to `today`. The day
+   *  surfaces name days against the day ON SCREEN, so an idea's "tomorrow" is the
+   *  day after the one being built, not the day after now (ADR-0151). Off-trip the
+   *  anchor is irrelevant — a day number is not measured from anything. */
+  anchor?: string;
+}
+
+/** **How a day is named on a row** — the one vocabulary every "when is this?" surface
+ *  reads, replacing the bare {@link relativeDayLabel} at all six of its call sites.
+ *
+ *  ADR-0085 made this relative ("מחר", "עוד 3 ימים") because that is the question a
+ *  traveller ON THE GROUND asks. Off the ground it is the wrong question, and provably
+ *  so: before departure every date's distance from today is its trip-day number plus
+ *  the days-until-departure, one constant the screen never states. So a pre-trip index
+ *  read `עוד 13 ימים` / `עוד 14` / `עוד 15` down seven consecutive rows — the day
+ *  numbers 2, 3, 4, re-encoded so you cannot use them (owner, 2026-08-29). Once the
+ *  trip is live that constant is zero and relative wins again, exactly as 0085 says.
+ *
+ *  So: **inside the trip's window, relative; outside it, the day number.** A finished
+ *  trip is named the same way for the same reason — "לפני 47 ימים" places a booking
+ *  against a today that has nothing to do with the trip.
+ *
+ *  A date outside `[start, end]` has no day number and falls back to relative — a prep
+ *  task due next week is genuinely "עוד 8 ימים", not a day of a trip it precedes. */
+export function dayLabel(date: string, { trip, today, anchor }: DayNaming): string {
+  const live = today >= trip.startDate && today <= trip.endDate;
+  if (live || date < trip.startDate || date > trip.endDate) {
+    return relativeDayLabel(date, anchor ?? today);
+  }
+  return `יום ${tripDayNumber(date, trip.startDate)}`;
 }
 
 /** Forward countdown to a future date, split for display (ADR-0085): the board
@@ -462,24 +681,6 @@ export function shiftIso(iso: string, minutes: number): string {
   return new Date(new Date(iso).getTime() + minutes * 60000).toISOString();
 }
 
-/** UTC offset (e.g. "+09:00") for a timezone at a specific instant — the IANA
- *  tzdata behind `Intl` is the authoritative source, not a hand-maintained table. */
-function offsetAt(at: Date, timeZone: string): string {
-  const name = new Intl.DateTimeFormat('en-US', { timeZone, timeZoneName: 'longOffset' })
-    .formatToParts(at)
-    .find((p) => p.type === 'timeZoneName')?.value;
-  return !name || name === 'GMT' ? '+00:00' : name.replace('GMT', '');
-}
-
-/** A timezone's UTC offset in signed minutes at a specific instant (DST-correct),
- *  e.g. Asia/Tokyo → 540, America/New_York in July → -240. */
-export function zoneOffsetMinutes(at: Date, timeZone: string): number {
-  const s = offsetAt(at, timeZone); // "+09:00" | "-04:00" | "+05:30" | "+00:00"
-  const sign = s.startsWith('-') ? -1 : 1;
-  const [h, m] = s.slice(1).split(':').map(Number);
-  return sign * (h * 60 + m);
-}
-
 /** A signed inter-zone shift for display (ADR-0107): how far one zone's clock is
  *  from another's, e.g. "+6 ש׳" (Tokyo vs Tel Aviv), "−3 ש׳" (Reykjavik vs Tel
  *  Aviv). A whole-hour shift carries the hours unit; a fractional-offset zone
@@ -508,37 +709,6 @@ export function formatZoneDelta(minutes: number): string {
  *  regex. */
 export function isCalendarDay(date: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(date) && !Number.isNaN(Date.parse(`${date}T00:00:00Z`));
-}
-
-/** Combine a form's `date` (YYYY-MM-DD) + `time` (HH:MM) inputs, read as wall-clock
- *  in `timeZone`, into a UTC ISO instant. **`date` must be a real calendar day**
- *  (`isCalendarDay`) and `time` an `HH:MM` — anything else is an Invalid Date and
- *  throws rather than returning one.
- *
- *  The offset for a given wall-clock reading depends on the instant itself (DST),
- *  which is exactly what we're trying to compute — so this resolves the
- *  chicken-and-egg by fixed-point iteration: guess an offset, recompute the
- *  instant, re-derive the offset *at that instant*, repeat until it stops
- *  moving (verified against real DST boundaries in time.test.ts; converges in
- *  at most 2 steps in practice). A single noon-anchored guess (the obvious
- *  shortcut) is silently wrong by up to an hour for any wall time on the same
- *  calendar day as a transition — don't reintroduce that.
- *
- *  ponytail: the one input this can't resolve correctly is a wall-clock
- *  reading that's ambiguous (repeated) or nonexistent (skipped) *during* the
- *  transition hour itself (e.g. 02:30 on a spring-forward day). It returns a
- *  stable, well-defined instant rather than looping or throwing, just not
- *  necessarily the one the user meant — every timezone library needs an
- *  explicit disambiguation policy for that hour; add one (e.g. "prefer
- *  standard time") if trip dates ever land there in practice. */
-export function zonedIso(date: string, time: string, timeZone: string): string {
-  let candidate = new Date(`${date}T${time}:00Z`);
-  for (let i = 0; i < 3; i++) {
-    const next = new Date(`${date}T${time}:00${offsetAt(candidate, timeZone)}`);
-    if (next.getTime() === candidate.getTime()) break;
-    candidate = next;
-  }
-  return candidate.toISOString();
 }
 
 /** Inverse of the date/time split zonedIso() combines — HH:MM in the trip timezone,
@@ -577,13 +747,33 @@ export function crossesMidnightZoned(
 
 /** Same-day hard event(s) whose span overlaps this soft event's current span.
  *  Two soft events overlapping is expected/unguarded (ADR-0011) — only hard-vs-soft
- *  matters, since a hard event can never move to resolve it. */
+ *  matters, since a hard event can never move to resolve it.
+ *
+ *  **A HELD SPAN IS NOT A COLLISION** (ADR-0227's 2026-09-14 amendment, reported against the
+ *  deployed build): this is the THIRD implementation of "these two spans collide" and the one
+ *  the ADR missed, so at ⁦18:47⁩ a supermarket run of ⁦18:30–20:00⁩ carried
+ *  `⚠ חופף ל-The Garage (קשיח) · 16:00` — a warning about the hotel it is being done FROM,
+ *  naming a check-in ⁦2h47m⁩ in the past. Same cause as §A: the test below is raw overlap, and
+ *  a stay running ⁦16:00⁩ → ⁦11:00⁩ CONTAINS the evening rather than clashing with it.
+ *
+ *  Two reasons it can never clash, and they are the ADRs' own. ADR-0011 spends this warning on
+ *  a double-booking you must fix **in reality** — "a hard event can never move to resolve it" —
+ *  and there is nothing to resolve about the bed you are sleeping in. And ADR-0171 makes a held
+ *  span's ends `not-before` / `not-after`, which are precisely the times that do NOT pin you:
+ *  you check in any time after ⁦16:00⁩, so even the edge is not a clash. A JOURNEY still warns —
+ *  its ends are `exact` and you genuinely cannot be at dinner and on the plane.
+ *
+ *  Note what the ADR's own scope note got wrong: it counted `clusterAround`'s CALLERS (one) and
+ *  called the blast radius counted. The question that finds this one is how many functions
+ *  implement the NOTION — three, of which `buildTimeTree` is correct by construction because it
+ *  resolves containment into parentage before any sibling overlap test runs. */
 export function hardConflicts(event: TripEvent, dayEvents: TripEvent[]): TripEvent[] {
   if (event.kind !== EVENT_KIND.SOFT || !event.startsAt || !event.endsAt) return [];
   const start = Date.parse(event.startsAt);
   const end = Date.parse(event.endsAt);
   return dayEvents.filter((e) => {
     if (e.id === event.id || e.kind !== EVENT_KIND.HARD || !e.startsAt) return false;
+    if (eventMidSpan(e)?.kind === 'held') return false;
     const eStart = Date.parse(e.startsAt);
     const eEnd = e.endsAt ? Date.parse(e.endsAt) : eStart;
     return eStart < end && eEnd > start;
@@ -630,7 +820,10 @@ const spansOverlap = (a: Span, b: Span): boolean => a.start < b.end && b.start <
 
 /** Groups the day's timed events into the concurrency forest the day view renders.
  *  Returns the top-level groups (roots), each carrying its nested subtree. */
-export function buildTimeTree(events: TripEvent[]): TimeGroup[] {
+export function buildTimeTree(
+  events: TripEvent[],
+  { keepSkipped = false }: { keepSkipped?: boolean } = {},
+): TimeGroup[] {
   // Layout includes done events (they still occupy their slot) but not skipped
   // ones (parked on the shelf, ADR-0027) or untimed ones (no span to place).
   const timed = events.filter((e) => e.startsAt && e.status !== EVENT_STATUS.SKIPPED);
@@ -667,8 +860,12 @@ export function buildTimeTree(events: TripEvent[]): TimeGroup[] {
   // Lay out one sibling set: cluster the partial overlaps (union-find over the
   // overlap graph), then emit groups in start order. Recurses into each item.
   const layout = (siblings: TripEvent[]): TimeGroup[] => {
+    // Start, then `byPeer` (ADR-0225 §1) — the same tail the map's sequence and the hero's
+    // primary end in, so two peers with equal spans read in one order on every surface. This
+    // ended in `sortOrder` alone, and two events both carrying the default `0` fell through to
+    // the order the API happened to return them in.
     const ordered = [...siblings].sort(
-      (a, b) => span.get(a.id)!.start - span.get(b.id)!.start || a.sortOrder - b.sortOrder,
+      (a, b) => span.get(a.id)!.start - span.get(b.id)!.start || byPeer(a, b),
     );
     const root = ordered.map((_, i) => i);
     const find = (i: number): number => (root[i] === i ? i : (root[i] = find(root[i])));
@@ -703,5 +900,41 @@ export function buildTimeTree(events: TripEvent[]): TimeGroup[] {
     return groups;
   };
 
-  return layout(childrenOf.get(null) ?? []);
+  const roots = layout(childrenOf.get(null) ?? []);
+  if (!keepSkipped) return roots;
+  // `keepSkipped` is the finished trip's archive, where what was skipped is part of the record
+  // (ADR-0044); without it the row PlanDay kept for exactly that reason was dropped here,
+  // before layout (ADR-0240 §5). It sits where it was planned, as a single at the top level —
+  // and it takes no part in the nesting or the overlap clusters above, because a thing that
+  // did not happen cannot have overlapped anything that did.
+  const skipped = events
+    .filter((e) => e.startsAt && e.status === EVENT_STATUS.SKIPPED)
+    .map((e): TimeGroup => ({ kind: 'single', item: { event: e, children: [] } }));
+  const startOf = (g: TimeGroup) =>
+    g.kind === 'cluster' ? g.startMs : Date.parse(g.item.event.startsAt!);
+  return [...roots, ...skipped].sort((a, b) => startOf(a) - startOf(b));
+}
+
+/** An hour of the day as the app's own wall-clock string — `7` → `07:00`. */
+export const hourLabel = (hour: number) => `${String(hour).padStart(2, '0')}:00`;
+
+/**
+ * **The instants the day's window opens and closes**, on `date`, in `zone` (ADR-0045's
+ * 07:00→23:00 window, ADR-0037's dawn boundary).
+ *
+ * Lifted out of `Home.tsx`, where it was two inline `Date.parse(zonedIso(...))` calls with
+ * a private `hourLabel` beside them, when the Map's route needed the SAME dawn instant
+ * (root rule 8 — generalise the one-off rather than write a second beside it). The two must
+ * agree: the glance draws its rail from this boundary and the day's route decides what
+ * belongs to the night before it, so a copy that drifted would put a stop on one side of
+ * dawn in one surface and the other side in the other.
+ *
+ * A wall-clock hour needs a zone, which is why this takes one and the pure `map-pins`
+ * derivations take the resolved INSTANT instead.
+ */
+export function dayWindowMs(date: string, zone: string): { startMs: number; endMs: number } {
+  return {
+    startMs: Date.parse(zonedIso(date, hourLabel(DAY_WINDOW.START_HOUR), zone)),
+    endMs: Date.parse(zonedIso(date, hourLabel(DAY_WINDOW.END_HOUR), zone)),
+  };
 }

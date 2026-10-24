@@ -23,6 +23,31 @@
   block-size: 12px;
 }
 
+/* **The lock strains with the beat** (ADR-0199 §3). The beat says "not this way"; the lock
+   is what already says WHY, so it is emphasised rather than joined by anything new — the
+   amber, the size and the label are untouched.
+
+   And it is not the refusal drawn twice: `hardLock` renders INSIDE `button.bld-time`, the
+   day-position picker (ADR-0161 §7) that does move a hard event, through
+   `applyGuardedUpdate` and after asking. So the pulse sends the eye to the control that
+   answers what the finger was trying to do.
+
+   Keyed on the BEAT class, never on a host's — surface-agnostic exactly as `.is-nudging`
+   and `.is-rebuffing` are, so this file never learns who plays the beat. */
+.is-pinned .hard-lock {
+  animation: hard-lock-strain var(--t-base) linear;
+}
+@keyframes hard-lock-strain {
+  35% {
+    transform: scale(1.35);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 0.85;
+  }
+}
+
 /* The elapsed-duration annotation. Context for the clock it sits beside, never a peer of
    it — muted and a step down, so the line reads as a fact with a footnote rather than as
    two facts. Mono because it is digits beside digits.

@@ -81,7 +81,7 @@ describe('OpenAPI contract: every @Body() handler documents a request body', () 
 });
 
 // The PWA service worker only lets navigations under SERVER_ROUTE_PREFIXES
-// reach the backend (vite.config.ts navigateFallbackDenylist); a route outside
+// reach the backend (the NavigationRoute denylist in `frontend/src/sw.ts`); a route outside
 // them would be answered by the cached app shell in production.
 describe('route ownership: every route lives under a shared server prefix', () => {
   it('matches SERVER_ROUTE_PATTERN for every documented path', () => {

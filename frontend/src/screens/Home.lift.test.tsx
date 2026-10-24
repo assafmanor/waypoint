@@ -22,15 +22,21 @@ import {
   type Booking,
   type Note,
   type Place,
+  type TravelModeOverride,
   type TripEvent,
 } from '@waypoint/shared';
 import { setSimulatedNow } from '../lib/useClock';
+import { relativeDayLabel } from '../lib/time';
 import { BEAT } from '../lib/one-shot';
+import { withoutBidiControls } from '../lib/bidi';
 import { t } from '../i18n/he';
 import { wrapNav } from '../test/nav-harness';
 import { buildHostContextIndex } from '../lib/host-context';
 
 const DAY = '2026-08-03';
+/** The day before it — ADR-0224 §7's fixture needs a stay whose own `date` is not the day
+ *  its check-out falls on, which is every stay of more than one night. */
+const YESTERDAY = '2026-08-02';
 /** Pinned: these fixtures carry fixed dates, so reading the real clock would make
  *  the suite mean something different every day it ran. */
 const NOW = `${DAY}T12:30:00Z`;
@@ -116,10 +122,17 @@ let tripNotes: Note[] = [];
 let tripBookings: Booking[] = [];
 let tripPlaces: Place[] = [];
 
+const tripOverrides: TravelModeOverride[] = [];
+
 vi.mock('../state/trip-state', () => ({
   useTrip: () => ({
     // The attachment link list every documents surface reads (ADR-0173/0174).
     documentAttachments: [],
+    // **The declared legs** (ADR-0206 §AM/§AQ2), mutable so a spec can declare one and re-render.
+    // Stated rather than omitted: `useDayTravelReads` takes it as a REQUIRED list precisely so a
+    // surface cannot forget to wire it and silently ignore every declaration on the trip — and the
+    // board reads it since §AQ2, which is why this fixture gained it.
+    travelModeOverrides: tripOverrides,
     // The one context index every note surface resolves through (ADR-0172 §1);
     // built from this file's own fixtures so pairing is real rather than stubbed.
     hostContexts: buildHostContextIndex(tripEvents, tripBookings),
@@ -149,6 +162,18 @@ vi.mock('../state/trip-state', () => ({
     // wiring — the one thing here — is measured against the same Home as before.
     fxRates: null,
     refreshFx: async () => {},
+    // The Trip Home task band (ADR-0188 §6). Empty is the honest fixture here: the band is
+    // ABSENT with nothing due, so the lift wiring — the one thing this file measures — is
+    // read against the same Home as before.
+    tasks: [],
+    users: [],
+    zoneCrossings: [],
+    taskVerbs: {
+      createTask: async () => undefined,
+      updateTask: async () => {},
+      deleteTask: async () => {},
+      tickTask: async () => {},
+    },
   }),
 }));
 
@@ -159,6 +184,10 @@ vi.mock('../state/auth-state', () => ({
 }));
 
 const done = vi.fn();
+vi.mock('../state/mode-state', () => ({
+  // Home reads the first-morning stage (ADR-0221 §4); these suites are about the board.
+  useMode: () => ({ mode: 'trip', chromeMode: 'trip', goingLive: null, skipGoingLive: () => {} }),
+}));
 vi.mock('../state/verbs', () => ({
   useVerbs: () => ({ done, skip: vi.fn(), restore: vi.fn() }),
 }));
@@ -168,6 +197,14 @@ const { Home } = await import('./Home');
 const show = () => render(wrapNav(<Home />));
 /** The board is the tap target now, so "is it liftable" is "is it a button". */
 const board = () => document.querySelector('.wp-board');
+
+/** **Scoped to the BOARD's strip, and it has to be** (ADR-0215 §2): the Home glance card now
+ *  renders the same shared track (`.wp-track-*`), so an unscoped query counts two surfaces and a
+ *  spec about tomorrow silently starts measuring today. `.wp-board-tmr` is the board's own host
+ *  class — the one thing only the strip carries. This is `frontend/CLAUDE.md`'s day-surface trap
+ *  (a descendant selector reaching the peek panes) in its second clothing. */
+const TMR_BLK = '.wp-board-tmr .wp-track-blk';
+const TMR_MARK = '.wp-board-tmr .wp-track-mark';
 
 describe('Home — the lift wiring', () => {
   beforeEach(() => {
@@ -182,6 +219,231 @@ describe('Home — the lift wiring', () => {
   afterEach(() => {
     cleanup();
     setSimulatedNow(null);
+  });
+
+  // ── THE GAP'S CHARACTER, END TO END (ADR-0211) ─────────────────────────────
+  // `lib/gap-character.ts` is tested pure and both components are tested with hand-built
+  // props, so this is the only place that asserts Home actually connects them — and that the
+  // collapsed board and the lifted hero render the ONE answer rather than two.
+  describe('the gap says which gap it is', () => {
+    // **Every clock here is written in UTC and read in `Europe/Rome`** (the fixture trip's
+    // zone, +2 in August). The first draft of these tests set the UTC hour to the local one
+    // it meant and put ⁦22:40⁩ on the following calendar day, which made the evening case read
+    // as `open` — the derivation was right and the fixture was in the wrong day.
+    const NIGHT_DAY = '2026-08-04';
+    /** A stay spanning the night: `dayBookendStays(events, today).woke` finds it because its
+     *  own date is before the clock's day, which is exactly "the bed you woke in". */
+    const stay = () =>
+      ev('stay', {
+        title: 'Rooms Hotel Tbilisi',
+        category: 'lodging',
+        date: DAY,
+        endDate: '2026-08-06',
+        startsAt: `${DAY}T13:00:00Z`,
+        endsAt: '2026-08-06T08:00:00Z',
+      });
+    /** ⁦07:00⁩ Rome on the next calendar day, and it carries a place so the horizon has depth
+     *  to lift onto. */
+    const tomorrowFlight = () =>
+      ev('fl2', {
+        title: 'טיסה לבטומי',
+        date: NIGHT_DAY,
+        placeId: 'p1',
+        startsAt: `${NIGHT_DAY}T05:00:00Z`,
+        endsAt: `${NIGHT_DAY}T06:30:00Z`,
+      });
+    /** ⁦18:00⁩–⁦21:30⁩ Rome — over by the time the evening cases look. */
+    const dinner = () => ev('dinner', { startsAt: `${DAY}T16:00:00Z`, endsAt: `${DAY}T19:30:00Z` });
+    /** ⁦22:40⁩ Rome, still `DAY`. */
+    const EVENING = `${DAY}T20:40:00Z`;
+
+    // **REWRITTEN BY ADR-0214, and the two assertions it replaces are the change.** This spec
+    // used to read `סוף היום` in the now-title and `מחר` in the next slot's meta row. Both are
+    // gone on purpose: with the day's plan finished the board has ONE subject and it is
+    // tomorrow, so the slot holding tomorrow takes rank 1 and the day's-closure words are not
+    // drawn at all — and the day token comes off the meta row precisely BECAUSE the rank-1
+    // label now says `מחר`, which is the one removal that depends on the swap.
+    it('an evening with nothing left is a board about tomorrow', () => {
+      setSimulatedNow(Date.parse(EVENING));
+      tripEvents = [dinner(), tomorrowFlight()];
+      show();
+      const label = document.querySelector('.wp-board-next-label');
+      expect(label?.getAttribute('data-rank')).toBe('1');
+      expect(label?.textContent).toBe('מחר');
+      // No now-slot above it, and the words that used to be there are nowhere on the card.
+      expect(document.querySelector('.wp-board-now-title')).toBeNull();
+      expect(document.body.textContent).not.toContain(t.board.endOfDay);
+      // `מחר` exactly once — the label — rather than twice ⁦20px⁩ apart.
+      expect(document.querySelector('.wp-board-next-meta')?.textContent).not.toContain('מחר');
+      // And the rail's slot carries tomorrow's shape instead of a knob at ~⁦98%⁩.
+      expect(document.querySelector('.wp-board-progress.wp-track')).toBeTruthy();
+      expect(document.querySelectorAll(TMR_BLK).length).toBeGreaterThan(0);
+    });
+
+    // ── THE TOMORROW STRIP'S OWN SEAM (ADR-0214) ─────────────────────────────
+    // `lib/tomorrow.ts` and `lib/day-track.ts` are tested pure and `Board` is tested with
+    // hand-built props, so this is the only place that asserts Home connects them: that it
+    // builds tomorrow's glance from the CLOCK's day rather than the day strip's, that the marks
+    // are the events' own glyphs, and that the bed is named only when it moves.
+    it('the strip is built from tomorrow, and its marks are the events own glyphs', () => {
+      setSimulatedNow(Date.parse(EVENING));
+      tripEvents = [dinner(), tomorrowFlight()];
+      show();
+      const marks = [...document.querySelectorAll(TMR_MARK)].map((m) => m.textContent);
+      // `tomorrowFlight` carries no icon of its own, so the mark is its category's default —
+      // the same answer the glance rail gives, through the same resolver.
+      expect(marks).toHaveLength(1);
+      expect(marks[0]).toBeTruthy();
+      // One block: tomorrow holds exactly the one event, and today's dinner is not on it.
+      expect(document.querySelectorAll(TMR_BLK)).toHaveLength(1);
+    });
+
+    // **The day strip must not change what the live board says**, which is ADR-0211's own rule
+    // for the gap read and the reason this counts from `today` and never from `activeDate`.
+    it('parking the day strip on another day does not move the strip off tomorrow', () => {
+      setSimulatedNow(Date.parse(EVENING));
+      tripActiveDate = '2026-08-06';
+      tripEvents = [dinner(), tomorrowFlight()];
+      show();
+      expect(document.querySelectorAll(TMR_BLK)).toHaveLength(1);
+      expect(document.querySelector('.wp-board-next-label')?.textContent).toBe('מחר');
+    });
+
+    // ADR-0209's rule, at this seam: the same bed is on the stay strip at the top of this very
+    // screen, so naming it again here would be the third printing of one hotel on one screen.
+    it('the bed is named when tomorrow moves it, and silent when it does not', () => {
+      setSimulatedNow(Date.parse(EVENING));
+      // One stay across both nights: tomorrow ends where today does, so there is nothing to say.
+      tripEvents = [dinner(), tomorrowFlight(), stay()];
+      show();
+      expect(document.querySelector('.wp-board-tmr-sleep')).toBeNull();
+      cleanup();
+      // A transfer: tonight's stay checks out tomorrow morning and another takes over tomorrow
+      // night, so `dayBookendStays` answers a different bed for each day and the strip says so.
+      const checkingOut = () =>
+        ev('stay', {
+          title: 'Rooms Hotel Tbilisi',
+          category: 'lodging',
+          date: DAY,
+          endDate: NIGHT_DAY,
+          startsAt: `${DAY}T13:00:00Z`,
+          endsAt: `${NIGHT_DAY}T08:00:00Z`,
+        });
+      tripEvents = [
+        dinner(),
+        tomorrowFlight(),
+        checkingOut(),
+        ev('stay2', {
+          title: 'Hotel Kanra',
+          category: 'lodging',
+          date: NIGHT_DAY,
+          endDate: '2026-08-07',
+          startsAt: `${NIGHT_DAY}T13:00:00Z`,
+          endsAt: '2026-08-07T08:00:00Z',
+        }),
+      ];
+      show();
+      expect(document.querySelector('.wp-board-tmr-sleep')?.textContent).toContain('Hotel Kanra');
+    });
+
+    it('the small hours name the BED and drop the rail that was pinning a lie', () => {
+      setSimulatedNow(Date.parse(`${NIGHT_DAY}T00:40:00Z`)); // 02:40 Rome
+      tripActiveDate = NIGHT_DAY;
+      tripEvents = [stay(), tomorrowFlight()];
+      show();
+      expect(document.querySelector('.wp-board-now-label')?.textContent).toBe(
+        t.board.gap.band.night,
+      );
+      expect(document.querySelector('.wp-board-now-title')?.textContent).toBe(
+        'Rooms Hotel Tbilisi',
+      );
+      // `dayProgress` clamps, so the rail would have drawn a knob at ⁦0%⁩ labelled `עכשיו`.
+      expect(document.querySelector('.wp-board-progress')).toBeNull();
+    });
+
+    // **The reported case** (owner, from a phone at ⁦01:12⁩): the same small hours with NO bed in
+    // the plan — the night's next event is a ⁦07:00⁩ check-in, so `wokeIn` is absent and the read
+    // is `open`. Before the 2026-09-01 amendment this printed `פנוי · זמן חופשי` over a rail
+    // whose knob sat at ⁦0%⁩ under `עכשיו`: the night unnoticed because it was keyed on the arm
+    // that had a bed to name.
+    it('the small hours with no bed still read as the night, and still drop the rail', () => {
+      setSimulatedNow(Date.parse(`${NIGHT_DAY}T00:40:00Z`)); // 02:40 Rome
+      tripActiveDate = NIGHT_DAY;
+      tripEvents = [
+        ev('checkin', {
+          title: 'אבישי 10',
+          category: 'lodging',
+          date: NIGHT_DAY,
+          endDate: '2026-08-07',
+          startsAt: `${NIGHT_DAY}T05:00:00Z`, // 07:00 Rome
+          endsAt: '2026-08-07T08:00:00Z',
+        }),
+      ];
+      show();
+      expect(document.querySelector('.wp-board-now-label')?.textContent).toBe(
+        t.board.gap.band.night,
+      );
+      // The title stays the honest one: nothing IS scheduled between now and ⁦07:00⁩.
+      expect(document.querySelector('.wp-board-now-title')?.textContent).toBe(t.board.freeTitle);
+      expect(document.querySelector('.wp-board-progress')).toBeNull();
+      // And the day's own shape is still on the screen — one section down, where ADR-0215 put
+      // it — so nothing was lost by taking the rail off the board.
+      expect(document.querySelectorAll('.glance-track .wp-track-blk').length).toBeGreaterThan(0);
+    });
+
+    it('and the same hour before the day opens is the other band', () => {
+      setSimulatedNow(Date.parse(`${NIGHT_DAY}T04:40:00Z`)); // 06:40 Rome
+      tripActiveDate = NIGHT_DAY;
+      tripEvents = [stay(), tomorrowFlight()];
+      show();
+      expect(document.querySelector('.wp-board-now-label')?.textContent).toBe(
+        t.board.gap.band.morning,
+      );
+    });
+
+    // ADR-0160 §1: one object at two elevations. The lifted card must not word the minute
+    // differently from the board it grew out of.
+    // **ADR-0160 §S's invariant, restated by ADR-0214 rather than dropped.** The rule is that
+    // the two elevations say the SAME thing about one minute — §S had to repair this once, when
+    // `free` was an `else` on one surface and an empty array on the other. What changed is what
+    // they agree on: with tomorrow as the subject, the board draws no day's-closure words, so
+    // the lift must not either. Both halves are asserted, because "neither says it" is only
+    // meaningful beside "the board does not either".
+    it('the lifted hero agrees with the board about the subject', () => {
+      setSimulatedNow(Date.parse(EVENING));
+      tripEvents = [dinner(), tomorrowFlight()];
+      tripPlaces = [place];
+      show();
+      expect(document.querySelector('.wp-board-now-title')).toBeNull();
+      fireEvent.click(board()!);
+      const hero = document.querySelector('.hero-lifted');
+      // Neither the `else` words nor the day's-closure ones, at either elevation.
+      expect(hero?.querySelector('.wp-board-now-title')).toBeNull();
+      expect(hero?.textContent).not.toContain(t.board.freeTitle);
+      expect(hero?.textContent).not.toContain(t.board.endOfDay);
+      // It leads with the point instead, and its own label DOES carry the day token — the
+      // token comes off only where the label itself says the day, which here it does not.
+      expect(hero?.querySelector('.wp-board-next-label')?.textContent).toBe(t.board.nextLabel);
+      expect(hero?.querySelector('.wp-board-next-meta')?.textContent).toContain('מחר');
+      // And the foot is the same strip the board pins, imported rather than redrawn.
+      expect(hero?.querySelector('.hero-foot .wp-track')).toBeTruthy();
+    });
+
+    // The other half of §S: where the gap slot still IS the subject, both elevations print it.
+    it('at the stay, both elevations still name the bed', () => {
+      setSimulatedNow(Date.parse(`${NIGHT_DAY}T00:40:00Z`)); // 02:40 Rome
+      tripActiveDate = NIGHT_DAY;
+      tripEvents = [stay(), tomorrowFlight()];
+      tripPlaces = [place];
+      show();
+      expect(document.querySelector('.wp-board-now-title')?.textContent).toBe(
+        'Rooms Hotel Tbilisi',
+      );
+      fireEvent.click(board()!);
+      const hero = document.querySelector('.hero-lifted');
+      expect(hero?.querySelector('.wp-board-now-title')?.textContent).toBe('Rooms Hotel Tbilisi');
+      expect(hero?.textContent).not.toContain(t.board.freeTitle);
+    });
   });
 
   it('a board whose whole horizon adds nothing is NOT a button', () => {
@@ -661,6 +923,86 @@ describe('Home — the lift wiring', () => {
     expect(hero.querySelector('.wp-board-held')?.textContent).toBe(t.board.heldSince('13:00'));
   });
 
+  // ── A SPAN YOU ARE INSIDE IS A CONDITION, NOT AN EVENT (ADR-0227 §B) ──────────
+  //
+  // The same hire as above, with one thing added: something you are actually doing. Before
+  // this rule the hire held the slot from pick-up to return — it is hard, so `byPrimaryNow`
+  // put it first — and the lunch you were sitting at appeared nowhere on the card.
+  it('a held span yields the now-slot to what you are actually doing, and drops to the strip', () => {
+    const hire = flight({ icon: '🚗', title: 'Hertz', bookingId: 'bk-car' });
+    const lunch = ev('lunch', {
+      title: 'ארוחה',
+      category: 'food',
+      startsAt: `${DAY}T12:00:00Z`,
+      endsAt: `${DAY}T13:00:00Z`,
+    });
+    tripEvents = [hire, lunch];
+    tripBookings = [{ ...flightBooking, id: 'bk-car', type: BOOKING_TYPE.CAR, title: 'Hertz' }];
+    show();
+
+    // The board's subject is the meal, in the ordinary now-grammar — not the car's.
+    expect(document.querySelector('.wp-board-now-title')?.textContent).toContain('ארוחה');
+    expect(document.querySelector('.wp-board-now-label')?.textContent).not.toBe(
+      t.board.midSpan.carHoldLabel,
+    );
+    expect(document.querySelector('.wp-board-live')?.textContent).not.toContain(
+      t.board.midSpan.carHoldLive,
+    );
+    // …and the car is still on the screen, as the condition it is.
+    expect(document.querySelector('.stay-strip')?.textContent).toContain('Hertz');
+  });
+
+  it('…and keeps the slot when nothing else is running, without also saying it twice', () => {
+    const hire = flight({ icon: '🚗', title: 'Hertz', bookingId: 'bk-car' });
+    tripEvents = [hire];
+    tripBookings = [{ ...flightBooking, id: 'bk-car', type: BOOKING_TYPE.CAR, title: 'Hertz' }];
+    show();
+    expect(document.querySelector('.wp-board-now-label')?.textContent).toBe(
+      t.board.midSpan.carHoldLabel,
+    );
+    // The board is carrying it, so the strip must not repeat it twelve pixels down.
+    expect(document.querySelector('.stay-strip')).toBeNull();
+    // And the lift still opens onto it — this is the one surface with its booking, its
+    // notes, its files and its settle, and filtering the span out of the schedule took
+    // `canLift` to "nothing to lift" until the horizon was told to follow the board.
+    fireEvent.click(board()!);
+    expect(document.querySelector('.hero-lifted')).not.toBeNull();
+  });
+
+  // **The line §B draws, from the other side.** A held span's MIDDLE is a condition; its ENDS
+  // are moments, so a return deadline inside `ARRIVAL_EMPHASIS_MIN` keeps the slot even though
+  // something else is running — that IS the "what do I need in the next 30 minutes" question
+  // this card exists for. Untested, this inverts silently: the gate reads `in-transit` and one
+  // careless widening to "any held mid-span" would quietly hand the slot to lunch 30 minutes
+  // before the car is due back.
+  it('a return deadline keeps the slot even while something else is running', () => {
+    // Ends at 13:00Z with the clock at 12:30Z — 30 minutes, inside the 45-minute emphasis.
+    const hire = flight({
+      icon: '🚗',
+      title: 'Hertz',
+      bookingId: 'bk-car',
+      startsAt: `${DAY}T09:00:00Z`,
+      endsAt: `${DAY}T13:00:00Z`,
+    });
+    const lunch = ev('lunch', {
+      title: 'ארוחה',
+      category: 'food',
+      startsAt: `${DAY}T12:00:00Z`,
+      endsAt: `${DAY}T13:00:00Z`,
+    });
+    tripEvents = [hire, lunch];
+    tripBookings = [{ ...flightBooking, id: 'bk-car', type: BOOKING_TYPE.CAR, title: 'Hertz' }];
+    show();
+
+    expect(document.querySelector('.wp-board-now-label')?.textContent).toBe(
+      t.board.midSpan.carHoldLabel,
+    );
+    // …and the meal is not lost: the lift carries both points, because the horizon follows
+    // the board's now-point without dropping the activities underneath it.
+    fireEvent.click(board()!);
+    expect(document.querySelector('.hero-lifted')?.textContent).toContain('ארוחה');
+  });
+
   // The owner's content idea, wired: the crossing said out loud, plus the destination's
   // clock now. `Europe/Rome` (the trip) → `Asia/Tokyo` (the destination place) is +7 in
   // August, and the direction must follow the sign.
@@ -724,5 +1066,189 @@ describe('Home — the lift wiring', () => {
     const foot = document.querySelector('.hero-foot')!;
     expect(foot.querySelector('.wp-board-progress')).toBeTruthy();
     expect(foot.querySelector('.wp-board-transit-prog')).toBeNull();
+  });
+});
+
+// ── THE DAY AT A GLANCE, ON HOME (ADR-0215) ──────────────────────────────────
+// **Here rather than in a file of its own** because the seam needs this file's whole-Home
+// harness — the trip-state mock above is ~⁦60⁩ lines of fixtures — and extracting a shared Home
+// harness is a refactor to ask about, not to smuggle into a card change (root rule 8).
+describe('Home — the day at a glance', () => {
+  beforeEach(() => {
+    setSimulatedNow(Date.parse(NOW));
+    tripEvents = [];
+    tripNotes = [];
+    tripBookings = [];
+    tripPlaces = [];
+    tripActiveDate = DAY;
+  });
+  afterEach(() => {
+    cleanup();
+    setSimulatedNow(null);
+  });
+
+  const titles = () => [...document.querySelectorAll('.sec-title')].map((el) => el.textContent);
+
+  // ADR-0215 §1. Asserted rather than trusted for the same reason `EventForm.test.tsx` asserts
+  // its five bands: the card's old slot was inherited from a deleted fixture row precisely
+  // because nothing was watching where it sat.
+  it('the day shape comes BEFORE the shortcuts, not after them', () => {
+    tripEvents = [ev('a'), ev('b', { startsAt: `${DAY}T19:00:00Z`, endsAt: `${DAY}T21:00:00Z` })];
+    show();
+    const order = titles();
+    expect(order).toContain(t.glance.title);
+    expect(order).toContain(t.quick.title);
+    expect(order.indexOf(t.glance.title)).toBeLessThan(order.indexOf(t.quick.title));
+  });
+
+  it('the card draws the day as the shared track, and the board keeps its own', () => {
+    tripEvents = [ev('a'), ev('b', { startsAt: `${DAY}T19:00:00Z`, endsAt: `${DAY}T21:00:00Z` })];
+    show();
+    expect(document.querySelectorAll('.glance-track .wp-track-blk')).toHaveLength(2);
+    // The two surfaces are not one query: the board's rail is its own host class.
+    expect(document.querySelector('.glance-day .wp-board-tmr')).toBeNull();
+    expect(document.querySelector('.glance-day .nowmark')).toBeTruthy();
+  });
+
+  // ADR-0215 §2 end to end: an ambient stay has an anchor and no segment, and ADR-0164 counts
+  // its edge — so the rail has to draw the instant or the card contradicts its own number.
+  it('a stay check-out today is a hard tick on the card', () => {
+    tripEvents = [
+      ev('a'),
+      ev('stay', {
+        category: 'lodging',
+        date: '2026-08-01',
+        endDate: DAY,
+        startsAt: '2026-08-01T15:00:00Z',
+        endsAt: `${DAY}T10:00:00Z`,
+      }),
+    ];
+    show();
+    expect(document.querySelectorAll('.glance-track .wp-track-blk.point.hard')).toHaveLength(1);
+    // And no pill band came with it (ADR-0077 withdrawn from this rail).
+    expect(document.querySelector('.glance-marks')).toBeNull();
+    expect(document.querySelector('.glance-day .achip')).toBeNull();
+  });
+
+  // ── A CHECK-OUT IN `הבא בתור` (ADR-0224) ────────────────────────────────────
+  // Both halves of the owner's screenshot, end to end, because both are Home's own seam:
+  // `lib/hero-horizon.ts` is tested pure and `HeroLift` with hand-built props, so nothing
+  // else can see whether Home hands the slot the right EDGE.
+  describe('the check-out in `הבא בתור` (ADR-0224)', () => {
+    // NOW is 12:30Z = 14:30 in the fixture trip's Europe/Rome, so a 15:00-local check-out
+    // (13:00Z) is 30 minutes out — inside `CHECKOUT_LEAD_MIN`, and the slot's clock reads
+    // today while the STAY's own `date` is two days back. That gap is the defect.
+    const stay = (over: Partial<TripEvent> = {}) =>
+      ev('stay', {
+        category: 'lodging',
+        kind: EVENT_KIND.HARD,
+        date: YESTERDAY,
+        endDate: DAY,
+        startsAt: `${YESTERDAY}T15:00:00Z`,
+        endsAt: `${DAY}T13:00:00Z`,
+        ...over,
+      });
+    /** Whatever the app calls the stay's own `date` — the token the board used to print
+     *  beside a clock that reads today. Derived rather than spelled, so the assertion
+     *  cannot pass by disagreeing with the app about the word. */
+    const wrongToken = relativeDayLabel(YESTERDAY, DAY);
+
+    // **§7.** The board printed the stay's CHECK-IN day beside the check-out's clock —
+    // `אתמול` next to `11:00` one minute before 11:00 today, in the owner's screenshot.
+    it('does not label today`s check-out with the day the stay began', () => {
+      tripEvents = [stay()];
+      show();
+      const meta = document.querySelector('.wp-board-next-meta')!;
+      expect(meta.textContent).toContain(t.glance.transition.checkOut);
+      // The day token is for a slot whose instant is NOT today; this one's is.
+      expect(meta.textContent).not.toContain(wrongToken);
+    });
+
+    // **ADR-0227 §C.** A check-out is a CEILING (`edgeMeaning` → `not-after`), and the board
+    // printed a bare `13:00` beside `🔒 קשיח` — a pair that reads as an appointment you can be
+    // late for. The word comes from `edgeTimePhrase`, the same helper the day's transition row
+    // and the ambient strip already say it with, so the three cannot word it differently.
+    it('says the check-out is a ceiling, not an appointment', () => {
+      // A place, because `canLift` wants depth before the board becomes pressable — the same
+      // reason the sibling spec below gives one.
+      tripEvents = [stay({ placeId: 'p1' })];
+      tripPlaces = [place];
+      show();
+      // `withoutBidiControls` because the clock run is ISOLATED (ADR-0118) — asserting the
+      // raw text would either fail or, worse, pass by having the isolate written into the
+      // expectation, where a later build could drop it unnoticed.
+      const read = (el: Element | null | undefined) => withoutBidiControls(el?.textContent ?? '');
+      // 13:00Z in Europe/Rome is 15:00 — the zone the instant happens in, as every other
+      // clock on this card is read.
+      expect(read(document.querySelector('.wp-board-next-meta'))).toContain(
+        t.day.untilTime('15:00'),
+      );
+      // …and the lift takes the board's own string, so it cannot drift from it.
+      fireEvent.click(board()!);
+      expect(read(document.querySelector('.hero-lifted .wp-board-next-meta'))).toContain(
+        t.day.untilTime('15:00'),
+      );
+    });
+
+    // The opposite edge, because a floor and a ceiling are the two halves of one rule and a
+    // single-edge assertion passes a build that draws both the same way.
+    it('says the check-in is a floor', () => {
+      tripEvents = [
+        stay({
+          date: DAY,
+          endDate: '2026-08-05',
+          startsAt: `${DAY}T15:00:00Z`,
+          endsAt: '2026-08-05T11:00:00Z',
+        }),
+      ];
+      show();
+      expect(
+        withoutBidiControls(document.querySelector('.wp-board-next-meta')?.textContent ?? ''),
+      ).toContain(t.day.fromTime('17:00'));
+    });
+
+    // **§4 + §1 + §3.** The slot the screenshot was taken of had no answer in it at all,
+    // because `הבא בתור` is not a `Point` and nobody passed it one. A place, because
+    // `canLift` wants depth and the owner's real board had one.
+    it('offers the pair in the lifted hero, in the transition`s own words', () => {
+      tripEvents = [stay({ placeId: 'p1' })];
+      tripPlaces = [place];
+      show();
+      fireEvent.click(board()!);
+      const settle = document.querySelector('.hero-lifted .wp-settle.board')!;
+      expect(settle).toBeTruthy();
+      expect(settle.textContent).toContain(t.actions.transitionDid.checkOut);
+      expect(settle.textContent).toContain(t.actions.transitionNotHappened);
+      // Never the stop's pair, which on this row would be vague and then false.
+      expect(settle.textContent).not.toContain(t.actions.wasThere);
+    });
+
+    it('settles the CLOSING edge, not the stay', () => {
+      tripEvents = [stay({ placeId: 'p1' })];
+      tripPlaces = [place];
+      show();
+      fireEvent.click(board()!);
+      fireEvent.click(document.querySelector('.hero-lifted .wp-settle-btn.done')!);
+      expect(done).toHaveBeenCalledWith(expect.objectContaining({ id: 'stay' }), 'end');
+    });
+
+    // Once answered, the board moves on — which is the point of being able to answer
+    // (§5). `deriveHeroBooking` drops the transition, so the slot is not this stay's.
+    it('leaves the board once the group says they are out', () => {
+      tripEvents = [stay({ endStatus: EVENT_STATUS.DONE })];
+      show();
+      expect(document.querySelector('.wp-board-next-meta')?.textContent ?? '').not.toContain(
+        t.glance.transition.checkOut,
+      );
+    });
+  });
+
+  // ADR-0215 §4: the board's gap slot carries this within an inch of the card, and the card's
+  // copy is the one that goes. An absence assertion, so it reads the KEY rather than a literal.
+  it('nothing on Home says `פנוי עד` twice', () => {
+    tripEvents = [ev('b', { startsAt: `${DAY}T19:00:00Z`, endsAt: `${DAY}T21:00:00Z` })];
+    show();
+    expect(document.body.textContent).not.toContain(t.board.freeLabel + ' ' + t.board.until);
+    expect(document.querySelector('.glance-day .lead')).toBeNull();
   });
 });

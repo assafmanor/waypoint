@@ -10,10 +10,12 @@
 // (ADR-0164) — a stay's middle nights still count nothing.
 import {
   CATEGORY_DEFAULT_ICON,
-  edgeMeaning,
+  edgeOutlivesItsInstant,
   windowBoundOf,
   EVENT_STATUS,
+  isEdgeSettled,
   eventDurationUnit,
+  eventMidSpan,
   eventTransitionKeys,
   isAmbient,
   isBracketed,
@@ -25,6 +27,7 @@ import {
   crossesMidnightZoned,
   type TimeGroup,
   type TimeItem,
+  calendarDaysBetween,
 } from './time';
 import { eventEdgeZone, eventZones, type EventZones, type ZoneContext } from './places';
 import { chosenIcon, DEFAULT_EVENT_ICON, MS_PER_DAY } from '../constants';
@@ -77,9 +80,13 @@ export interface GlancePointAnchor {
   timeMs: number;
   /** The event's own icon (or its category default) — the shared badge glyph. */
   icon: string;
-  /** Stacking row (0 = nearest the bar). Anchors whose pills would overlap are
-   *  pushed to a higher lane so labels never collide (ADR-0077). */
-  lane: number;
+  /** **The event draws no block on the rail**, so a surface that wants the moment visible has
+   *  to draw it itself (ADR-0215 §2). True exactly for an ambient span's own edge (a stay's
+   *  check-in / check-out, a car's pick-up / return, ADR-0054): those are excluded from the
+   *  counted rail while ADR-0164 still counts them in `remaining` — so dropping the pill
+   *  without drawing the instant would have made a check-out vanish from a card whose number
+   *  is still counting it. Resolved here because this is where both halves are known. */
+  standalone: boolean;
   /** This edge's display zone (ADR-0107) — a departure reads its origin zone, an
    *  arrival its destination. Absent when the caller passed no zone context; the
    *  render then falls back to the card's base zone, exactly as before. */
@@ -107,7 +114,10 @@ export interface GlanceSpanAnchor {
    *  so an eastbound overnight flight isn't marked "+1" when it lands the same
    *  local day (ADR-0107). */
   nextDay: boolean;
-  lane: number;
+  /** See {@link GlancePointAnchor.standalone}. A same-day bracket is on the rail, so this is
+   *  false for every span the derivation can produce today; carried on both shapes so a
+   *  consumer never has to ask which kind it is holding. */
+  standalone: boolean;
   /** Both ends' display zones + the shift between them (ADR-0107): a same-day
    *  zone-crossing flight renders its departure in the origin's clock and its
    *  arrival in the destination's, with the delta as a pill. Absent when the
@@ -121,15 +131,12 @@ export interface DayGlance {
   windowStartMs: number;
   windowEndMs: number;
   segs: GlanceSeg[];
-  /** Amber time-anchors above the block bar (ADR-0077) — spans + points. */
+  /** **A bracketed booking's transitions on this day** — the model ADR-0077 built to place amber
+   *  pills above the rail, kept whole; what ADR-0215 withdrew is the PLACEMENT, not the facts.
+   *  The Home rail now draws `standalone` anchors as ticks (`lib/glance-track.ts`) and the words,
+   *  the times and each edge's own zone (ADR-0107) read on the day's rows, one tap away, where
+   *  there is room for them. */
   anchors: GlanceAnchor[];
-  /** How many stacked lanes the anchors occupy (0 when there are none) — the
-   *  render sizes the anchor band from this. */
-  anchorLaneCount: number;
-  /** The anchor band would exceed `MAX_ANCHOR_LANES` (a crowded first/last trip
-   *  day): the render collapses the positioned anchors to a flow "legs line"
-   *  below the rail instead, where overlap is impossible (ADR-0077 §D). */
-  anchorsCollapsed: boolean;
   /** Now's position in the window (0..1), or null when now is outside it
    *  (i.e. a past/future day being browsed). */
   nowFrac: number | null;
@@ -145,41 +152,10 @@ export interface DayGlance {
  *  layered cue) so two short, close-by composites can't overlap chips. */
 const MIN_COUNT_FRAC = 0.14;
 
-/** Two anchor pills whose centres are closer than this fraction of the rail
- *  would overlap, so the later one is pushed up a lane (stacked, not smeared) —
- *  and past `MAX_ANCHOR_LANES` the whole band collapses to the legs line. This
- *  is what makes "would cover another" the real collapse trigger, so it has to
- *  match a real pill's width, not undershoot it. Sized to the phone (mobile-
- *  first, ADR-0017): a heavy pill (icon + Hebrew word + mono time, or icon +
- *  two times + arrow) is ~116px, and the glance rail is ~320px inside the card
- *  at a 360px viewport → ~0.36. The old 0.28 undershot this, so two pills that
- *  actually overlapped still shared a lane and smeared (ADR-0077). */
-const MARKER_MIN_GAP_FRAC = 0.36;
-
-/** Past this many anchor lanes the band is too tall for a glance, so the render
- *  collapses to the flow legs line instead (ADR-0077 §D). */
-const MAX_ANCHOR_LANES = 2;
-
 /** An anchor's centre on the rail (0..1): a point is its instant; a span is the
  *  midpoint of its bar, where its pill sits. */
 const anchorCenter = (a: GlanceAnchor): number =>
   a.kind === 'span' ? (a.startFrac + a.endFrac) / 2 : a.frac;
-
-/** Stack anchors (pre-sorted by centre) into lanes: each goes in the lowest lane
- *  whose last pill centre is at least a pill-width away, else a new lane. Mutates
- *  `lane` and returns the lane count. Pure and width-independent — the render only
- *  needs the lane index and total to size the band. */
-function assignAnchorLanes(anchors: GlanceAnchor[]): number {
-  const laneLastCenter: number[] = [];
-  for (const a of anchors) {
-    const c = anchorCenter(a);
-    let lane = 0;
-    while (lane < laneLastCenter.length && c - laneLastCenter[lane] < MARKER_MIN_GAP_FRAC) lane++;
-    laneLastCenter[lane] = c;
-    a.lane = lane;
-  }
-  return laneLastCenter.length;
-}
 
 const startMsOf = (e: TripEvent) => Date.parse(e.startsAt!);
 const endMsOf = (e: TripEvent) => (e.endsAt ? Date.parse(e.endsAt) : Date.parse(e.startsAt!));
@@ -195,6 +171,25 @@ export function ambientEventsOnDate(events: TripEvent[], date: string): TripEven
   return events.filter((e) => isAmbient(e) && e.date <= date && date <= e.endDate!);
 }
 
+/** **The resources you are HOLDING on `date`** — a stay, a car hire, a locker (ADR-0227 §B).
+ *
+ *  `ambientEventsOnDate` above is the same question asked of a MULTI-DAY span, and that is the
+ *  whole of the difference: `isAmbient` is `ambientWhenMultiDay && isMultiDay`, so a hire
+ *  collected and returned on one day was invisible to it — which is why a same-day hire owned
+ *  the board's `עכשיו` from pick-up to return with nothing to move it aside. Keyed on
+ *  `midSpan.kind` (ADR-0063), so a journey is excluded by construction rather than by a
+ *  `!isJourney` at the call site: a flight's middle is you, inside it, and it is not a
+ *  condition you are under.
+ *
+ *  Generalised from the one-off this replaced rather than added beside it (root rule 8): the
+ *  strip had `ambientEventsOnDate(...).find((e) => !isJourney(e) && …)`, which is exactly this
+ *  predicate with the multi-day restriction nobody wanted. */
+export function heldSpansOnDate(events: TripEvent[], date: string): TripEvent[] {
+  return events.filter(
+    (e) => eventMidSpan(e)?.kind === 'held' && e.date <= date && date <= (e.endDate ?? e.date),
+  );
+}
+
 /** **Is this ambient span counted in nights** — i.e. is it a stay? (ADR-0163 §4.)
  *  Read off `eventDurationUnit`, so the answer comes from ADR-0162's profile rather
  *  than from a `category === 'lodging'` at a call site.
@@ -204,6 +199,68 @@ export function ambientEventsOnDate(events: TripEvent[], date: string): TripEven
  *  also swaps a VERB — `שוהים ב־` is true of a hotel and false of a car. */
 export const countsNights = (event: Pick<TripEvent, 'category' | 'icon'>): boolean =>
   eventDurationUnit(event) === 'nights';
+
+/** **Is this row a BED** — the two questions `dayBookendStays` asks below, about one event rather
+ *  than about a date: `isAmbient` makes it a backdrop rather than a stop, and `countsNights`
+ *  separates the hotel you sleep in from the car you merely hold. Named because a THIRD caller
+ *  arrived (`travelOrigin`, which has to know whether its origin is a bed and therefore has no
+ *  departure instant) and the pair was already written out twice. */
+export const isStayRow = (event: TripEvent): boolean => isAmbient(event) && countsNights(event);
+
+/** **The stays that bracket a day** — the one you woke in and the one you sleep in
+ *  (ADR-0054's 2026-08-25 amendment; ADR-0206 §AD). */
+/** **An event's display glyph** — what the group chose, else its category's default, else the
+ *  generic one. Lifted out of `buildDayGlance`'s own body when the tomorrow strip needed the
+ *  same answer (ADR-0214): it was already the rule for a mark on a day surface, and a second
+ *  copy at the new call site is how two surfaces start disagreeing about which glyph an event
+ *  has. A placeholder pick counts as no pick, which is `chosenIcon`'s own rule. */
+export const eventDisplayIcon = (e: TripEvent): string =>
+  chosenIcon(e.icon) ??
+  (e.category != null ? CATEGORY_DEFAULT_ICON[e.category] : DEFAULT_EVENT_ICON);
+
+export interface DayBookendStays {
+  /** The stay whose span began BEFORE this day, so you woke there. */
+  woke?: TripEvent;
+  /** The stay whose span runs PAST this day, so you sleep there. */
+  sleeps?: TripEvent;
+}
+
+/**
+ * **Which stays bookend `date`** — the two stops nobody schedules and everybody makes.
+ *
+ * Owner, off the shipped canvas: _"on most days you can infer for certain that you're gonna start
+ * the day in a hotel and end in a hotel."_ ADR-0054's amendment made that the route's first and
+ * last position; **this is the same fact for the day LIST**, which needs it for a different
+ * reason: the day's journey blocks sit between two ROWS (ADR-0206 §V1.3), and the first row of a
+ * mid-stay day has no row above it — so the walk out of the hotel is the one leg the list could
+ * never draw (§AD, and §AE3 named it as the first thing M6a should reconcile).
+ *
+ * **Which end needs no third rule, exactly as it does not on the route:** the span covered last
+ * night → you woke there; it covers tonight → you end there. A check-in day is `sleeps` only, a
+ * check-out day `woke` only, a middle night both, and a day you change hotels gets A's and B's for
+ * free because each answers about its own span.
+ *
+ * Both halves of the gate are load-bearing and neither is new here: `isAmbient` (through
+ * `ambientEventsOnDate`) is what makes a stay backdrop rather than a stop, and `countsNights` is
+ * what separates a hotel from a car hire — you sleep in one, so it brackets your day, and you
+ * merely hold the other, so its pickup and return are ordinary stops at their own instants. Both
+ * read ADR-0162's profile, so a future ambient category inherits the answer.
+ *
+ * **This is deliberately NOT a second copy of `map-pins.ts`'s `stayEnds`.** That one asks the
+ * inverse question — _does THIS place's stay bookend the day_ — over a place's own moments, for a
+ * sequence of stops; this one asks _which stay does_, for a leg. The rule they share is the two
+ * comparisons plus `ambientEventsOnDate`, and it is shared. What holds them together is a spec:
+ * `glance.test.ts` asserts the stay named here is the one `buildDayStopSequence` puts first, which
+ * is a cheaper guard against drift than a refactor of a function two field reports have been fixed
+ * inside (M7c).
+ */
+export function dayBookendStays(events: TripEvent[], date: string): DayBookendStays {
+  const stays = ambientEventsOnDate(events, date).filter(countsNights);
+  return {
+    woke: stays.find((e) => e.date < date),
+    sleeps: stays.find((e) => date < e.endDate!),
+  };
+}
 
 /** **Where you are inside an ambient span, and how long the whole span is** — the
  *  `2` and the `4` of `לילה 2 מתוך 4` (ADR-0054 / ADR-0163).
@@ -222,7 +279,13 @@ export function ambientSpanPosition(
   event: Pick<TripEvent, 'category' | 'icon' | 'date' | 'endDate'>,
   date: string,
 ): { position: number; total: number } {
-  const spanDays = Math.round((Date.parse(event.endDate!) - Date.parse(event.date)) / MS_PER_DAY);
+  // `endDate ?? date` because a HELD span need not be multi-day since ADR-0227 §B — a hire
+  // collected and returned the same day reaches this through the strip, and `Date.parse(undefined)`
+  // is `NaN`, which `Math.max(1, NaN)` propagates rather than floors. The comment below already
+  // said a same-day span should answer 1 rather than 0; this is what makes that true.
+  const spanDays = Math.round(
+    (Date.parse(event.endDate ?? event.date) - Date.parse(event.date)) / MS_PER_DAY,
+  );
   // **NIGHTS are the gaps between the dates; DAYS are the dates themselves** (ADR-0163 §4's
   // 2026-08-04 amendment). A stay checked in on day 1 and out of on day 3 is TWO nights —
   // you slept twice — and a car collected on day 1 and returned on day 3 is THREE days,
@@ -280,9 +343,75 @@ export interface BookingTransition {
   /** i18n transition key for this end, by mode (`checkIn`/`departure`/
    *  `flightDeparture`…), from `eventTransitionKeys`. */
   labelKey: string;
+  /** **How many days after the day it is drawn on this moment actually lands** (ADR-0236 §4).
+   *  `0` — and therefore absent — for every transition on its own day, which is nearly all of
+   *  them. Non-zero only for an end HOSTED by its span's start day because its own day is
+   *  outside the trip, and it is what lets the row say `מחר` beside the clock, exactly as the
+   *  board already does beside the same landing (`BoardTransit.endDay`, ADR-0160 §M). */
+  dayOffset?: number;
 }
 
-export function bookingTransitionsOnDate(events: TripEvent[], date: string): BookingTransition[] {
+/** The trip's own window, for the hosting rule below. Absent → no hosting, which is what
+ *  every caller that is not a day surface wants. */
+export type TransitionRange = { startDate: string; endDate: string };
+
+/**
+ * **Which day a span's END is drawn on** (ADR-0236 §4) — its own, when the trip has that day;
+ * otherwise the last day of the trip the span still covers. `null` when the span starts after
+ * the trip ends, because then it covers no day the trip has.
+ *
+ * Exported because two questions need the same answer and a second copy is how they would
+ * start disagreeing: which day the arrival row lands on, and whether a span's two ends land on
+ * the SAME day — which is what decides between one row and two (§8).
+ */
+export function endHostDay(
+  event: Pick<TripEvent, 'date' | 'endDate'>,
+  range?: TransitionRange,
+): string | null {
+  const endDay = event.endDate ?? event.date;
+  const inTrip = (d: string) => !range || (d >= range.startDate && d <= range.endDate);
+  if (inTrip(endDay)) return endDay;
+  return range && range.endDate >= event.date ? range.endDate : null;
+}
+
+/**
+ * **Both of this span's ends are drawn on `date`, so it draws ONE row rather than two**
+ * (ADR-0236 §8, amending ADR-0064 §B).
+ *
+ * §B splits a multi-day bracket into two read-only transition points because an ambient span
+ * shows nothing in the day list, so *"on its edge days it would otherwise show nothing"*. That
+ * reasoning is about a span whose ends land on **two** day surfaces. Once §4 hosts a landing
+ * back on the day it departed from, there are no two days left: the same journey would draw
+ * two rows on one day, neither carrying the duration or the distance that the identical
+ * same-day leg states on its single card.
+ *
+ * True only for an ambient span both of whose ends this day draws. A leg that departs day 3
+ * and lands day 4 inside the trip is untouched — its ends really are on two surfaces, which is
+ * the case §B was written for.
+ */
+export function spanDrawsWholeOn(event: TripEvent, date: string, range?: TransitionRange): boolean {
+  return isAmbient(event) && event.date === date && endHostDay(event, range) === date;
+}
+
+/**
+ * **The transitions on `date`** — and, with a `range`, the ones whose own day the trip does
+ * not have (ADR-0236 §4).
+ *
+ * An end is normally keyed to `endDate`. A journey that lands after the trip's last day — the
+ * flight home, or any leg left that way by a date edit — has an `endDate` no day surface can
+ * ask for: `tripDates` stops at `endDate`, `activeDate` clamps, an out-of-range `?day=` falls
+ * back. So that end is **hosted by the day its span departed from**, which is the day the leg
+ * already lives on, and carries the distance as `dayOffset`.
+ *
+ * The second clause is not pedantry: shrink a trip past the departure too and the whole leg is
+ * off-trip, so hosting it would put a row on a day that does not exist either. Then nothing is
+ * drawn, which is the honest reading of a booking the trip no longer covers.
+ */
+export function bookingTransitionsOnDate(
+  events: TripEvent[],
+  date: string,
+  range?: TransitionRange,
+): BookingTransition[] {
   const out: BookingTransition[] = [];
   for (const e of events) {
     if (!isBracketed(e) || e.category == null) continue;
@@ -292,8 +421,17 @@ export function bookingTransitionsOnDate(events: TripEvent[], date: string): Boo
     if (e.date === date && e.startsAt) {
       out.push({ event: e, edge: 'start', atMs: Date.parse(e.startsAt), labelKey: trans.startKey });
     }
-    if ((e.endDate ?? e.date) === date && e.endsAt) {
-      out.push({ event: e, edge: 'end', atMs: Date.parse(e.endsAt), labelKey: trans.endKey });
+    if (!e.endsAt) continue;
+    const endDay = e.endDate ?? e.date;
+    const hostDay = endHostDay(e, range);
+    if (hostDay === date) {
+      out.push({
+        event: e,
+        edge: 'end',
+        atMs: Date.parse(e.endsAt),
+        labelKey: trans.endKey,
+        ...(endDay !== date ? { dayOffset: calendarDaysBetween(date, endDay) } : {}),
+      });
     }
   }
   return out;
@@ -346,11 +484,10 @@ export function buildDayGlance(
   const skipped = sameDay.filter((e) => e.status === EVENT_STATUS.SKIPPED && e.startsAt);
   const timed = sameDay.filter((e) => e.startsAt);
 
-  // Transition markers are derived first so their instants can join the window
-  // math below — an ambient booking's transition (an overnight flight's
-  // departure/arrival, a hotel's check-in/out) contributes no counted block to
-  // stretch the window, so without this a late-night marker would land past the
-  // rail's edge and clip. A day is non-empty if it carries any of these too.
+  // Transition markers are derived first because a day is non-empty if it carries any of
+  // these too — an ambient booking's transition (a hotel's check-in/out, a hire's pick-up)
+  // draws no counted block, so a check-out day would otherwise read as empty. They no
+  // longer join the window math below; see `frac`.
   const transitions = bookingTransitionsOnDate(events, activeDate);
 
   if (tree.length === 0 && skipped.length === 0 && transitions.length === 0) {
@@ -360,21 +497,38 @@ export function buildDayGlance(
       windowEndMs: day23Ms,
       segs: [],
       anchors: [],
-      anchorLaneCount: 0,
-      anchorsCollapsed: false,
       nowFrac: null,
       remaining: 0,
     };
   }
 
-  // Window: 07:00→23:00, stretched to the earliest start / latest end (ADR-0037
-  // overnight ends included; skipped events count for the window so they stay
-  // on-rail) and to every transition instant (so no marker falls off the rail).
-  const transitionMs = transitions.map((tr) => tr.atMs);
-  const windowStartMs = Math.min(day07Ms, ...timed.map(startMsOf), ...transitionMs);
-  const windowEndMs = Math.max(day23Ms, ...timed.map(endMsOf), ...transitionMs);
+  // **The window follows what the rail DRAWS, and a bare instant is clamped onto it**
+  // (ADR-0045's window rule, amended 2026-09-11).
+  //
+  // 07:00→23:00, stretched to the earliest start / latest end of the day's own blocks
+  // (ADR-0037 overnight ends included; skipped events count for the window so they stay
+  // on-rail) — and no longer to a transition instant, which used to be folded in here so a
+  // late-night marker could not land past the edge and clip.
+  //
+  // **Clamping buys the same thing and costs the day nothing.** An instant that sets a
+  // bound lands exactly ON the edge — `frac` returns 0 or 1 for it either way — so
+  // stretching never bought the marker a better position than the clamp does; what it did
+  // buy was moving every real block to make room for a moment nothing occupies. A car hire
+  // with no authored pick-up hour defaults to midnight (`docs/backlog.md`), and one of those
+  // dragged the next day's window back to 00:00: seven hours of rail with nothing drawable
+  // in them, and the day's blocks squeezed into the far end of the strip (owner report,
+  // 2026-09-11 — _"the day is skewed to the left"_).
+  //
+  // The one thing given up: two instants past the SAME edge now share a position (and
+  // `thinMarks` keeps one of the two marks) instead of being 0 and 0.13 apart. A day with
+  // two ambient edges in the small hours is rare, and the rail has never carried their times
+  // anyway — those read on the day's rows, one tap away (ADR-0215 §2).
+  const windowStartMs = Math.min(day07Ms, ...timed.map(startMsOf));
+  const windowEndMs = Math.max(day23Ms, ...timed.map(endMsOf));
   const span = windowEndMs - windowStartMs || 1;
-  const frac = (t: number) => (t - windowStartMs) / span;
+  /** A position ON the rail, so it is 0..1 by construction — every block is inside the
+   *  window above, and a transition instant outside it clamps to the edge it is past. */
+  const frac = (t: number) => Math.min(1, Math.max(0, (t - windowStartMs) / span));
   const nextDayOf = (evs: TripEvent[]) =>
     evs.some((e) => e.endsAt != null && crossesMidnight(e.startsAt!, e.endsAt, timeZone));
 
@@ -455,22 +609,25 @@ export function buildDayGlance(
   // drops settled events, so that is not a second rule here.
   const remainingEdges = transitions.filter((t) => {
     if (!isAmbient(t.event)) return false;
-    const meaning = edgeMeaning(t.event, t.edge);
-    // A floor is still ahead of you until somebody says otherwise. `transitions` is
-    // already scoped to `activeDate`, so "or the day ends" needs no condition — but
-    // "settled" does: `bookingTransitionsOnDate` drops only SKIPPED, and a check-in you
-    // have actually done is the whole reason this branch is settleable at all.
-    if (meaning === 'not-before') return t.event.status !== EVENT_STATUS.DONE;
-    // **A WINDOW DOES expire, and that is the whole of what closing it buys** (ADR-0184
-    // §6). This is the one branch that had to change here, and it is the one place in
-    // the app that asked `edgeMeaning` for a specific FLEXIBLE value rather than testing
-    // `exact` — so without it a windowed check-in fell into the clock test below against
-    // its FLOOR, and stopped counting at 17:01 while its window ran to 21:00. The end
-    // edge needs nothing: a check-out window's ceiling is the deadline it already had.
-    if (meaning === 'window' && t.edge === 'start') {
+    // **Settled on THIS edge, whichever edge it is** (ADR-0224 §1/§5). The arms below each
+    // decide when an edge stops being owed; this one rule is prior to all of them, and
+    // it used to read `t.event.status` — the span's single field — which meant a check-out
+    // could never be cleared by being done and a check-in cleared its own row and its
+    // partner's alike. `bookingTransitionsOnDate` drops only SKIPPED events wholesale, so
+    // the per-edge answer has to be asked here.
+    if (isEdgeSettled(t.event, t.edge)) return false;
+    // **An edge the clock cannot answer is owed until somebody answers it** — a floor
+    // (⁦15:01⁩ does not mean anybody checked in, ADR-0171 §6) and a check-in window alike.
+    // The two used to be two arms here, and `StayRow`'s settle control then read only the
+    // first of them: one predicate in `@waypoint/shared` now says which edges this number
+    // holds, so the row that clears it and the number cannot drift apart again (2026-09-15).
+    // `transitions` is already scoped to `activeDate`, so "or the day ends" needs no
+    // condition, and a window's own ceiling is the only clock that retires it.
+    if (edgeOutlivesItsInstant(t.event, t.edge)) {
       const shuts = windowBoundOf(t.event, t.edge);
-      return t.event.status !== EVENT_STATUS.DONE && (!shuts || Date.parse(shuts) > nowMs);
+      return !shuts || Date.parse(shuts) > nowMs;
     }
+    // A deadline expires by passing: at ⁦11:01⁩ a check-out is not pending, it is missed.
     return t.atMs > nowMs;
   }).length;
   const remaining = remainingBlocks + remainingEdges;
@@ -481,9 +638,7 @@ export function buildDayGlance(
   // single edge today → a point (a multi-day hotel's check-in / check-out).
   // Marking a transition is not counting a block; an ambient stay stays off the
   // counted rail.
-  const iconOf = (e: TripEvent) =>
-    chosenIcon(e.icon) ??
-    (e.category != null ? CATEGORY_DEFAULT_ICON[e.category] : DEFAULT_EVENT_ICON);
+  const iconOf = eventDisplayIcon;
   const byEvent = new Map<string, BookingTransition[]>();
   for (const tr of transitions) {
     const list = byEvent.get(tr.event.id);
@@ -513,7 +668,7 @@ export function buildDayGlance(
           (zones
             ? crossesMidnightZoned(e.startsAt, e.endsAt, zones.startZone, zones.endZone)
             : crossesMidnight(e.startsAt, e.endsAt, timeZone)),
-        lane: 0,
+        standalone: isAmbient(e),
         zones,
       });
     } else {
@@ -526,15 +681,13 @@ export function buildDayGlance(
         labelKey: tr.labelKey,
         timeMs: tr.atMs,
         icon: iconOf(e),
-        lane: 0,
+        standalone: isAmbient(e),
         zone: edge?.zone,
         deltaMinutes: edge?.deltaMinutes,
       });
     }
   }
   anchors.sort((a, b) => anchorCenter(a) - anchorCenter(b));
-  const anchorLaneCount = assignAnchorLanes(anchors);
-  const anchorsCollapsed = anchorLaneCount > MAX_ANCHOR_LANES;
 
   const nowFrac = nowMs >= windowStartMs && nowMs <= windowEndMs ? frac(nowMs) : null;
 
@@ -544,8 +697,6 @@ export function buildDayGlance(
     windowEndMs,
     segs,
     anchors,
-    anchorLaneCount,
-    anchorsCollapsed,
     nowFrac,
     remaining,
   };

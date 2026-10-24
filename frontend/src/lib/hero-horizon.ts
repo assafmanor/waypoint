@@ -15,15 +15,20 @@
 import {
   ENTITY_TYPE,
   EVENT_STATUS,
+  edgeStatusOf,
   type Booking,
+  type EventEdge,
   type DocumentAttachment,
   type DocumentSummary,
   type Note,
   type Place,
+  type Task,
 } from '@waypoint/shared';
 import type { TripEvent } from '@waypoint/shared';
 import { eventPlaceId, placeName } from './places';
+import { byPeer } from './time';
 import { notesForContext } from './notes';
+import { isOnSettledHost, isSettled, tasksForContext, type TaskClock } from './tasks';
 import { attachmentsForContext, documentsForAttachments } from './attachments';
 import { resolveHostContext, type HostContextIndex } from './host-context';
 
@@ -58,7 +63,25 @@ export interface HeroPoint {
    *  Already filtered by ADR-0173 §6's visibility rule and collapsed per document, because
    *  `documentsForAttachments` owns both — this adds a pointer and no permission. */
   documents: DocumentSummary[];
-  /** Absent → nobody has answered yet. */
+  /** **The open tasks hanging on this stop** (ADR-0160 §U), newest urgency first — the fourth
+   *  content type, and the point at which "what is depth" stopped being a list and became §U0's
+   *  rule: content is a block, a way OUT of the point is a chip.
+   *
+   *  Resolved through the SAME context as the notes and the documents above (§U8), because a
+   *  task about a flight is written on the BOOKING; asking about the event alone would make
+   *  exactly those tasks invisible on the one surface built for standing at a gate.
+   *
+   *  **Empty when the host is settled** (ADR-0191 §6, through `isOnSettledHost` rather than a
+   *  reading of our own): a done or skipped event has no future, so its tasks are not open
+   *  obligations — they have already left the mark, both Home bands and the Index tile. */
+  tasks: Task[];
+  /** **Which end of this event the slot is showing** (ADR-0224 §1). `start` for every now
+   *  point and for an ordinary next; `end` only where the board surfaced a CLOSING
+   *  transition, which today is a check-out (`deriveHeroBooking`'s `transition-checkout`).
+   *  It decides two things and the screen must not re-derive either: which stored answer
+   *  `settled` reports, and which transition's verb the pair says. */
+  edge: EventEdge;
+  /** Absent → nobody has answered yet, **on this point's own edge**. */
   settled?: HeroSettled;
 }
 
@@ -87,6 +110,10 @@ export interface HeroHorizon {
    *  The caller slices; the shape does not care which variant it is feeding. */
   now: HeroPoint[];
   next?: HeroPoint;
+  /** **The other members of the next STOP** (ADR-0225 §6) — `nextAll` past its primary, as
+   *  points, so the lift can list them as equals the way a group-split `now` already is.
+   *  Empty is the common case. */
+  nextPeers: HeroPoint[];
   then?: HeroThen;
 }
 
@@ -108,6 +135,11 @@ export interface HeroHorizonInput {
    *  disagree about what is happening (ADR-0018: derived, and derived once). */
   nowAll: TripEvent[];
   nextAll: TripEvent[];
+  /** **Which edge the NEXT slot is showing** (ADR-0224 §1), absent meaning `start`. The board
+   *  sometimes fills that slot with an END transition `deriveNow` cannot surface — a hotel
+   *  check-out — and only the caller knows, because only the caller chose it (`shownNext`).
+   *  Re-deriving it here would be the second answer to a question the board already asked. */
+  nextEdge?: EventEdge;
   bookings: Booking[];
   places: Place[];
   notes: Note[];
@@ -115,12 +147,19 @@ export interface HeroHorizonInput {
    *  the resolution is what enforces §6's visibility and nothing downstream re-checks it. */
   attachments: DocumentAttachment[];
   documents: DocumentSummary[];
+  /** The trip's manual tasks, plus what a deadline has to be read against and which hosts are
+   *  closed. All three are trip-state derivations the screen already holds (`useSettledHosts`,
+   *  the band's own clock) — passed rather than rebuilt, so the hero, the bands and the tile
+   *  cannot disagree about whether a task is still owed. */
+  tasks: Task[];
+  taskClock: TaskClock;
+  settledHosts: Set<string>;
   /** Trip-state's one context index (ADR-0172 §1). Passed rather than rebuilt here: the
    *  place half of it needs the WHOLE trip's references, and this input carries one day's. */
   hostContexts: HostContextIndex;
 }
 
-function toPoint(event: TripEvent, input: HeroHorizonInput): HeroPoint {
+function toPoint(event: TripEvent, input: HeroHorizonInput, edge: EventEdge = 'start'): HeroPoint {
   const booking = event.bookingId
     ? input.bookings.find((b) => b.id === event.bookingId)
     : undefined;
@@ -145,28 +184,48 @@ function toPoint(event: TripEvent, input: HeroHorizonInput): HeroPoint {
       attachmentsForContext(input.attachments, context),
       input.documents,
     ).map((row) => row.document),
-    settled: event.status === EVENT_STATUS.PLANNED ? undefined : (event.status as HeroSettled),
+    // Open only, and none at all once the host is closed — the same two readings the mark, the
+    // bands and the tile already make, taken from the same functions rather than restated here.
+    tasks: tasksForContext(input.tasks, context, input.taskClock).filter(
+      (task) => !isSettled(task) && !isOnSettledHost(task, input.settledHosts),
+    ),
+    edge,
+    // **THIS edge's answer, not the span's** (ADR-0224 §1). `edgeStatusOf` reads `status` at
+    // the start and `endStatus` at the end, so a check-out point stops reporting whatever the
+    // check-in said — which before this ADR was the only thing it could report.
+    settled:
+      edgeStatusOf(event, edge) === EVENT_STATUS.PLANNED
+        ? undefined
+        : (edgeStatusOf(event, edge) as HeroSettled),
   };
 }
 
-/** The first event starting strictly after the `next` cluster — `אחר כך`.
+/** The first event after the `next` STOP — `אחר כך`.
  *
- *  Keyed off `nextAll`'s start rather than the clock, so the third point is
- *  genuinely the one after the second and not merely "soon": several events can
- *  share the next start (ADR-0041's cluster), and all of them are `next`. */
+ *  Keyed off `nextAll` rather than the clock, so the third point is genuinely the one after
+ *  the second and not merely "soon". **And off the whole of `nextAll`, not its first start**
+ *  (ADR-0225 §7): `nextAll` is the overlap cluster, so a peer that starts later than the
+ *  primary is still part of the stop the board is showing — this used to name it as
+ *  `אחר כך` while the day braced it under `בו-זמנית`. */
 function thenAfter(input: HeroHorizonInput): HeroThen | undefined {
   const nextStart = input.nextAll[0]?.startsAt;
   if (!nextStart) return undefined;
+  const inStop = new Set(input.nextAll.map((e) => e.id));
   const after = input.events
-    .filter((e) => e.startsAt && Date.parse(e.startsAt) > Date.parse(nextStart))
-    .sort((a, b) => Date.parse(a.startsAt!) - Date.parse(b.startsAt!))[0];
+    .filter(
+      (e) => e.startsAt && !inStop.has(e.id) && Date.parse(e.startsAt) > Date.parse(nextStart),
+    )
+    .sort((a, b) => Date.parse(a.startsAt!) - Date.parse(b.startsAt!) || byPeer(a, b))[0];
   return after?.startsAt ? { title: after.title, startsAt: after.startsAt } : undefined;
 }
 
 export function heroHorizon(input: HeroHorizonInput): HeroHorizon {
   return {
     now: input.nowAll.map((e) => toPoint(e, input)),
-    next: input.nextAll[0] ? toPoint(input.nextAll[0], input) : undefined,
+    next: input.nextAll[0]
+      ? toPoint(input.nextAll[0], input, input.nextEdge ?? 'start')
+      : undefined,
+    nextPeers: input.nextAll.slice(1).map((e) => toPoint(e, input)),
     then: thenAfter(input),
   };
 }
@@ -207,13 +266,20 @@ export function heroHorizon(input: HeroHorizonInput): HeroHorizon {
 export function canLift(horizon: HeroHorizon): boolean {
   // An attached document is depth (ADR-0174 §6), and adding it here is not a formality: a
   // point whose ONLY depth is a boarding pass would otherwise answer "nothing to lift" and
-  // take the rebuff — the board refusing to open onto the one thing it now has to show.
+  // take the rebuff — the board refusing to open onto the one thing it now has to show. A
+  // task joins on exactly that reasoning (ADR-0160 §U6).
   const hasDepth = (p: HeroPoint) =>
-    !!p.place || p.notes.length > 0 || p.documents.length > 0 || !!p.bookingId;
+    !!p.place ||
+    p.notes.length > 0 ||
+    p.documents.length > 0 ||
+    p.tasks.length > 0 ||
+    !!p.bookingId;
   return (
     horizon.now.length > 1 ||
     horizon.now.some(hasDepth) ||
     (horizon.next ? hasDepth(horizon.next) : false) ||
+    // A peer is depth the collapsed board only names (ADR-0225 §6).
+    horizon.nextPeers.length > 0 ||
     !!horizon.then
   );
 }

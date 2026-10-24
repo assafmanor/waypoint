@@ -57,9 +57,13 @@
   cursor: pointer;
 }
 
-.cp-row:hover,
 .cp-row:focus-visible {
   background: var(--line);
+}
+@media (hover: hover) and (pointer: fine) {
+  .cp-row:hover {
+    background: var(--line);
+  }
 }
 
 .cp-row.on {

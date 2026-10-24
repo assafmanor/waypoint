@@ -18,6 +18,7 @@ import { AppUpdateNotice } from './AppUpdateNotice';
 import { NavProvider } from '../state/nav-state';
 import { ToastProvider } from './Toast';
 import {
+  SW_UPDATE_ASK_RETRY_MS,
   SW_UPDATE_CHECK_MS,
   SW_UPDATE_IDLE_APPLY_MS,
   SW_UPDATE_NOTICE_AFTER_MS,
@@ -252,6 +253,45 @@ describe('the notice, for the swaps that could not be quiet', () => {
 describe('the update poll', () => {
   beforeEach(setup);
   afterEach(teardown);
+
+  // **Coming back is the moment worth checking on** (2026-08-30). The browser re-checks
+  // `sw.js` on navigation and this is a SPA, so it never does — which left the hourly tick as
+  // the only way a running app learned about a deploy, and a phone app left open across one
+  // ran the old build until the tick came round.
+  it('re-checks when the app is returned to, without waiting for the interval', () => {
+    const registration = fakeRegistration();
+    renderNotice();
+    reportRegistered(registration);
+    expect(registration.update).toHaveBeenCalledTimes(0);
+
+    setVisibility('hidden');
+    setVisibility('visible');
+    expect(registration.update).toHaveBeenCalledTimes(1);
+
+    // Same rule as the interval: a doomed fetch on a plane is not worth making.
+    offline.value = true;
+    setVisibility('hidden');
+    setVisibility('visible');
+    expect(registration.update).toHaveBeenCalledTimes(1);
+    offline.value = false;
+  });
+
+  // **An unanswered ask is unheard, not declined** (2026-08-30). This used to be asked once
+  // and once only, falling back on "the next cold load takes the build" — which for an
+  // INSTALLED app may never come, leaving it on the pre-deploy build for the rest of the trip.
+  it('posts the swap again when the first ask goes unanswered', () => {
+    renderNotice();
+    reportWaiting();
+    expect(updateServiceWorker).toHaveBeenCalledTimes(1);
+
+    // Still nothing back from the worker: no `controllerchange`, so no reload happened.
+    advance(SW_UPDATE_RECHECK_MS);
+    expect(updateServiceWorker).toHaveBeenCalledTimes(1);
+    expect(reload).not.toHaveBeenCalled();
+
+    advance(SW_UPDATE_ASK_RETRY_MS);
+    expect(updateServiceWorker).toHaveBeenCalledTimes(2);
+  });
 
   it('asks the registration to re-check on the interval, and stays quiet offline', () => {
     const registration = fakeRegistration();

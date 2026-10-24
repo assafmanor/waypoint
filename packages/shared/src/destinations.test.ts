@@ -4,6 +4,7 @@ import {
   DESTINATIONS,
   currencyForCountry,
   currencyCountryTerms,
+  flagForCountry,
   flagFromCode,
   searchDestinations,
   suggestFlagFromDestination,
@@ -16,18 +17,60 @@ describe('flagFromCode', () => {
   });
 });
 
+describe('flagForCountry', () => {
+  it('answers the flag for a resolved alpha-2 code, in either case', () => {
+    expect(flagForCountry('CY')).toBe('🇨🇾');
+    expect(flagForCountry('jp')).toBe('🇯🇵');
+  });
+
+  it('degrades to undefined rather than building a glyph out of junk', () => {
+    for (const code of [undefined, null, '', '   ', 'C', 'CYP', '12']) {
+      expect(flagForCountry(code)).toBeUndefined();
+    }
+  });
+});
+
 describe('suggestFlagFromDestination', () => {
-  it('matches a long alias as a substring', () => {
+  it('matches an alias inside a sentence', () => {
     expect(suggestFlagFromDestination('a trip to tokyo')).toBe('🇯🇵');
   });
 
-  it('matches a short (≤2-char) alias only as a whole token, not a substring', () => {
+  it('matches a term only as a whole word, not as a substring', () => {
     expect(suggestFlagFromDestination('us')).toBe('🇺🇸');
     expect(suggestFlagFromDestination('australia')).not.toBe('🇺🇸');
   });
 
-  it('matches the Hebrew display name too', () => {
+  it('matches the Hebrew display name too, through a glued preposition', () => {
     expect(suggestFlagFromDestination('טיול ליפן')).toBe('🇯🇵');
+    expect(suggestFlagFromDestination('בקפריסין')).toBe('🇨🇾');
+  });
+
+  // The owner-reported miss: סין is literally the last three letters of קפריסין
+  // (final nun included), so a substring rule answered China for Cyprus.
+  it('does not answer a country whose name merely ENDS the word', () => {
+    expect(suggestFlagFromDestination('קפריסין')).toBe('🇨🇾');
+    expect(suggestFlagFromDestination('טיול לקפריסין')).toBe('🇨🇾');
+  });
+
+  // The guard the Cyprus miss would have tripped: every name the picker offers
+  // resolves to its OWN flag, whatever order the list happens to be in.
+  it('resolves every curated name and alias to its own country', () => {
+    const wrong = DESTINATIONS.flatMap((d) =>
+      [d.he, ...d.aliases]
+        .filter((term) => suggestFlagFromDestination(term) !== flagFromCode(d.code))
+        .map((term) => `${term} (${d.code}) → ${suggestFlagFromDestination(term) ?? 'none'}`),
+    );
+    expect(wrong).toEqual([]);
+  });
+
+  // A city-level pick is nowhere in the curated list, and does not need to be:
+  // the pick resolved a country (ADR-0113) and that beats reading the words.
+  it('prefers the resolved country code over the text', () => {
+    expect(suggestFlagFromDestination('פאפוס', 'CY')).toBe('🇨🇾');
+    expect(suggestFlagFromDestination('Kigali', 'RW')).toBe('🇷🇼');
+    // …and the text still answers when the code is the thing that's missing.
+    expect(suggestFlagFromDestination('פאפוס', undefined)).toBe('🇨🇾');
+    expect(suggestFlagFromDestination('טוקיו', '')).toBe('🇯🇵');
   });
 
   it('is undefined for blank or unmatched text', () => {

@@ -2,17 +2,21 @@
 // the same shelf: Trip mode's DayView and Plan mode's PlanDay. Before this each
 // screen inlined `maybeItems.filter((m) => !m.consumed)` and Trip mode alone knew
 // about the day's skipped events — which is how ADR-0027's "the shelf renders
-// unplaced ideas AND skipped soft events, uniformly" stayed half-built.
+// unplaced ideas AND skipped events, uniformly" stayed half-built.
 //
 // Pure: no clock, no zone, no state. The day it groups against is passed in.
 import {
   EVENT_KIND,
   EVENT_STATUS,
+  haversineMeters,
+  iconForCategory,
+  reachableWithin,
   SUGGESTION_PLACEMENT,
   SUGGESTION_REASON,
   SUGGESTION_REF,
   suggestFor,
   type Booking,
+  type EventCategory,
   type MaybeItem,
   type Place,
   type Suggestion,
@@ -22,8 +26,9 @@ import {
 } from '@waypoint/shared';
 import { eventPlaceId } from './places';
 import { formatDistance } from './distance';
-import { relativeDayLabel, zonedIso } from './time';
-import type { GapDefaults } from './gaps';
+import { dayLabel, zonedIso, type DayNaming } from './time';
+import { FREE_TIME_MIN_MINUTES, type GapDefaults } from './gaps';
+import { chosenIcon, DEFAULT_MAYBE_ICON, SECONDS_PER_MINUTE } from '../constants';
 import { t } from '../i18n/he';
 
 export interface ShelfGroups {
@@ -32,9 +37,24 @@ export interface ShelfGroups {
   /** Everything else, dateless first, then ideas aimed at another day — each of
    *  which states which day at the call site (ADR-0085's relative phrasing). */
   pool: MaybeItem[];
-  /** The focused day's skipped soft events, parked here and restorable in place
-   *  (ADR-0027 §2). They belong to the day, so they render beside `forDay`. */
+  /** The focused day's skipped events, parked here and restorable in place (ADR-0027 §2).
+   *  They belong to the day, so they render beside `forDay`. Both kinds: the `=== SOFT` this
+   *  carried dated from when only a soft event could be skipped, and once ADR-0228 §2 let a
+   *  commitment be settled it made a skipped booking vanish from both day screens with no
+   *  path back (ADR-0228's 2026-09-16 amendment). */
   skipped: TripEvent[];
+}
+
+/**
+ * **What a parked event's card says about the state it is in** (ADR-0231 §2, fork F1). A
+ * skipped stop says `דילגתם`; a parked COMMITMENT — hard, or booked — says `לא מתקיים`. A tour
+ * the operator cancelled is not something you skipped, and "not happening" is true whoever
+ * called it off. A label, never a status: ADR-0228 §6b priced a fourth `EventStatus` at a
+ * migration plus forty consumers for a distinction the day does nothing different with.
+ */
+export function parkedTag(event: TripEvent, bookings: readonly Booking[]): string {
+  const booked = !!event.bookingId && bookings.some((b) => b.id === event.bookingId);
+  return event.kind === EVENT_KIND.HARD || booked ? t.day.notHappeningTag : t.day.skippedTag;
 }
 
 export function shelfGroups(
@@ -49,9 +69,7 @@ export function shelfGroups(
     forDay,
     // Dateless ideas lead: they're the ones still asking to be placed anywhere.
     pool: [...others.filter((m) => !m.targetDate), ...others.filter((m) => !!m.targetDate)],
-    skipped: events.filter(
-      (e) => e.date === date && e.kind === EVENT_KIND.SOFT && e.status === EVENT_STATUS.SKIPPED,
-    ),
+    skipped: events.filter((e) => e.date === date && e.status === EVENT_STATUS.SKIPPED),
   };
 }
 
@@ -125,6 +143,61 @@ export function slotStops(
     (e) => startOf(e) - slot.toMs,
   );
   return [before, after].flatMap((c) => (c ? [c.stop] : []));
+}
+
+/** The place an idea carries, or `undefined` — every resolution below needs it and none of
+ *  them needs coordinates, which is what separates this from `ideaShowOnMap`'s lookup. */
+const ideaPlace = (item: { placeId?: string }, places: Place[]): Place | undefined =>
+  item.placeId ? places.find((p) => p.id === item.placeId) : undefined;
+
+/**
+ * **The category an idea READS as: its own, else its place's** (owner, 2026-08-20: _"maybe
+ * items added from the map don't inherit the place category and icon"_).
+ *
+ * The same precedence `noteCategory` already applies one entity over — a note's own category,
+ * else its host's — and it is owed here for the reason that report names: **the map is where
+ * ideas come from.** Every place added outside an errand becomes an idea (ADR-0131 §11), the
+ * category is picked on the PLACE (`MapPlaceForm`'s pills, ADR-0165), and `verbs.addMaybe`
+ * only ever received one when the same gesture happened to author one — so an idea whose pin
+ * is a red restaurant sat on the shelf as an uncategorised 💡, and scheduling it produced an
+ * uncategorised event.
+ *
+ * Derived rather than copied onto the row at creation, which is the same call `chosenIcon`
+ * and `noteCategory` make: a stored copy freezes the idea at whatever the place said that
+ * day, and a place that is categorised LATER (or renamed through `MapPlaceForm`) would leave
+ * every idea already on the shelf behind.
+ */
+export function ideaCategory(
+  item: { category?: EventCategory | null; placeId?: string },
+  places: Place[],
+): EventCategory | undefined {
+  return item.category ?? ideaPlace(item, places)?.category ?? undefined;
+}
+
+/**
+ * **The glyph an idea shows**, on the shelf tile and on whatever it becomes when scheduled.
+ *
+ * The app's icon chain, at the rungs an idea occupies (`lib/map-pins.ts`'s `placeGlyph`
+ * writes the same chain out for a place): a pick at the nearest scope wins, so the idea's own
+ * glyph beats the place's, the place's beats the category's, and the category's beats the
+ * fallback. Through `chosenIcon` at both stored rungs, because a placeholder is not a pick —
+ * which is the whole of this fix on the icon side: the shelf's own `💡` was shadowing a
+ * category that says what the thing is.
+ *
+ * The tail is `DEFAULT_MAYBE_ICON` and not `placeGlyph`'s `📍`: an idea nobody has
+ * categorised is still an idea, and that is what the shelf's quick-add hands out.
+ */
+export function ideaGlyph(
+  item: { icon?: string; category?: EventCategory | null; placeId?: string },
+  places: Place[],
+): string {
+  const place = ideaPlace(item, places);
+  const category = item.category ?? place?.category;
+  return (
+    chosenIcon(item.icon) ??
+    chosenIcon(place?.icon ?? undefined) ??
+    (category ? iconForCategory(category) : DEFAULT_MAYBE_ICON)
+  );
 }
 
 /** An idea and why it sits where it does. `reason` is the strategy's, rendered by
@@ -273,42 +346,87 @@ export function shelfForSlot(
   slot: GapDefaults,
   tz: string,
   context: { events: TripEvent[]; bookings: Booking[]; places: Place[] },
-): RankedIdea[] {
+  /** **What is free in this slot, in minutes** — `Gap.minutes` for a fill (already corrected for
+   *  the journey in the hole, ADR-0206 §AY) or the replaced row's own length for `החלף`. Absent
+   *  measures nothing and drops nothing, which is what every caller did before ADR-0216. */
+  freeMinutes?: number,
+): SlotIdeas {
   const { events, bookings, places } = context;
   const ideas = [...shelf.forDay, ...shelf.pool];
-  if (!slot.start) return rankIdeas(ideas, places, slot.date, []);
-  return rankIdeas(
-    ideas,
-    places,
-    slot.date,
-    // Ranked against THIS slot's own neighbours, not the whole day — the sheet's only
-    // question is which idea fits here (ADR-0151 §3).
-    slotStops(events, bookings, places, slot.date, {
-      fromMs: Date.parse(zonedIso(slot.date, slot.start, tz)),
-      // A slot with no end (a late tail, ADR-0036) is an instant, and its "after" neighbour
-      // is then everything following it — which is the honest reading.
-      toMs: Date.parse(zonedIso(slot.date, slot.end || slot.start, tz)),
-    }),
-  );
+  if (!slot.start) return { ideas: rankIdeas(ideas, places, slot.date, []), dropped: 0 };
+  // Ranked against THIS slot's own neighbours, not the whole day — the sheet's only
+  // question is which idea fits here (ADR-0151 §3).
+  const stops = slotStops(events, bookings, places, slot.date, {
+    fromMs: Date.parse(zonedIso(slot.date, slot.start, tz)),
+    // A slot with no end (a late tail, ADR-0036) is an instant, and its "after" neighbour
+    // is then everything following it — which is the honest reading.
+    toMs: Date.parse(zonedIso(slot.date, slot.end || slot.start, tz)),
+  });
+  const reachable = reachableIdeas(ideas, places, stops, freeMinutes);
+  return {
+    ideas: rankIdeas(reachable, places, slot.date, stops),
+    dropped: ideas.length - reachable.length,
+  };
+}
+
+/** What the slot sheet needs: the rows to offer, and how many were refused as out of reach
+ *  (ADR-0216 §6 — the count is a STATEMENT, so it travels as a number and never as a row). */
+export interface SlotIdeas {
+  ideas: RankedIdea[];
+  dropped: number;
+}
+
+/**
+ * **The ideas a slot could actually hold** (ADR-0216 §2) — the detour out and back, floored by
+ * `MAX_GROUND_SPEED_KMH`, against what is free once there is time to be there.
+ *
+ * Filtered BEFORE `rankIdeas` rather than after, so the ranking never orders a candidate it would
+ * have had to explain: `reachableWithin` may drop and may do nothing else (§3), and a score is
+ * exactly the "something else" that would leak an unmeasured travel time into a reason.
+ *
+ * **Everything unmeasurable survives**, which is §D4 read from the other end — nothing may be
+ * dropped on an absence: no window to measure against, no located neighbour to leave from, no
+ * coordinates on the idea's own place (a Place-lite, ADR-0048).
+ */
+function reachableIdeas(
+  ideas: MaybeItem[],
+  places: Place[],
+  stops: SuggestionStop[],
+  freeMinutes: number | undefined,
+): MaybeItem[] {
+  if (freeMinutes === undefined || stops.length === 0) return ideas;
+  const placeById = new Map(places.map((p) => [p.id, p]));
+  const freeSeconds = freeMinutes * SECONDS_PER_MINUTE;
+  const staySeconds = FREE_TIME_MIN_MINUTES * SECONDS_PER_MINUTE;
+  // One neighbour serves as both ends at a day edge: leave from here, come back to here.
+  const [out, back] = [stops[0]!, stops[stops.length - 1]!];
+  return ideas.filter((item) => {
+    const place = placeById.get(item.placeId ?? '');
+    if (place?.lat == null || place.lng == null) return true;
+    const at = { lat: place.lat, lng: place.lng };
+    const detourMeters = haversineMeters(out.at, at) + haversineMeters(at, back.at);
+    return reachableWithin({ freeSeconds, detourMeters, staySeconds });
+  });
 }
 
 /** The reason as a full sentence, for the slot sheet's full-width row. The contract
  *  carries the fact and the frontend spells it (ADR-0151 §8, and `packages/shared`
- *  holds no UI copy). `today` is the date the relative phrasing is read against —
- *  the day being viewed, so "מחר" means the day after the one on screen. */
-export function reasonText(reason: SuggestionReason, today: string): string {
+ *  holds no UI copy). `naming` carries the day being viewed as its `anchor`, so on a
+ *  live trip "מחר" means the day after the one on screen; off-trip the day is named by
+ *  its number instead and the anchor doesn't apply (`dayLabel`). */
+export function reasonText(reason: SuggestionReason, naming: DayNaming): string {
   switch (reason.code) {
     case SUGGESTION_REASON.NEAR_STOP:
       return t.day.why.nearStop(formatDistance(reason.meters), reason.stopName);
     case SUGGESTION_REASON.AIMED_AT_DAY:
-      return t.day.why.aimedAtDay(relativeDayLabel(reason.targetDate, today));
+      return t.day.why.aimedAtDay(dayLabel(reason.targetDate, naming));
     case SUGGESTION_REASON.RECENTLY_ADDED:
       return t.day.why.recentlyAdded;
     // The whole sentence, stop name included — this is the sheet, which has the room the
     // tile does not (ADR-0151's amendment, measured).
     case SUGGESTION_REASON.FITS_DAY:
       return t.day.why.fitsDayFull(
-        relativeDayLabel(reason.date, today),
+        dayLabel(reason.date, naming),
         formatDistance(reason.meters),
         reason.stopName,
       );
@@ -326,19 +444,19 @@ export function reasonText(reason: SuggestionReason, today: string): string {
  *
  * Recency gets no line: on a strip it is chrome, not a fact worth the height.
  */
-export function tileReasonText(reason: SuggestionReason, today: string): string | undefined {
+export function tileReasonText(reason: SuggestionReason, naming: DayNaming): string | undefined {
   switch (reason.code) {
     case SUGGESTION_REASON.NEAR_STOP:
       return formatDistance(reason.meters);
     case SUGGESTION_REASON.AIMED_AT_DAY:
-      return relativeDayLabel(reason.targetDate, today);
+      return dayLabel(reason.targetDate, naming);
     case SUGGESTION_REASON.RECENTLY_ADDED:
       return undefined;
     // The day and the distance, and NOT the stop name — which wraps this line and costs the
     // tile 8px (ADR-0151's amendment, measured). `reasonText` above says the whole sentence,
     // in the sheet, which has room for it.
     case SUGGESTION_REASON.FITS_DAY:
-      return t.day.why.fitsDay(relativeDayLabel(reason.date, today), formatDistance(reason.meters));
+      return t.day.why.fitsDay(dayLabel(reason.date, naming), formatDistance(reason.meters));
   }
 }
 

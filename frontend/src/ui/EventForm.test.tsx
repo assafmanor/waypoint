@@ -45,6 +45,13 @@ const tripState = {
   // …and read on the way back: editing an existing event renders `HostNotes`, which reads
   // the trip's notes and members straight from here.
   notes: [] as unknown[],
+  tasks: [],
+  taskVerbs: {
+    createTask: async () => {},
+    updateTask: async () => {},
+    deleteTask: async () => {},
+    tickTask: async () => {},
+  },
   users: [] as unknown[],
   // Documents attached on the way (ADR-0173 §5): the slot reads the trip's documents and
   // links, and the form queues its staged links BEHIND their host like the notes above.
@@ -52,6 +59,7 @@ const tripState = {
   documentAttachments: [] as unknown[],
   attachmentVerbs: { attachDocument: vi.fn(() => Promise.resolve(undefined)) },
 };
+vi.mock('../state/mode-state', () => import('../test/mode-from-trip'));
 vi.mock('../state/trip-state', () => ({ useTrip: () => tripState }));
 // The attach slot reads the outbox for queued uploads (ADR-0173 §5 / ADR-0056); there is no
 // IndexedDB here, and a queued upload is not what these tests are about.
@@ -552,12 +560,18 @@ describe('EventForm (folded into Modal, U-01)', () => {
         pickCategory('transport');
         fireEvent.click(bookedChip());
         const derived = () => document.querySelector('.ef-derived')!.textContent!;
-        expect(derived()).toContain(t.eventForm.bookedDerived(t.index.bookingType.flight));
+        // A flight's default kind is HARD (`defaultKindForBookingType`), which the statement
+        // now says too — see ADR-0192 §3 for why it carries the kind at all.
+        expect(derived()).toContain(
+          t.eventForm.bookedDerived(t.index.bookingType.flight, t.eventForm.kindHard),
+        );
 
         fireEvent.click(
           within(typeGroup()!).getByRole('radio', { name: t.index.bookingType.transit }),
         );
-        expect(derived()).toContain(t.eventForm.bookedDerived(t.index.bookingType.transit));
+        expect(derived()).toContain(
+          t.eventForm.bookedDerived(t.index.bookingType.transit, t.eventForm.kindHard),
+        );
       });
 
       it('forgets an explicit type when the category changes, since that is a new question', () => {
@@ -763,7 +777,10 @@ describe('EventForm (folded into Modal, U-01)', () => {
       ).toBeNull();
       const statement = document.querySelector('.ef-linked') as HTMLButtonElement;
       expect(statement.textContent).toContain('רמן נאגי');
-      expect(statement.textContent).toContain('RN-4820');
+      // **The way IN to a booking does not print its confirmation code** (ADR-0223 §4).
+      // This asserted `RN-4820` until the code was demoted to the booking itself; the
+      // statement still identifies which booking it opens, by title.
+      expect(statement.textContent).not.toContain('RN-4820');
       fireEvent.click(statement);
       expect(onOpenBooking).toHaveBeenCalledWith(expect.objectContaining({ id: 'bk-1' }));
       tripState.bookings = [];
@@ -1280,6 +1297,26 @@ describe('EventForm (folded into Modal, U-01)', () => {
       expect(iconChip().textContent).toBe(iconForCategory('nature'));
     });
 
+    // ── The idea's category and glyph are its PLACE's (owner, 2026-08-20) ────────────
+    // "Maybe items added from the map don't inherit the place category and icon": the pills
+    // are on the place (ADR-0165) and the idea the same gesture created carries nothing, so
+    // scheduling one opened this form uncategorised with a bare 📌.
+    it('opens on the category and glyph of the idea’s place', () => {
+      tripState.places = [{ ...PLACE_B, category: 'food' }];
+      const idea = { id: 'm1', tripId: 't1', title: 'רעיון', icon: '💡', placeId: PLACE_B.id };
+      render(wrapNav(<EventForm maybeItem={idea as never} onClose={() => {}} />));
+      const group = screen.getByRole('radiogroup', { name: t.eventForm.categoryLabel });
+      expect(
+        within(group)
+          .getByRole('radio', { name: t.iconPicker.categories.food })
+          .getAttribute('aria-checked'),
+      ).toBe('true');
+      expect(iconChip().textContent).toBe(iconForCategory('food'));
+      // …and a glyph the CATEGORY derived is still not a pick, so the category keeps moving it.
+      pickCategory('nature');
+      expect(iconChip().textContent).toBe(iconForCategory('nature'));
+    });
+
     it('carries the icon latch across the errand once a glyph is actually picked', () => {
       render(
         wrapNav(
@@ -1313,7 +1350,18 @@ describe('EventForm (folded into Modal, U-01)', () => {
   // a note that overtook its host would flush first and the server would refuse a host it
   // cannot see — the same defect the document upload had to be built around.
   describe('the composer', () => {
-    const composer = () => document.querySelector('.note-compose-in') as HTMLTextAreaElement;
+    /** **The box is revealed by `＋ פתק` now** (ADR-0192 §2's reversal) — so every test that
+     *  types a note presses it first, exactly as a person does. `openBox` is idempotent on an
+     *  already-open box: `openNew` commits what is there and opens a fresh one, which is also
+     *  how a second note is started. */
+    const openBox = () => {
+      const section = document.querySelector('.note-sec:not(.tsk-sec)') as HTMLElement;
+      fireEvent.click(section.querySelector('.add') as HTMLElement);
+    };
+    const composer = () => {
+      if (!document.querySelector('.note-compose-in')) openBox();
+      return document.querySelector('.note-compose-in') as HTMLTextAreaElement;
+    };
     const save = () => fireEvent.click(screen.getByText(t.common.save));
     const nameIt = (title = 'ארוחת ערב') =>
       fireEvent.input(screen.getByPlaceholderText(t.eventForm.titlePlaceholder), {
@@ -1405,6 +1453,49 @@ describe('EventForm (folded into Modal, U-01)', () => {
       updatedBy: 'u1',
     } as unknown as Parameters<typeof EventForm>[0]['event'];
 
+    // ── THE FIVE BANDS (ADR-0192 §3) ────────────────────────────────────────────
+    // **This is the test the ADR exists for.** The reported defect was not any one field's
+    // position, it was that there was no rule — so every new field landed at the end and the
+    // form drifted. A rule nothing checks drifts again; this reads the rendered order and
+    // fails when a block moves out of its band, which is also what makes the instruction in
+    // `frontend/CLAUDE.md` enforceable rather than advisory.
+    //
+    // Asserted as a SEQUENCE of what is present, not as fixed indices: a band may grow a
+    // field (that is the point of having bands) without this needing an edit, and a field
+    // hidden by a condition — a booking-linked event authors no place or category — simply
+    // drops out of the list rather than shifting everything after it.
+    it('renders its fields in band order: what → where → when → booking → attached', () => {
+      render(wrapNav(<EventForm onClose={() => {}} />));
+      const form = document.querySelector('.modal-form') as HTMLElement;
+      // One selector per band member, in the order the bands run.
+      const bands: [string, string][] = [
+        ['what', '.category-pills'],
+        ['what', '.title-row'],
+        ['where', '.place-picker'],
+        ['when', '.wf'],
+        ['when', '.kind-toggle'],
+        ['booking', '.wp-chip.cta'],
+        ['attached', '.doc-sec'],
+        ['attached', '.tsk-sec'],
+        ['attached', '.note-sec:not(.tsk-sec)'],
+      ];
+      const found = bands.map(([band, sel]) => {
+        const el = form.querySelector(sel);
+        expect(el, `${band}: ${sel} is not in the form`).toBeTruthy();
+        return { band, sel, el: el as HTMLElement };
+      });
+      for (let i = 1; i < found.length; i++) {
+        const prev = found[i - 1];
+        const cur = found[i];
+        const followsPrev =
+          prev.el.compareDocumentPosition(cur.el) & Node.DOCUMENT_POSITION_FOLLOWING;
+        expect(
+          followsPrev,
+          `${cur.band} (${cur.sel}) must read after ${prev.band} (${prev.sel})`,
+        ).toBeTruthy();
+      }
+    });
+
     it('lists the existing notes above the box when editing, with one way to add', () => {
       tripState.notes = [
         {
@@ -1421,13 +1512,48 @@ describe('EventForm (folded into Modal, U-01)', () => {
       ];
       render(wrapNav(<EventForm event={existing} onClose={() => {}} />));
 
-      const section = document.querySelector('.note-sec') as HTMLElement;
+      // `:not(.tsk-sec)` — the tasks section shares this geometry and reads above it
+      // (ADR-0191 §5), so a bare `.note-sec` now finds the tasks one first.
+      const section = document.querySelector('.note-sec:not(.tsk-sec)') as HTMLElement;
       expect(section.textContent).toContain('הכניסה מאחור');
-      // ONE way to add, and it is the box — the section's `＋ פתק` would open a second
-      // sheet over a form that is already asking for a save.
-      expect(section.querySelector('.add')).toBeNull();
+      // **ONE way to add, and it is the header's `＋ פתק`** (ADR-0192 §2's 2026-08-16
+      // reversal). It used to be the box, permanently open with no header control — which is
+      // what made the section look nothing like the tasks section beside it. The box is not
+      // on screen until that control is pressed.
+      expect(document.querySelector('.note-compose-in')).toBeNull();
+      const add = section.querySelector('.add') as HTMLElement;
+      expect(add.textContent).toContain(t.notes.section.add);
+      fireEvent.click(add);
+
+      // **The box is INSIDE the section** (ADR-0192 §2), not a `Field` after it — which is
+      // what retires the second `פתקים` heading and the `labelMore` string that dodged it.
       const box = document.querySelector('.note-compose-in') as HTMLElement;
-      expect(section.compareDocumentPosition(box) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(section.contains(box)).toBe(true);
+      // …and it is the LAST row, after the notes it is adding to.
+      const row = section.querySelector('.note-item') as HTMLElement;
+      expect(row.compareDocumentPosition(box) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      // It opens the box, never `NoteSheet` — a form over a form is what the owner refused.
+      expect(screen.queryByText(t.notes.sheet.createTitle)).toBeNull();
+    });
+
+    // **ONE heading, on both create and edit** (ADR-0192 §2). The defect this pins is not a
+    // pixel: the form used to render the section AND a captioned `Field`, so an edit said
+    // `פתקים` and then `פתק חדש · לא חובה` one under the other. Counting the sections is what
+    // a reader would have had to do by eye.
+    it('heads the notes once, and holds the composer inside that one section', () => {
+      for (const props of [{}, { event: existing }]) {
+        cleanup();
+        render(wrapNav(<EventForm {...props} onClose={() => {}} />));
+        const sections = document.querySelectorAll('.note-sec:not(.tsk-sec)');
+        expect(sections).toHaveLength(1);
+        // Closed, the section reads exactly like the tasks section: a header and its empty
+        // line. Opened, the box replaces that line rather than sitting under it.
+        expect(sections[0].querySelectorAll('.note-compose-in')).toHaveLength(0);
+        expect(sections[0].textContent).toContain(t.notes.section.empty);
+        fireEvent.click(sections[0].querySelector('.add') as HTMLElement);
+        expect(sections[0].querySelectorAll('.note-compose-in')).toHaveLength(1);
+        expect(sections[0].textContent).not.toContain(t.notes.section.empty);
+      }
     });
 
     it('writes a note typed while editing onto the event being edited', async () => {

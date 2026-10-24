@@ -2,8 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   cameraFrame,
   focusBoundsFor,
+  normalizeBearing,
+  shortestTurn,
   boundsContain,
   boundsOfPoints,
+  centreOfPoints,
   cameraTargetFor,
   countPointsInBounds,
   fitPaddingFor,
@@ -12,6 +15,7 @@ import {
   panShiftForReserve,
   pointInBounds,
   searchCameraTarget,
+  zoomNoTighterThan,
   zoomStepIn,
 } from './map-camera';
 import { pinHeightFor } from './map-pins';
@@ -28,6 +32,28 @@ import {
 
 const TOKYO = { lat: 35.68, lng: 139.76 };
 const KYOTO = { lat: 35.01, lng: 135.77 };
+
+// **The middle of a leg, as a FIT would centre it** (ADR-0206 §AC8) — the middle of its extent,
+// which is what `keepCentred` has to be handed if the band changing under a framed leg is to
+// re-centre the same thing the fit did.
+describe('centreOfPoints (ADR-0206 §AC8)', () => {
+  it('is null for an empty set, like the bounds it reads', () => {
+    expect(centreOfPoints([])).toBeNull();
+  });
+
+  it('is the middle of the EXTENT, so a cluster at one end cannot drag it', () => {
+    // Two points at Tokyo against one at Kyoto: an average would sit two-thirds of the way
+    // east, and a fit centres the box.
+    expect(centreOfPoints([TOKYO, TOKYO, KYOTO])).toEqual({
+      lat: (35.68 + 35.01) / 2,
+      lng: (139.76 + 135.77) / 2,
+    });
+  });
+
+  it('is the point itself for a single one', () => {
+    expect(centreOfPoints([TOKYO])).toEqual({ lat: 35.68, lng: 139.76 });
+  });
+});
 
 describe('boundsOfPoints (ADR-0121 §7)', () => {
   it('is null for an empty set — no pins, so the camera is left alone', () => {
@@ -313,6 +339,28 @@ describe('the zoom ladder (ADR-0127 §2)', () => {
     it('is a pure function of the current zoom, so no tap count can desynchronise', () => {
       expect(step(MAP_ZOOM.PLACE)).toBe(step(MAP_ZOOM.PLACE));
       expect(step(null)).toBe(MAP_ZOOM.PLACE);
+    });
+  });
+
+  // **The other end of the same ladder** (ADR-0206 §AC8's 2026-08-28 amendment): what a pan may
+  // keep when the camera has just admitted it cannot frame what the pan is about.
+  describe('zoomNoTighterThan', () => {
+    const cap = (z: number | null | undefined) => zoomNoTighterThan(z, MAP_ZOOM.DOT_BELOW);
+
+    // The report itself: a leg framed at street zoom, then a leg the floor refuses. `null` would
+    // have kept the street zoom, which is how the map stayed in close on a leg it could not show.
+    it('pulls a zoom tighter than the cap back to it', () => {
+      expect(cap(MAP_ZOOM.MAX_FIT)).toBe(MAP_ZOOM.DOT_BELOW);
+      expect(cap(MAP_ZOOM.DOT_BELOW + 0.5)).toBe(MAP_ZOOM.DOT_BELOW);
+    });
+
+    // And only ever pulls BACK: a view already wider is owed nothing, so it keeps its zoom
+    // rather than being zoomed IN on a subject the camera cannot frame.
+    it('leaves a view already wider than the cap alone', () => {
+      expect(cap(MAP_ZOOM.DOT_BELOW)).toBeNull();
+      expect(cap(MAP_ZOOM.DOT_BELOW - 3)).toBeNull();
+      expect(cap(null)).toBeNull();
+      expect(cap(undefined)).toBeNull();
     });
   });
 });
@@ -709,5 +757,74 @@ describe('the selected place stays in the middle of what you can see (ADR-0122 �
 
   it('rounds to whole pixels, like its twin', () => {
     expect(Number.isInteger(recentreInBand(CANVAS - 17.4, CANVAS, RESERVE, TOP, TOL))).toBe(true);
+  });
+});
+
+// ── WHICH WAY IS UP (ADR-0234) ────────────────────────────────────────────────
+// These two are where a bearing bug hides, because neither throws: the wrong sign gives a
+// compass that turns the wrong way, and the wrong arc gives one that spins the long way
+// round to cross north. Both look like a CSS problem on screen.
+describe('normalizeBearing', () => {
+  it('puts every angle on [0, 360)', () => {
+    expect(normalizeBearing(0)).toBe(0);
+    expect(normalizeBearing(360)).toBe(0);
+    expect(normalizeBearing(370)).toBe(10);
+    // MapLibre reports `(-180, 180]`, so a negative is the ordinary input here, not an edge.
+    expect(normalizeBearing(-90)).toBe(270);
+    expect(normalizeBearing(-360)).toBe(0);
+  });
+});
+
+describe('shortestTurn', () => {
+  it('goes the short way across north', () => {
+    expect(shortestTurn(350, 10)).toBe(20);
+    expect(shortestTurn(10, 350)).toBe(-20);
+  });
+
+  it('is zero for the same angle however it is written', () => {
+    expect(shortestTurn(40, 40)).toBe(0);
+    expect(shortestTurn(-10, 350)).toBe(0);
+  });
+
+  it('never asks for more than half a turn', () => {
+    for (const [from, to] of [
+      [0, 179],
+      [0, 181],
+      [270, 5],
+      [5, 270],
+    ]) {
+      expect(Math.abs(shortestTurn(from, to))).toBeLessThanOrEqual(180);
+    }
+  });
+
+  // Nothing recommends one direction over the other for a half turn; that it is the SAME
+  // every time is the whole property, so this pins the arithmetic's own answer.
+  it('resolves an exact half turn counter-clockwise, and always the same way', () => {
+    expect(shortestTurn(0, 180)).toBe(-180);
+    expect(shortestTurn(90, 270)).toBe(-180);
+  });
+});
+
+describe('cameraFrame, on the angle', () => {
+  const AT = { center: { lat: 35.68, lng: 139.76 }, zoom: 12 };
+
+  // **The default, and the one that keeps every existing caller honest.** Almost every move
+  // in this app is a pan or a fit with no opinion about the angle; a frame that invented one
+  // would silently straighten a map the user had turned.
+  it('says nothing about the angle when neither end states one', () => {
+    expect(cameraFrame(AT, AT, 0.5).bearing).toBeUndefined();
+  });
+
+  it('interpolates the short way, like longitude one line above it', () => {
+    const from = { ...AT, bearing: 350 };
+    const to = { ...AT, bearing: 10 };
+    // Halfway across north is 0, not 180 — the same trap the longitude wrap exists for.
+    expect(cameraFrame(from, to, 0.5).bearing).toBeCloseTo(0, 5);
+  });
+
+  it('lands exactly on the target at the end', () => {
+    const from = { ...AT, bearing: 40 };
+    const to = { ...AT, bearing: 0 };
+    expect(cameraFrame(from, to, 1).bearing).toBe(0);
   });
 });

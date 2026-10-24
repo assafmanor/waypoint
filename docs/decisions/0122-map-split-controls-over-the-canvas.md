@@ -278,11 +278,262 @@ two mechanisms and removed a trap.
 
 ### What it still does not do
 
+> **Superseded 2026-09-15** — the case below is now built; the rule that covers it is the
+> [2026-09-15 amendment](#amendment-2026-09-15--a-swipe-that-begins-as-a-scroll-is-a-scroll-the-sheet-moves-only-from-the-lists-end).
+> The paragraph stands as the record of why it was scoped out here.
+
 **A list that fills the sheet has no drag.** That case needs overscroll chaining — the list runs out
 of scroll and hands the gesture on — which is the genuinely hard problem above, and the one place a
 drag and a scroll really do compete. The handle row and the view toggle both still work there, so
 this is a convenience gap on dense lists rather than a dead end, and it is stated here so the next
 reader knows it was scoped out rather than missed.
+
+## Amendment (2026-08-27) — the card folds, and it stays folded
+
+Owner report off the shipped canvas, with screenshots: _"clicking on a stop highlights the route to
+it (or from it), but the place details pops up and hides most of the path. Sometimes you want to get
+the details but sometimes you only want to see the path … and this applies also to places that
+aren't necessarily on the schedule (maybe items for example) and don't have paths leading to/from
+them — maybe you want them selected but not show the details."_
+
+§7 gave a pin tap a card on the canvas and gave the card no size but its own. [ADR-0182](0182-a-day-is-a-sequence-you-can-step-through.md)'s
+device pass then added the `✕` on the owner's ask for _"a way to close the card **and/or collapse
+it**"_ — and built the first half only. This is the second half, plus the camera half the report
+made visible, which is [ADR-0206 §AC8](0206-a-travel-time-belongs-between-two-points.md).
+
+### 1. Two problems wearing one costume, and only one of them is the card
+
+The obvious reading is "the card is too big". It is not: **the camera was framing the wrong
+object.** A pin tap centres the selected stop in the band above the card (`bottomReserve`,
+[ADR-0128](0128-map-dot-tier-and-the-cards-camera-reserve.md) §2) — so the camera has always
+known the card is there, and has never known that what the selection is ABOUT is a **leg**. Centre
+one end of a line and the other half of it goes under whatever is at the bottom of the screen.
+
+So the two halves are separable and both were built:
+
+- **The camera frames the leg** (ADR-0206 §AC8) — which is where the report goes away for a stop
+  that has one, with no gesture to learn and nothing to choose.
+- **The card folds** — which is the only half that can serve the second sentence of the report, a
+  shelf idea or a maybe with no leg at all. There is nothing to frame there; there is only a card
+  in the way.
+
+### 2. Folding is not hiding, and the folded card is the row every list already draws
+
+`renderRow` passes `revealed: !collapsed`, so a folded card renders **the identity row** —
+badge, name, meta line, `✕` — and nothing else. That is deliberate reuse rather than a smaller
+card beside the real one (rule 8): `revealed` is already the axis that decides a row's density
+(ADR-0182's density amendment), and a one-line bar built beside it would be a second answer to a
+question the row had already answered.
+
+Everything that says "this place is selected" survives: the pin's ring, the amber leg, the row's
+chrome, the selection itself. **What goes is the content, and the words say so** — `כיווץ כרטיס
+המקום` / `פתיחת כרטיס המקום`, never `הסתרה`.
+
+### 3. The control is a caret beside the `✕`, and a repeat pin tap is a shortcut, not the way
+
+The caret sits in the identity row for exactly the reason the `✕` does: the card becomes a scroller
+once its pinned rows exceed the cap, and an absolutely-positioned corner control scrolls out of
+reach precisely when the card is tallest. One control both ways — the caret turns — because a fold
+button and an unfold button in different places is two controls for one state.
+
+A **second tap on the pin you are already on** folds it too, and a third opens it: the same reading
+of the same gesture the rings' own commit takes (a first tap already said "this one", so a second
+cannot mean that again), gated on the map extreme where a card is what a pin tap raises. It is a
+shortcut for a thumb already there and never the only way in — nothing about a repeat tap is
+discoverable, which is why the caret exists.
+
+### 4. Sticky for the session, and `useState` IS the session (owner, 2026-08-27)
+
+The question a mockup would have been drawn to answer: does the next stop you tap open folded or
+open full? **Folded** — the owner's call, and the reasoning holds it up: folding is a state of the
+**reader** ("I am reading the map, not the cards"), where `expandedId` right beside it in the same
+component is a state of a **place**, which is why that one is an id and must not survive a new
+selection.
+
+So it is one screen-level boolean, and it needs no clearing anywhere: the Map screen unmounts with
+the tab, so a fold is remembered for as long as you are on the map and forgotten when you leave it.
+**That is the reset, and nobody has to be given a control for it.** Persisting it across visits was
+considered and refused — it is a `waypoint:*` key for a preference nobody asked to keep, and a
+folded card on a fresh visit to a tab whose whole payload is cards reads as a broken screen.
+
+### 5. Folding folds the whole track
+
+The card is a previous · current · next track (ADR-0182). All three slides fold, because the
+neighbours exist to say what is either side of the card you are on — three identity rows is that
+statement at the folded size, where one folded card between two full ones reads as a broken slide
+rather than as a choice you made. `onToggleCollapsed` is still passed to the **current** slide
+only, like `✕`: folding from a neighbour would act on a card you are not looking at.
+
+### 6. What this does not do
+
+**No swipe-down to fold.** A drag on the card would compete with the track's horizontal snap and
+with the sheet's own drag region two elements away (§4's amendment), which is the genuinely hard
+gesture problem this ADR already scoped out once. Two taps reach the same state and neither is
+ambiguous. Worth revisiting only if the caret measures as hard to find on a device.
+
+## Amendment (2026-09-15) — a swipe that begins as a scroll is a scroll; the sheet moves only from the list's end
+
+> _"You could also drag the list view to change the mode as well and it works, but only if the list
+> isn't too long that it becomes scrollable. When scrollable, you can't drag the list to change the
+> mode (to list / half half / full map). I want to add support for that."_ — owner, 2026-09-15
+>
+> On the first build deployed the same day, which grew the sheet before it scrolled the list:
+> _"first it switches from half to full list and only then it scrolls. I want it to scroll first and
+> only when there's nothing more to scroll then it goes to switch to full list."_
+>
+> And on the second, which scrolled first and handed the same gesture to the sheet at the list's end:
+> _"sometimes I just want to scroll and I don't want it to change mode immediately. I want to first
+> finish scrolling, then if I want to change mode I'd swipe again."_
+
+The 2026-08-06 amendment built the body drag for a list that fits and wrote the scrollable list off
+as _"the genuinely hard problem"_. The owner's report is that the gap is felt on every real day — a
+day with more than three or four stops is scrollable at `half`, so the body drag existed exactly
+where a list was short enough not to need it. This closes the gap. The premise that made it look
+hard was retired a month ago by another surface (§3), and the rule took three readings on the
+deployed builds before it was the owner's (§1, §2).
+
+### 1. The rule: a swipe that begins as a scroll is a scroll; the sheet moves only from the list's end
+
+One question decides every vertical press on the body, asked of the **list**, once, at the moment
+the finger has moved enough to have a direction: **can it still scroll the way the finger is going?**
+
+| the list, the way the finger goes | what the gesture does                                                      |
+| --------------------------------- | -------------------------------------------------------------------------- |
+| can still scroll                  | the browser pans it — for the whole gesture, to the list's end and past it |
+| already at that end               | the sheet moves from the first pixel                                       |
+
+So from `half` a long drag up reads to the end of the list and stops there, with the browser's own
+bounce at the end as the cue that the list is done; the **next** swipe up, beginning with the list
+already at its bottom, opens the sheet. A drag down on a scrolled list scrolls it back to its top and
+stops; the next swipe down closes the sheet. A drag down on a list already at its top closes the
+sheet at once, and a drag up on a list already at its bottom opens it at once. A list that fits is at
+both ends at once, so it behaves exactly as the 2026-08-06 rule had it.
+
+**Two builds preceded this one and the owner refused both off the deployed app.** The first grew
+the sheet before it scrolled the list (the Google Maps shape: nothing scrolls until the sheet is as
+tall as it gets), and was refused because at `half` the list is _the thing you are reading_ and the
+map above it is context you chose to keep — a gesture that takes the map away before the list has
+asked for the room is the mode switch arriving uninvited. The second scrolled first and, in the
+same gesture, handed the finger to the sheet the moment the list ran out (Android's nested-scroll
+shape). It was refused for the reason that decides the rule: **a scroll that ends at the list's end
+is a common thing to do on purpose**, and a sheet that opens in the same motion turns every long
+scroll into a mode switch the reader did not ask for. The reader knows the difference between
+"read to the end" and "open the list"; the app should not guess it from one motion. Two swipes,
+each unambiguous, beat one swipe the app has to interpret.
+
+### 2. What is not built, and why it stays out
+
+**No same-gesture hand-off, in either direction.** It was built, measured in a real engine, and
+withdrawn on the owner's report above; its mechanism (reading the browser's own pan off the touch
+stream after the pointer is cancelled, and moving the sheet from the move on which the list reports
+itself at its end) is recorded here so nobody re-derives it: it works, and it is the wrong feel for
+this product. The scroller keeps `overscroll-behavior: contain`, so the browser's bounce at the end
+paints — it is the "you are done" cue the two-swipe shape needs.
+
+**No time window either.** A "swipe again within N ms" continuation was considered and refused for
+the same reason: it is still the app interpreting a motion. The list's end is a state the reader can
+see, and a swipe that begins there is a swipe that means it.
+
+### 3. The mechanism, and why `touch-action` was the wrong premise
+
+The 2026-08-06 amendment reasoned from `touch-action`: it _"is what lets a drag be seen at all and
+is precisely what makes a list unscrollable, and the choice cannot be deferred to the first move
+either, because a browser will not hand a native pan back once it has started one"_. Both halves
+are true and neither is the constraint. **[ADR-0200 §9](0200-a-day-steps-with-a-swipe-and-the-shell-stops-scrolling.md)
+measured the third way for the day surface:** a non-passive `touchmove` listener that calls
+`preventDefault()` on the first move that means anything, _before_ Chrome's ~8px slop. The browser
+dispatches that `touchmove` cancelable and waits; prevented, it never starts the pan, and the pointer
+events keep flowing. Not prevented, it pans exactly as if no listener existed. So the decision
+**can** be deferred to the first move — the direction exists by then, and 4px of it is enough.
+
+`useSnapDrag` gains one option, `claim({ dx, dy })`, asked once at the slop; `false` stands the hook
+down for the rest of the gesture — nothing captured, nothing prevented, every listener unbound, so
+the pan that follows runs on the compositor with nothing waiting on the main thread (§6). The body's
+`claim` is one function of the list's live scroll state, `listAtEnd(dy)`, plus an axis test (a
+sideways finger is a strip's or a text selection's); the handle row passes no `claim` and is
+untouched. One rule inside the hook is load-bearing and not tuning: **the move still under the slop
+is never prevented** — the spec makes a prevented first `touchmove` forfeit the whole touch's
+scrolling, so preventing early would take the list's scroll away from a gesture `claim` was about to
+decline.
+
+What went with the old mechanism: the body's `data-drag` attribute, its `touch-action: none` rule,
+and the `ResizeObserver` on the body and its children that maintained it. One mechanism now covers
+the list that fits and the list that does not, where keeping both would have been the parallel copy
+root rule 8 exists to refuse.
+
+### 4. What this does not do, and what is unmeasured
+
+**A mouse drag on a list that can still scroll does nothing.** There is no native drag-scroll for a
+mouse, so the `list` verdict stands the hook down and the drag is the browser's text selection, as it
+always was; the wheel scrolls, and a mouse drag on a list at its end moves the sheet.
+
+**The claim is measured on Chromium only.** It rests on the browser leaving a `touchmove` still
+under our 4px slop cancelable — Chromium does, at its own ~8px — and on iOS Safari that hysteresis
+is not documented. If WebKit commits its pan on the first unprevented `touchmove`, a drag up on a
+list already at its bottom would sometimes scroll nothing and open nothing until the next gesture:
+degraded, never broken, since the handle row keeps every stop reachable. The device pass owns the measurement, and the lever if it fails is a touch-only decide
+threshold under the slop, not a lower slop (the slop is what keeps a tap on a row from being read
+as a drag).
+
+### 5. Verification
+
+`SnapSheet.test.tsx` covers the decision in jsdom (the table, a scroll that runs the list out and
+moves nothing, the next swipe that does, the axis test and the three `touchmove` rules), with the
+browser's pan stood in for by setting `scrollTop` directly. **`e2e/snap-sheet-drag.spec.ts` drives
+the REAL component with trusted CDP touch in Chromium** — mounted by `e2e/snap-sheet-harness.html`,
+since the app cannot host the sheet without a canvas — and asserts what only an engine can: a list
+with room left keeps an upward finger and the sheet does not move; a list at its end hands the
+finger to the sheet from the first pixel; and a long drag scrolls the list to its end, stops there,
+and the next swipe lands the sheet on the next stop, in both directions. The old spec asserted `touch-action`
+and nothing else, because the old rule lived entirely in that attribute.
+
+### 6. The drag's cost, counted (owner, 2026-09-15: _"control feels a little slow and wonky"_)
+
+Two things in the first two builds were spending the main thread while a finger was down, and
+neither was the gesture itself.
+
+**A state update per move.** `SnapSheet` held the live height in React state, so every
+`pointermove` re-rendered the component — sixty times a second, on the screen whose parent already
+re-renders every second on the clock — to change one inline pixel value. [ADR-0200 §7](0200-a-day-steps-with-a-swipe-and-the-shell-stops-scrolling.md)
+had already refused exactly this for the day swipe (_"a state update per `pointermove` would
+re-render the heaviest screen in the app sixty times a second"_) and written its offset to a CSS
+custom property instead. The sheet now does the same: the height and the `dragging` class are
+written to the DOM by the gesture and cleared on release, React's `style` carries only `--snap-h`,
+and a clock re-render mid-drag touches neither. No batching of our own: Chrome delivers pointer
+and touch moves aligned to the frame, so one write per move is one write per frame.
+
+**A non-passive `touchmove` listener left on during the browser's pan.** The claim needs a
+non-passive listener (it is the `preventDefault`), and the second build kept that same listener
+bound while the list scrolled, to watch for its hand-off. A non-passive `touchmove` listener
+anywhere on the path makes the browser dispatch every move to the main thread and **wait for the
+handler to return before it scrolls** — so the list's own native pan was throttled to whatever the
+main thread was doing, which on this screen includes a re-render every second. The moment the
+verdict is the list's, every listener is unbound; the pan is the compositor's, as if nothing were
+listening. (The measurement below was taken with a passive watch still bound; with no hand-off
+there is now nothing bound at all, which can only be cheaper.)
+
+Measured with `e2e/snap-sheet-perf.spec.ts` (Chromium's own counters over a 60-move gesture in the
+real component, run by hand with `E2E_PERF=1`):
+
+| gesture                        | script, before → after | main thread, before → after | layouts |
+| ------------------------------ | ---------------------- | --------------------------- | ------- |
+| sheet drag, list at its bottom | 69ms → 14ms            | 158ms → 70ms                | 59 → 59 |
+| list pan, then hand-off        | 26ms → 7ms             | 56ms → 36ms                 | 18 → 22 |
+| pure list pan (the browser's)  | 5ms → 6ms              | 30ms → 31ms                 | 0 → 0   |
+
+The counters cannot see the passive listener's effect — it is scroll latency, not work — and the
+harness holds a trivial sheet, so the saving in the app, where the render per move reconciled the
+view toggle and the near chip too, is larger than the table.
+
+**What still costs, and what the next lever is.** The layouts did not move and are not meant to:
+a height that follows the finger is one layout per frame, and that layout is of the list the sheet
+holds. On a real day that list is twenty rows of cards with photographs, so the per-frame floor is
+theirs, and the release animation (`--t-base` on `height`) pays it for another seventeen frames.
+The lever that remains is the Map's own clock: `screens/Map.tsx` rebuilds the sheet's children as
+fresh JSX every second (`sheetList`, over `renderList(listRows, …)` whose `select` closes over the
+render), so a one-second tick mid-gesture reconciles the whole list under the finger. Memoising
+that against the clock is a `Map.tsx` change with its own latest-ref audit, not this one's, and is
+the backlog line this section leaves.
 
 ## The device pass, and what it owns
 

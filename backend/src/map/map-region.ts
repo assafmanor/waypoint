@@ -89,15 +89,25 @@ export function mapRegionFor(points: readonly LatLng[]): MapRegion | null {
 export const MAP_KEY_PREFIX = 'map_';
 
 /** Where a built extract lives in the byte sink (`common/storage.ts`). The signature is
- *  IN the key on purpose — see `MapRegion.signature`.
+ *  IN the key on purpose — see `MapRegion.signature` — and so is the archive VINTAGE, which is
+ *  what makes an offline archive refreshable at all: the signature changes when the covered
+ *  ground does, the vintage when the data underneath goes stale (ADR-0186 §6 amendment).
  *
  * **Flat, not `map/<tripId>/<sig>`**, and that is the sink's contract rather than a
  * preference: `storage.ts` is "one flat keyspace of UUIDs" and writes with a bare
  * `writeFile`, so a key containing `/` asks its local-disk branch to create directories
  * it has never had to (found by the first real request — the archive cut fine and the
  * write threw `ENOENT`). Prefix-matching gives eviction everything a folder would have. */
-export function mapExtractKey(tripId: string, signature: string): string {
-  return `${MAP_KEY_PREFIX}${tripId}_${signature}.pmtiles`;
+export function mapExtractKey(tripId: string, signature: string, vintage: string): string {
+  return `${MAP_KEY_PREFIX}${tripId}_${signature}_${vintage}.pmtiles`;
+}
+
+/** The world layer's key. **Vintaged like an extract, and it is the same fix**: this used to be
+ *  one fixed key, so the shared archive was cut once per deploy and then frozen — a device could
+ *  not have fresher OSM ground even if it asked, because the server had none (ADR-0186 §6
+ *  amendment, 2026-08-21). */
+export function mapWorldKey(maxZoom: number, vintage: string): string {
+  return `${MAP_KEY_PREFIX}world-z${maxZoom}_${vintage}.pmtiles`;
 }
 
 /** Every extract belonging to one trip, for eviction — see `mapExtractKey` on why this is

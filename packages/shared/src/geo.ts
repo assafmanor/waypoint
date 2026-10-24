@@ -112,18 +112,79 @@ export const MAP_WORLD_MAXZOOM = 6;
 export const MAP_TRIP_MAXZOOM = 14;
 
 /**
- * **The upstream planet build the live source reads** (ADR-0187 §1).
+ * **The upstream planet build the live source reads** (ADR-0187 §1, corrected 2026-08-21).
  *
- * In the URL, not only in a config value, and that is the load-bearing part: upstream publishes a
- * DAILY build, so the same URL naming a different build would move byte offsets underneath
- * directory pages a client has already cached — corruption that presents as garbage tiles with no
- * error anywhere. A new build is a new URL, so it busts every cache by existing.
+ * The build id stays in the URL, and that part is load-bearing: upstream publishes a DAILY
+ * build, so the same URL naming a different build would move byte offsets underneath directory
+ * pages a client has already cached — corruption that presents as garbage tiles with no error
+ * anywhere. A new build is a new URL, so it busts every cache by existing.
  *
- * Shared for the same reason the ceilings above are: the frontend builds the path and the backend
- * refuses any other value, so the two agree by construction and a client can never name the
- * upstream object it wants (which would make the proxy an open one).
+ * **What is no longer here is the id itself, and that is this fix.** It was a constant pinned in
+ * the bundle (`'20260813'`), and upstream keeps only the last handful of dailies — measured
+ * 2026-08-21, `build.protomaps.com` served 0815–0821 and answered 404 for 0814 and older. So the
+ * pin expired a week after it was written, every live range read 404'd, and the online map lost
+ * every label, road and border while the coarse world layer's fills kept drawing — a map with no
+ * places on it and nothing on screen saying why (the bug this replaces).
+ *
+ * A date cannot be a constant. The server resolves the newest build it can actually read and
+ * states it on `/me` (`Me['map'].liveBuild`); the client builds this path from that answer, so
+ * the two agree at RUNTIME instead of at the moment someone typed a date.
  */
-export const MAP_PLANET_BUILD = '20260813';
+export const MAP_PLANET_BUILD_PATTERN = /^\d{8}$/;
+
+/** Is this the shape of a daily build id? The route matches the same test, so a client can
+ *  still never name an arbitrary upstream object (ADR-0187 §1's open-proxy rule). */
+export function isMapPlanetBuild(value: unknown): value is string {
+  return typeof value === 'string' && MAP_PLANET_BUILD_PATTERN.test(value);
+}
+
+/** **The one definition of the live archive's path**, built by the frontend and matched by the
+ *  backend route — two spellings of this is how a client asks for bytes nobody serves. */
+export function mapPlanetArchivePath(build: string): string {
+  return `/map/planet-${build}.pmtiles`;
+}
+
+/**
+ * **How long an OFFLINE archive stays current** (ADR-0186 §6 amendment, 2026-08-21).
+ *
+ * An extract and the world layer are cut from the same daily upstream the live source reads — so
+ * once the build rotates, a downloaded archive is a snapshot of yesterday's OSM. Preferring fresh
+ * data is the owner's call; **matching the upstream cadence is not an option**, because that is a
+ * 42.7 MB world layer plus a city extract per device per DAY, which is a data plan rather than a
+ * map (§5's whole subject).
+ *
+ * So offline artefacts run on a slow clock of their own: one **vintage** per 30 days. The server
+ * cuts a new artefact when the vintage rolls; a device replaces what it holds when its copy is
+ * both a vintage behind AND older than the window (so a download late in one window is never
+ * chased two days later by the next).
+ */
+export const MAP_ARCHIVE_VINTAGE_DAYS = 30;
+
+/** Windows counted from this instant, which is arbitrary and only has to be stable: moving it
+ *  would re-label every stored archive and cost every device one re-download. */
+const MAP_ARCHIVE_VINTAGE_EPOCH_MS = Date.UTC(2026, 0, 1);
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * **The vintage an archive cut now, from `build`, belongs to.**
+ *
+ * Shared because the backend puts it in a storage key and the client compares it with what it
+ * holds — two spellings would mean a device re-downloading 42.7 MB it already has.
+ *
+ * Taken from the BUILD's own date when there is one, because that is what the bytes actually
+ * contain. A mirror's name (`MAP_TILES_SOURCE_URL`) says nothing about its data, so an undated
+ * source falls back to when the cut happens — which still rolls every 30 days.
+ */
+export function mapArchiveVintage(build: string | null | undefined, nowMs: number): string {
+  const dated = build && MAP_PLANET_BUILD_PATTERN.test(build);
+  const at = dated
+    ? Date.UTC(Number(build.slice(0, 4)), Number(build.slice(4, 6)) - 1, Number(build.slice(6, 8)))
+    : nowMs;
+  const windows = Math.floor(
+    (at - MAP_ARCHIVE_VINTAGE_EPOCH_MS) / (MAP_ARCHIVE_VINTAGE_DAYS * DAY_MS),
+  );
+  return `v${windows}`;
+}
 
 export const MAP_AREA_LINK_RADIUS_M = 40_000;
 

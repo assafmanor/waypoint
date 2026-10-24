@@ -20,9 +20,9 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
-import { MAP_PLANET_BUILD } from '@waypoint/shared';
-import { MAP_TILES_SOURCE_URL, PMTILES_BIN } from '../common/env';
+import { PMTILES_BIN } from '../common/env';
 import type { MapRegionGeoJson } from './map-region';
+import { livePlanetSourceUrl } from './planet';
 
 const execFileAsync = promisify(execFile);
 
@@ -30,18 +30,17 @@ const execFileAsync = promisify(execFile);
  *  is politeness as much as speed. */
 const DOWNLOAD_THREADS = 8;
 
-/** The default daily-build channel. Overridable by env because **Protomaps say the URLs
- *  may change** and ask that people not hotlink — the long-term answer is our own mirror
- *  of the source, and this is the seam that makes swapping to one a config change. */
-export const DEFAULT_TILES_SOURCE = `https://build.protomaps.com/${MAP_PLANET_BUILD}.pmtiles`;
-
 export interface ExtractSpec {
   /** Absolute path the archive is written to. */
   outPath: string;
   maxZoom: number;
   /** Absolute path to a GeoJSON file, or absent for the whole world (the z0–6 layer). */
   regionPath?: string;
-  source?: string;
+  /** **The archive to cut from, resolved by the caller** (`livePlanetSourceUrl`). Required rather
+   *  than defaulted here: the default used to be a build id pinned in a shared constant, which
+   *  upstream deletes after about a week — so every cut after that failed while the argv still
+   *  looked right. Which build to read is `planet.ts`'s decision, in one place. */
+  source: string;
 }
 
 /**
@@ -55,7 +54,7 @@ export interface ExtractSpec {
 export function extractArgs(spec: ExtractSpec): string[] {
   const args = [
     'extract',
-    spec.source ?? process.env[MAP_TILES_SOURCE_URL] ?? DEFAULT_TILES_SOURCE,
+    spec.source,
     spec.outPath,
     `--maxzoom=${spec.maxZoom}`,
     `--download-threads=${DOWNLOAD_THREADS}`,
@@ -97,7 +96,12 @@ export async function buildExtract(
       regionPath = join(dir, 'region.geojson');
       await writeFile(regionPath, JSON.stringify(spec.region), 'utf8');
     }
-    const args = extractArgs({ outPath, maxZoom: spec.maxZoom, regionPath, source: spec.source });
+    const args = extractArgs({
+      outPath,
+      maxZoom: spec.maxZoom,
+      regionPath,
+      source: spec.source ?? (await livePlanetSourceUrl()),
+    });
     try {
       await run(process.env[PMTILES_BIN] || 'pmtiles', args);
     } catch (error) {

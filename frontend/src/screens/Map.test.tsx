@@ -15,6 +15,9 @@ import {
 } from '@waypoint/shared';
 
 const ACTIVE_DATE = '2026-07-20';
+/** The day scope, when a test needs one the shared fixture's mid-trip day cannot be: the
+ *  trip's LAST day, which is the only place a leg can land past the end from. */
+let scopedDate: string | null = null;
 
 const place = (id: string, coords: boolean, at?: { lat: number; lng: number }): Place => ({
   id,
@@ -69,6 +72,7 @@ let tripNotes: Note[] = [];
 const createNote = vi.fn(() => Promise.resolve(undefined));
 let tripBookings: Booking[] = [];
 let currentMode = 'trip';
+let currentPhase = 'live';
 let isOffline = false;
 // The strip's write. It is a spy rather than a setter on purpose: the bug #10 fixes
 // is the case where the chosen day IS the active one, so `activeDate` must NOT move.
@@ -76,6 +80,15 @@ const setActiveDate = vi.fn();
 
 vi.mock('../state/trip-state', () => ({
   useTrip: () => ({
+    zoneCrossings: [],
+    // Tasks ride the same snapshot since phase 1; the mark and the sections read them.
+    tasks: [],
+    taskVerbs: {
+      createTask: async () => undefined,
+      updateTask: async () => {},
+      deleteTask: async () => {},
+      tickTask: async () => {},
+    },
     // The one context index every note surface resolves through (ADR-0172 §1);
     // built from this file's own fixtures so pairing is real rather than stubbed.
     hostContexts: buildHostContextIndex(tripEvents, tripBookings),
@@ -86,6 +99,7 @@ vi.mock('../state/trip-state', () => ({
     trip: {
       id: 't1',
       name: 'טיול',
+      destination: 'טוקיו',
       timezone: 'Asia/Tokyo',
       startDate: '2026-07-19',
       endDate: '2026-07-25',
@@ -94,7 +108,7 @@ vi.mock('../state/trip-state', () => ({
     bookings: tripBookings,
     maybeItems: tripMaybes,
     places: tripPlaces,
-    activeDate: ACTIVE_DATE,
+    activeDate: scopedDate ?? ACTIVE_DATE,
     zoneEvidence: {
       events: tripEvents,
       bookings: tripBookings,
@@ -119,7 +133,9 @@ vi.mock('../state/trip-state', () => ({
     attachmentVerbs: { attachDocument: vi.fn(), detachDocument: vi.fn() },
   }),
 }));
-vi.mock('../state/mode-state', () => ({ useMode: () => ({ mode: currentMode }) }));
+vi.mock('../state/mode-state', () => ({
+  useMode: () => ({ mode: currentMode, phase: currentPhase, isFinished: currentPhase === 'past' }),
+}));
 // Plan-mode research writes through the shelf verb; the write itself is covered in
 // PlaceResearch.test.tsx, so the screen only needs the hook to exist.
 // The Map now hosts `EventForm` too (ADR-0135 §3), which reaches for the write verbs and the
@@ -158,7 +174,12 @@ vi.mock('../lib/useMapArchives', () => ({
   }),
 }));
 vi.mock('../state/verbs', () => ({ useVerbs: () => verbs }));
-vi.mock('../state/auth-state', () => ({ useAuth: () => ({ me: { user: { id: 'u1' } } }) }));
+vi.mock('../state/auth-state', () => {
+  // `/me` carries which live planet build the server is serving (ADR-0187 §1 amendment) —
+  // the Map screen reads it from here rather than from a build id pinned in the bundle.
+  const me = { user: { id: 'u1' }, map: { liveBuild: '20260821' } };
+  return { useAuth: () => ({ me }), useMaybeAuth: () => ({ me }) };
+});
 vi.mock('../lib/outbox', () => ({
   useIsOffline: () => isOffline,
   // A place's notes are written inside one change group, behind their host (ADR-0152 §6b).
@@ -314,12 +335,14 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
   afterEach(() => {
     cleanup();
     setSimulatedNow(null);
+    scopedDate = null;
     tripEvents = [];
     tripMaybes = [];
     tripPlaces = [];
     tripNotes = [];
     tripBookings = [];
     currentMode = 'trip';
+    currentPhase = 'live';
     isOffline = false;
     geoFix = null;
     geoErrorCode = null;
@@ -329,6 +352,106 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
     createNote.mockClear();
   });
 
+  // ── A FINISHED TRIP IS A MEMORY (ADR-0239 §2–§4) ────────────────────────────────
+  describe('on a finished trip', () => {
+    const finish = () => {
+      currentMode = 'plan';
+      currentPhase = 'past';
+      setSimulatedNow(Date.parse('2026-07-29T03:00:00Z'));
+    };
+    const names = () =>
+      [...document.querySelectorAll('.place:not(.result) .map-name')]
+        .filter((el) => !el.closest('.wp-reveal.hidden'))
+        .map((el) => el.textContent);
+
+    it('opens on all days, in trip order, with only the undated block named', () => {
+      seed();
+      finish();
+      render(wrap(<MapView />));
+      expect(allDaysOn()).toBe(true);
+      expect(names()).toEqual(['food', 'lite', 'see', 'idea']);
+      expect(screen.queryByText(t.map.blockHeader.ahead)).toBeNull();
+      expect(screen.queryByText(t.map.blockHeader.behind)).toBeNull();
+      expect(screen.getByText(t.map.blockHeader.dayless)).toBeTruthy();
+    });
+
+    it('offers no location: no card, no request, no `קרוב עכשיו`', () => {
+      seed();
+      finish();
+      render(wrap(<MapView />));
+      expect(screen.queryByText(t.map.near.prompt.body)).toBeNull();
+      expect(getCurrentPosition).not.toHaveBeenCalled();
+      expect(document.querySelector('.map-nearchip')).toBeNull();
+    });
+
+    it('no row offers `ניווט` or `＋ מיקום`', () => {
+      seed();
+      finish();
+      render(wrap(<MapView />));
+      expect(screen.queryAllByRole('link', { name: new RegExp(t.actions.navigate) })).toEqual([]);
+      expect(screen.queryByRole('button', { name: t.placePicker.empty })).toBeNull();
+    });
+
+    it('a selected row adds nothing, and settling stays', () => {
+      seed();
+      finish();
+      render(wrap(<MapView />));
+      fireEvent.click(row('idea')!);
+      expect(screen.queryByRole('button', { name: t.map.scheduleToDay })).toBeNull();
+      fireEvent.click(row('food')!);
+      expect(screen.queryByRole('button', { name: t.map.scheduleToDay })).toBeNull();
+      // The sections still render what was written; they just have no way in.
+      expect(row('food')!.querySelector('.note-sec')).toBeTruthy();
+      expect(row('food')!.querySelector('.note-sec .add')).toBeNull();
+      expect(row('food')!.querySelector('.wp-settle-btn')).toBeTruthy();
+    });
+
+    // ADR-0241 §1: the slot `ניווט` left opens the first day the place happened on.
+    it('a place that happened offers its day in the trailing slot, and an unmarked one nothing', () => {
+      seed();
+      tripEvents = tripEvents.map((e) =>
+        e.id === 'food' ? { ...e, status: EVENT_STATUS.DONE } : e,
+      );
+      finish();
+      render(wrap(<MapView />));
+      expect(row('food')!.querySelector('.map-addmaybe')?.textContent).toContain(t.map.openDay(2));
+      expect(row('see')!.querySelector('.map-addmaybe')).toBeNull();
+    });
+
+    // ADR-0239 §4: settling is a finished trip's only write, so a selected place can be neither
+    // renamed nor deleted (the Phase 0 guard covered only the two ADD sources).
+    it('a selected row can be neither renamed nor deleted', () => {
+      seed();
+      finish();
+      render(wrap(<MapView />));
+      fireEvent.click(row('food')!);
+      expect(screen.queryByRole('button', { name: t.map.make.edit })).toBeNull();
+      expect(screen.queryByRole('button', { name: t.map.del.aria('food') })).toBeNull();
+    });
+
+    it('a search result has no `＋ אולי`', () => {
+      seed();
+      finish();
+      searchStub.predictions = [{ googlePlaceId: 'g-1', primaryText: 'Kissa' }];
+      render(wrap(<MapView />));
+      fireEvent.click(screen.getByRole('button', { name: new RegExp(t.map.search.button) }));
+      fireEvent.change(screen.getByPlaceholderText(t.map.search.placeholder), {
+        target: { value: 'kissa' },
+      });
+      expect(screen.getByText('Kissa')).toBeTruthy();
+      expect(screen.queryByRole('button', { name: t.map.research.addAria('Kissa') })).toBeNull();
+      searchStub.predictions = [];
+    });
+
+    it('withdraws `מה נשאר`: nothing is left to visit', () => {
+      seed();
+      finish();
+      render(wrap(<MapView />));
+      openFacets();
+      expect(screen.queryByRole('button', { name: new RegExp(t.map.filter.left) })).toBeNull();
+    });
+  });
+
   // ── A PLACE CARRIES NOTES (ADR-0153 §8's 2026-08-02 amendment) ───────────────
   // A place has no detail surface of its own, and the pin's menu holds verbs rather than
   // content (ADR-0157 §2), so the ROW is where its notes
@@ -336,7 +459,7 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
   // scopes, because they are genuinely different renders on this tab.
   describe('a place carries notes (ADR-0153 §8)', () => {
     const markOf = (name: string) => row(name)?.querySelector('.note-mark') ?? null;
-    const sectionOf = (name: string) => row(name)?.querySelector('.note-sec') ?? null;
+    const sectionOf = (name: string) => row(name)?.querySelector('.note-sec:not(.tsk-sec)') ?? null;
 
     for (const allDays of [false, true]) {
       const label = allDays ? 'all-days' : 'day';
@@ -356,7 +479,7 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
         tripNotes = [note('n1', 'food', 'הכניסה מאחור')];
         render(wrap(<MapView />));
         if (allDays) tapAllDays();
-        expect(document.querySelector('.note-sec')).toBeNull();
+        expect(document.querySelector('.note-sec:not(.tsk-sec)')).toBeNull();
 
         fireEvent.click(row('food')!);
         expect(sectionOf('food')).toBeTruthy();
@@ -416,8 +539,12 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
 
       const kids = [...row('food')!.children].map((el) => el.className);
       const at = (cls: string) => kids.findIndex((c) => c.split(' ').includes(cls));
-      expect(at('note-sec')).toBeGreaterThan(at('map-main'));
-      expect(at('note-sec')).toBeLessThan(at('map-refs'));
+      // **The section lives inside `.map-cardwrote` since ADR-0191 §7** — the card's one
+      // flexible track now holds BOTH sections, because tasks as a second pinned row put the
+      // card at 411px against its own 420px cap. The ORDER this spec is about is unchanged.
+      expect(at('map-cardwrote')).toBeGreaterThan(at('map-main'));
+      expect(at('map-cardwrote')).toBeLessThan(at('map-refs'));
+      expect(row('food')!.querySelector('.map-cardwrote .note-sec')).toBeTruthy();
       expect(at('map-refs-foot')).toBe(kids.length - 1);
     });
   });
@@ -439,11 +566,18 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
       it(`appears only on the SELECTED row, in ${label} scope`, () => {
         seed();
         render(wrap(<MapView />));
-        if (allDays) allDaysOn();
+        // `tapAllDays()`, not `allDaysOn()` — the latter READS the toggle and returns a
+        // boolean, so `if (allDays) allDaysOn()` did nothing and this block's "both day
+        // scopes on purpose" was one scope twice. Found while adding the day-scoped rule
+        // below, which is the first behaviour here that differs BETWEEN the scopes.
+        if (allDays) tapAllDays();
         // Nothing selected: no block, so no footer.
         expect(foot()).toBeNull();
 
-        fireEvent.click(row('food')!);
+        // `idea`, not `food`: `food` has an event on the ACTIVE date, and a place already
+        // slotted on the day in scope no longer offers to be slotted again (ADR-0191 §7's
+        // amendment). `idea` is on the shelf, which is the state this verb exists for.
+        fireEvent.click(row('idea')!);
         expect(foot()).toBeTruthy();
         expect(scheduleBtn()).toBeTruthy();
       });
@@ -451,14 +585,14 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
       it(`opens the form pre-filled with the place, in ${label} scope`, () => {
         seed();
         render(wrap(<MapView />));
-        if (allDays) allDaysOn();
-        fireEvent.click(row('food')!);
+        if (allDays) tapAllDays();
+        fireEvent.click(row('idea')!);
         fireEvent.click(scheduleBtn()!);
 
         // The form is a Modal over the map, on the map's own tab (§3) — no navigation.
         expect(dialog()).toBeTruthy();
         // Pre-filled: the place field shows the place you were standing on.
-        expect(document.querySelector('.pp-trigger.filled')?.textContent).toContain('food');
+        expect(document.querySelector('.pp-trigger.filled')?.textContent).toContain('idea');
       });
     }
 
@@ -468,7 +602,10 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
     describe('the originating idea (§5)', () => {
       const openOn = (name: string) => {
         render(wrap(<MapView />));
-        allDaysOn();
+        // `tapAllDays()`, not `allDaysOn()` — the third call site that used the READ where
+        // the action was meant. It matters here now: day-scoped, a place already slotted on
+        // the day in scope has no `שיבוץ ליום` to click.
+        tapAllDays();
         fireEvent.click(row(name)!);
         fireEvent.click(scheduleBtn()!);
       };
@@ -1047,6 +1184,48 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
       view.rerender(wrap(<MapView />));
       expect(screen.queryByText(t.map.near.prompt.body)).toBeNull();
       expect(getCurrentPosition).not.toHaveBeenCalled();
+    });
+
+    // The other half of the rule above, and the one that shipped broken (owner, 2026-09-18:
+    // _"the map doesn't always show the current location pin, and sometimes we should click
+    // on the current location button"_). `לא עכשיו` is remembered across a tab change; CONSENT
+    // must not be turned into the same kind of refusal, because re-asking under it raises no
+    // dialog at all. jsdom has no Permissions API, so this is exactly the Safari shape: the
+    // remounted screen knows consent only from the session's own memory of it.
+    it('consent is re-used on every visit: the fix comes back with no tap', () => {
+      seedNear();
+      geoFix = HERE;
+      const view = render(wrap(<MapView />));
+      fireEvent.click(screen.getByRole('button', { name: t.map.near.prompt.allow }));
+      expect(getCurrentPosition).toHaveBeenCalledTimes(1);
+      expect(document.querySelector('.map-dist')).toBeTruthy();
+
+      view.rerender(wrap(<div />));
+      view.rerender(wrap(<MapView />));
+      // No card, no locate tap — and a fix in hand again.
+      expect(screen.queryByText(t.map.near.prompt.body)).toBeNull();
+      expect(getCurrentPosition).toHaveBeenCalledTimes(2);
+      expect(document.querySelector('.map-dist')).toBeTruthy();
+    });
+
+    // …and a permission revoked in browser settings costs ONE silent refusal, not one per
+    // visit: the session's memory of consent is withdrawn by the outcome that withdrew it.
+    it('a refusal withdraws the remembered consent', () => {
+      seedNear();
+      geoFix = HERE;
+      const view = render(wrap(<MapView />));
+      fireEvent.click(screen.getByRole('button', { name: t.map.near.prompt.allow }));
+      expect(getCurrentPosition).toHaveBeenCalledTimes(1);
+
+      geoFix = null;
+      geoErrorCode = 1; // PERMISSION_DENIED — revoked between visits
+      view.rerender(wrap(<div />));
+      view.rerender(wrap(<MapView />));
+      expect(getCurrentPosition).toHaveBeenCalledTimes(2);
+
+      view.rerender(wrap(<div />));
+      view.rerender(wrap(<MapView />));
+      expect(getCurrentPosition).toHaveBeenCalledTimes(2);
     });
 
     it('the chip states the reason first, and only then asks the device', () => {
@@ -1979,6 +2158,98 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
       );
     });
 
+    // **A PLACE'S REFERENCE IS ONE END OF A BOOKING, AND ANSWERS FOR THAT END**
+    // (ADR-0224 §1/§3, wired 2026-09-16). `edgeOnDate` has resolved this row to the day's own
+    // end of the span since 2026-08-06 — it is what picks `צ׳ק-אאוט` for the label — and the
+    // settle pair under it went on reading the span's `status` and saying `היינו`. So on the
+    // morning you leave, the hotel you checked into on Saturday showed the check-out already
+    // ticked, and tapping it would have re-written the check-in.
+    it('answers for the end of the stay this day IS, not for the span', () => {
+      setSimulatedNow(Date.parse(`${ACTIVE_DATE}T08:00:00Z`));
+      tripPlaces = [place('granbell', true)];
+      tripBookings = [];
+      tripEvents = [
+        event({
+          id: 'stay',
+          placeId: 'granbell',
+          category: 'lodging',
+          icon: '🏨',
+          kind: EVENT_KIND.HARD,
+          title: 'Shinjuku Granbell',
+          date: '2026-07-18',
+          startsAt: '2026-07-18T15:00:00Z',
+          endDate: ACTIVE_DATE,
+          endsAt: `${ACTIVE_DATE}T01:00:00Z`,
+          // Checked in two nights ago. The one answer this booking has, and it is not this
+          // day's question.
+          status: EVENT_STATUS.DONE,
+        }),
+      ];
+      render(wrap(<MapView />));
+      fireEvent.click(row('granbell')!);
+
+      const ref = row('granbell')!.querySelector('.map-ref')!;
+      expect(ref.querySelector('.map-ref-label')!.textContent).toContain(
+        t.glance.transition.checkOut,
+      );
+      // Still asking, and asking the check-OUT's own question.
+      expect(ref.querySelector('.wp-settle-tag')).toBeNull();
+      expect(ref.querySelector('.wp-settle-btn.done')!.getAttribute('aria-label')).toBe(
+        t.actions.transitionDid.checkOut,
+      );
+
+      cleanup();
+
+      // …and once it has its own answer, the record is the check-out's word.
+      tripEvents = [{ ...tripEvents[0], endStatus: EVENT_STATUS.DONE }];
+      render(wrap(<MapView />));
+      fireEvent.click(row('granbell')!);
+      expect(row('granbell')!.querySelector('.map-ref .wp-settle-tag')!.textContent).toContain(
+        t.actions.transitionDid.checkOut,
+      );
+    });
+
+    // **AND A DAY YOU HAVE NOT REACHED HAS NOTHING TO RECORD** (owner, 2026-09-16, the same
+    // report as the day list's). ADR-0139 §2's "every event is settleable here" was written
+    // against the CLOCK — it protects the early mark on TONIGHT's dinner — and this row carries
+    // references from every day of the trip, so it read that as covering Thursday too.
+    it('offers no pair on a reference the trip has not reached, and keeps an answered one', () => {
+      setSimulatedNow(Date.parse(`${ACTIVE_DATE}T12:00:00Z`));
+      tripPlaces = [place('granbell', true)];
+      tripBookings = [];
+      const ahead = '2026-07-24';
+      const stay = (over: Partial<TripEvent> = {}) =>
+        event({
+          id: 'stay',
+          placeId: 'granbell',
+          category: 'lodging',
+          icon: '🏨',
+          kind: EVENT_KIND.HARD,
+          title: 'Shinjuku Granbell',
+          date: ahead,
+          startsAt: `${ahead}T15:00:00Z`,
+          ...over,
+        });
+
+      tripEvents = [stay()];
+      render(wrap(<MapView />));
+      tapAllDays(); // the reference is on another day, so the scope has to admit it
+      fireEvent.click(row('granbell')!);
+      expect(row('granbell')!.querySelector('.map-ref')).toBeTruthy();
+      expect(row('granbell')!.querySelector('.map-ref .wp-settle')).toBeNull();
+
+      cleanup();
+
+      // Answered → the record and its undo stay reachable (ADR-0139 §2), and only those.
+      tripEvents = [stay({ status: EVENT_STATUS.DONE })];
+      render(wrap(<MapView />));
+      tapAllDays();
+      fireEvent.click(row('granbell')!);
+      expect(row('granbell')!.querySelector('.map-ref .wp-settle-tag.ok')).toBeTruthy();
+      expect(row('granbell')!.querySelector('.map-ref .wp-settle-btn.undo')).toBeTruthy();
+      expect(row('granbell')!.querySelector('.map-ref .wp-settle-btn.done')).toBeNull();
+    });
+
     it('an unlinked booking still resolves to exactly one entry', () => {
       seedLinked();
       tripEvents = [];
@@ -2376,6 +2647,73 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
       fireEvent.click(row('lite')!.querySelector('.pp-addbtn') as HTMLElement);
       fireEvent.click(row('food')!);
       expect(trash()).toBeNull();
+    });
+  });
+  // ── THE FLIGHT HOME LANDS ON A DAY THE STRIP HAS NO CHIP FOR ────────────────────────
+  // Owner, 2026-09-20, from the device on the trip's last day: _"it shows only one leg of
+  // the flight on the map"_. The arrival's day facet was `endDate` — the morning AFTER the
+  // trip ends — so the destination fell out of every scope the strip offers and the tab drew
+  // the departure airport alone. ADR-0236 §4 already hosts that landing on the day list; this
+  // is the same rule reaching the fourth day surface.
+  describe('a leg that lands past the trip is hosted by its last day (ADR-0236 §4)', () => {
+    const LAST_DAY = '2026-07-25';
+    const seedFlightHome = () => {
+      scopedDate = LAST_DAY;
+      setSimulatedNow(Date.parse(`${LAST_DAY}T09:00:00Z`));
+      tripPlaces = [place('hnd', true), place('tlv', true, { lat: 32.0, lng: 34.9 })];
+      tripBookings = [
+        {
+          id: 'bk-home',
+          tripId: 't1',
+          type: 'flight',
+          title: 'LY 096',
+          source: 'manual',
+          fromPlaceId: 'hnd',
+          toPlaceId: 'tlv',
+          createdAt: '',
+          updatedAt: '',
+          updatedBy: 'u1',
+        } as Booking,
+      ];
+      // Tokyo 22:10 on the trip's last day, Tel Aviv 02:30 the morning after it ends.
+      tripEvents = [
+        event({
+          id: 'e-home',
+          bookingId: 'bk-home',
+          kind: EVENT_KIND.HARD,
+          category: 'transport',
+          title: 'LY 096',
+          date: LAST_DAY,
+          endDate: '2026-07-26',
+          startsAt: `${LAST_DAY}T13:10:00Z`,
+          endsAt: `${LAST_DAY}T23:30:00Z`,
+        }),
+      ];
+    };
+
+    // THE REPORT, as one line: the destination is on the day, not dimmed off it.
+    it('draws BOTH ends of the flight on the last day', () => {
+      seedFlightHome();
+      render(wrap(<MapView />));
+      expect(filteredOut('hnd')).toBe(false);
+      expect(filteredOut('tlv')).toBe(false);
+      // …and it has a place in the day's sequence, which is what a ghost has not.
+      expect(orderOf('tlv')).not.toBeNull();
+    });
+
+    // **AND THE ROW SAYS WHICH DAY IT LANDS ON.** Day-scoped silence reads as "on this day",
+    // which is the one thing this landing is not — the same `למחרת` the day list's arrival row
+    // carries beside the identical clock.
+    it("names the arrival's own day beside its clock", () => {
+      seedFlightHome();
+      render(wrap(<MapView />));
+      fireEvent.click(row('tlv')!);
+      expect(row('tlv')!.querySelector('.map-ref-meta')!.textContent).toContain(t.journey.nextDay);
+      // The DEPARTURE lands on the day it is drawn on, so it says nothing extra.
+      fireEvent.click(row('hnd')!);
+      expect(row('hnd')!.querySelector('.map-ref-meta')!.textContent).not.toContain(
+        t.journey.nextDay,
+      );
     });
   });
 });

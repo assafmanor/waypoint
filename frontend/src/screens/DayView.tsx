@@ -8,13 +8,19 @@
 // ("we did this / skip"); the ±30 nudge only offers moves that are possible; and
 // a past day reads as a read-only archive (ADR-0029), editing gated to Plan.
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import {
   EVENT_KIND,
+  EVENT_SOURCE,
   EVENT_STATUS,
-  isAmbient,
+  isEdgeSettled,
+  isRoutableMode,
   type Booking,
+  type EventEdge,
   type MaybeItem,
   type Place,
+  spendsSpanInMotion,
+  type TripEnrichments,
   type TripEvent,
   typicalMinutesFor,
 } from '@waypoint/shared';
@@ -25,19 +31,39 @@ import {
   useShowPlaceOnMap,
 } from '../state/map-scope-state';
 import { prefersReducedMotion } from '../lib/motion';
+import { tripToday } from '../lib/mode';
+import { apiAssetUrl } from '../lib/api-asset';
+import { rowPhoto } from '../lib/place-photo';
+import { dayHeadTitle } from '../lib/day-title';
+import { dayShot, type DayShot } from '../lib/day-photo';
+import { DayHead } from '../ui/domain/DayHead';
+import { ArchiveBanner } from '../ui/domain/ArchiveBanner';
+import { ReadBand } from '../ui/domain/ReadBand';
+import { EventDetail } from '../ui/EventDetail';
+import { MediaViewer } from '../ui/MediaViewer';
+import { useLandOnArrival } from '../lib/land-at-top';
+import { useDaySurface } from '../lib/useDaySurface';
+import { DayPeeks } from '../ui/domain/DayPeek';
+import { DayTravelTotal } from '../ui/domain/DayTravelTotal';
+import { useIsDayPreview } from '../state/day-preview';
+import { edgeFadeRef } from '../lib/edge-fade';
 import {
   authoringZone,
   ideaShowOnMap,
   eventDirectionsUrl,
+  eventDistanceLabel,
   eventDurationLabel,
   eventEdgeZone,
   eventRoute,
   eventShowOnMap,
+  legShowOnMap,
   eventDisplayZones,
+  eventMapPlace,
+  eventPlaceId,
   eventZones,
   dayZoneContext,
   isDayOver,
-  liveToday,
+  legDisplayZones,
   liveZone,
   placeName,
   placeTimezone,
@@ -45,27 +71,39 @@ import {
   type ZoneContext,
   type ZoneEvidence,
 } from '../lib/places';
-import { useSearchParams } from 'react-router-dom';
-import { EVENT_PARAM, IDEA_PARAM } from '../state/nav-state';
+import {
+  EVENT_PARAM,
+  EVENT_ROW_ATTR,
+  IDEA_PARAM,
+  eventRowSelector,
+  useArrivalParam,
+} from '../state/nav-state';
 import { useVerbs } from '../state/verbs';
 import { useClock } from '../lib/useClock';
 import {
   buildTimeTree,
   clockRange,
+  DAY_PHASE,
+  dayPhase,
   eventPhase,
   formatTime,
   isoToTimeInput,
   hardConflicts,
   zonedIso,
+  dayOfMonth,
   weekdayName,
   resolveEndIso,
   type TimeGroup,
   type TimeItem,
   tripDates,
-  relativeDayLabel,
+  dayLabel,
+  dayWindowMs,
 } from '../lib/time';
 import {
   dayStops,
+  ideaCategory,
+  ideaGlyph,
+  parkedTag,
   poolStrip,
   proposedDay,
   rankIdeas,
@@ -76,25 +114,90 @@ import {
   stopReasonText,
   tileReasonText,
 } from '../lib/shelf';
-import { blockFor, ideaBlock, nextSlot, type Gap, type GapDefaults } from '../lib/gaps';
-import { dayPositions, firstPositionFitting } from '../lib/day-positions';
 import {
+  blockFor,
+  eventAtSlot,
+  ideaBlock,
+  narrowGapToNow,
+  nextSlot,
+  nowGap,
+  statesFreeTime,
+  type Gap,
+  type GapDefaults,
+} from '../lib/gaps';
+import {
+  dayPositions,
+  firstPositionFitting,
+  positionsFromNow,
+  type DayPosition,
+} from '../lib/day-positions';
+import { lateShift } from '../lib/late-shift';
+import { generateId } from '../lib/id';
+import { useAuth } from '../state/auth-state';
+import { DaySlotPicker } from '../ui/domain/DaySlotPicker';
+import { nowOption, positionOption } from '../ui/domain/day-slot-options';
+import { ParkedEventSheet } from '../ui/ParkedEventSheet';
+import { QuickAddSheet, type QuickAddDraft } from '../ui/QuickAddSheet';
+import { DelaySheet } from '../ui/DelaySheet';
+import {
+  dayListEvents,
   dayTransitions,
-  edgeEntryOf,
+  groupStartEvent,
   mergeDayEntries,
   placeDayEntries,
-  staysOnDate,
+  type DayEntry,
   type TransitionEntry,
 } from '../lib/day-entries';
-import { dayBlocks, type DayBlock, type DayJoin } from '../lib/day-joins';
-import { nowLinePlacement } from '../lib/now-line';
+import {
+  DAY_JOURNEY_ARM,
+  dayJourney,
+  danglingLegs,
+  dayRun,
+  dayTravelTotal,
+  holeDepartsMs,
+  narrowGapForTravel,
+  spannedIntervals,
+  type DayBlock,
+  type DayJoin,
+  type DayJourney,
+} from '../lib/day-joins';
+import {
+  dayAirMeters,
+  journeyChainFor,
+  legArrival,
+  legDepartAfterMs,
+  useDayTravelReads,
+  useLegModeControl,
+  type DayLeg,
+} from '../lib/day-travel';
+import { travelStance, remainingTravelSeconds, TRAVEL_STANCE } from '../lib/travel-position';
+import { travelOrigin } from '../lib/hero-travel';
+import { useLiveFix } from '../lib/useLiveFix';
+import { clearOnWay, useOnWay } from '../lib/on-way';
+import type { NowInside } from '../lib/now-inside';
+import {
+  JOIN_BOX,
+  journeyIsAhead,
+  nowInJoin,
+  nowInJourney,
+  nowLinePlacement,
+  type JoinBox,
+} from '../lib/now-line';
+import { NowMarker } from '../ui/domain/NowMarker';
+import { StayRow } from '../ui/domain/StayRow';
 import { UnplacedCommitment } from '../ui/domain/UnplacedCommitment';
 import { bookingWhen } from '../lib/booking-journey';
-import { hoursPhrase } from '../lib/duration';
-import { ConnectionBand, GapStrip } from '../ui/domain/DayJoinRow';
-import { CODE_PREFIX, DEFAULT_STAY_ICON, MS_PER_DAY, SHELF_POOL_CAP } from '../constants';
-import { ambientSpanLabel } from '../lib/glance';
-import { edgeSentence } from '../lib/transitions';
+import { hoursPhrase, remainingPhrase } from '../lib/duration';
+import {
+  ConnectionBand,
+  GapStrip,
+  JourneyRow,
+  type JourneyRowProps,
+} from '../ui/domain/DayJoinRow';
+import { CODE_PREFIX, DELAY_STEP_MINUTES, MS_PER_MINUTE, SHELF_POOL_CAP } from '../constants';
+import { ambientSpanLabel, dayBookendStays, isStayRow } from '../lib/glance';
+import { autoIsolate } from '../lib/bidi';
+import { edgeSentence, edgeSettleProps } from '../lib/transitions';
 import { t } from '../i18n/he';
 import { EventForm, type EventFormDraft } from '../ui/EventForm';
 import { BookingSheet, type BookingSheetDraft } from '../ui/BookingSheet';
@@ -107,19 +210,19 @@ import { EventCard, type EventPhaseName } from '../ui/domain/EventCard';
 import { routeDisplay } from '../ui/route-display';
 import { placeLabelOf, type PlaceLabels } from '../lib/place-label';
 import { usePlaceLabels } from '../state/place-labels';
-import { noteCountFor, noteCountForContext, noteCountsByHost } from '../lib/notes';
+import { noteCountFor, hostCountForContext, noteCountsByHost } from '../lib/notes';
+import { openTaskCountsByHost } from '../lib/tasks';
+import { useSettledHosts } from '../ui/HostTasks';
 import { attachmentCountForContext, attachmentCountsByHost } from '../lib/attachments';
 import { resolveHostContext, type HostContextIndex } from '../lib/host-context';
 import { MaybeCard, MaybeMoreCard } from '../ui/domain/MaybeCard';
 import { MaybeManageSheet } from '../ui/MaybeManageSheet';
 import { SlotFillSheet } from '../ui/domain/SlotFillSheet';
 import { HostNotes } from '../ui/HostNotes';
+import { HostTasks } from '../ui/HostTasks';
 import { HostDocuments } from '../ui/HostDocuments';
 import { EntitySyncBadge, useUnsynced } from '../ui/EntitySyncBadge';
 import { Icon } from '../ui/Icon';
-
-const daysBetween = (from: string, to: string) =>
-  Math.round((Date.parse(to) - Date.parse(from)) / MS_PER_DAY);
 
 // Open a Google Maps universal URL in a new tab (on device it hands off to the
 // Maps app). Only ever called with a non-null URL — the ניווט button is hidden
@@ -137,6 +240,26 @@ function navigateHandler(
   return url ? () => openMaps(url) : undefined;
 }
 
+/** **The settle verbs for a transition row, or none at all.** Both of `TransitionRow`'s
+ *  hosts on this screen — the overnight block and the positioned list — ask the identical
+ *  question about the identical entry, and wrote it out three lines each; a fourth host
+ *  would have written it a third time, which is how `readOnly` ended up on two of these
+ *  rows and not on `UnplacedCommitment` beside them.
+ *
+ *  Two gates, and they answer different things: `readOnly` is the past-day archive
+ *  (ADR-0029) and `canSettle` the day nobody has reached yet (ADR-0228 §5a). `TransitionRow`
+ *  renders the control only when it has both verbs, so an empty object is the whole
+ *  withdrawal — and on an ANSWERED edge `canSettle` says yes, which keeps the record and
+ *  its undo (ADR-0139 §2) without asking anything. */
+function transitionSettle(entry: TransitionEntry, ctx: DayCtx) {
+  if (ctx.readOnly || !ctx.canSettle(entry.event, entry.edge)) return {};
+  return {
+    onDone: () => ctx.verbs.done(entry.event, entry.edge),
+    onSkip: () => ctx.verbs.skip(entry.event, entry.edge),
+    onUndo: () => ctx.verbs.restore(entry.event, entry.edge),
+  };
+}
+
 /** The zone display props for a transition entry's edge (ADR-0107): the edge's
  *  zone for the time, and the shift vs the day's ambient zone when non-zero. */
 function transitionZoneProps(
@@ -145,8 +268,6 @@ function transitionZoneProps(
 ): { zone: string; deltaMinutes?: number } {
   return eventEdgeZone(entry.event, entry.edge, zoneCtx);
 }
-
-type DayScope = 'past' | 'today' | 'future';
 
 const groupKey = (g: TimeGroup) =>
   g.kind === 'cluster' ? `cl-${g.items[0].event.id}` : g.item.event.id;
@@ -161,38 +282,167 @@ const blockKey = (block: DayBlock) => {
 const shortPlaceName = (places: Place[], labels: PlaceLabels, id: string | undefined) =>
   placeLabelOf(labels, id, placeName(places, id));
 
-/** The one row that draws whatever sits above an entry (ADR-0159). A gap states free
- *  time; a connection names the stop and how long you are in it, and only ever renders
- *  inside a `.journey` block, because that is what makes it part of an object instead
- *  of a mark between two cards. */
+/** **What the day hands a hole about the moment**: the instants, not a placement. The host knows
+ *  the hole holds `now`; `JoinRow` knows how many boxes it is drawing, so it is what resolves the
+ *  two into one nailed row (ADR-0217's 2026-09-04 amendment). */
+interface JoinNowMark {
+  nowMs: number;
+  /** The hole's own extent — the row above's end and the row below's start. */
+  opensMs: number;
+  closesMs: number;
+  label: string;
+  ref: React.Ref<HTMLDivElement>;
+}
+
+/** The one row that draws whatever sits above an entry (ADR-0159). A gap states free time; a
+ *  connection names the stop and how long you are in it, and only ever renders inside a
+ *  `.journey` block, because that is what makes it part of an object instead of a mark between
+ *  two cards.
+ *
+ *  **And a gap with a journey in it is a third thing** (ADR-0206 §V1.3): the same slot, saying
+ *  what is true of it, which is §D2's own "one slot, three meanings". The journey ABSORBS the
+ *  free-time statement — one object, both of `freeAfterTravel`'s numbers (§Z5 §M2) — so this
+ *  function chooses between two renders rather than stacking them. */
 function JoinRow({
   join,
+  journey,
+  tz,
   places,
   placeLabels,
   onFillGap,
+  nowMark,
+  ...journeyRest
 }: {
-  join: DayJoin;
+  /** **Nullable, and that is ADR-0206 §AG6 finished.** `gapBetween` is floored at
+   *  `GAP_MIN_MINUTES`, so a hole under an hour has no join at all — and gating the JOURNEY on the
+   *  join left §Z5 §M2's own example silent ("a 45-minute hole holding a 40-minute walk"), which
+   *  §AG6 recorded as fixed by setting `DayBlockEntry.from` on every adjacency. It was half-fixed:
+   *  the leg was derived and then not rendered. **Plan mode gates on `prevEnd` instead and has
+   *  been drawing it all along**, so the two day surfaces disagreed about a fact — the thing
+   *  ADR-0159 §1 forbids and ADR-0171 §10e already had to repair once. */
+  join: DayJoin | null;
+  /** What the journey across this hole costs and says, or `null` — which is the ordinary answer
+   *  (§D4) and leaves the strip below reading exactly as it read before this milestone. */
+  journey: DayJourney | null;
+  /** **The zone the GAP's own wall-clocks are in**, and not the journey's — `gapBetween` built
+   *  `fill.start`/`fill.end` as strings in `dayBlocks`' `ctx.tz`, so `narrowGapForTravel` has to
+   *  read them back in that same zone or it caps the slot against a different hour. The block's
+   *  clocks take `zones` instead (ADR-0206 §AQ): one prop was serving two questions, and the
+   *  answer only one of them wanted was the one that shipped. */
+  tz: string;
   places: Place[];
   placeLabels: PlaceLabels;
   /** What a tap on a gap opens (ADR-0161 §9), or absent where a write is gated. A connection
    *  never takes one: you are inside a commitment for the whole of it, so there is nothing
    *  free there to fill. */
   onFillGap?: (free: Gap) => void;
-}) {
-  const length = hoursPhrase(join.minutes);
-  if (join.kind === 'gap') {
-    return <GapStrip length={length} onFill={onFillGap && (() => onFillGap(join.free))} />;
+  /** **The moment, and where in the hole it stands — unresolved** (ADR-0217's 2026-09-04
+   *  amendment). The host says the hole holds it; WHICH BOX holds it is answered here, because
+   *  this is the only thing that knows how many boxes it is drawing. The same move the shared
+   *  reader made into `EventRow` on 2026-09-03, for the same defect. */
+  nowMark?: JoinNowMark;
+} & Omit<JourneyRowProps, 'journey' | 'tz'>) {
+  const connection = join !== null && join.kind === 'connection';
+  // **The slot is narrowed by the journey** — the statement and the control must not disagree
+  // about one hole, which is what §V1.1 is about one elevation down.
+  const planned =
+    join && !connection ? (journey ? narrowGapForTravel(join.free, journey, tz) : join.free) : null;
+  // **AND BY THE CLOCK, IN THE HOLE YOU ARE STANDING IN** (ADR-0217's 2026-09-05 amendment) — the
+  // other end of the same window, and it was as stale as this one was: at ⁦16:10⁩ the strip still
+  // stated the whole ⁦8:46⁩ and its `＋` opened on ⁦08:00⁩. `nowMark` IS the condition, not merely
+  // the source of the instant: the screen hands it down exactly when the moment is inside this
+  // hole on today, so no other day and no hole behind you is touched.
+  //
+  // The window's end is `holeDepartsMs`' — the same instant `nowInJoin` hands the hole to the
+  // journey — so `statesHole` below can never be true with no strip under it.
+  const slot =
+    planned && nowMark
+      ? narrowGapToNow(
+          planned,
+          nowMark.nowMs,
+          holeDepartsMs(journey, nowMark.opensMs, nowMark.closesMs) ?? nowMark.closesMs,
+          tz,
+        )
+      : planned;
+  // **And it is stated below the block rather than inside it** (owner, 2026-08-26: _"do we
+  // really want to state on this row that we have free time, or should it be written in a quiet
+  // way and not in the row?"_). M6a absorbed the strip into the block to keep ADR-0159's one
+  // object per hole, and the absorption put two subjects on one ⁦180px⁩ line: the block is about
+  // the LEG (mode, distance, when to go) and free time is about the HOLE. The measurement that
+  // shipped M6a is the argument against it — ⁦219.70px⁩ of ink in that box, "fixed" by hiding the
+  // free time on half the arms, which is what a line holding two subjects looks like.
+  // **Worth STATING is asked of the plan; what is LEFT is asked of the clock.** Two thresholds
+  // would be one too many: `FREE_TIME_MIN_MINUTES` is a judgement about whether a hole counts as
+  // free time at all (`lib/gaps.ts`), and re-asking it of the remainder would retire the strip
+  // ⁦15⁩ minutes early — taking the marker's own box with it, since `statesHole` is this row.
+  const strip =
+    planned && slot && statesFreeTime(planned.minutes) ? (
+      <GapStrip minutes={slot.minutes} onFill={onFillGap && (() => onFillGap(slot))} />
+    ) : null;
+  /** **Which of this hole's boxes the mark belongs to** — the free time or the journey out of it.
+   *  A connection draws neither: it is one band over a stop you are inside for the whole of it,
+   *  and the journey prop it never renders must not be offered a share of it either. */
+  const placed = nowMark
+    ? nowInJoin(
+        {
+          opensMs: nowMark.opensMs,
+          closesMs: nowMark.closesMs,
+          journey: connection ? null : journey,
+        },
+        nowMark.nowMs,
+      )
+    : null;
+  const nail = (box: JoinBox, row: ReactNode) =>
+    nowMark && row && placed?.key === box ? (
+      <NowMarker ref={nowMark.ref} label={nowMark.label} thruFrac={placed.thruFrac}>
+        {row}
+      </NowMarker>
+    ) : (
+      row
+    );
+  /** **And where the hole's own part holds the moment with nothing drawn for it, the mark stands
+   *  ABOVE the journey** — the same answer the day's edge legs take (the 2026-09-04 amendment).
+   *  Two holes reach here: one too short to state free time in at all (§AG6's ⁦45⁩-minute hole
+   *  holding a ⁦40⁩-minute walk), and one whose free time the clock has now spent. */
+  const holeMark =
+    nowMark && placed?.key === JOIN_BOX.HOLE && !strip ? (
+      <NowMarker ref={nowMark.ref} label={nowMark.label} />
+    ) : null;
+  if (!connection) {
+    if (!journey) return nail(JOIN_BOX.HOLE, strip);
+    /**
+     * **THE FREE TIME COMES FIRST, BECAUSE IT ENDS WHERE THE JOURNEY BEGINS** (owner,
+     * 2026-08-31: _"the transit row shows 'take off at X to get on time', so it only makes
+     * sense that slotting should be before it, before the takeoff time"_).
+     *
+     * §AH3 separated these two lines — the block is about the LEG, the strip about the HOLE —
+     * and never asked which goes on top. The arithmetic already answers: `narrowGapForTravel`
+     * shrinks the slot BY the journey, so the window the strip states ENDS at the leave-by the
+     * block advises. Drawn in that order they read as one sentence; drawn the other way the
+     * day offers you a slot for time it has just said you must spend travelling.
+     *
+     * Measured at ⁦0px⁩ (`free-time-comes-before-the-leave-by-v1.html` §5): no rule in
+     * `day-join.css` or `screens.css` keys on the two being siblings in either order.
+     */
+    return (
+      <>
+        {nail(JOIN_BOX.HOLE, strip)}
+        {holeMark}
+        {nail(JOIN_BOX.JOURNEY, <JourneyRow journey={journey} {...journeyRest} />)}
+      </>
+    );
   }
-  return (
+  return nail(
+    JOIN_BOX.HOLE,
     <ConnectionBand
       word={t.day.join.word[join.type] ?? t.day.join.word.flight}
-      length={length}
+      length={hoursPhrase(join.minutes)}
       // The SHORT label, like every other route surface (ADR-0059 §3's amendment):
       // `נמל התעופה דובאי (DXB)` in a one-line band pushes the length out of the
       // row, and the two cards around it already name the place in full.
       placeName={shortPlaceName(places, placeLabels, join.stopPlaceId)}
       tight={join.tight}
-    />
+    />,
   );
 }
 
@@ -204,15 +454,29 @@ export function DayView() {
     justAddedIdea,
     bookings,
     places,
+    enrichments,
     notes,
     documentAttachments,
+    travelModeOverrides,
+    travelModeVerbs,
     hostContexts,
     zoneEvidence,
     activeDate,
     ripple,
     setActiveDate,
+    tasks,
   } = useTrip();
   const verbs = useVerbs();
+  // Which day this surface is showing, and how it changes (ADR-0200 §6/§7): the swipe,
+  // the neighbour days the peek renders, and the rule that a day opens at its top however
+  // you got here. Called EARLY on purpose — the arrival landing and "land on now" below
+  // both key on the same day change and both mean to win, and effects run in declaration
+  // order. The same hook and class as Plan's builder: none of this is a posture.
+  // **Am I the real day, or the peek beside it?** (ADR-0200 §7) Read only to suppress what
+  // reaches OUT of a preview's pane — the arrival param it must not spend, and a scroll on the
+  // body it does not own. Never to change how the day LOOKS: looking identical is the point.
+  const preview = useIsDayPreview();
+  const daySurface = useDaySurface<HTMLDivElement>();
   const placeLabels = usePlaceLabels();
   const now = useClock();
   // `מפה` is an in-app destination now (ADR-0121 §8): it hands the Map tab a focus
@@ -229,10 +493,13 @@ export function DayView() {
   // location picked, which unmounted it — so it comes back from its own draft with the
   // chosen place already in the named field, rather than from whatever the entity holds.
   const [formDraft, setFormDraft] = useState<EventFormDraft | null>(null);
+  /** The title the quick add hands the form through `עוד פרטים…` (ADR-0231 §3). */
+  const [formTitle, setFormTitle] = useState<string | undefined>(undefined);
   const closeForm = () => {
     setFormTarget(null);
     setFormSlot(null);
     setFormDraft(null);
+    setFormTitle(undefined);
   };
   usePlaceErrandReturn<EventFormDraft>('event', 'days', (returned) => {
     if (!returned.draft) return;
@@ -255,14 +522,30 @@ export function DayView() {
   // Tapping a transition row opens the read-only booking detail (ADR-0053/0064),
   // the same pattern as the Index; editing from there opens the BookingSheet.
   const [detailTarget, setDetailTarget] = useState<Booking | null>(null);
+  /** **An UNBOOKED event's read** (ADR-0229 §2). Its booked sibling has always had one here —
+   *  `detailTarget` above, which `TransitionRow` and `UnplacedCommitment` already open — and
+   *  the event CARD could reach neither. That was the whole defect: two row families on one
+   *  screen disagreeing about whether what they stand for can be read. */
+  const [eventDetail, setEventDetail] = useState<TripEvent | null>(null);
   const [scheduleItem, setScheduleItem] = useState<MaybeItem | null>(null);
   /** Where a quick-schedule opens: the first position on the day with room for this idea, and
    *  the block its category usually takes there (ADR-0161 §4/§5). One derivation shared with
    *  Plan mode's picker, so the two modes cannot disagree about where an idea should go. */
   const scheduleDefaults = (item: MaybeItem) => {
     const zone = authoringZone({ placeId: item.placeId }, { date: activeDate }, zoneEvidence);
-    const minutes = typicalMinutesFor(item.category);
-    const position = firstPositionFitting(dayPositions(dayEvents, activeDate, zone), minutes);
+    const minutes = typicalMinutesFor(ideaCategory(item, places));
+    // **Every position corrected for the journey into it BEFORE one is chosen** (ADR-0206 §V1.1,
+    // 2026-09-01). `firstPositionFitting` asks each hole whether it has room, and the room it was
+    // asking about was the whole hole — so a one-tap schedule picked a 70-minute gap for a
+    // 60-minute idea when 60 of those minutes were the drive, and `blockFor` then wrote the block
+    // across it. The same correction the chip and the strip apply, so the day cannot offer a slot
+    // on one surface that it refuses on another.
+    // **And never a position behind the clock, on today** (ADR-0231 §3). Without this line the
+    // first hole with room at ⁦13:51⁩ was the one before the ⁦10:00⁩ tour, and the shelf wrote an
+    // idea into the morning — a create has no `MOVE_INTO_PAST` behind it, so the offer itself
+    // has to be honest.
+    const positions = livePositions(zone);
+    const position = firstPositionFitting(positions, minutes);
     return position ? blockFor(position.free, minutes) : nextSlot(dayEvents, activeDate, zone);
   };
   /** The event `החלף` was pressed on — the one being displaced (ADR-0161 §6). */
@@ -271,8 +554,29 @@ export function DayView() {
    *  the gap's own header — filling a hole on the ground is Tier-1 work (ADR-0025), and the one
    *  surface that states the hole was the one place it could not be done. */
   const [gapTarget, setGapTarget] = useState<Gap | null>(null);
+  // ── THE DAY IS CHANGED WHERE YOU STAND (ADR-0231) ────────────────────────────────
+  /** The row whose time was tapped (§1) — the day's positions open for it. */
+  const [timeTarget, setTimeTarget] = useState<TripEvent | null>(null);
+  /** …and the row that asked for an exact time instead: the scoped sheet, not the form (F3). */
+  const [exactTarget, setExactTarget] = useState<TripEvent | null>(null);
+  /** The parked card whose sheet is open (§2, F2). */
+  const [parkedSheet, setParkedSheet] = useState<TripEvent | null>(null);
+  /** The slot a quick add is open on (§3): now, or the gap that was tapped. */
+  const [quickAdd, setQuickAdd] = useState<GapDefaults | null>(null);
+  /** `מאחרים` (§5). */
+  const [delayOpen, setDelayOpen] = useState(false);
   /** An event's own slot as a wall clock, read in the zone the day shows it in (ADR-0107) —
    *  what the replacement inherits, and what the shelf is ranked against. */
+  /** **How long a row occupies**, in minutes — what an idea replacing it has to fit inside
+   *  (ADR-0216 §2). Off the instants rather than the wall clocks beside it, so a zone-crossing
+   *  row measures its own elapsed length; `0` where there is nothing to measure, which drops
+   *  nothing (§D4). */
+  const eventMinutes = (e: TripEvent): number | undefined => {
+    const startMs = Date.parse(e.startsAt ?? '');
+    const endMs = Date.parse(e.endsAt ?? '');
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return undefined;
+    return Math.max(0, Math.round((endMs - startMs) / MS_PER_MINUTE));
+  };
   const slotOf = (e: TripEvent): GapDefaults => {
     const zones = eventDisplayZones(e, zoneCtx);
     return {
@@ -285,49 +589,96 @@ export function DayView() {
   // `שיבוץ ליום` inside it is what reaches `scheduleItem` above.
   const [ideaSheet, setIdeaSheet] = useState<MaybeItem | null>(null);
 
-  // **ARRIVING FROM A NOTE** (ADR-0153 §8's way-in amendment). A note about an event or an
-  // idea sends you to that host's day, and the id says which one to open once the day is on
-  // screen — `?event=<id>` expands the card, `?idea=<id>` opens the idea's sheet. The params
-  // are spent on arrival, so a back or a reload does not re-open what you have since closed,
-  // which is the same discipline `Index.tsx` runs for `?booking=`.
-  const [params, setParams] = useSearchParams();
+  // **ARRIVING AT ONE CARD** (ADR-0153 §8's way-in amendment; extended 2026-08-20 to the
+  // Map's place references). A note about an event or an idea — and now a place's reference
+  // row — sends you to that host's day, and the id says which one to open once the day is on
+  // screen: `?event=<id>` expands the card, `?idea=<id>` opens the idea's sheet. Both params
+  // are spent on arrival by `useArrivalParam`, so a back or a reload does not re-open what you
+  // have since closed.
+  const arrivingEvent = useArrivalParam(EVENT_PARAM, { active: !preview });
+  const arrivingIdea = useArrivalParam(IDEA_PARAM, { active: !preview });
   useEffect(() => {
-    const eventId = params.get(EVENT_PARAM);
-    const ideaId = params.get(IDEA_PARAM);
-    if (!eventId && !ideaId) return;
-    if (eventId) setOpenId(eventId);
-    if (ideaId) {
-      const idea = maybeItems.find((m) => m.id === ideaId);
-      if (idea) setIdeaSheet(idea);
-    }
-    const next = new URLSearchParams(params);
-    next.delete(EVENT_PARAM);
-    next.delete(IDEA_PARAM);
-    setParams(next, { replace: true });
-  }, [params, setParams, maybeItems]);
+    if (arrivingEvent) setOpenId(arrivingEvent);
+  }, [arrivingEvent]);
+  useEffect(() => {
+    if (!arrivingIdea) return;
+    const idea = maybeItems.find((m) => m.id === arrivingIdea);
+    if (idea) setIdeaSheet(idea);
+  }, [arrivingIdea, maybeItems]);
+  // **AND THE CARD IS BROUGHT TO YOU** (owner, 2026-08-20: _"going from a place to the event
+  // (and maybe also booking) doesn't scroll correctly"_). Opening it was never the whole job:
+  // a day is a long scroller and the card you were sent to is wherever it happens to be, so
+  // the arrival expanded something off screen. The same watched landing the Map's own row
+  // gets (`lib/land-at-top.ts`) — and it has to be watched here too, because expanding the
+  // card grows it by its documents, tasks and notes sections after the first aim.
+  useLandOnArrival(arrivingEvent, (id) => document.querySelector(eventRowSelector(id)));
+  /** **Did THIS day-open name a card?** — read by "land on now" below, which must not walk over
+   *  an arrival's landing with an answer to a question nobody asked this time. A ref written
+   *  from an effect declared HERE rather than a dependency down there, and both halves are
+   *  deliberate: effects run in declaration order, so this is already true by the time that one
+   *  looks; and adding the id to its deps would re-run it a render later, when the param has
+   *  been spent — scrolling to now on the strength of the arrival having finished. */
+  const aimedAtCard = useRef(false);
+  useEffect(() => {
+    aimedAtCard.current = arrivingEvent != null;
+  }, [arrivingEvent]);
 
   // The live "now" sits in the zone of the itinerary segment you're in (ADR-0107
   // §4), so "today" rolls at THAT zone's midnight — cross a zone and the calendar
   // day re-anchors. Trip mode only; Plan mode frames everything in the trip primary.
   const nowZone = liveZone(now.getTime(), zoneEvidence);
-  const today = liveToday(now.getTime(), zoneEvidence);
-  const dayScope: DayScope = activeDate < today ? 'past' : activeDate > today ? 'future' : 'today';
+  const nowMs = now.getTime();
+  // **The trip's own today, clamped while a commitment that began inside it is still
+  // running** (ADR-0236 §1): without it the trip's last day reads PAST while the flight
+  // home is in the air, which locks the day (ADR-0029), paints the archive chrome and
+  // points `offToday` at a day the trip does not have.
+  const today = tripToday(trip, now, zoneEvidence, events);
+  // How this screen names a day (`dayLabel`): relative on a live trip, anchored on the day
+  // ON SCREEN so an idea's "מחר" is the day after the one being built (ADR-0151); by trip-day
+  // number off it, where "עוד 15 ימים" is only the day number plus a constant.
+  const dayNaming = { trip, today, anchor: activeDate };
+  const dayScope = dayPhase(activeDate, today);
+  // Hoisted above `dayCtx`, which needs it as well: a row's quick actions are scoped by
+  // whether its DAY is today, not only by the event's own clock-derived phase (ADR-0228's
+  // 2026-09-15 amendment). The now-line and the landing read the same const below.
+  const isToday = dayScope === DAY_PHASE.TODAY;
   // A past day is a read-only archive within a live trip (ADR-0029) — but "past"
   // for EDITING is not the live zone's answer, nor even this day's ambient: a day
   // is over only once it is over in EVERY zone it touched (ADR-0029 session-103
   // amendment), so a travel day can't lock itself while you're still inside it.
   const readOnly = isDayOver(activeDate, zoneEvidence, now.getTime());
+  /** **A record is about a day you have reached** (owner, 2026-09-16: _"it's only relevant for
+   *  the current day, not for future days"_). [ADR-0228](../../docs/decisions/0228-the-quick-actions-are-one-list-and-a-commitment-can-be-settled.md)
+   *  §5a already ends its table with "another day, past or future — **none**", on the argument
+   *  that a quick action answers "what do I do about this row NOW" and a row two days out has
+   *  no now. That was applied to the card's verb band and never to the LIST's rows, which have
+   *  no band — the pair IS their affordance — so a check-out and a car return three days ahead
+   *  asked `היינו` on a day nobody had lived. §5c is the same argument in ADR-0117 §2's words:
+   *  "a human outranks the clock" is about marking **tonight's** dinner done at ⁦11:00⁩, not
+   *  Thursday's.
+   *
+   *  **The gate is FUTURE, not `onToday`.** A past day's posture belongs to `readOnly`
+   *  (ADR-0029, whose session-103 amendment makes a travel day live until it is over in every
+   *  zone it touched) and is deliberately untouched here — narrowing to `onToday` would take
+   *  the control off a day you are still inside. This only removes a day nobody has reached.
+   *
+   *  **And an answered edge keeps its control**, which is ADR-0139 §2's rule that the undo is
+   *  never what goes: with `outcome` set, `SettleControl` renders the record plus `ביטול סימון`
+   *  and never the pair, so handing the verbs back on a settled future edge cannot ask anything
+   *  — it only keeps the way back reachable. */
+  const canSettle = (event: TripEvent, edge: EventEdge = 'start') =>
+    dayScope !== DAY_PHASE.FUTURE || isEdgeSettled(event, edge);
 
-  const dayEvents = events
-    .filter((e) => e.date === activeDate && e.status !== EVENT_STATUS.SKIPPED && !isAmbient(e))
+  // **A span this day draws WHOLE is back in the list** (ADR-0236 §8): with both ends hosted
+  // here it has no days left to cross, so it takes its ordinary card rather than two
+  // transition points. `dayListEvents` is shared with Plan's builder so the two cannot answer
+  // this differently.
+  const dayEvents = dayListEvents(events, activeDate, trip)
+    .filter((e) => e.status !== EVENT_STATUS.SKIPPED)
     .sort(byStart);
-  // Ambient-span stays (a hotel, ADR-0054/0063) are backdrop, not timeline rows — and the
-  // backdrop is there on every day of the stay now, edges included. One shared predicate
-  // with Plan, which is where that rule belongs (ADR-0171 §10e).
-  const staysToday = staysOnDate(events, activeDate);
   // The shelf, grouped (ADR-0116 §2) by one shared derivation both hosts call —
   // ideas pencilled in for this day, the rest of the pool, and (ADR-0027's parking
-  // lot) the day's skipped soft events, durable and restorable in place.
+  // lot) the day's skipped events, durable and restorable in place.
   const shelf = shelfGroups(maybeItems, events, activeDate);
   // …and ranked (ADR-0116 session-202 §3 / ADR-0151). The grouping above is
   // untouched — this only orders what it produced, and attaches each idea's reason.
@@ -364,13 +715,13 @@ export function DayView() {
    *  (ADR-0151's amendment). Absent when the ranking had nothing to say about it. */
   const ideaWhy = (m: MaybeItem) => {
     const reason = poolReasonById.get(m.id) ?? forDayReasons.get(m.id);
-    return reason ? reasonText(reason, activeDate) : undefined;
+    return reason ? reasonText(reason, dayNaming) : undefined;
   };
   const markForDay = (m: MaybeItem) => {
     const date = proposedDay(poolReasonById.get(m.id));
     if (!date) return undefined;
     return {
-      label: t.day.idea.markForDay(relativeDayLabel(date, activeDate)),
+      label: t.day.idea.markForDay(dayLabel(date, { trip, today, anchor: activeDate })),
       onSelect: () => {
         verbs.acceptDay(m, date);
         setIdeaSheet(null);
@@ -378,30 +729,133 @@ export function DayView() {
     };
   };
 
-  const dayNumber = daysBetween(trip.startDate, activeDate) + 1;
   const weekday = weekdayName(activeDate, trip.timezone);
-  const heading = t.day.heading(dayNumber, weekday, trip.destination);
+  /** The day of the month, which the head stamps — the trip ORDINAL is the header anchor's
+   *  (`יום 3/12`) and is not repeated in the head (ADR-0219 §2). */
+  const dayOfMonthLabel = dayOfMonth(activeDate);
 
   // Per-event display zones (ADR-0107): one builder over the one evidence, shared
   // with the Plan-mode builder so the two day surfaces cannot diverge.
   const zoneCtx = dayZoneContext(activeDate, zoneEvidence);
+  /**
+   * **THE CLOCK THIS DAY IS READ IN** — ADR-0206 §AQ, finished (owner, 2026-09-05).
+   *
+   * Every wall clock the day PRINTS resolves through `zoneCtx`, whose floor is the day's own
+   * ambient zone. **A slot is a wall clock too**: `Gap.fill`, `Gap.until`, the fill sheet's
+   * header, a new event's prefill and the instants a pick writes are all built and read as
+   * `HH:MM` strings, and they were built in `trip.timezone` — the zone §AQ already had to take
+   * away from the journey block, being _"the zone the trip is FILED under and not the one
+   * anybody on it is reading a watch in"_.
+   *
+   * Internally consistent, so nothing was written to the wrong instant; and an hour off every
+   * row beside it on any trip whose primary sits off its stops. Reported as a `44 דק׳ פנויות`
+   * strip whose `＋` opened on `18:05–18:45` — straight through the ⁦18:00⁩ row below.
+   *
+   * **And not `authoringZone`, which answers the neighbouring question** (`frontend/CLAUDE.md`'s
+   * own anti-pattern): that resolves the zone a DRAFT's typed time means, from the draft's own
+   * place, and a hole has no place and no draft. Asked with neither it falls to the segment zone
+   * and then to the primary — which is the zone this is here to stop reaching for. What the hole
+   * belongs to is the DAY, and `ambientZone` is the day's answer: the zone its own events resolve
+   * to, which is the fallback every row on this screen already prints through.
+   */
+  const dayZone = zoneCtx.ambientZone;
+  /** **When this day's window opens** (ADR-0045/0037's 07:00) — the boundary that decides what
+   *  belongs to the night before it. Memoized for the reason the Map's copy is: `zonedIso` builds
+   *  an `Intl.DateTimeFormat`, and this screen re-renders every second on the clock. */
+  const dawnMs = useMemo(
+    () => dayWindowMs(activeDate, dayZoneContext(activeDate, zoneEvidence).ambientZone).startMs,
+    [activeDate, zoneEvidence],
+  );
   const noteCounts = useMemo(() => noteCountsByHost(notes), [notes]);
+  // The third mark's tally (ADR-0191 §2) — OPEN tasks only, unlike the two beside it.
+  const settledHosts = useSettledHosts();
+  const taskCounts = useMemo(
+    () => openTaskCountsByHost(tasks, settledHosts),
+    [tasks, settledHosts],
+  );
   const docCounts = useMemo(
     () => attachmentCountsByHost(documentAttachments),
     [documentAttachments],
   );
 
+  /** **The day's positions, corrected for the journey into each and, on today, for the clock**
+   *  (ADR-0231 §1/§3) — one derivation for the shelf's default, the row's picker and the quick
+   *  add, so no two of them can offer a slot the other refuses. `exclude` takes the row being
+   *  moved out of the walk (`dayPositions`' own option). */
+  const livePositions = (zone: string, exclude?: string): DayPosition[] => {
+    const positions = dayPositions(dayEvents, activeDate, zone, { exclude }).map((p) => {
+      const journey = p.beforeEvent ? journeyFor(p.afterEvent, p.beforeEvent) : null;
+      return journey ? { ...p, free: narrowGapForTravel(p.free, journey, zone) } : p;
+    });
+    return isToday ? positionsFromNow(positions, nowMs, zone) : positions;
+  };
+  /** What `מאחרים` would move right now, and what it stops at — read once per render so the
+   *  head can decline to offer a control that would move nothing (§5). */
+  const late = isToday && !readOnly ? lateShift(dayEvents, nowMs, DELAY_STEP_MINUTES) : null;
+  const { me } = useAuth();
+  /** The quick add's write (§3): a soft, planned event on the day, typed in the day's zone —
+   *  the same shape `EventForm`'s plain create builds, minus the nine fields it asks after. */
+  const addQuick = (draft: QuickAddDraft, date: string) => {
+    const stamp = now.toISOString();
+    void verbs.create({
+      id: generateId(),
+      tripId: trip.id,
+      date,
+      title: draft.title,
+      kind: EVENT_KIND.SOFT,
+      status: EVENT_STATUS.PLANNED,
+      startsAt: draft.start ? zonedIso(date, draft.start, dayZone) : undefined,
+      endsAt:
+        draft.start && draft.end ? resolveEndIso(date, draft.start, draft.end, dayZone) : undefined,
+      sortOrder: 99,
+      source: EVENT_SOURCE.MANUAL,
+      createdAt: stamp,
+      updatedAt: stamp,
+      updatedBy: me?.user.id ?? trip.updatedBy,
+    });
+  };
+  /** Where a new event asked for from a slot opens (§3, F5): the quick add on today, the form
+   *  on any other day — building tomorrow is Plan's job and the form is its room. */
+  const addAt = (slot: GapDefaults) => {
+    if (isToday) setQuickAdd(slot);
+    else {
+      setFormSlot(slot);
+      setFormTarget('new');
+    }
+  };
+
+  /** The picker's `עכשיו` row for the row being moved (§1): the hole the moment is inside, with
+   *  the moved row taken out of the room measurement. `undefined` off today — the picker owns no
+   *  clock, and neither should a day that is not being lived. */
+  const nowRow =
+    isToday && timeTarget
+      ? nowOption(
+          nowGap(
+            dayEvents.filter((e) => e.id !== timeTarget.id),
+            activeDate,
+            dayZone,
+            nowMs,
+          ),
+        )
+      : undefined;
+
   const dayCtx: DayCtx = {
-    tz: trip.timezone,
+    tz: dayZone,
+    // Filled in below, once `merged` exists to derive the placement from.
+    nowMark: null,
     zoneCtx,
     now,
     readOnly,
+    onToday: isToday,
+    canSettle,
     openId,
     toggle: (id) => setOpenId((cur) => (cur === id ? null : id)),
     bookings,
     places,
+    enrichments,
     placeLabels,
     noteCounts,
+    taskCounts,
     docCounts,
     hostContexts,
     dayEvents,
@@ -412,6 +866,23 @@ export function DayView() {
       else setFormTarget(e);
     },
     onReplace: setReplaceTarget,
+    onPickTime: setTimeTarget,
+    /** **The band's tap** (ADR-0229 §2/§4) — a booked event routes to `BookingDetail`, since a
+     *  linked pair is ONE context (ADR-0172 §1) and that read already exists; an unbooked one
+     *  gets `EventDetail`. The same branch `PlanDay` makes, which is what keeps the two day
+     *  surfaces from answering one question differently.
+     *
+     *  **And the card STAYS OPEN behind it** (§4, amended 2026-09-15 on the deployed build —
+     *  owner: _"it also closes the event card, and it shouldn't do it"_). It closed for one
+     *  release, to keep documents, tasks and notes from rendering twice, once per layer. That
+     *  duplication is invisible — it is behind a scrim, and both layers read the same state —
+     *  and what it cost is not: dismissing the read dropped you on a collapsed row and you
+     *  had to find your place again. A panel you opened is yours until you close it. */
+    onOpenRead: (e) => {
+      const booking = e.bookingId ? bookings.find((b) => b.id === e.bookingId) : undefined;
+      if (booking) setDetailTarget(booking);
+      else setEventDetail(e);
+    },
     onOpenDetail: setDetailTarget,
     showPlaceOnMap,
   };
@@ -432,10 +903,20 @@ export function DayView() {
   // sit between two flight legs stops suppressing the join between them (`dayBlocks`
   // ends a run on anything that is not a leaf event entry, so no gap AND no connection
   // band could be derived for that window at all).
+  // **THE TWO FACTS A STAY GETS A ROW FOR** (ADR-0209 §1): you started the day there, and/or you
+  // end it there. `dayBookendStays` is the same answer the MAP already reads for its stop sequence
+  // (ADR-0054's 2026-08-25 amendment), so the list and the canvas cannot disagree about a night.
+  const bookends = dayBookendStays(events, activeDate);
+  const stayRowIds = useMemo(
+    () => new Set([bookends.woke?.id, bookends.sleeps?.id].filter((id): id is string => !!id)),
+    [bookends.woke?.id, bookends.sleeps?.id],
+  );
   const placement = placeDayEntries(
-    mergeDayEntries(groups, dayTransitions(events, activeDate)),
+    mergeDayEntries(groups, dayTransitions(events, activeDate, trip)),
     dayEvents.filter((e) => !e.startsAt),
     groups,
+    stayRowIds,
+    dawnMs,
   );
   const merged = placement.positioned;
 
@@ -443,473 +924,1401 @@ export function DayView() {
   // is not free time at all and takes both legs into one block. The join derivation is
   // shared with nothing else on this screen and the same `gapBetween` Plan mode fills
   // from, so the two modes cannot disagree about where a hole is.
-  const blocks = dayBlocks(merged, { bookings, when: bookingWhen(events), tz: trip.timezone });
+  // **And the journey chain beside the join chain** (ADR-0232 R1): a row with no place is
+  // transparent to the leg, a row that moves you with an unplaced end is a seam, and the chain is
+  // seeded with the bed you woke in so the walk out of it spans a placeless first row too.
+  const chain = { ...journeyChainFor(bookings, places), from: bookends.woke };
+  const run = dayRun(merged, { bookings, when: bookingWhen(events), tz: dayZone, chain });
+  const blocks = run.blocks;
 
-  // The now-line: only on today (a past/future day has no "now"). Where it lands is
-  // `lib/now-line.ts` — one derivation shared with Plan's static now-reference, and
-  // the seam for the generalization that will let it sit INSIDE a running event
-  // rather than always above it.
-  const showNowLine = dayScope === 'today';
-  const nowLineIndex = nowLinePlacement(merged, now.getTime()).index;
+  // ══ THE JOURNEY IN A HOLE (ADR-0206 §V1.1 / §V1.3 / §V1.4) ═══════════════════════════════
+  //
+  // §V1.1 is the one line of that ADR that is a **bug fix**: the day has stated the whole of a
+  // hole as free since ADR-0159 shipped, so a 2:40 hole holding a 40-minute walk told you about
+  // forty minutes you do not have — on the one surface built to be a statement. The block that
+  // corrects it **absorbs** the free-time strip rather than sitting beside it (§Z5 §M2), so the
+  // slot still holds one object.
+  //
+  // **Every derivation here is memoized, and on this screen that is a defect class rather than a
+  // preference.** `useClock` ticks once a second, so anything in this render body runs 3,600 times
+  // an hour — the shape `frontend/CLAUDE.md` names for exactly this screen family, and what turned
+  // `e2e (preview)` red on M7c's second field report.
+  //
+  // **The legs are read off `dayBlocks` rather than re-derived**, because that function is the one
+  // place that knows which rows are adjacent: a flexible edge is transparent to the measurement
+  // (ADR-0171 §5), and a second walk would have to reproduce that rule to agree with the join it
+  // sits beside.
+  const day = useMemo(() => {
+    const between: DayLeg[] = [];
+    let wake: DayLeg | undefined;
+    for (const block of blocks) {
+      for (const { entry, join, from, legFrom, spans } of block.entries) {
+        // **A connection is the one join that has no journey to draw** — you are inside one
+        // commitment for the whole of it (`joinBetween`'s own rule). Everything else does,
+        // INCLUDING a hole too short to earn a `gap` join at all: the floor is about whether free
+        // time is worth stating and says nothing about travel (§Z5 §M2, and `DayBlockEntry.from`).
+        if (!legFrom || join?.kind === 'connection' || entry.kind !== 'event') continue;
+        const to = groupStartEvent(entry.group);
+        // **No leg INTO a placeless stop** (ADR-0232 R1): the leg across it is the one that
+        // draws. A row that moves you gets one whatever its ends resolve to — unplaced, it is a
+        // seam the reads count rather than a row the chain looks across (R2).
+        if (!chain.placedAt(to, 'arriving') && !chain.movesYou(to)) continue;
+        const leg: DayLeg = {
+          from: legFrom,
+          to,
+          ...(spans?.length ? { spans } : {}),
+          // **THERE IS NO WINDOW OUT OF A BED** (§AF3) — asked of the ROW, not of which slot the
+          // leg came from, which is the identity test `travelOrigin` was fixed for.
+          ...(isStayRow(legFrom) ? { fromIsStay: true } : {}),
+        };
+        // **THE DAY'S FIRST LEG, OUT OF THE STAY YOU WOKE IN** (§AD). It renders above the first
+        // row rather than in a hole — there is no join for it to hang off — so it is returned
+        // separately: the leg whose destination has no row above it at all. A leg out of the bed
+        // into a LATER row (a placeless first row between, ADR-0232) has a hole and draws in it.
+        if (!from) wake = leg;
+        else between.push(leg);
+      }
+    }
+    const woke = bookends.woke;
+    // **AND THE DRIVE THAT BROUGHT YOU TO THE BED** (owner, 2026-08-26: _"it should also show the
+    // way from the car rental to the hotel, right?"_). ADR-0054's amendment refused this leg the
+    // same day and gave a reason that has since been fixed: a stay's only arrival bound is its
+    // check-in FLOOR, and a leg into a floor used to read `אין זמן לדרך`. §AJ1 makes a floor a
+    // non-deadline, so the leg now says the one thing it can — `הגעה ~00:31` — which is the fact
+    // somebody landing at midnight actually wants.
+    //
+    // `departAfterMs` is the EDGE's placed instant, not the event's `endsAt`: a hire's `endsAt` is
+    // its return, ten days out (`DayLeg.departAfterMs`).
+    const cameIn = placement.overnight[placement.overnight.length - 1];
+    const arrive =
+      woke && cameIn && cameIn.event.id !== woke.id
+        ? {
+            from: cameIn.event,
+            to: woke,
+            fromEdge: cameIn.edge,
+            departAfterMs: cameIn.atMs,
+          }
+        : undefined;
+    // **AND THE LEG BACK** (ADR-0209 §1/§3), which is the other half of §AD and did not exist: the
+    // day's last row is where you end it, so the journey into tonight's stay is as certain as the
+    // one out of last night's.
+    //
+    // **This carried `bookend: true` and the line above said why, and the why was right about a
+    // hazard the flag never addressed** (ADR-0206 §AS1). _"A stay has no per-day arrival instant,
+    // so reading its `startsAt` as this hole's deadline would measure a window from its check-in
+    // day"_ — true, and what handles it is `legArrival`: `not-before` from any stay, and no
+    // deadline at all into a bed already held (`toIsHeldStay`). The flag's only reader asks about the ORIGIN, so setting
+    // it here suppressed this leg's `departAfterMs` instead — and with no departure instant there
+    // was no arrival either, leaving the row silent at every hour of every day while Plan mode,
+    // which asked the origin question directly, printed `הגעה ~21:26` all along.
+    // **From where the chain stands after the last row** (ADR-0232): the last PLACED row, with
+    // the placeless rows after it as what the leg crosses — which is how the drive to tonight's
+    // hotel survives an aurora watch with no place between the supermarket and the bed. On a day
+    // of nothing placed it is the bed you woke in, and a hotel change reads as the one drive it is
+    // (the reads skip a same-place pair, so a single stay asks for nothing).
+    const home: DayLeg | undefined =
+      bookends.sleeps && run.tail
+        ? {
+            from: run.tail.from,
+            to: bookends.sleeps,
+            ...(run.tail.spans.length ? { spans: run.tail.spans } : {}),
+            ...(isStayRow(run.tail.from) ? { fromIsStay: true } : {}),
+            ...(bookends.sleeps.date < activeDate ? { toIsHeldStay: true } : {}),
+          }
+        : undefined;
+    const legs = [arrive, wake, ...between, home].filter((l): l is DayLeg => !!l);
+    return {
+      between,
+      wake,
+      home,
+      arrive,
+      legs,
+      /** **The leg INTO a row, by the row** (ADR-0232 §4.1) — what every hole asks with, because a
+       *  spanning leg's origin is not the row above the hole and a lookup by the adjacent pair
+       *  finds nothing. One leg per destination, by construction of the chain. */
+      into: new Map(legs.map((leg) => [leg.to.id, leg])),
+    };
+    // `run` and `chain` are rebuilt every render exactly as `blocks` is; `legsKey` downstream is
+    // the memo that holds (ADR-0206 §AZ7), so listing them buys nothing `blocks` does not already.
+  }, [blocks, run, chain, bookends.woke, bookends.sleeps, placement.overnight]);
+  const dayLegs = day.legs;
+  const legInto = (to: TripEvent | undefined): DayLeg | undefined =>
+    to ? day.into.get(to.id) : undefined;
+
+  const travelReads = useDayTravelReads({
+    tripId: trip.id,
+    legs: dayLegs,
+    bookings,
+    places,
+    overrides: travelModeOverrides,
+  });
+
+  // **WHAT A DEVICE POSITION LETS THIS SURFACE CLAIM** (ADR-0207). The day row inherits the same
+  // four stances the hero reads, off the same module, so the two elevations withdraw one claim at
+  // the same moment rather than one of them keeping a mark the other has dropped.
+  //
+  // **Requested only where consent already exists, so the day never prompts** (§3) — the same rule
+  // Home follows: a read is never blocked on a permission, and a surface you swiped to is not an
+  // intent to be located. **And asked again while the leg is live** (§4 as amended, 2026-09-20):
+  // this screen and Home held the same mount-time effect against a ⁦2⁩-minute bound, so a day left
+  // open read an expired fix — which looked like correctness here only because a tab switch
+  // remounts it. `useLiveFix` is that effect with the refresh; the hook is declared after
+  // `liveLeg` because that is the live question it is gated on.
+
+  // **WHICH HOLE IS THE LIVE ONE.** Only one hole of a day is the journey you are about to make,
+  // and it is the only one a position or a `בדרך` mark can say anything about: the rest are a
+  // record (behind you) or a plan (ahead of the row you are in). Scoped to today, because a day
+  // you swiped to has no "now" in it at all.
+  const liveLeg = useMemo(() => {
+    if (dayScope !== DAY_PHASE.TODAY) return null;
+    let soonest: DayLeg | null = null;
+    let soonestAt = Infinity;
+    for (const leg of dayLegs) {
+      const at = Date.parse(leg.to.startsAt ?? '');
+      if (!Number.isFinite(at) || at <= nowMs || at >= soonestAt) continue;
+      soonest = leg;
+      soonestAt = at;
+    }
+    return soonest;
+  }, [dayLegs, dayScope, nowMs]);
+  const geo = useLiveFix(!!liveLeg);
+
+  // **AND WHETHER THE PLAN MAY STILL CLAIM IT** (ADR-0208 §2). `travelOrigin` is the hero's own
+  // derivation, read here rather than re-implemented — which is what stops the day row asserting a
+  // leave-by out of a café nobody went to while the board correctly says nothing.
+  //
+  // **The verdict is read WITHOUT matching it to the row above the hole, and that is the point.**
+  // A skipped event leaves the day list entirely (ADR-0027's parking lot, `dayEvents` above), so
+  // the hole is measured from the previous NON-SKIPPED row — which is precisely the repair
+  // ADR-0208 §2 refuses in as many words: _"it swaps a wrong claim for a staler one, and errs
+  // toward a louder app, since a longer leg is an earlier leave-by is a more confident late
+  // mark."_ The list does it structurally rather than deliberately, and the first version of this
+  // compared the claim's stop against the hole's own origin, which meant the two ids never matched
+  // and the denial could never fire. The MEASUREMENT still stands — the hole is the hole and the
+  // walk is in it — so what is withdrawn is the leave-by and the mark, never §V1.1's correction.
+  const liveClaim = useMemo(
+    () =>
+      liveLeg
+        ? travelOrigin({
+            events: events.filter((e) => e.date === today),
+            nowMs,
+            excludeEventId: liveLeg.to.id,
+          })
+        : null,
+    [liveLeg, events, today, nowMs],
+  );
+  const liveOriginDenied = liveClaim?.denied === true;
+
+  /** The one thing this screen needs a coordinate lookup for: the live leg's two ends, so the fix
+   *  can be tested against them. Only that leg — a stance on a hole you are not in answers a
+   *  question nobody asked, and §1 forbids a request from a position either way. */
+  const liveStance = useMemo(() => {
+    if (!liveLeg) return null;
+    const coordOf = (event: TripEvent, leaving: boolean) => {
+      const booking = event.bookingId ? bookings.find((b) => b.id === event.bookingId) : undefined;
+      const id = eventPlaceId(event, booking, leaving);
+      const place = id ? places.find((p) => p.id === id) : undefined;
+      return place?.lat != null && place.lng != null
+        ? { lat: place.lat, lng: place.lng }
+        : undefined;
+    };
+    const from = coordOf(liveLeg.from, true);
+    const to = coordOf(liveLeg.to, false);
+    if (!from || !to) return null;
+    return travelStance({
+      fix:
+        geo.coords && geo.fixedAt !== undefined
+          ? {
+              coords: geo.coords,
+              fixedAt: geo.fixedAt,
+              ...(geo.accuracyMeters !== undefined ? { accuracyMeters: geo.accuracyMeters } : {}),
+            }
+          : undefined,
+      from,
+      to,
+      nowMs,
+    });
+  }, [liveLeg, places, bookings, geo.coords, geo.fixedAt, geo.accuracyMeters, nowMs]);
+
+  // **Somebody said `בדרך`** — a person telling the app what it should have been able to see, and
+  // reversible since ADR-0207 §7. Read through the same `useOnWay` the hero and the board read, so
+  // a mark set on one elevation withdraws the nudge on all three.
+  const liveOnWay = useOnWay(trip.id, liveLeg?.to.id);
+
+  /** **Every hole's journey, computed once per tick and read by key.** The arithmetic is
+   *  `dayJourney`'s (`lib/day-joins.ts`) and the leave-by inside it is `heroLeaveBy`'s, so the
+   *  board, the lifted hero and this row cannot name three different minutes for one departure.
+   *
+   *  The live hole is the only one handed a position or a mark: a stance on a hole you are not in
+   *  answers a question nobody asked, and a `בדרך` mark is about the journey you are on. */
+  const journeys = useMemo(() => {
+    const byLeg = new Map<string, DayJourney>();
+    const remaining =
+      liveStance && liveStance.stance === TRAVEL_STANCE.EN_ROUTE
+        ? remainingTravelSeconds(
+            liveStance,
+            travelReads.estimateFor(liveLeg!.from, liveLeg!.to)?.durationSeconds ?? null,
+          )
+        : null;
+    for (const leg of dayLegs) {
+      const estimate = travelReads.estimateFor(leg.from, leg.to);
+      const live = leg === liveLeg;
+      const journey = dayJourney({
+        // **`legDepartAfterMs` owns the three rules** (ADR-0206 §AJ3): the leg's own placed
+        // instant, **no floor out of a bed** (§AF3 — a stay's `endsAt` is a check-out days away,
+        // and reading it here measured a window from next Wednesday), otherwise the origin's end.
+        // It was written out here, again in Plan mode, and nowhere on the board — which is how the
+        // board came to skip §AJ2's clamp entirely and mark a traveller late for a departure this
+        // surface was correctly printing as the origin's own end.
+        departAfterMs: legDepartAfterMs(leg),
+        // **A destination with no DEADLINE licenses no leave-by** (ADR-0206 §AI1). A check-in's
+        // `17:00` is the hour the door opens, and counting back from it told you to leave in time
+        // to arrive the instant it does — then marked you late against it. `legArrival` asks it
+        // of the leg because `dayJourney` holds instants and cannot see an event.
+        ...legArrival(leg),
+        travelSeconds: estimate?.durationSeconds ?? null,
+        // **The distance is the reads' own, not the estimate's** (ADR-0206 §AA4): a declared leg
+        // has no estimate to take one from and still keeps a distance, and `distanceFor` is the one
+        // place that rule lives so Plan mode cannot answer it differently.
+        distanceMeters: travelReads.distanceFor(leg.from, leg.to),
+        // A declared leg is a journey with no duration rather than no journey — and it is also the
+        // only thing carrying the mode control, so it must render (§AA4).
+        declared: !isRoutableMode(travelReads.modeFor(leg.from, leg.to)),
+        // …and a mode the gate refuses is the same shape of fact (ADR-0206 §AM10): no estimate is
+        // ever coming, and the block is the only thing carrying the control that would change it.
+        tooFarForMode: travelReads.refusedFor(leg.from, leg.to),
+        // …and a leg whose number has not arrived yet is the third (ADR-0206 §AU1): it must RENDER,
+        // because the block is what tells the reader a route is coming and what carries the control
+        // that would pick a different mode for it. Ranked last of the three by `dayJourney` itself.
+        warming: travelReads.warmingFor(leg.from, leg.to),
+        // **The placeless rows this leg crosses, as time** (ADR-0232 R4): given, the clock advice is
+        // withheld and the fit is measured on the combined slack.
+        ...(leg.spans?.length ? { spanned: spannedIntervals(leg.spans) } : {}),
+        nowMs,
+        // `arrived` needs no separate arm here: a fix at the next stop means you got there, and
+        // the day list is a record either way — what it must not do is keep offering a departure.
+        onWay:
+          live &&
+          (liveOnWay ||
+            liveStance?.stance === TRAVEL_STANCE.EN_ROUTE ||
+            liveStance?.stance === TRAVEL_STANCE.ARRIVED),
+        remainingSeconds: live ? remaining : null,
+        claimDenied: live && liveOriginDenied,
+      });
+      if (journey) byLeg.set(`${leg.from.id}>${leg.to.id}`, journey);
+    }
+    return byLeg;
+  }, [dayLegs, travelReads, nowMs, liveLeg, liveOnWay, liveStance, liveOriginDenied]);
+  const journeyFor = (from: TripEvent | undefined, to: TripEvent) =>
+    (from && journeys.get(`${from.id}>${to.id}`)) ?? null;
+
+  /** **Is this row a leg you are carried on?** (ADR-0212 §1) — the one question the thread is
+   *  drawn off, asked through `spendsSpanInMotion` so a hire is excluded for the reason that
+   *  predicate already exists to state. */
+  const carriedRow = (entry: DayEntry): boolean => {
+    if (entry.kind !== 'event') return false;
+    const event = groupStartEvent(entry.group);
+    const booking = event.bookingId ? bookings.find((b) => b.id === event.bookingId) : undefined;
+    return !!booking && spendsSpanInMotion(booking.type);
+  };
+
+  /** **How far the day goes in the AIR** (ADR-0212 §3) — computed off the day's own events rather
+   *  than rolled up from `journeys`, because a flight is not a hole between two rows: it IS a
+   *  row, and nothing in the journey list has ever known about one. Kept apart from the ground
+   *  total for the reason `DayTravelTotal.airMeters` measures.
+   *
+   *  `dayEvents` and not `merged`, so a leg counts on the day it DEPARTS and on no other. The
+   *  merged list also carries ADR-0064's transition rows, and a red-eye owns one on each side of
+   *  midnight — reading those would count Keflavík twice across two days, each of them looking
+   *  perfectly reasonable on its own. `staysToday` is out of `dayEvents` already, and a stay is
+   *  not carried anyway. */
+  const airMeters = useMemo(
+    () => dayAirMeters(dayEvents, bookings, places),
+    [dayEvents, bookings, places],
+  );
+
+  /** **The day's total, off the journeys the rows above drew** (ADR-0206 §V1.9) — a roll-up
+   *  rather than a second pass over `dayLegs`, so the header cannot claim kilometres for a hole
+   *  the list shows no block for. `dayTravelTotal`'s docblock owns the asymmetry between the two
+   *  halves; Plan mode reads the same function over its own map. */
+  const dayTotal = useMemo(
+    () =>
+      dayTravelTotal(
+        [...journeys.values()],
+        {
+          // …plus the placeless runs no leg reaches at all (ADR-0232 R5, `danglingLegs`).
+          unplacedLegs: travelReads.unplacedLegs + danglingLegs(run, bookends.sleeps),
+          spanningLegs: travelReads.spanningLegs,
+        },
+        airMeters,
+      ),
+    [journeys, travelReads.unplacedLegs, travelReads.spanningLegs, airMeters],
+  );
+
+  /**
+   * **What the head says this day is, and what it shows of it** (ADR-0219 §2/§3) — the same two
+   * derivations the public reader names and pictures a day with (`@waypoint/shared`).
+   *
+   * Both are memoized on the trip state they read because this screen re-renders every second on
+   * the clock, and both walk the whole trip's events: naming a day asks whether it is the way out
+   * or the way home, which is a whole-trip question.
+   */
+  const headTitle = useMemo(
+    () =>
+      dayHeadTitle({
+        trip,
+        date: activeDate,
+        dayEvents,
+        events,
+        bookings,
+        places,
+        placeLabels,
+        enrichments,
+      }),
+    [trip, activeDate, dayEvents, events, bookings, places, placeLabels, enrichments],
+  );
+  const shot = useMemo(
+    () => dayShot(dayEvents, bookings, places, placeLabels, enrichments),
+    [dayEvents, bookings, places, placeLabels, enrichments],
+  );
+  /** The full picture, opened from the shot — the screen owns the viewer, exactly as `Map.tsx`
+   *  does for `PlaceKnowledge`'s hero (ADR-0167 §10). */
+  const [fullShot, setFullShot] = useState<DayShot | null>(null);
+
+  /**
+   * **The facts true of the WHOLE day, in the head's footer band** (ADR-0219 §2/§4) — what the
+   * teal strip above the list used to hold, minus the two things that were never facts about the
+   * day. Trip mode has one: how far the day goes.
+   *
+   * **HOW FAR THE DAY GOES** (ADR-0206 §V1.9 / §AP) is Trip mode AND Plan mode, off one
+   * derivation and one component: a day's total distance is a FACT, and ADR-0159 §1 allows the
+   * two surfaces a difference in posture and forbids one about a fact.
+   */
+  const headFacts =
+    dayTotal.distanceMeters !== null
+      ? [<DayTravelTotal key="total" total={dayTotal} />]
+      : undefined;
+
+  /** The live hole's one control, and the arm decides what it means: `בדרך` answers the mark,
+   *  `ביטול סימון` takes it back (ADR-0207 §7 — a toast is transient and a mark is not). Nothing
+   *  on a read-only archive, where every other write is gated too (ADR-0029). */
+  const liveAction = (journey: DayJourney): { label: string; onPress: () => void } | undefined => {
+    if (readOnly || !liveLeg) return undefined;
+    // **A mark that is set is always takeable back, whatever the block went on to say** (ADR-0206
+    // §AQ3). Asked FIRST, and that ordering is the fix: `dayJourney` answers `OVERRUNS` before it
+    // ever looks at `onWay`, so on a leg that does not fit the arm stays `OVERRUNS` after somebody
+    // presses `בדרך` — and the branch below, keyed on `ON_WAY`, then offered nothing to undo. This
+    // is the hero's own rule (`Home.tsx`: `onWayToNext ? undoSettle : …`), which is the point.
+    if (liveOnWay) {
+      return { label: t.actions.undoSettle, onPress: () => clearOnWay(trip.id, liveLeg.to.id) };
+    }
+    // The position said so rather than a person: there is no mark of theirs to withdraw, and the
+    // app does not offer to take back something it worked out for itself (ADR-0207 §2).
+    if (journey.arm === DAY_JOURNEY_ARM.ON_WAY) return undefined;
+    // **`OVERRUNS` earns the mark too, and that is the half that was missing.** The two arms are
+    // one question — is the departure still the live thing to say — and an infeasible leg answers
+    // it more loudly than a passed one: there was never a leave-by to pass, so `בדרך` is the only
+    // way to tell an app with no sensor that you went anyway. Withheld, the day offered a shortfall
+    // and no way to answer it on exactly the leg where being late is already the fact.
+    //
+    // The row keeps saying the shortfall (`journeyMetaLine` is untouched): what the mark withdraws
+    // is the NUDGE, not the warning, and the warning is still true once you are moving.
+    return journey.arm === DAY_JOURNEY_ARM.PASSED || journey.arm === DAY_JOURNEY_ARM.OVERRUNS
+      ? { label: t.actions.onWay, onPress: () => verbs.onWay(liveLeg.to) }
+      : undefined;
+  };
+  /** `עדיין כאן` — the app saying it CHECKED, and the only claim a position licenses that the
+   *  clock could not (ADR-0207 §2). Only where the fix actually puts them at the origin. */
+  const liveLocated = (journey: DayJourney) =>
+    liveStance?.stance === TRAVEL_STANCE.AT_ORIGIN && journey.arm === DAY_JOURNEY_ARM.PASSED
+      ? t.travel.stillHere
+      : undefined;
+  /** **The mode control, shared with Plan mode** (ADR-0206 §AM9) — the hook owns the open state,
+   *  the clear-vs-set rule and both gates, so the two day surfaces cannot offer different switches
+   *  for the same leg. It lived here alone in M8b, which is what left Plan unable to change a mode. */
+  const modeControl = useLegModeControl({ reads: travelReads, verbs: travelModeVerbs, readOnly });
+
+  /** **The props a hole's journey block needs**, in one place, because the day's first leg renders
+   *  outside the block loop and a second assembly is how the two would drift. */
+  const journeyProps = (
+    journey: DayJourney,
+    live: boolean,
+    leg: {
+      from: TripEvent;
+      to: TripEvent;
+      fromEdge?: 'start' | 'end';
+      spans?: readonly TripEvent[];
+    },
+  ) => ({
+    journey,
+    // **The block names its origin where the row above is not it** (ADR-0232 R3), and only then:
+    // on an ordinary leg the row above IS the origin, and the word would say what the eye has.
+    ...(leg.spans?.length ? { from: t.travel.from(autoIsolate(leg.from.title)) } : {}),
+    // **The LEG's mode, not the trip's** (ADR-0206 §AM). `modeFor` answers the override where one
+    // was set and the derivation otherwise, and it is the same read the Map makes — one leg cannot
+    // be a train in the list and a drive on the canvas (ADR-0159 §1).
+    travelMode: travelReads.modeFor(leg.from, leg.to),
+    // **The leg's own two zones, never the trip's primary** (ADR-0206 §AQ). This row used to take
+    // `trip.timezone`, which is the zone the trip is FILED under and not the one anybody on it is
+    // reading a watch in — so on a trip whose primary sits an hour off its stops the block printed
+    // a departure after the arrival it was counted back from.
+    zones: legDisplayZones(leg, zoneCtx),
+    // **What this leg is INTO** (ADR-0226) — the key the agreement suite groups by, so one
+    // subject's departure is compared against the board's answer for the same subject.
+    subjectId: leg.to.id,
+    // **One tap to this leg on the canvas** (owner, 2026-08-27) — the pair comes from the one
+    // function that resolves it, so the map lights the leg this row is about (ADR-0206 §AB2).
+    onShowOnMap: legShowOnMap(travelReads.pairFor(leg.from, leg.to), showPlaceOnMap),
+    ...(live ? { action: liveAction(journey), located: liveLocated(journey) } : {}),
+    ...modeControl(leg.from, leg.to),
+  });
+
+  /** **The day's first leg — out of the stay you woke in** (ADR-0206 §AD). It has no `join` above
+   *  it because it has no row above it, so it renders outside the block loop rather than inside
+   *  one; everything it says is the same component saying it. */
+  const wakeJourney = day.wake ? journeyFor(day.wake.from, day.wake.to) : null;
+  const arriveJourney = day.arrive ? journeyFor(day.arrive.from, day.arrive.to) : null;
+  const homeJourney = day.home ? journeyFor(day.home.from, day.home.to) : null;
+
+  /** **Which END of the stay this day is, when it is one at all** — `placement.stayEdges` is
+   *  exactly the day's transition for a stay that got a bookend row instead of a list row
+   *  (ADR-0209 §1), so a check-out day answers `end`, a check-in day `start`, and a middle
+   *  night answers nothing. Both the row's sentence and its settle pair ask it, which is what
+   *  stops them describing two different ends of one booking. */
+  const stayEdgeEntry = (stay: TripEvent) =>
+    placement.stayEdges.find((e) => e.event.id === stay.id);
+
+  /** **The stay's own bound, in the words the strip already used** (ADR-0209 §1) — `edgeSentence`
+   *  where the day is an edge of it, `ambientSpanLabel` where it is not. Both sentences existed in
+   *  the band this row replaces, so nothing is reworded: `placement.stayEdges` is that edge, kept
+   *  precisely so its sentence survives leaving the list. */
+  const stayBound = (stay: TripEvent): string | undefined => {
+    const edge = stayEdgeEntry(stay);
+    return edge
+      ? edgeSentence(edge, transitionZoneProps(edge, zoneCtx).zone)
+      : ambientSpanLabel(stay, activeDate);
+  };
+
+  /** **The settle pair, on the edge this day actually is** — inherited from the edge row this
+   *  replaces, and load-bearing rather than parity: `glance.ts` keeps such an edge in
+   *  `נותרו היום` until it is settled, because 15:01 does not mean anybody checked in (ADR-0171
+   *  §6). Gated on the archive like every other write (ADR-0029).
+   *
+   *  **The gate used to be a PREDICATE about the check-in, and that is the defect** (owner,
+   *  2026-09-16: _"marking that makes it היינו for both check in and out"_). It asked
+   *  `edgeOutlivesItsInstant(stay, 'start')` and then read and wrote `status` — so the row for
+   *  the hotel you left this morning and the row for the one you sleep in tonight were the same
+   *  switch, and on a middle night the app offered an answer to a transition the day does not
+   *  have. ADR-0224 §1 already stores the two ends apart and §4 already dropped this exact gate
+   *  on `TransitionRow` (a rule about the COUNT applied to a CONTROL); the bookend row simply
+   *  never got either. Now the day's own edge decides all three: whether to ask, in which words,
+   *  and which field the tap writes.
+   *
+   *  A window's `נותרו היום` report (fixed 2026-09-15 by widening the old gate past
+   *  `not-before`) stays fixed, and by a stronger rule: every edge is settleable now, so no
+   *  meaning can fall outside it. */
+  const staySettle = (stay: TripEvent) => {
+    const entry = stayEdgeEntry(stay);
+    if (readOnly || !entry || !canSettle(stay, entry.edge)) return {};
+    const { edge } = entry;
+    return {
+      ...edgeSettleProps(stay, edge),
+      onDone: () => verbs.done(stay, edge),
+      onSkip: () => verbs.skip(stay, edge),
+      onUndo: () => verbs.restore(stay, edge),
+    };
+  };
 
   // Land on now: scroll the now-line into view once per day-open (today only), a
   // passed event or two left peeking above. Keyed on the viewed day — never on
   // the clock tick — so it doesn't fight a manual scroll. Instant under
   // reduced-motion.
   const nowLineRef = useRef<HTMLDivElement>(null);
-  const isToday = dayScope === 'today';
+
+  // **Where the moment is** — only on today, because a past or future day has no "now"
+  // (ADR-0043 §1/§4). `lib/now-line.ts` answers both halves (ADR-0217 §1/§2): `inside` names
+  // the row the moment is IN and how far through it we are, and `index` is the boundary the
+  // mark falls back to when no row holds it — before the day's first row, after its last, and
+  // in a hole `dayBlocks` draws no row for. One derivation, shared with Plan's own reference.
+  const showNowLine = isToday;
+  const nowPlaced = nowLinePlacement(merged, now.getTime());
+  const nowLineIndex = nowPlaced.index;
+  const nowInsideRow = showNowLine ? nowPlaced.inside : null;
+  const nowLabel = formatTime(now, nowZone);
+  // **AND THE SPACE BETWEEN TWO ROWS HOLDS THE MOMENT TOO** (ADR-0217 §4) — a hole is an
+  // interval like any other, and "you are in the gap, with 40 minutes of it left" is the
+  // useful half of "what next". It is derived HERE rather than in `nowLinePlacement` because a
+  // hole is not an entry: `dayBlocks` measures it between two of them, after the placement
+  // exists. Which is also why it needs no second rule — a hole is precisely where no row holds
+  // the moment, so `inside === null` at this index already identifies it, and the two answers
+  // cannot disagree.
+  //
+  // **What this hands down is the hole, not a fraction** (the 2026-09-04 amendment): a hole
+  // draws up to two rows and only `JoinRow` knows which, so the screen says WHETHER the moment
+  // is in it and that row says which box of it holds the moment.
+  const nowInHole = (from?: TripEvent, to?: TripEvent): JoinNowMark | null => {
+    if (!showNowLine || nowInsideRow || !from?.endsAt || !to?.startsAt) return null;
+    const opensMs = Date.parse(from.endsAt);
+    const closesMs = Date.parse(to.startsAt);
+    const nowMs = now.getTime();
+    return closesMs > opensMs && nowMs >= opensMs && nowMs < closesMs
+      ? { nowMs, opensMs, closesMs, label: nowLabel, ref: nowLineRef }
+      : null;
+  };
+  // **AND A HOLE THE DAY HAS NOT REACHED YET TAKES THE MARK ABOVE IT** (2026-09-12). The
+  // boundary form renders UNDER the join because the join is a fact about the plan and the mark
+  // is the clock arriving inside it — which held while the index could only ever be drawn at an
+  // entry whose hole was already open (the row above it had ENDED, so the hole opened at its end).
+  // A settled row hands the mark down before its own clock is up (`entryIsBehind`), and then the
+  // join below it is a drive nobody has taken and a free hour nobody has had: drawn under them,
+  // the mark says the drive is behind us. Above them it says what it means. Plan's reference has
+  // always read above the hole, so this is also the two hosts agreeing.
+  const holeIsAhead = (from?: TripEvent) =>
+    showNowLine && !!from?.endsAt && Date.parse(from.endsAt) > now.getTime();
+  // **AND THE DAY'S EDGE LEGS HOLD IT TOO** (the 2026-09-04 amendment) — `arriveJourney`,
+  // `wakeJourney` and `homeJourney` render OUTSIDE the block loop because they have no join to
+  // hang off (ADR-0206 §AD, ADR-0209 §1), so the boundary mark had exactly one position against
+  // all three: below them. At ⁦05:00⁩ that said an ⁦08:40⁩ drive out of the hotel was behind us —
+  // the reported defect, one row up and at the other end of the day.
+  //
+  // Three rows in a fixed order, so the mark takes the FIRST place that is true of it and the
+  // ones after it stand down: nailed inside a leg under way, else above the first leg still
+  // ahead, else its shipped place. `merged.length > 0` keeps a day with no entries on the tail
+  // alone, which is the only mark it draws.
+  const atHead = showNowLine && !nowInsideRow && nowLineIndex === 0 && merged.length > 0;
+  const atTail = showNowLine && !nowInsideRow && nowLineIndex === merged.length;
+  const inArriveLeg = atHead ? nowInJourney(arriveJourney, now.getTime()) : null;
+  const inWakeLeg = atHead && !inArriveLeg ? nowInJourney(wakeJourney, now.getTime()) : null;
+  const inHomeLeg = atTail ? nowInJourney(homeJourney, now.getTime()) : null;
+  const overEdgeLeg = Boolean(inArriveLeg || inWakeLeg);
+  const aboveArriveLeg = atHead && !overEdgeLeg && journeyIsAhead(arriveJourney, now.getTime());
+  const aboveWakeLeg =
+    atHead && !overEdgeLeg && !aboveArriveLeg && journeyIsAhead(wakeJourney, now.getTime());
+  const aboveHomeLeg = atTail && !inHomeLeg && journeyIsAhead(homeJourney, now.getTime());
+  /** An edge leg wrapped in the mark, or handed back plain. */
+  const nailEdge = (inside: NowInside | null, row: ReactNode) =>
+    inside ? (
+      <NowMarker ref={nowLineRef} label={nowLabel} thruFrac={inside.thruFrac}>
+        {row}
+      </NowMarker>
+    ) : (
+      row
+    );
+  /** **And the loop's own boundary stands down where an edge leg has taken the mark** — it is the
+   *  same mark, and all three of these can only fire at `nowLineIndex === 0`, which is the one
+   *  index that boundary draws at. Without this the day draws two. */
+  const headTaken = overEdgeLeg || aboveArriveLeg || aboveWakeLeg;
+  // The ctx the ROWS render from. `dayCtx` itself carries no mark, which is what the tail of
+  // untimed rows below wants: ADR-0171 §10a says they hold no position in the day, and
+  // `eventSpans` agrees by skipping an event with no `startsAt` — so they can never be the
+  // moment's row and must not be handed a key that might match one.
+  const rowCtx: DayCtx = {
+    ...dayCtx,
+    nowMark: nowInsideRow ? { ...nowInsideRow, label: nowLabel, ref: nowLineRef } : null,
+  };
   useEffect(() => {
-    if (!isToday) return;
+    // A preview must not scroll: its pane is not a scroller, so `scrollIntoView` would walk
+    // out and move the REAL day's body under the finger (ADR-0200 §7).
+    if (preview || !isToday || aimedAtCard.current) return;
     const el = nowLineRef.current;
     if (!el) return;
     el.scrollIntoView({ block: 'center', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
-  }, [activeDate, isToday]);
+  }, [activeDate, isToday, preview]);
 
   return (
-    <>
-      {ripple && (
-        <div className="ripple show">
-          <span className="rt">{t.ripple.prompt(ripple.movedTitle, ripple.direction)}</span>
-          <button className="yes" onClick={verbs.rippleApply}>
-            {t.common.yes}
-          </button>
-          <button className="no" onClick={verbs.rippleDismiss}>
-            {t.common.no}
-          </button>
-        </div>
+    <div className="day-swipe" data-preview={preview || undefined} ref={daySurface.ref}>
+      {/* **THE DAY YOU ARE SWIPING TOWARD, DRAWN WHILE YOU SWIPE** (ADR-0200 §7). The same
+          screen, one day over, inert — so what the page turn lands on is what the committed
+          day draws, and the seam needs no cross-fade. `preview` stops the recursion at depth
+          one: a peek renders no peeks of its own. */}
+      {!preview && daySurface.live && (
+        <DayPeeks prev={daySurface.peek.prev} next={daySurface.peek.next}>
+          <DayView />
+        </DayPeeks>
       )}
-
-      {readOnly && (
-        <div className="archive-banner">
-          <span className="ab-ic" aria-hidden="true">
-            <Icon name="archive" />
-          </span>
-          <span className="ab-main">
-            {heading} · {t.day.archiveTag}
-          </span>
-          <button className="ab-back" onClick={() => setActiveDate(today)}>
-            {t.header.backToToday}
-          </button>
-        </div>
-      )}
-
-      <div className="sec-title">
-        {heading}
-        <span className="sec-title-end">
-          {/* Trip-mode add is a Tier-1 quick soft-add for today (ADR-0025/0043),
-              prefilled at the next open slot; heavy building lives in Plan.
-              Locked on a past day (create gated, ADR-0029). */}
-          {!readOnly && (
-            <button className="new-event-btn" onClick={() => setFormTarget('new')}>
-              <Icon name="plus" /> {t.actions.newEvent}
+      {/* **THE DAY PAINTS ONCE** (ADR-0206 §AT). Held — laid out, not painted — until this device
+        has said what travel it holds for these legs, because the journey rows and the total
+        APPEAR when an estimate lands: measured on a warm cache the day painted, then ⁦174ms⁩ later
+        redrew ⁦162px⁩ taller, on every open and every swipe. `settled` is the local read only and
+        never the network, so nothing here waits on a request; `visibility` rather than a mount
+        gate so the surface's own layout, refs and scroll restoration are unaffected by the hold. */}
+      <div className="day-page" data-measuring={!travelReads.settled || undefined}>
+        {ripple && (
+          <div className="ripple show">
+            <span className="rt">{t.ripple.prompt(ripple.movedTitle, ripple.direction)}</span>
+            <button className="yes" onClick={verbs.rippleApply}>
+              {t.common.yes}
             </button>
-          )}
-        </span>
-      </div>
+            <button className="no" onClick={verbs.rippleDismiss}>
+              {t.common.no}
+            </button>
+          </div>
+        )}
 
-      {(staysToday.length > 0 || placement.commitments.length > 0) && (
-        <div className="day-ambient">
-          {/* **AN EDGE DAY SAYS THE EDGE; A MIDDLE DAY SAYS THE COUNT** (owner, 2026-08-13).
-              `לילה 1 מתוך 1` on both of two guesthouses — one being left this morning, one
-              being arrived at tonight — is the same words for opposite events. The sentence
-              comes from the day's PLACED entry, so this line and the row below it cannot
-              print two different clocks for one edge. */}
-          {staysToday.map((e) => {
-            const edge = edgeEntryOf(placement.positioned, e.id);
-            return (
-              <div className="ambient" key={e.id}>
-                <span className="ai" aria-hidden="true">
-                  {e.icon ?? DEFAULT_STAY_ICON}
-                </span>
-                <span className="an">{e.title}</span>
-                <span className="as">
-                  {edge
-                    ? edgeSentence(edge, transitionZoneProps(edge, zoneCtx).zone)
-                    : ambientSpanLabel(e, activeDate)}
-                </span>
-              </div>
-            );
-          })}
-          {/* **A commitment with no position reads at the TOP** (ADR-0171 §10a-i) — a
-              claim on your day, carried all day, rather than something buried at its
-              foot. It lands in the strip a multi-night stay's MIDDLE days already use,
-              so one hotel reads the same way on every day of itself, edges included,
-              and no second band is invented. */}
+        {readOnly && (
+          /* **The banner keeps its control and loses its heading** (ADR-0219 §2). It read
+             `{heading} · לקריאה בלבד`, and the head under it now says the date — so the
+             banner says only what the banner is for. */
+          <ArchiveBanner
+            label={t.day.archiveTag}
+            action={
+              <button className="ab-back" onClick={() => setActiveDate(today)}>
+                {t.header.backToToday}
+              </button>
+            }
+          />
+        )}
+
+        {/* **A DAY IS A PLACE YOU CAN SEE** (ADR-0219 §2/§3), and this replaces `.sec-title`'s
+          12px muted `יום 3 · ראשון · איסלנד`. The trip ordinal is the header anchor's
+          (`יום 3/12`) and the destination is the trip's name, so neither is repeated: the head
+          says the date, what the day IS, and — when a stop clears `dayPhoto`'s gate — shows it.
+          The same component and the same derivations the public reader uses. */}
+        <DayHead
+          card
+          dayNumbers={dayOfMonthLabel}
+          weekday={weekday}
+          isNow={isToday}
+          title={headTitle}
+          shot={
+            shot && {
+              ...shot,
+              eager: true,
+              onOpen: () => setFullShot(shot),
+            }
+          }
+          facts={headFacts}
+          action={
+            /* Trip-mode add is a Tier-1 quick soft-add for today (ADR-0025/0043), prefilled at
+              the next open slot; heavy building lives in Plan. Locked on a past day (create
+              gated, ADR-0029) — and then the footer band is absent entirely. */
+            readOnly ? undefined : isToday ? (
+              /* **On today the ＋ is the quick add and lands on now** (ADR-0231 §3), and the
+                 day takes a delay beside it (§5) — offered only while something ahead of you
+                 can move, the rule `onNavigate` has always followed: no target, no control. */
+              <span className="wp-dayhead-acts">
+                {late && late.moved.length > 0 && (
+                  <button className="new-event-btn" onClick={() => setDelayOpen(true)}>
+                    <Icon name="clock" /> {t.day.late.action}
+                  </button>
+                )}
+                <button
+                  className="new-event-btn"
+                  onClick={() => setQuickAdd(nowGap(dayEvents, activeDate, dayZone, nowMs).fill)}
+                >
+                  <Icon name="plus" /> {t.actions.newEvent}
+                </button>
+              </span>
+            ) : (
+              <button className="new-event-btn" onClick={() => setFormTarget('new')}>
+                <Icon name="plus" /> {t.actions.newEvent}
+              </button>
+            )
+          }
+        />
+
+        <div className={'day-list' + (readOnly ? ' archive' : '')}>
+          {/* **A COMMITMENT WITH NO CLOCK IS A ROW** (ADR-0219 §4), at the top of the list and
+            below the head. It used to sit in the teal strip a multi-night stay's middle days
+            also used — three unrelated kinds of thing in one box — and it is on
+            `.transition-row`'s grammar now, because ADR-0210 §1 made the amber box and the 32px
+            circle badge the committed point's and an untimed commitment is a commitment without
+            a moment. Above the first row, so §10a-i's "a claim on your day reads at the top"
+            holds with no strip to hold it. */}
           {placement.commitments.map((row) => (
             <UnplacedCommitment
               key={`${row.event.id}-${row.edge ?? 'untimed'}`}
               row={row}
-              tz={trip.timezone}
+              tz={dayZone}
               bookings={bookings}
-              onDone={() => verbs.done(row.event)}
-              onSkip={() => verbs.skip(row.event)}
-              onUndo={() => verbs.restore(row.event)}
+              {...(canSettle(row.event, row.edge)
+                ? {
+                    onDone: () => verbs.done(row.event, row.edge),
+                    onSkip: () => verbs.skip(row.event, row.edge),
+                    onUndo: () => verbs.restore(row.event, row.edge),
+                  }
+                : {})}
               onOpen={setDetailTarget}
             />
           ))}
-        </div>
-      )}
-
-      <div className={'day-list' + (readOnly ? ' archive' : '')}>
-        {/* Overlapping events render as the concurrency forest (ADR-0041): nests
+          {/* **The walk out of the bed** (ADR-0206 §AD). Above the first row rather than between
+            two, which is the one place in the day where a journey has no hole to sit in — and the
+            leg you can be surest of, since the hotel is where you both started and finished. */}
+          {/* **WHERE THE DAY STARTS** (ADR-0209 §1) — the row §AD's leg has never had an origin
+            for. It states the place and, quietly, the stay's own bound; the leg below it is an
+            ordinary journey block, which is why this row carries no clock (§3). */}
+          {/* **WHAT BROUGHT YOU IN THROUGH THE NIGHT** (ADR-0054's 2026-08-26 amendment) — above
+            the bed, because that is the order it happened in. The map has sorted a midnight car
+            hire ahead of the hotel since 2026-08-25 and the list drew it below, with a ⁦25km⁩ drive
+            out to the counter in between: one fact, two answers (ADR-0159 §1).
+            **No journey block into the stay above it**, deliberately — a stay has no per-day
+            arrival instant, so the only deadline available is its check-in floor from YESTERDAY,
+            and inventing one is the mistake ADR-0206 §AI was written about. */}
+          {placement.overnight.map((entry) => (
+            <TransitionRow
+              key={`${entry.event.id}-${entry.edge}`}
+              entry={entry}
+              tz={dayCtx.tz}
+              {...transitionZoneProps(entry, dayCtx.zoneCtx)}
+              bookings={dayCtx.bookings}
+              onOpen={dayCtx.onOpenDetail}
+              onNavigate={dayCtx.readOnly ? undefined : navigateHandler(entry.event, dayCtx)}
+              onShowOnMap={eventShowOnMap(
+                entry.event,
+                dayCtx.bookings,
+                dayCtx.places,
+                dayCtx.showPlaceOnMap,
+                entry.edge,
+              )}
+              {...transitionSettle(entry, dayCtx)}
+            />
+          ))}
+          {aboveArriveLeg && <NowMarker ref={nowLineRef} label={nowLabel} />}
+          {arriveJourney &&
+            day.arrive &&
+            nailEdge(
+              inArriveLeg,
+              <JourneyRow
+                {...journeyProps(arriveJourney, day.arrive.to === liveLeg?.to, day.arrive)}
+              />,
+            )}
+          {bookends.woke && (
+            <StayRow
+              stay={bookends.woke}
+              edge="wake"
+              bound={stayBound(bookends.woke)}
+              bookings={bookings}
+              onOpen={setDetailTarget}
+              onShowOnMap={eventShowOnMap(bookends.woke, bookings, places, showPlaceOnMap)}
+              {...staySettle(bookends.woke)}
+            />
+          )}
+          {aboveWakeLeg && <NowMarker ref={nowLineRef} label={nowLabel} />}
+          {wakeJourney &&
+            day.wake &&
+            nailEdge(
+              inWakeLeg,
+              <JourneyRow {...journeyProps(wakeJourney, day.wake.to === liveLeg?.to, day.wake)} />,
+            )}
+          {/* Overlapping events render as the concurrency forest (ADR-0041): nests
             for containment, quiet clusters for partial overlap. The now-line is
             interleaved at the top level; untimed events have no span to place, so
             they stay plain leaf rows at the end. */}
-        {blocks.map((block) => {
-          const rows = block.entries.map(({ entry, index, join }) => (
-            <Fragment
-              key={
-                entry.kind === 'event' ? groupKey(entry.group) : `${entry.event.id}-${entry.edge}`
-              }
-            >
-              {/* The join reads BEFORE the now-line: it is a fact about the plan, and
-                  the now-line is the clock arriving inside it. */}
-              {join && (
-                <JoinRow
-                  join={join}
-                  places={places}
-                  placeLabels={placeLabels}
-                  onFillGap={readOnly ? undefined : setGapTarget}
-                />
-              )}
-              {showNowLine && index === nowLineIndex && (
-                <NowLine ref={nowLineRef} now={now} tz={nowZone} />
-              )}
-              {entry.kind === 'event' ? (
-                <GroupNode group={entry.group} depth={0} ctx={dayCtx} />
-              ) : (
-                <TransitionRow
-                  entry={entry}
-                  tz={dayCtx.tz}
-                  {...transitionZoneProps(entry, dayCtx.zoneCtx)}
-                  bookings={dayCtx.bookings}
-                  onOpen={dayCtx.onOpenDetail}
-                  onNavigate={dayCtx.readOnly ? undefined : navigateHandler(entry.event, dayCtx)}
-                  // Not gated on `readOnly`: a past day is a browsable archive
-                  // (ADR-0029), and looking at where you were changes nothing.
-                  // THIS EDGE's end, so a `נחיתה` row goes to where you landed rather than to
-                  // the airport you took off from (2026-08-06). The row already knows which end
-                  // it is; it simply was not saying so.
-                  onShowOnMap={eventShowOnMap(
-                    entry.event,
-                    dayCtx.bookings,
-                    dayCtx.places,
-                    dayCtx.showPlaceOnMap,
-                    entry.edge,
+          {/* **Which rows ride the thread** (ADR-0212 §1) — `spendsSpanInMotion` and not
+            `carriesRoute`, because a car hire carries a route and is the one transport you
+            drive yourself: threading it would draw a line through a counter you walked to.
+            That predicate already separates the two for ADR-0061's bed-shaped gap, so a
+            fourth carried mode joins by being one. */}
+          {blocks.map((block) => {
+            // **THE MARK BEFORE A RUN STANDS ABOVE ITS BOX** (ADR-0217, 2026-09-10). A journey
+            // run's rows share one `.journey` container, so the boundary form drawn at the run's
+            // first leg landed INSIDE that box: ⁦12px⁩ under its top edge, arrow clipped by its
+            // `overflow: hidden` — a mark that meant "not yet" reading as "on this flight". The
+            // head entry hands its mark to the block, which draws it before the container.
+            let markAboveRun = false;
+            const rows = block.entries.map(({ entry, index, join, from }, i) => {
+              const joinTo = entry.kind === 'event' ? groupStartEvent(entry.group) : undefined;
+              // **By the row it leads into, never by the adjacent pair** (ADR-0232 §4.1): the leg
+              // across a placeless row leaves from an earlier row than the one above this hole.
+              // Gated on `from` so the first row's leg stays the head's (`day.wake`).
+              const joinLeg = from ? legInto(joinTo) : undefined;
+              const joinJourney = joinLeg ? journeyFor(joinLeg.from, joinLeg.to) : null;
+              // A hole with no row drawn for it has nothing to nail the mark to, so the
+              // boundary form keeps that case (§5's day-head hole).
+              //
+              // **And only the boundary's OWN hole may hold it** (2026-09-12, the second
+              // report). `nowInHole` answers a clock question about one hole and knows nothing
+              // about the rest of the day, so a hole whose row below it is SETTLED went on
+              // holding the moment after the placement had moved past that row: at ⁦20:39⁩, with
+              // a ⁦20:45⁩ waterfall already ticked `היינו`, the mark stood in the drive INTO it
+              // while the day's own answer was the road to the hotel — and the day would have
+              // drawn a second mark at the tail. The hole above the boundary entry is the only
+              // one the placement can be in, so this is the one index asking the one question.
+              const joinNow =
+                (join || joinJourney) && index === nowLineIndex ? nowInHole(from, joinTo) : null;
+              const boundaryHere =
+                showNowLine &&
+                !nowInsideRow &&
+                !headTaken &&
+                joinNow === null &&
+                index === nowLineIndex;
+              if (boundaryHere && block.journey && i === 0) markAboveRun = true;
+              const markAboveJoin = boundaryHere && !markAboveRun && holeIsAhead(from);
+              return (
+                <Fragment
+                  key={
+                    entry.kind === 'event'
+                      ? groupKey(entry.group)
+                      : `${entry.event.id}-${entry.edge}`
+                  }
+                >
+                  {/* The join reads BEFORE the now-line: it is a fact about the plan, and
+                  the now-line is the clock arriving inside it — unless the clock has not
+                  reached the hole at all, which a settled row above it makes possible. */}
+                  {markAboveJoin && <NowMarker ref={nowLineRef} label={nowLabel} />}
+                  {(() => {
+                    const to = joinTo;
+                    const journey = joinJourney;
+                    // **A join OR a journey**: the two are independent facts about one hole, and a
+                    // hole too short for a join can still hold a leg (§AG6, and Plan has always
+                    // drawn it).
+                    if (!join && !journey) return null;
+                    return (
+                      <JoinRow
+                        join={join ?? null}
+                        nowMark={joinNow ?? undefined}
+                        {...(journey && joinLeg && to
+                          ? journeyProps(journey, joinLeg === liveLeg, joinLeg)
+                          : {
+                              journey: null,
+                              travelMode: travelReads.mode,
+                              // No block renders on this branch — the row is a gap — but the zones
+                              // are required so a journey can never reach it without them (§AQ),
+                              // and they are the same two this hole would state if one appeared.
+                              zones:
+                                from && to
+                                  ? legDisplayZones({ from, to }, zoneCtx)
+                                  : { depart: zoneCtx.ambientZone, arrive: zoneCtx.ambientZone },
+                            })}
+                        tz={dayZone}
+                        places={places}
+                        placeLabels={placeLabels}
+                        onFillGap={readOnly ? undefined : setGapTarget}
+                      />
+                    );
+                  })()}
+                  {/* The BOUNDARY form, and only when no row holds the moment: with an
+                    `inside` the mark is nailed to that row instead (`ItemNode`). */}
+                  {boundaryHere && !markAboveRun && !markAboveJoin && (
+                    <NowMarker ref={nowLineRef} label={nowLabel} />
                   )}
-                  // The settle pair the strip used to carry, moved with the floors that
-                  // moved into this list (2026-08-13). `TransitionRow` renders it on a
-                  // FLOOR only; passing it unconditionally here keeps that one rule in
-                  // one place. Trip mode's alone — Plan settles off a row menu (ADR-0171
-                  // §10e) — and gated on `readOnly` like every other write on a past day.
-                  onDone={dayCtx.readOnly ? undefined : () => verbs.done(entry.event)}
-                  onSkip={dayCtx.readOnly ? undefined : () => verbs.skip(entry.event)}
-                  onUndo={dayCtx.readOnly ? undefined : () => verbs.restore(entry.event)}
-                />
-              )}
-            </Fragment>
-          ));
-          // A journey's legs live INSIDE one block, so the band between them belongs to
-          // an object rather than floating between two cards (ADR-0159 §3).
-          return block.journey ? (
-            <div className="journey" key={blockKey(block)}>
-              {rows}
-            </div>
-          ) : (
-            <Fragment key={blockKey(block)}>{rows}</Fragment>
-          );
-        })}
-        {showNowLine && nowLineIndex === merged.length && (
-          <NowLine ref={nowLineRef} now={now} tz={nowZone} />
-        )}
-        {/* **The tail, and the line that finally names it** (ADR-0171 §10a). These rows
+                  {entry.kind === 'event' ? (
+                    // **A CARRIED LEG SITS ON THE DAY'S THREAD** (ADR-0212 §1). The card is
+                    // untouched — ADR-0210 §1 reserved the box for commitments and a flight is the
+                    // strongest one a day holds — and the wrapper adds only the line it sits on.
+                    // Skipped when the block is a journey run: the thread then belongs to the whole
+                    // run (below), and a wrapper per leg would draw one line per card.
+                    !block.journey && carriedRow(entry) ? (
+                      <div className="day-thread">
+                        <GroupNode group={entry.group} depth={0} ctx={rowCtx} />
+                      </div>
+                    ) : (
+                      <GroupNode group={entry.group} depth={0} ctx={rowCtx} />
+                    )
+                  ) : (
+                    <TransitionRow
+                      entry={entry}
+                      tz={dayCtx.tz}
+                      {...transitionZoneProps(entry, dayCtx.zoneCtx)}
+                      bookings={dayCtx.bookings}
+                      onOpen={dayCtx.onOpenDetail}
+                      onNavigate={
+                        dayCtx.readOnly ? undefined : navigateHandler(entry.event, dayCtx)
+                      }
+                      // Not gated on `readOnly`: a past day is a browsable archive
+                      // (ADR-0029), and looking at where you were changes nothing.
+                      // THIS EDGE's end, so a `נחיתה` row goes to where you landed rather than to
+                      // the airport you took off from (2026-08-06). The row already knows which end
+                      // it is; it simply was not saying so.
+                      onShowOnMap={eventShowOnMap(
+                        entry.event,
+                        dayCtx.bookings,
+                        dayCtx.places,
+                        dayCtx.showPlaceOnMap,
+                        entry.edge,
+                      )}
+                      // The settle pair the strip used to carry, moved with the floors that
+                      // moved into this list (2026-08-13). Passing it unconditionally keeps
+                      // the one rule about WHICH rows offer it inside `TransitionRow`. Trip
+                      // mode's alone — Plan settles off a row menu (ADR-0171 §10e) — and
+                      // gated on `readOnly` like every other write on a past day.
+                      //
+                      // **The edge rides along** (ADR-0224 §1): `entry.edge` is which end of
+                      // the span this row is, so a check-out settles `endStatus` and a
+                      // check-in `status`. Without it every row on a stay would answer for
+                      // the check-in, which is the defect the ADR is about.
+                      {...transitionSettle(entry, dayCtx)}
+                    />
+                  )}
+                </Fragment>
+              );
+            });
+            // A journey's legs live INSIDE one block, so the band between them belongs to
+            // an object rather than floating between two cards (ADR-0159 §3) — and the thread
+            // wraps the whole RUN rather than each leg (ADR-0212 §1/§5), which is also the
+            // honest drawing: one journey, two legs, one line.
+            return block.journey ? (
+              <Fragment key={blockKey(block)}>
+                {markAboveRun && <NowMarker ref={nowLineRef} label={nowLabel} />}
+                <div className="day-thread">
+                  <div className="journey">{rows}</div>
+                </div>
+              </Fragment>
+            ) : (
+              <Fragment key={blockKey(block)}>{rows}</Fragment>
+            );
+          })}
+          {/* **AND WHERE THE DAY ENDS** (ADR-0209 §1) — the other half of §AD, which only ever
+            built the leg OUT of a stay. The journey back is as certain as the one out, and it
+            reads above the row it arrives at, exactly like every other leg in the day. */}
+          {aboveHomeLeg && <NowMarker ref={nowLineRef} label={nowLabel} />}
+          {homeJourney &&
+            day.home &&
+            nailEdge(
+              inHomeLeg,
+              <JourneyRow {...journeyProps(homeJourney, day.home.to === liveLeg?.to, day.home)} />,
+            )}
+          {bookends.sleeps && (
+            <StayRow
+              stay={bookends.sleeps}
+              edge="sleep"
+              bound={stayBound(bookends.sleeps)}
+              bookings={bookings}
+              onOpen={setDetailTarget}
+              onShowOnMap={eventShowOnMap(bookends.sleeps, bookings, places, showPlaceOnMap)}
+              {...staySettle(bookends.sleeps)}
+            />
+          )}
+          {atTail && !inHomeLeg && !aboveHomeLeg && <NowMarker ref={nowLineRef} label={nowLabel} />}
+          {/* **The tail, and the line that finally names it** (ADR-0171 §10a). These rows
             have always rendered here; what they never had was anything saying they hold
             no position, so one of them read as "the last thing today". The line is the
             gap strip's own dashed hairline at the same 9px rhythm — the other thing a
             line between rows can say — so the day gains no new grammar for it. */}
-        {placement.ideas.length > 0 && (
-          <div className="day-unplaced">
-            <span className="line" />
-            <span className="lbl">{t.day.unplaced}</span>
-            <span className="line" />
-          </div>
-        )}
-        {placement.ideas.map((row) => (
-          <ItemNode
-            key={row.event.id}
-            item={{ event: row.event, children: [] }}
-            depth={0}
-            ctx={dayCtx}
-          />
-        ))}
-      </div>
-
-      {formTarget && (
-        <EventForm
-          event={formTarget === 'new' ? null : formTarget}
-          defaults={
-            formTarget === 'new'
-              ? (formSlot ?? nextSlot(dayEvents, activeDate, trip.timezone))
-              : undefined
-          }
-          draft={formDraft}
-          onClose={closeForm}
-        />
-      )}
-
-      {(bookingTarget || bookingDraft) && (
-        <BookingSheet
-          booking={bookingTarget}
-          draft={bookingDraft}
-          onClose={() => {
-            setBookingTarget(null);
-            setBookingDraft(null);
-          }}
-        />
-      )}
-
-      {detailTarget && (
-        <BookingDetail
-          booking={detailTarget}
-          onClose={() => setDetailTarget(null)}
-          onOpen={setDetailTarget}
-          onEdit={(b) => {
-            setDetailTarget(null);
-            setBookingTarget(b);
-          }}
-        />
-      )}
-
-      {/* The maybe-shelf schedules onto a day — a create action, so it's gone on
-          a read-only past day (ADR-0029/0040); a build hint points to Plan. */}
-      {readOnly ? (
-        <div className="past-build-hint">
-          <span aria-hidden="true">
-            <Icon name="edit" />
-          </span>{' '}
-          {t.day.pastBuildHint}
+          {placement.ideas.length > 0 && (
+            <div className="day-unplaced">
+              <span className="line" />
+              <span className="lbl">{t.day.unplaced}</span>
+              <span className="line" />
+            </div>
+          )}
+          {placement.ideas.map((row) => (
+            <ItemNode
+              key={row.event.id}
+              item={{ event: row.event, children: [] }}
+              depth={0}
+              ctx={dayCtx}
+            />
+          ))}
         </div>
-      ) : (
-        <>
-          <div className="sec-title">{t.day.maybeShelf}</div>
-          {/* Two groups (ADR-0116 §2): what's pencilled in for this day — plus the
+
+        {formTarget && (
+          <EventForm
+            event={formTarget === 'new' ? null : formTarget}
+            defaults={
+              formTarget === 'new'
+                ? { ...(formSlot ?? nextSlot(dayEvents, activeDate, dayZone)), title: formTitle }
+                : undefined
+            }
+            draft={formDraft}
+            onClose={closeForm}
+          />
+        )}
+
+        {(bookingTarget || bookingDraft) && (
+          <BookingSheet
+            booking={bookingTarget}
+            draft={bookingDraft}
+            onClose={() => {
+              setBookingTarget(null);
+              setBookingDraft(null);
+            }}
+          />
+        )}
+
+        {detailTarget && (
+          <BookingDetail
+            booking={detailTarget}
+            onClose={() => setDetailTarget(null)}
+            onOpen={setDetailTarget}
+            onEdit={(b) => {
+              setDetailTarget(null);
+              setBookingTarget(b);
+            }}
+          />
+        )}
+
+        {eventDetail && (
+          <EventDetail
+            event={eventDetail}
+            zoneCtx={zoneCtx}
+            onClose={() => setEventDetail(null)}
+            // A past day is a browsable archive and not editable (ADR-0029/0040), so the read
+            // there carries no way to write — absent rather than disabled, per ADR-0150 §8.
+            onEdit={
+              readOnly
+                ? undefined
+                : () => {
+                    setEventDetail(null);
+                    setFormTarget(eventDetail);
+                  }
+            }
+          />
+        )}
+
+        {/* The maybe-shelf schedules onto a day — a create action, so it's gone on
+          a read-only past day (ADR-0029/0040); a build hint points to Plan. */}
+        {readOnly ? (
+          <div className="past-build-hint">
+            <span aria-hidden="true">
+              <Icon name="edit" />
+            </span>{' '}
+            {t.day.pastBuildHint}
+          </div>
+        ) : (
+          <>
+            <div className="sec-title">{t.day.maybeShelf}</div>
+            {/* Two groups (ADR-0116 §2): what's pencilled in for this day — plus the
               day's skipped events, which belong to it — then the rest of the pool,
               each out-of-day idea naming its own day. A header appears only when its
               group has content, so a trip with no target days reads as one strip. */}
-          {(shelf.forDay.length > 0 || shelf.skipped.length > 0) && (
-            <>
-              {shelf.pool.length > 0 && <div className="shelf-group">{t.day.shelfForDay}</div>}
-              <div className="shelf">
-                {shelf.forDay.map((m) => (
-                  <MaybeCard
-                    key={m.id}
-                    compact
-                    icon={m.icon}
-                    title={m.title}
-                    meta={stopReasonText(forDayReasons.get(m.id))}
-                    notes={noteCountFor(noteCounts, 'maybeItem', m.id)}
-                    onShowOnMap={ideaShowOnMap(m, places, showPlaceOnMap)}
-                    onOpen={() => setIdeaSheet(m)}
-                  />
-                ))}
-                {/* Skipped soft events park here, restorable (ADR-0027 parking lot).
-                    No action line: the card is a button and `skippedTag` marks the state
-                    it is in, which is the part a reader cannot get from the tile itself. */}
-                {shelf.skipped.map((e) => (
-                  <MaybeCard
-                    key={e.id}
-                    compact
-                    className="skipped-card"
-                    icon={e.icon}
-                    title={e.title}
-                    meta={t.day.skippedTag}
-                    // A skipped event's tap still restores it in place: it HAS a surface of
-                    // its own (its day row), so the gesture change is the idea's alone.
-                    onShowOnMap={eventShowOnMap(e, bookings, places, showPlaceOnMap)}
-                    onOpen={() => verbs.restore(e)}
-                  />
-                ))}
-              </div>
-            </>
-          )}
-          {shelf.pool.length > 0 && (
-            <>
-              {(shelf.forDay.length > 0 || shelf.skipped.length > 0) && (
-                <div className="shelf-group">
-                  {t.day.shelfRanked}
-                  <span className="shelf-count">{shelf.pool.length}</span>
+            {(shelf.forDay.length > 0 || shelf.skipped.length > 0) && (
+              <>
+                {shelf.pool.length > 0 && <div className="shelf-group">{t.day.shelfForDay}</div>}
+                <div className="shelf edge-fade" ref={edgeFadeRef}>
+                  {shelf.forDay.map((m) => (
+                    <MaybeCard
+                      key={m.id}
+                      compact
+                      icon={ideaGlyph(m, places)}
+                      title={m.title}
+                      meta={stopReasonText(forDayReasons.get(m.id))}
+                      notes={noteCountFor(noteCounts, 'maybeItem', m.id)}
+                      onShowOnMap={ideaShowOnMap(m, places, showPlaceOnMap)}
+                      onOpen={() => setIdeaSheet(m)}
+                    />
+                  ))}
+                  {/* Skipped events park here, restorable (ADR-0027 parking lot) — a
+                    cancelled booking included, since ADR-0228's 2026-09-16 amendment.
+                    No action line: the card is a button and its tag marks the state it is in
+                    (`parkedTag`: a commitment says `לא מתקיים`, a stop `דילגתם`, ADR-0231 §2).
+                    **A tap opens the card's sheet** rather than restoring (ADR-0231 §2, F2,
+                    amending ADR-0116 §5a): `שחזור ליום` is its first row, and the read — the
+                    code you came for on a cancelled booking — its second. */}
+                  {shelf.skipped.map((e) => (
+                    <MaybeCard
+                      key={e.id}
+                      compact
+                      className="skipped-card"
+                      icon={e.icon}
+                      title={e.title}
+                      meta={parkedTag(e, bookings)}
+                      onShowOnMap={eventShowOnMap(e, bookings, places, showPlaceOnMap)}
+                      onOpen={() => setParkedSheet(e)}
+                    />
+                  ))}
                 </div>
-              )}
-              <div className="shelf">
-                {/* Scheduled (consumed) ideas leave the shelf — no dead tombstone
-                    (ADR-0027); `shelfGroups` already dropped them. */}
-                {/* The tile's meta carries the ranking reason — a fact that VARIES
-                    per card, which is what the retired action line never was. */}
-                {rankedPool.map(({ item: m, reason }) => (
-                  <MaybeCard
-                    key={m.id}
-                    compact
-                    icon={m.icon}
-                    title={m.title}
-                    meta={tileReasonText(reason, activeDate)}
-                    notes={noteCountFor(noteCounts, 'maybeItem', m.id)}
-                    onShowOnMap={ideaShowOnMap(m, places, showPlaceOnMap)}
-                    onOpen={() => setIdeaSheet(m)}
-                  />
-                ))}
-                {/* The tail, and what makes the strip's width independent of N. Absent
-                    rather than broken outside the trip shell (no Map tab to route to). */}
-                {poolTail > 0 && showMaybesOnMap && (
-                  <MaybeMoreCard
-                    label={t.day.shelfMore(poolTail)}
-                    icon={<Icon name="map" />}
-                    onOpen={showMaybesOnMap}
-                  />
+              </>
+            )}
+            {shelf.pool.length > 0 && (
+              <>
+                {(shelf.forDay.length > 0 || shelf.skipped.length > 0) && (
+                  <div className="shelf-group">
+                    {t.day.shelfRanked}
+                    <span className="shelf-count">{shelf.pool.length}</span>
+                  </div>
                 )}
-              </div>
-            </>
-          )}
-        </>
-      )}
+                <div className="shelf edge-fade" ref={edgeFadeRef}>
+                  {/* Scheduled (consumed) ideas leave the shelf — no dead tombstone
+                    (ADR-0027); `shelfGroups` already dropped them. */}
+                  {/* The tile's meta carries the ranking reason — a fact that VARIES
+                    per card, which is what the retired action line never was. */}
+                  {rankedPool.map(({ item: m, reason }) => (
+                    <MaybeCard
+                      key={m.id}
+                      compact
+                      icon={ideaGlyph(m, places)}
+                      title={m.title}
+                      meta={tileReasonText(reason, dayNaming)}
+                      notes={noteCountFor(noteCounts, 'maybeItem', m.id)}
+                      onShowOnMap={ideaShowOnMap(m, places, showPlaceOnMap)}
+                      onOpen={() => setIdeaSheet(m)}
+                    />
+                  ))}
+                  {/* The tail, and what makes the strip's width independent of N. Absent
+                    rather than broken outside the trip shell (no Map tab to route to). */}
+                  {poolTail > 0 && showMaybesOnMap && (
+                    <MaybeMoreCard
+                      label={t.day.shelfMore(poolTail)}
+                      icon={<Icon name="map" />}
+                      onOpen={showMaybesOnMap}
+                    />
+                  )}
+                </div>
+              </>
+            )}
+          </>
+        )}
 
-      {ideaSheet && (
-        <MaybeManageSheet
-          item={ideaSheet}
-          onSchedule={() => {
-            setScheduleItem(ideaSheet);
-            setIdeaSheet(null);
-          }}
-          markForDay={markForDay(ideaSheet)}
-          why={ideaWhy(ideaSheet)}
-          onClose={() => setIdeaSheet(null)}
-        />
-      )}
+        {ideaSheet && (
+          <MaybeManageSheet
+            item={ideaSheet}
+            onSchedule={() => {
+              setScheduleItem(ideaSheet);
+              setIdeaSheet(null);
+            }}
+            markForDay={markForDay(ideaSheet)}
+            why={ideaWhy(ideaSheet)}
+            onClose={() => setIdeaSheet(null)}
+          />
+        )}
 
-      {scheduleItem && (
-        <ScheduleSheet
-          item={scheduleItem}
-          // The free slot is read on the same clock the sheet types on, so the
-          // prefilled time means what the day means by it (ADR-0107 session 128).
-          // **The first position with room for it**, not the end of the day's last event
-          // (ADR-0161 §4/§5). Trip mode is Tier-1, so it defaults rather than asking — but the
-          // default used to be `nextSlot`, so the opening offer for every idea was "after
-          // everything", on days with a three-hour hole in the middle. The length is the
-          // idea's category's, capped by whatever room that position actually has.
-          //
-          // Read on the same clock the sheet types on, so the prefilled time means what the
-          // day means by it (ADR-0107 session 128).
-          defaults={scheduleDefaults(scheduleItem)}
-          // The day is now part of the sheet (ADR-0116 §5), defaulting to the idea's
-          // own pencilled-in day: putting something on Thursday stops requiring a
-          // trip to Thursday first. Day-scope still gates the range — scheduling is
-          // a create, and creates are locked on a past day in Trip mode (ADR-0029).
-          date={scheduleItem.targetDate ?? activeDate}
-          minDate={today > trip.startDate ? today : trip.startDate}
-          maxDate={trip.endDate}
-          evidence={zoneEvidence}
-          onConfirm={({ date, start, end, zone, override }) => {
-            verbs.schedule(scheduleItem, {
-              date,
-              title: scheduleItem.title,
-              kind: EVENT_KIND.SOFT,
-              // Typed in the day's own zone, not the trip primary — the zone the
-              // chip states and the day view will read the event back in.
-              startsAt: start ? zonedIso(date, start, zone) : undefined,
-              endsAt: end && start ? resolveEndIso(date, start, end, zone) : undefined,
-              displayTimezone: override ?? undefined,
-            });
-            setScheduleItem(null);
-          }}
-          onClose={() => setScheduleItem(null)}
-        />
-      )}
+        {scheduleItem && (
+          <ScheduleSheet
+            heading={t.day.scheduleTitle(scheduleItem.title)}
+            confirmLabel={t.actions.scheduleToDay}
+            subject={scheduleItem}
+            // The free slot is read on the same clock the sheet types on, so the
+            // prefilled time means what the day means by it (ADR-0107 session 128).
+            // **The first position with room for it**, not the end of the day's last event
+            // (ADR-0161 §4/§5). Trip mode is Tier-1, so it defaults rather than asking — but the
+            // default used to be `nextSlot`, so the opening offer for every idea was "after
+            // everything", on days with a three-hour hole in the middle. The length is the
+            // idea's category's, capped by whatever room that position actually has.
+            //
+            // Read on the same clock the sheet types on, so the prefilled time means what the
+            // day means by it (ADR-0107 session 128).
+            defaults={scheduleDefaults(scheduleItem)}
+            // The day is now part of the sheet (ADR-0116 §5), defaulting to the idea's
+            // own pencilled-in day: putting something on Thursday stops requiring a
+            // trip to Thursday first. Day-scope still gates the range — scheduling is
+            // a create, and creates are locked on a past day in Trip mode (ADR-0029).
+            date={scheduleItem.targetDate ?? activeDate}
+            minDate={today > trip.startDate ? today : trip.startDate}
+            maxDate={trip.endDate}
+            evidence={zoneEvidence}
+            onConfirm={({ date, start, end, zone, override }) => {
+              verbs.schedule(scheduleItem, {
+                date,
+                title: scheduleItem.title,
+                kind: EVENT_KIND.SOFT,
+                // Typed in the day's own zone, not the trip primary — the zone the
+                // chip states and the day view will read the event back in.
+                startsAt: start ? zonedIso(date, start, zone) : undefined,
+                endsAt: end && start ? resolveEndIso(date, start, end, zone) : undefined,
+                displayTimezone: override ?? undefined,
+              });
+              setScheduleItem(null);
+            }}
+            onClose={() => setScheduleItem(null)}
+          />
+        )}
 
-      {/* **`החלף`, taken on the slot** (ADR-0161 §6). The same sheet the gap fill uses, with
+        {/* **THE TIME IS THE MOVE** (ADR-0231 §1 — ADR-0161 §7's Trip-mode sentence, built). The
+          row's when line opens the day's positions: the same picker, the same `dayPositions`,
+          the same words Plan's row uses (`positionOption`), with what Trip adds by props alone —
+          `עכשיו` first on today (ADR-0027 §1's Do-it-now, said as a position), nothing behind the
+          clock, and the Trip accent. A pick is the write a drop on that position performs, through
+          the hard gate (`verbs.update` → `applyGuardedUpdate`). */}
+        {timeTarget && (
+          <Sheet
+            title={t.planDay.slotMoveTitle(timeTarget.title)}
+            onClose={() => setTimeTarget(null)}
+          >
+            {/* `nowRow` is computed once for both props below: the row and the filter that keeps
+                the same slot from being listed twice under the name of the row it follows. */}
+            <DaySlotPicker
+              mode="trip"
+              sub={t.planDay.slotWhen}
+              now={nowRow}
+              // The hole the moment is inside is already the `עכשיו` row above; listed again
+              // under the name of the row it follows, it read as two offers of one slot (seen on
+              // the running app: `עכשיו · 13:55` over `אחרי שוק צוקיג׳י · 13:55`).
+              options={livePositions(dayZone, timeTarget.id)
+                .map((p) => positionOption(p, p.free))
+                .filter((o) => !isToday || o.time !== nowRow?.time)}
+              onPick={(option) => {
+                const target = timeTarget;
+                setTimeTarget(null);
+                verbs.update(target, {
+                  date: option.fill.date,
+                  ...eventAtSlot(target, option.fill, dayZone),
+                });
+              }}
+              // **The scoped sheet, not the form** (F3): ADR-0025 says a Tier-2 edit in Trip mode
+              // is "an inline bottom sheet scoped to the one edit", and `ScheduleSheet` is exactly
+              // that — a when and one confirm — now for an event as well as an idea.
+              onExact={() => {
+                setExactTarget(timeTarget);
+                setTimeTarget(null);
+              }}
+            />
+          </Sheet>
+        )}
+        {exactTarget && (
+          <ScheduleSheet
+            heading={t.planDay.slotMoveTitle(exactTarget.title)}
+            confirmLabel={t.common.save}
+            subject={exactTarget}
+            defaults={slotOf(exactTarget)}
+            date={exactTarget.date}
+            minDate={today > trip.startDate ? today : trip.startDate}
+            maxDate={trip.endDate}
+            evidence={zoneEvidence}
+            onConfirm={({ date, start, end, zone, override }) => {
+              verbs.update(exactTarget, {
+                date,
+                startsAt: start ? zonedIso(date, start, zone) : undefined,
+                endsAt: end && start ? resolveEndIso(date, start, end, zone) : undefined,
+                displayTimezone: override ?? undefined,
+              });
+              setExactTarget(null);
+            }}
+            onClose={() => setExactTarget(null)}
+          />
+        )}
+
+        {/* **A parked card opens its sheet** (ADR-0231 §2, F2). */}
+        {parkedSheet && (
+          <ParkedEventSheet
+            event={parkedSheet}
+            bookings={bookings}
+            tz={dayZone}
+            onRestore={() => {
+              verbs.restore(parkedSheet);
+              setParkedSheet(null);
+            }}
+            onOpen={() => {
+              const e = parkedSheet;
+              setParkedSheet(null);
+              dayCtx.onOpenRead(e);
+            }}
+            onClose={() => setParkedSheet(null)}
+          />
+        )}
+
+        {/* **The quick add** (ADR-0231 §3; ADR-0043 §3's Tier-1 add). Three steps: ＋, a name,
+          `הוספה`. `עוד פרטים…` carries the draft into the form. */}
+        {quickAdd && (
+          <QuickAddSheet
+            defaults={quickAdd}
+            onAdd={(draft) => {
+              addQuick(draft, quickAdd.date);
+              setQuickAdd(null);
+            }}
+            onMore={(draft) => {
+              setFormSlot({ date: quickAdd.date, start: draft.start, end: draft.end });
+              setFormTitle(draft.title || undefined);
+              setQuickAdd(null);
+              setFormTarget('new');
+            }}
+            onClose={() => setQuickAdd(null)}
+          />
+        )}
+
+        {/* **The day takes a delay** (ADR-0231 §5): two taps, one write, one undo. */}
+        {delayOpen && late && late.moved.length > 0 && (
+          <DelaySheet
+            moved={late.moved}
+            anchor={late.anchor}
+            nowLabel={nowLabel}
+            tz={dayZone}
+            onPick={(minutes) => {
+              verbs.delayDay(dayEvents, nowMs, minutes);
+              setDelayOpen(false);
+            }}
+            onClose={() => setDelayOpen(false)}
+          />
+        )}
+
+        {/* **`החלף`, taken on the slot** (ADR-0161 §6). The same sheet the gap fill uses, with
           its other header: pick a replacement, the displaced event goes to the shelf, and the
           replacement takes its exact start and length — one write, one toast, one undo. The
           verb used to skip the event and tell you to go looking. */}
-      {replaceTarget && (
-        <SlotFillSheet
-          title={t.slotFill.replaceTitle(replaceTarget.title)}
-          sub={t.slotFill.replaceSub(
-            clockRange(slotOf(replaceTarget).start, slotOf(replaceTarget).end),
-          )}
-          mode="trip"
-          date={replaceTarget.date}
-          ideas={shelfForSlot(shelf, slotOf(replaceTarget), trip.timezone, {
-            events,
-            bookings,
-            places,
-          })}
-          onPickIdea={(m) => {
-            verbs.replace(replaceTarget, m);
-            setReplaceTarget(null);
-          }}
-          // **Nothing on the shelf fits, so build it** — and this branch is deliberately TWO
-          // actions where a pick is one (ADR-0161 §6's amendment). The displaced event goes to
-          // the shelf now, and the form opens on the slot it freed. Not one atomic write,
-          // because there is nothing to write yet: the form can be cancelled, and the two
-          // separate undos are the better shape for that — backing out of the form leaves the
-          // event on the shelf, which is a decision the user did make, and one more undo puts
-          // it back on the day.
-          onNewEvent={() => {
-            verbs.park(replaceTarget);
-            setFormSlot(slotOf(replaceTarget));
-            setFormTarget('new');
-            setReplaceTarget(null);
-          }}
-          onClose={() => setReplaceTarget(null)}
-        />
-      )}
+        {replaceTarget && (
+          <SlotFillSheet
+            title={t.slotFill.replaceTitle(replaceTarget.title)}
+            sub={t.slotFill.replaceSub(
+              clockRange(slotOf(replaceTarget).start, slotOf(replaceTarget).end),
+            )}
+            mode="trip"
+            naming={{ ...dayNaming, anchor: replaceTarget.date }}
+            {...shelfForSlot(
+              shelf,
+              slotOf(replaceTarget),
+              dayZone,
+              { events, bookings, places },
+              // **A replacement's window is the row's own length** (ADR-0216 §2): `החלף` keeps the
+              // hour and the length, so what an idea has to fit here is exactly what the row being
+              // displaced occupied — not a hole's free time, which this slot never had.
+              eventMinutes(replaceTarget),
+            )}
+            glyph={(m) => ideaGlyph(m, places)}
+            onPickIdea={(m) => {
+              verbs.replace(replaceTarget, m);
+              setReplaceTarget(null);
+            }}
+            // **Nothing on the shelf fits, so build it** — and this branch is deliberately TWO
+            // actions where a pick is one (ADR-0161 §6's amendment). The displaced event goes to
+            // the shelf now, and the form opens on the slot it freed. Not one atomic write,
+            // because there is nothing to write yet: the form can be cancelled, and the two
+            // separate undos are the better shape for that — backing out of the form leaves the
+            // event on the shelf, which is a decision the user did make, and one more undo puts
+            // it back on the day.
+            onNewEvent={() => {
+              verbs.park(replaceTarget);
+              const slot = slotOf(replaceTarget);
+              setReplaceTarget(null);
+              addAt(slot);
+            }}
+            onClose={() => setReplaceTarget(null)}
+          />
+        )}
 
-      {/* **A tap on the day's free time** (ADR-0161 §9), through the same sheet with its other
+        {/* **A tap on the day's free time** (ADR-0161 §9), through the same sheet with its other
           header. The idea's category decides how long it gets, capped by the room actually
           there (§5) — one derivation shared with Plan mode's chip, so the two modes cannot put
           the same idea in two different slots. */}
-      {gapTarget && (
-        <SlotFillSheet
-          title={t.slotFill.gapTitle(clockRange(gapTarget.fill.start, gapTarget.fill.end))}
-          mode="trip"
-          date={gapTarget.fill.date}
-          ideas={shelfForSlot(shelf, gapTarget.fill, trip.timezone, { events, bookings, places })}
-          onPickIdea={(m) => {
-            const block = ideaBlock(m.category, gapTarget);
-            verbs.schedule(m, {
-              date: block.date,
-              title: m.title,
-              kind: EVENT_KIND.SOFT,
-              startsAt: zonedIso(block.date, block.start, trip.timezone),
-              endsAt: block.end ? zonedIso(block.date, block.end, trip.timezone) : undefined,
-            });
-            setGapTarget(null);
-          }}
-          // A NEW event keeps the gap's own default block: its category is the form's next
-          // question, so there is nothing yet to read a typical length from.
-          onNewEvent={() => {
-            setFormSlot(gapTarget.fill);
-            setFormTarget('new');
-            setGapTarget(null);
-          }}
-          onClose={() => setGapTarget(null)}
-        />
-      )}
-    </>
-  );
-}
+        {gapTarget && (
+          <SlotFillSheet
+            title={t.slotFill.gapTitle(clockRange(gapTarget.fill.start, gapTarget.fill.end))}
+            mode="trip"
+            naming={{ ...dayNaming, anchor: gapTarget.fill.date }}
+            {...shelfForSlot(
+              shelf,
+              gapTarget.fill,
+              dayZone,
+              { events, bookings, places },
+              gapTarget.minutes,
+            )}
+            glyph={(m) => ideaGlyph(m, places)}
+            onPickIdea={(m) => {
+              const block = ideaBlock(ideaCategory(m, places), gapTarget);
+              verbs.schedule(m, {
+                date: block.date,
+                title: m.title,
+                kind: EVENT_KIND.SOFT,
+                startsAt: zonedIso(block.date, block.start, dayZone),
+                endsAt: block.end ? zonedIso(block.date, block.end, dayZone) : undefined,
+              });
+              setGapTarget(null);
+            }}
+            // A NEW event keeps the gap's own default block: its category is the form's next
+            // question, so there is nothing yet to read a typical length from.
+            onNewEvent={() => {
+              const slot = gapTarget.fill;
+              setGapTarget(null);
+              addAt(slot);
+            }}
+            onClose={() => setGapTarget(null)}
+          />
+        )}
 
-// The now-line (ADR-0043): a quiet soft-amber hairline with a flat mono time
-// label, marking the current moment. It sits below the live event in the
-// hierarchy — a time reference, not a second loud element (no chip fill, glow,
-// or pulse). Takes a ref so the day view can scroll it into view on open.
-function NowLine({ ref, now, tz }: { ref: React.Ref<HTMLDivElement>; now: Date; tz: string }) {
-  return (
-    <div className="nowline" ref={ref} aria-label={t.day.nowLineAria(formatTime(now, tz))}>
-      <span className="nowline-chip">
-        <span className="nowline-dot" aria-hidden="true" />
-        <span dir="auto">{formatTime(now, tz)}</span>{' '}
-        <span className="nowline-lbl">{t.common.now}</span>
-      </span>
-      <span className="nowline-rule" />
+        {/* **The day's picture, full screen** (ADR-0219 §3) — the same viewer `PlaceKnowledge`'s
+          hero opens on the Map (ADR-0167 §10), owned by the screen because the viewer is a
+          portal. The credit is its caption: full screen is the photograph's most prominent
+          display, so it is where the licence is owed most plainly. */}
+        {fullShot && (
+          <MediaViewer
+            title={fullShot.of}
+            mimeType={fullShot.image.mimeType}
+            source={{ kind: 'url', url: fullShot.url }}
+            caption={fullShot.credit}
+            intrinsic={fullShot.image}
+            onClose={() => setFullShot(null)}
+          />
+        )}
+      </div>
     </div>
   );
 }
@@ -918,21 +2327,42 @@ function NowLine({ ref, now, tz }: { ref: React.Ref<HTMLDivElement>; now: Date; 
 // a nested/clustered EventCard keeps every quick-verb it has at the top level.
 interface DayCtx {
   tz: string;
+  /** **The moment's row and where in it**, threaded down the recursive concurrency render so
+   *  the mark can be nailed to a NESTED row (ADR-0217 §2) — an envelope's child and a
+   *  cluster's peer are both rendered by `ItemNode` at depth ≥ 1, and only `ItemNode` knows
+   *  which event it is drawing. `null` on a past or future day, and whenever the moment is in
+   *  a hole no row holds. */
+  nowMark: { key: string; thruFrac: number; label: string; ref: React.Ref<HTMLDivElement> } | null;
   /** The trip's zone crossings + the day's ambient zone, so each event resolves
    *  its display zone(s) and the non-trivial-suppression rule (ADR-0107). */
   zoneCtx: ZoneContext;
   now: Date;
   readOnly: boolean;
+  /** **Is the day on screen today** (ADR-0228's 2026-09-15 amendment) — what tells a row
+   *  still ahead of you this afternoon from one two days out, which `eventPhase` calls
+   *  `upcoming` alike. Named `onToday` rather than `today`, because `DayView` already has a
+   *  `today` in scope and it is a DATE. */
+  onToday: boolean;
+  /** **May this row be settled on the day on screen** — the rule written out where it is
+   *  derived (`DayView`'s `canSettle`). Threaded rather than re-derived per row, for
+   *  `frontend/CLAUDE.md`'s reason: four hosts asking this question four times is how the
+   *  answer starts differing between them. */
+  canSettle: (event: TripEvent, edge?: EventEdge) => boolean;
   openId: string | null;
   toggle: (id: string) => void;
   bookings: Booking[];
   places: Place[];
+  /** **What the world knows about each place** (ADR-0166 §6) — threaded beside `places` for the
+   *  same reason they are: the row asks both questions about the same endpoint. Read here only
+   *  to fill the badge with a photograph (ADR-0219 §1). */
+  enrichments: TripEnrichments;
   /** A nickname or the city an airport serves, per place (ADR-0166 §18) — threaded with `places`
    *  because every row that names a place asks both questions at once. */
   placeLabels: PlaceLabels;
   /** How many notes each host carries (ADR-0152 §6c), built once per note-list change
    *  rather than filtered per row — a day of twelve events asks this twelve times. */
   noteCounts: Map<string, number>;
+  taskCounts: Map<string, number>;
   /** Its twin for attachments (ADR-0174 §1) — the count `attachmentCountsByHost` was
    *  written for and that nothing called until this row. */
   docCounts: Map<string, number>;
@@ -945,6 +2375,9 @@ interface DayCtx {
   /** `החלף` — open the slot's own chooser (ADR-0161 §6). The screen owns the sheet, because
    *  the sheet needs the shelf and the day; the row only says which event. */
   onReplace: (event: TripEvent) => void;
+  /** **The time is the move** (ADR-0231 §1): open the day's positions for this row. */
+  onPickTime: (event: TripEvent) => void;
+  onOpenRead: (event: TripEvent) => void;
   onOpenDetail: (booking: Booking) => void;
   /** `מפה` — show this place on OUR map (ADR-0121 §8), not Google's. */
   /** Absent outside the trip shell, where there is no Map tab to route to. */
@@ -1010,15 +2443,16 @@ function ItemNode({ item, depth, ctx }: { item: TimeItem; depth: number; ctx: Da
   const unsynced = useUnsynced(e.id);
 
   // The screen derives the phase from the clock (ADR-0043) and passes it in. On a
-  // read-only past day every planned soft event is there to be settled (ADR-0029),
-  // including untimed ones the clock alone would call 'upcoming' — force 'passed'
-  // so the card shows the settle strip, matching the pre-migration EventItem.
+  // read-only past day every planned event is there to be settled (ADR-0029), including
+  // untimed ones the clock alone would call 'upcoming' — force 'passed' so the card shows
+  // the settle strip.
+  //
+  // **The `=== SOFT` that used to be in this test is gone** (ADR-0228 §2), and it was the
+  // screen's half of the same withholding `EventCard`'s `showSettle` made: a booking on a
+  // day that is over is exactly the row somebody opens to record that it happened.
   const raw = eventPhase(e, ctx.now);
   const phase: EventPhaseName =
-    ctx.readOnly &&
-    e.kind === EVENT_KIND.SOFT &&
-    e.status === EVENT_STATUS.PLANNED &&
-    raw !== 'done'
+    ctx.readOnly && e.status === EVENT_STATUS.PLANNED && raw !== 'done'
       ? 'passed'
       : raw === 'skipped'
         ? 'upcoming'
@@ -1030,15 +2464,29 @@ function ItemNode({ item, depth, ctx }: { item: TimeItem; depth: number; ctx: Da
   // the title and the meta so they can't disagree (ADR-0059 §3 amendment).
   const route = routeDisplay(eventRoute(e, ctx.bookings, ctx.places, ctx.placeLabels));
 
+  // **The badge is the thumbnail's frame** (ADR-0167 §1) and the day rows never filled it.
+  // `rowPhoto` answers the whole "was a glyph picked" question — on the event or on its place —
+  // so the rule is not written out here and again in Plan.
+  const photo = rowPhoto(e, booking, ctx.places, ctx.enrichments);
+  // The read band's two facts (ADR-0229 §2). `eventMapPlace` for the address, because it is the
+  // row the map hand-off already reads; `eventPlaceId` for the enrichment, because that is the
+  // same authority rule MINUS the coordinate gate — a place we know nothing about *where* is
+  // still a place we may know a great deal about *what*, and gating the picture on coordinates
+  // would hide it for a reason that has nothing to do with it (`EventDetail` says the same).
+  const readPlace = eventMapPlace(e, ctx.bookings, ctx.places);
+  const readPlaceId = eventPlaceId(e, booking);
+  const readEnrichment = readPlaceId ? ctx.enrichments[readPlaceId] : undefined;
+
   const card = (
     <EventCard
       icon={e.icon}
+      photoUrl={photo && apiAssetUrl(photo.url)}
       // No route in reach: the stored title may still BE one, so it goes through
       // `TitleLabel` rather than out raw. `titleText` stays the plain string.
       title={route.title ?? <TitleLabel title={e.title} />}
       titleText={e.title}
       code={code}
-      notes={noteCountForContext(
+      notes={hostCountForContext(
         ctx.noteCounts,
         resolveHostContext(ctx.hostContexts, { kind: 'event', id: e.id }),
       )}
@@ -1048,15 +2496,41 @@ function ItemNode({ item, depth, ctx }: { item: TimeItem; depth: number; ctx: Da
         ctx.docCounts,
         resolveHostContext(ctx.hostContexts, { kind: 'event', id: e.id }),
       )}
+      tasks={hostCountForContext(
+        ctx.taskCounts,
+        resolveHostContext(ctx.hostContexts, { kind: 'event', id: e.id }),
+      )}
       // The mark says there are notes; this is where they are read and written. Connected
       // here rather than inside the card, which is presentational (`ui/domain/`).
+      /** **WHAT THIS IS, one band above what the group attached to it** (ADR-0229 §2).
+       *
+       *  The photograph resolves through `eventPlaceId` rather than through the badge's own
+       *  `rowPhoto`, and the difference is deliberate: `rowPhoto` answers "should this 40px
+       *  square show a picture", and a PICKED icon beats a photo there (ADR-0167 §2). This band
+       *  is the surface that choice leaves the photograph one tap away on, so it shows the
+       *  picture regardless — the same call `EventDetail` makes for the same reason.
+       *
+       *  The address comes from `eventMapPlace`, so the band and the map hand-off read one row
+       *  rather than two lookups that could disagree. */
+      readSlot={
+        <ReadBand
+          image={readEnrichment?.image}
+          address={readPlace?.address ?? readPlace?.name}
+          title={readPlace?.name ?? e.title}
+          booked={!!booking}
+          onOpen={() => ctx.onOpenRead(e)}
+        />
+      }
       documentsSlot={<HostDocuments host={{ kind: 'event', id: e.id }} />}
+      tasksSlot={<HostTasks host={{ kind: 'event', id: e.id, name: e.title }} />}
       notesSlot={<HostNotes host={{ kind: 'event', id: e.id, name: e.title }} />}
       kind={e.kind === EVENT_KIND.HARD ? 'hard' : 'soft'}
       phase={phase}
       sync={<EntitySyncBadge id={e.id} />}
       unsynced={unsynced}
       readOnly={ctx.readOnly}
+      today={ctx.onToday}
+      anchor={{ [EVENT_ROW_ATTR]: e.id }}
       isOpen={ctx.openId === e.id}
       onToggle={() => ctx.toggle(e.id)}
       startsAt={e.startsAt}
@@ -1064,6 +2538,13 @@ function ItemNode({ item, depth, ctx }: { item: TimeItem; depth: number; ctx: Da
       tz={ctx.tz}
       zones={zones}
       duration={eventDurationLabel(e, booking, zones)}
+      // What is LEFT replaces the total on the ONE row the moment is inside (ADR-0217 §3).
+      remaining={
+        ctx.nowMark?.key === e.id && e.endsAt
+          ? remainingPhrase(Date.parse(e.endsAt) - ctx.now.getTime())
+          : undefined
+      }
+      distance={eventDistanceLabel(booking, ctx.places)}
       conflict={
         conflicts.length > 0
           ? { title: conflicts[0].title, startsAt: conflicts[0].startsAt! }
@@ -1082,12 +2563,35 @@ function ItemNode({ item, depth, ctx }: { item: TimeItem; depth: number; ctx: Da
       onPark={ctx.readOnly ? undefined : () => ctx.verbs.park(e)}
       onEdit={() => ctx.onEdit(e)}
       onRemove={() => ctx.verbs.remove(e)}
+      // A planned row with a clock, on a day that can be written (ADR-0231 §1) — passed and
+      // unmarked included, which is where ADR-0027 §1's Do-it-now lives. Not a settled row:
+      // its chip is the undo (ADR-0230), and there is nothing to move a record to.
+      onPickTime={
+        !ctx.readOnly && e.startsAt && e.status === EVENT_STATUS.PLANNED
+          ? () => ctx.onPickTime(e)
+          : undefined
+      }
     />
   );
-  if (!hasKids) return card;
+  // **THE MARK IS NAILED HERE, at whatever depth this row is** (ADR-0217 §1). `ItemNode` is
+  // the only place that knows which event it is drawing, which is what makes an envelope's
+  // child and a cluster's peer work with no case of their own — `nowInside` already chose the
+  // innermost holder, and this just recognises itself in the answer.
+  //
+  // It wraps the CARD and not the nest: the mark belongs to the row that holds the moment, and
+  // a nest is that row plus everything under it.
+  const marked = (row: ReactNode) =>
+    ctx.nowMark && ctx.nowMark.key === e.id ? (
+      <NowMarker ref={ctx.nowMark.ref} label={ctx.nowMark.label} thruFrac={ctx.nowMark.thruFrac}>
+        {row}
+      </NowMarker>
+    ) : (
+      row
+    );
+  if (!hasKids) return marked(card);
   return (
     <div className="nest">
-      {card}
+      {marked(card)}
       <div className={'nest-kids' + (depth >= 1 ? ' deep' : '')}>
         <DayTree groups={item.children} depth={depth + 1} ctx={ctx} />
       </div>
@@ -1106,7 +2610,9 @@ function ItemNode({ item, depth, ctx }: { item: TimeItem; depth: number; ctx: Da
 // own zone, so on a multi-zone trip an idea dropped at 19:00 reappeared shifted.
 // Editable only when no place answers the zone — the same rule as every other form.
 function ScheduleSheet({
-  item,
+  heading,
+  confirmLabel,
+  subject,
   defaults,
   date,
   minDate,
@@ -1115,7 +2621,14 @@ function ScheduleSheet({
   onConfirm,
   onClose,
 }: {
-  item: MaybeItem;
+  heading: string;
+  confirmLabel: string;
+  /** What is being placed: an idea being scheduled, or — since ADR-0231 §1 (F3) — an event
+   *  being given an exact time. Only the place matters here, for the zone the times read in;
+   *  the two callers own their own write. The generalisation `GapFillSheet → SlotFillSheet`
+   *  made (ADR-0161 §6), one sheet over: a second when-and-confirm sheet would drift on the
+   *  zone rule. */
+  subject: { placeId?: string };
   defaults: { start: string; end: string };
   date: string;
   minDate: string;
@@ -1137,8 +2650,8 @@ function ScheduleSheet({
   // crossing), so it re-resolves with the fields rather than once on open.
   const zone =
     override ??
-    authoringZone({ placeId: item.placeId }, { date: when.date, time: when.start }, evidence);
-  const placeAnswers = placeTimezone(evidence.places, item.placeId) != null;
+    authoringZone({ placeId: subject.placeId }, { date: when.date, time: when.start }, evidence);
+  const placeAnswers = placeTimezone(evidence.places, subject.placeId) != null;
   const suggestedZones = useMemo(() => {
     const zones = [zone, evidence.primaryZone];
     for (const p of evidence.places) if (p.timezone) zones.push(p.timezone);
@@ -1146,7 +2659,7 @@ function ScheduleSheet({
   }, [zone, evidence.primaryZone, evidence.places]);
 
   return (
-    <Sheet title={t.day.scheduleTitle(item.title)} onClose={onClose}>
+    <Sheet title={heading} onClose={onClose}>
       <WhenField
         variant="day"
         date={when.date}
@@ -1167,7 +2680,7 @@ function ScheduleSheet({
         className="sched-confirm"
         onClick={() => onConfirm({ ...when, zone, override })}
       >
-        <Icon name="calendar" /> {t.actions.scheduleToDay}
+        <Icon name="calendar" /> {confirmLabel}
       </button>
     </Sheet>
   );

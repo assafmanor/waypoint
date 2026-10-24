@@ -65,6 +65,7 @@ const bk = (id: string): Booking => ({
   updatedBy: 'u1',
 });
 
+vi.mock('../state/mode-state', () => import('../test/mode-from-trip'));
 vi.mock('../state/trip-state', () => ({
   useTrip: () => ({
     trip,
@@ -74,6 +75,16 @@ vi.mock('../state/trip-state', () => ({
     documents: [],
     users: [{ id: 'u1' }],
     setActiveDate: () => {},
+    // The checklist is task rows now (ADR-0190), so PlanHome reads the task channel.
+    tasks: [],
+    // Plan Home reads the task clock now that its list is CONVERGED (ADR-0188 §6).
+    zoneCrossings: [],
+    taskVerbs: {
+      createTask: async () => {},
+      updateTask: async () => {},
+      deleteTask: async () => {},
+      tickTask: async () => {},
+    },
   }),
 }));
 

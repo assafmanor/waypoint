@@ -9,21 +9,33 @@
 // keep: it caught the reload that never fired (see `useAppUpdate.ts` on
 // `onNeedReload`), which every unit test in the repo passed straight through.
 //
-// Run from `frontend/` (it imports Playwright's chromium):
+// Run it from anywhere:
 //
-//   pnpm --filter @waypoint/frontend build && cp -r dist /tmp/A
+//   pnpm --filter @waypoint/frontend build && cp -r frontend/dist /tmp/A
 //   # …make any source change, then…
-//   pnpm --filter @waypoint/frontend build && cp -r dist /tmp/B
-//   cd frontend && node ../scripts/deploy-swap-check.mjs /tmp/A /tmp/B
+//   pnpm --filter @waypoint/frontend build && cp -r frontend/dist /tmp/B
+//   node scripts/deploy-swap-check.mjs /tmp/A /tmp/B
 //
-// Note the change between builds must survive minification — a comment does not,
-// and two builds with identical hashes prove nothing.
+// The previous instruction here said to run it from `frontend/`, and that has never
+// been what makes the import below resolve: a bare specifier in an ES module resolves
+// from the MODULE's own URL, not the cwd, and `@playwright/test` is a frontend
+// devDependency that pnpm does not hoist to the root. So it threw
+// ERR_MODULE_NOT_FOUND from any directory — see the `createRequire` below, which is
+// the fix and the reason the cwd no longer matters.
+//
+// Note the change between builds must survive minification — a comment does not, and
+// **an unused export is tree-shaken**, so two builds can still hash identically. Change
+// a value something reads (the script refuses to run when nothing vanished).
 //
 // What it asserts, in order:
 //   1. after the deploy, is the new worker PARKED or has it claimed the tab?
 //   2. can the live page still fetch a chunk only the old build had? (`no-store`
 //      on the assets, so the service worker is the only thing that could serve it)
 //   3. released from the hold, does the app take the new build with no user action?
+//   4. is a fresh `/s/<code>` navigation answered by the DEPLOYED build, or by the
+//      precache? (ADR-0213's seventeenth amendment — the one page that cannot be one
+//      build behind the server, since it parses that server's projection with a strict
+//      schema. It uses a rollback as its second deploy, so no third build is needed.)
 //
 // A focused <input> is injected before the deploy on purpose: it trips
 // `canReloadQuietly()`, so the automatic swap is HELD and the parked state is
@@ -35,7 +47,11 @@ import { createServer } from 'node:http';
 import { readFile, readdir } from 'node:fs/promises';
 import { existsSync, statSync } from 'node:fs';
 import { join, extname } from 'node:path';
-import { chromium } from '@playwright/test';
+import { createRequire } from 'node:module';
+// Resolved against `frontend/`, where the dependency actually lives (see the header).
+const { chromium } = createRequire(new URL('../frontend/package.json', import.meta.url))(
+  '@playwright/test',
+);
 
 const [dirA, dirB] = process.argv.slice(2);
 let serving = dirA;
@@ -205,6 +221,36 @@ if (after.waiting) {
       : '>>> VERDICT: the automatic swap did NOT happen.',
   );
 }
+
+// ── 4 · the public reader must run the DEPLOYED build (ADR-0213 §17) ─────────
+//
+// The tab is now on build B and its worker holds B's precache, so serving A again makes the
+// skew fresh without a third build — a rollback is a deploy. Then open `/s/<code>` the way a
+// reader does, in its own tab, and look at the FIRST document request: answered from the
+// precache it runs B's entry chunk against A's server (the version skew that reads to a
+// reader as "this link is unavailable"); answered from the network it runs A's.
+//
+// Measured on the first request on purpose — this page also heals itself, so waiting would
+// only ever see the happy ending.
+const hashOf = (url) => /index-[^./]*\.js/.exec(url ?? '')?.[0];
+serving = dirA;
+console.log('\n[deploy] dist rolled back to build A');
+const reader = await page.context().newPage();
+const readerAssets = [];
+reader.on('request', (r) => {
+  if (/\/assets\/index-/.test(r.url())) readerAssets.push(r.url());
+});
+await reader.goto('http://localhost:4321/s/7Kq2mB9x', { waitUntil: 'domcontentloaded' });
+const servedNow = hashOf(entryA);
+const readerRan = hashOf(readerAssets[0]);
+console.log(`>>> the reader's first entry chunk:   ${readerRan}`);
+console.log(`>>> the deployed build's entry chunk: ${servedNow}`);
+console.log(
+  readerRan === servedNow
+    ? '>>> VERDICT: /s/<code> ran the deployed build — no skew is possible on this page.'
+    : '>>> VERDICT: /s/<code> ran the PRECACHED build — a projection from the deployed server will not parse.',
+);
+await reader.close();
 
 await browser.close();
 server.close();

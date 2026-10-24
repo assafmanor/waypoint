@@ -32,6 +32,8 @@ import {
  *    §7's list predates §11.1's rule that the license must be verified on Commons before
  *    an image is stored, so this host is what makes that rule performable.
  *  - `upload.wikimedia.org` — the thumbnail bytes Commons generated (§12.1).
+ *  - `thumb.wikimedia.org` — the same bytes: since ~2026-09-26 Commons' `thumburl` points here,
+ *    and with it missing every image was refused and negative-cached for 30 days.
  *
  * The configured Overpass instance joins this list with ADR-0166's Phase 2, which is
  * blocked on measuring the restaurant fill rate (§12.4) — deliberately not added now,
@@ -45,6 +47,7 @@ const ALLOWED_HOSTS = [
   'www.wikidata.org',
   'commons.wikimedia.org',
   'upload.wikimedia.org',
+  'thumb.wikimedia.org',
   // The FX rate source (ADR-0180 §7). It is not enrichment, and it is here
   // anyway: this file is the process's ONE outbound seat, and the three
   // properties it enforces — allowlisted, timeboxed, size-capped — are exactly
@@ -57,12 +60,44 @@ const ALLOWED_HOSTS = [
   // are ENV VARS (`ENRICHMENT_FETCH_TIMEOUT_MS`) and renaming those is a breaking
   // config change for anyone who has set them.
   'open.er-api.com',
+  // The routing engine (ADR-0205 §2/§Z4), added for the same reason and with the same caveat as
+  // the line above. **`valhalla1` is the API host; `valhalla.openstreetmap.de` is the demo WEB
+  // APP** and answers `200` with HTML for every API path, which is why only the real one is here
+  // and why `ROUTING_BASE_URL` is boot-validated against this list rather than trusted.
+  //
+  // A self-hosted Valhalla (ADR-0205 §Y1) is a line HERE plus the env var — deliberately not one
+  // or the other, because this file's whole posture is that the allowlist is code.
+  'valhalla1.openstreetmap.de',
+  // **The fallback router** (ADR-0205 §Y5) — FOSSGIS's OSRM host, which is what the
+  // openstreetmap.org website routes with. Here for the same reason as the line above and under
+  // the same rule: a host named only in an env var would never be fetched, because the allowlist
+  // is code. Separate infrastructure from `valhalla1`, which is what makes it a fallback rather
+  // than a second name for the same outage.
+  'routing.openstreetmap.de',
+  // **The weather provider** (ADR-0218 §2/§6) — MET Norway's `locationforecast`, here for the
+  // reason the three entries above are: this file is the process's one outbound seat, and a
+  // second fetcher would be a second place to get SSRF wrong. Chosen after coverage tied with
+  // Open-Meteo at 57/57 of the app's destinations, on TERMS: NLOD 2.0 grants "any purpose …
+  // free, perpetual and worldwide", where Open-Meteo's free tier is non-commercial only and so
+  // stops being available at exactly the moment the app would need to keep using it.
+  //
+  // MET asks three things of a client and all three are held rather than promised: an
+  // identifying `User-Agent` with a repo URL (`weather.provider.ts` sends its own, since the
+  // default below names enrichment), <= 20 req/s across the whole application, and honouring
+  // `Expires` / `If-Modified-Since` — which is what `headers` on the response below exists for.
+  'api.met.no',
 ];
 
-/** Suffix rules, for the one source that is genuinely per-language. Matched as a real
+/** Suffix rules, for the two sources that are genuinely per-subdomain. Matched as a real
  *  label boundary (`.wikipedia.org`), never a substring — `evilwikipedia.org` and
- *  `wikipedia.org.attacker.test` must both fail. */
-const ALLOWED_HOST_SUFFIXES = ['.wikipedia.org'];
+ *  `wikipedia.org.attacker.test` must both fail.
+ *
+ *  `.googleusercontent.com` is where a Google profile photo lives (ADR-0133 §13), and it is a
+ *  suffix rather than a host because Google shards it across `lh3`…`lh6` and rotates which one
+ *  a given `picture` URL names. The seat this file guards is unchanged by it: the URL comes
+ *  from Google's own userinfo response, not from anything a member typed, and it is still
+ *  allowlisted, timeboxed and size-capped like every other hop. */
+const ALLOWED_HOST_SUFFIXES = ['.wikipedia.org', '.googleusercontent.com'];
 
 /** Redirect hops followed before giving up. Wikimedia uses a redirect for
  *  `Special:Redirect/file`, so zero is too few; anything beyond a couple is a loop. */
@@ -75,6 +110,21 @@ export class DisallowedHostError extends Error {
   constructor(readonly url: string) {
     super(`enrichment fetch refused: host not allowlisted (${safeHostOf(url)})`);
     this.name = 'DisallowedHostError';
+  }
+}
+
+/** **A non-2xx, carrying what the server actually said.** Distinct from the two refusals below
+ *  it: this one is the far end answering, and whether that answer is transient is the caller's
+ *  to decide from `status` and `body` — ADR-0205 §Z4's `400 error_code 154` is a stated limit
+ *  that no retry will change, and a message string would have flattened it into "it failed". */
+export class OutboundHttpError extends Error {
+  constructor(
+    readonly status: number,
+    readonly host: string,
+    readonly body: string,
+  ) {
+    super(`outbound fetch failed: ${status} for ${host}`);
+    this.name = 'OutboundHttpError';
   }
 }
 
@@ -126,6 +176,14 @@ export interface EnrichmentFetchOptions {
    *  passes its own, larger one. */
   maxBytes?: number;
   timeoutMs?: number;
+  /** **A body to POST, already serialised.** Every source before ADR-0205 read with a `GET`;
+   *  Valhalla's matrix takes a JSON document, and its `GET ?json=` spelling puts a whole day's
+   *  coordinates in a URL. Sending it as a body is not a preference — it is what keeps a 24-stop
+   *  request off the wrong side of a proxy's URL limit. Present ⇒ `POST`. */
+  json?: unknown;
+  /** Extra request headers. FOSSGIS asks every client to identify itself with `X-Client-Id`
+   *  (ADR-0205 §2) and that is a condition of using the server at all. */
+  headers?: Record<string, string>;
 }
 
 /** What a fetch came back with. The `url` is the **final** one after redirects, which is
@@ -135,6 +193,11 @@ export interface EnrichmentResponse {
   status: number;
   contentType: string | null;
   body: Buffer;
+  /** **The response's own headers**, added for ADR-0218 §2: MET Norway's terms ask a client to
+   *  honour `Expires` and to echo `Last-Modified` back as `If-Modified-Since`, so a caller that
+   *  cannot read them cannot hold the contract. Exposed as the whole `Headers` rather than the
+   *  two names, because naming them here would make the next such source a change to this file. */
+  headers: Headers;
 }
 
 /**
@@ -146,11 +209,16 @@ export interface EnrichmentResponse {
  */
 export class EnrichmentFetcher {
   /** Fetch and parse JSON. Rejects on a non-2xx, an off-allowlist host (including one
-   *  reached only via redirect), a timeout, or a body past the cap. */
+   *  reached only via redirect), a timeout, or a body past the cap.
+   *
+   *  The non-2xx throw carries the **status and the body** (`OutboundHttpError`), because one
+   *  caller has to tell two failures apart that look identical from out here: ADR-0205 §Z4's
+   *  `400 error_code 154` is the provider stating a limit, not an outage, and a bare message
+   *  string would make it one. */
   async fetchJson<T>(url: string, options: EnrichmentFetchOptions = {}): Promise<T> {
     const response = await this.fetch(url, options);
     if (response.status < 200 || response.status >= 300) {
-      throw new Error(`enrichment fetch failed: ${response.status} for ${safeHostOf(url)}`);
+      throw new OutboundHttpError(response.status, safeHostOf(url), response.body.toString('utf8'));
     }
     return JSON.parse(response.body.toString('utf8')) as T;
   }
@@ -164,16 +232,25 @@ export class EnrichmentFetcher {
     const timeoutMs =
       options.timeoutMs ?? envInt(ENRICHMENT_FETCH_TIMEOUT_MS, DEFAULT_ENRICHMENT_FETCH_TIMEOUT_MS);
 
+    const body = options.json === undefined ? undefined : JSON.stringify(options.json);
+
     let target = url;
+    let method = body === undefined ? 'GET' : 'POST';
     for (let hop = 0; ; hop++) {
       assertAllowedEnrichmentUrl(target);
       const res = await fetch(target, {
-        method: 'GET',
+        method,
+        ...(method === 'POST' && body !== undefined ? { body } : {}),
         redirect: 'manual',
         signal: AbortSignal.timeout(timeoutMs),
         // Wikimedia asks API clients to identify themselves, and an unidentified client is
         // the one they rate-limit first.
-        headers: { 'User-Agent': USER_AGENT, 'Accept-Encoding': 'gzip' },
+        headers: {
+          'User-Agent': USER_AGENT,
+          'Accept-Encoding': 'gzip',
+          ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+          ...options.headers,
+        },
       });
 
       const location = res.headers.get('location');
@@ -182,6 +259,10 @@ export class EnrichmentFetcher {
         // Resolved against the current URL so a relative `Location` works — and then run
         // back through the allowlist at the top of the loop.
         target = new URL(location, target).toString();
+        // 307/308 preserve the method and body; 301/302/303 are defined to turn a POST into a
+        // GET, and re-POSTing a body the server told us to move is how a request gets sent
+        // twice to somewhere that did not ask for it.
+        if (res.status !== 307 && res.status !== 308) method = 'GET';
         continue;
       }
 
@@ -189,6 +270,7 @@ export class EnrichmentFetcher {
         url: target,
         status: res.status,
         contentType: res.headers.get('content-type'),
+        headers: res.headers,
         body: await readCapped(res, maxBytes),
       };
     }

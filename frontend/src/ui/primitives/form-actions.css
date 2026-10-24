@@ -9,6 +9,55 @@
   max-height: 75dvh;
   overflow-y: auto;
   scrollbar-width: none;
+  /* **A FOCUSED FIELD'S BORDER WAS BEING CLIPPED ON BOTH ENDS** (owner, 2026-08-16: _"selected
+     field outline is cut off"_, and reproduced in the running app before it was touched).
+     `overflow-y: auto` makes this a scroll container, which computes `overflow-x` to `auto`
+     as well and clips at the padding box — and a field is exactly as wide as that box, so the
+     teal `:focus-visible` border's outer edge lands ON the clip boundary and the two VERTICAL
+     sides vanish while the horizontal ones survive. That asymmetry is the tell, and it is why
+     it reads as "cut off" rather than as a missing ring.
+
+     Nothing overflows (`scrollWidth === clientWidth` measured), so this is not a sizing bug
+     and widening nothing fixes it: the cure is to stop the field sitting flush against the
+     clip edge. The negative margin gives the padding straight back, so no field moves and no
+     form's width changes — the only difference is that there is now slack for a border to be
+     drawn into. Here rather than at a call site because every sheet-form in the app is this
+     class, and `EventForm`'s fields sit exactly as flush as `TaskSheet`'s.
+
+     **4px, and `overflow-clip-margin` is NOT available here — which is worth writing down,
+     because it is the obvious reach and it silently does nothing.** A first pass shipped 2px;
+     the owner's phone still showed the vertical strokes lighter than the horizontal ones
+     (_"fully closed but narrower on the left and right compared to the top and bottom"_), so
+     the next instinct is `overflow-x: clip` + `overflow-clip-margin` to push the clip edge
+     outward. It cannot work on this element: CSS Overflow 3 says that when one axis is
+     `clip` and the other is not `visible`/`clip`, the `clip` **computes to `hidden`** — and
+     `overflow-clip-margin` applies to `clip` only. Measured here: `overflow-x` reports
+     `hidden` and the margin is inert. A scrolling form can therefore only buy slack with
+     padding, so this is padding.
+
+     **What padding cannot fix, and is the likely remainder:** a 1px border on an element whose
+     inline edges land on FRACTIONAL device pixels is antialiased across two of them and reads
+     lighter than the block edges, which sit on whole ones. That is a rounding artifact of the
+     device's ratio, not a clip, and it wants a device screenshot taken AFTER this change
+     before anything else is done about it. */
+  padding-inline: 4px;
+  margin-inline: -4px;
+  /* **SO `scrollIntoView` DOES NOT PARK ITS TARGET UNDER THE ACTION BAR** (ADR-0196 §13).
+     `.form-actions` below is `position: sticky; inset-block-end: 0` INSIDE this scrollport,
+     and nothing in the app declared `scroll-padding` anywhere except the Map's inline peek —
+     so `block: 'nearest'` aligned a target flush with the scrollport's bottom edge, which is
+     underneath the bar. Measured with a sub-task composer scrolling itself back into view:
+     **−53px** of clearance without this and **+15px** with it, at three added steps and at
+     six, so it is structural rather than incidental.
+
+     Latent for every consumer of this class, not only tasks: `EventForm`, `BookingSheet`,
+     `DocumentUploadSheet` and `TaskSheet` all scroll inside it. `useFormErrors` escapes only
+     because it passes `block: 'center'`.
+
+     `.body` needs none of this and the check is worth recording: `.nav` is sticky too, but it
+     is a SIBLING of that scrollport rather than inside it, so nothing there can land under
+     it. This is the app's only case. */
+  scroll-padding-block-end: var(--form-actions-h);
 }
 .modal-form::-webkit-scrollbar {
   display: none;

@@ -1,0 +1,840 @@
+/* Tasks (tasks brief, ADR-0188) — ported from `mockups/tasks-row-and-refusals-v1.html`,
+   which is the build spec. Deliberately short: everything structural is a shipped
+   primitive (`ListRow` for the row, `.index .listcard` for the card, `Sheet` for the
+   menu), so if this file grows much past what is here, a primitive went unused.
+
+   The one new slot, `.wp-listrow-lead`, lives in `ui/domain/list-row.css` instead — it is
+   an extension of a shared component, not a task-specific rule. */
+
+/* THE COMPLETION CONTROL. A circle, because that is what a checklist is, and one verb
+   rather than a pair — `SettleControl` is a symmetric pair asked retrospectively of a slot
+   the group occupied, where a task is discharged (ADR-0188 §1). 44×44 hit area at a 26px
+   visible ink, laid out at 30px by the negative margin: the exact recipe
+   `.wp-listrow-kebab` already ships, so the row's height is unchanged by it.
+
+   COLOUR BUDGET: `--ok` only, and only once filled. `--ok`/`--miss` are the status
+   mini-palette (rule 4, ADR-0028) and "done" is a status. An open tick spends nothing, so
+   a list of open tasks carries no colour at all.
+
+   **TWO DENSITIES, ONE CONTROL** (`.tsk-tick` the screen's, `.tsk-tick-sec` a host
+   section's). They differ in exactly two numbers — the ink's diameter and the negative
+   margin that keeps the 44px target from growing the row it sits in — so they share every
+   rule below and set `--tick-ink` / `--tick-inset` rather than each spelling a tick out.
+   Anything else is how two ticks start disagreeing about what "done" looks like, which is
+   ADR-0139's whole build log one control over.
+
+   **`.tsk-tick-sec` had NO RULE AT ALL until 2026-08-16** — the one class ADR-0191 §5's
+   row reversal renamed without moving its paint. A `<button>` with no CSS renders platform
+   chrome, so a host section's tick shipped as a white rounded square with a bare ✓ in it,
+   in both themes, on every event card, booking sheet, document sheet and place card
+   (owner, from a device: _"what's this tick?? Why is it white?"_). Nothing could fail:
+   `HostTasks.test.tsx` asserts the element and its `aria-pressed`, and jsdom has no
+   stylesheet to contradict. The lesson is the same one `tsk-sec-quiet` is still carrying
+   below — a class name in a `className` string is a claim that a rule exists, and only a
+   render checks it. */
+.tsk-tick,
+.tsk-tick-sec {
+  width: 44px;
+  height: 44px;
+  margin: var(--tick-inset);
+  padding: 0;
+  border: 0;
+  background: none;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  color: var(--muted);
+  /* 12px, NOT `50%`, and the render is why (ADR-0188 §2). `border-radius` clips the hit
+     region as well as the paint, so a 44px box rounded to a circle answers only its
+     inscribed disc — measured at 83% of the square, with the four corners falling through
+     to `.wp-listrow-open` underneath. A corner tap therefore OPENED the task instead of
+     completing it, which is a wrong action rather than a dead one, and invisible in source.
+     `.wp-listrow-kebab` already ships the right answer: a rounded SQUARE hit box with the
+     visible ink drawn inside it. The circle a checklist needs is the `::before`. */
+  border-radius: 12px;
+}
+/* The screen's row: 26px of ink laid out at 30px, which is what the header measured. */
+.tsk-tick {
+  --tick-ink: 26px;
+  --tick-inset: -7px;
+}
+/* A host section's row. The ink is `--sec-tick`, which `.note-sec` has declared since
+   ADR-0191 §5 — *"the tick's PAINT; its touch target is an `::after` that reaches 44px
+   regardless"*. The mechanism is the negative margin rather than an `::after`, because that
+   is the recipe `.tsk-tick` and `.wp-listrow-kebab` already ship and a second way to hold a
+   44px target inside a small box is a second thing to get wrong. The inset lays the control
+   out at its ink exactly, so it fits `--sec-lead`'s 26px column and adds nothing to a row's
+   height; the target still overhangs, which is the point. */
+.tsk-tick-sec {
+  --tick-ink: var(--sec-tick, 20px);
+  --tick-inset: calc((var(--tick-ink) - 44px) / 2);
+}
+.tsk-tick::before,
+.tsk-tick-sec::before {
+  content: '';
+  grid-area: 1 / 1;
+  width: var(--tick-ink);
+  height: var(--tick-ink);
+  border-radius: 50%;
+  border: 1.5px solid var(--line);
+  background: var(--card);
+}
+.tsk-tick .icon,
+.tsk-tick-sec .icon {
+  grid-area: 1 / 1;
+  /* Proportional to the ink, so the ✓ inside a 20px circle is not the one drawn for a 26px
+     one — at a fixed 15px it fills the smaller circle edge to edge. */
+  width: calc(var(--tick-ink) * 0.58);
+  height: calc(var(--tick-ink) * 0.58);
+  opacity: 0;
+}
+/* **THE HOVER DOES NOT ASSERT THE DONE STATE** (ADR-0195 §3, and it replaces a pair that
+   borrowed `--ok` for the ring and drew the ✓ at `opacity: 0.4`).
+
+   On a touch device `:hover` LATCHES after a tap and clears only when something else is
+   tapped — probed in a real browser, where `:focus-visible` turned out to be matched by
+   neither a click nor a tap, so the focus ring below is innocent and unchanged. The old
+   pair therefore left an OPEN control wearing a ghost ✓ inside a green ring, which is the
+   owner's _"still leaves the checkbox selected (with a small outline)"_ and the reason the
+   2026-08-16 report "did not reproduce": that session read `aria-pressed` and the fill,
+   both of which were correct the whole time. A control's paint was lying about its state.
+
+   **So the repair is a DELETION and there is no rule here.** The first build wrote a
+   quieter hint in its place — a ring lifted to `--muted`, gated on
+   `@media (hover: hover) and (pointer: fine)` so it could not latch — and it went out
+   because it could not be verified as cheaply as it could be dropped: six browser probes
+   disagreed about whether a hovered pseudo-element's colour can be read back at all, and a
+   rule nobody can measure is a rule this repo has shipped unpainted before. It was also
+   mouse-only on a phone-primary app (ADR-0017), which is what makes deleting it a real
+   answer rather than a retreat. The tick keeps `cursor: pointer`, its ring, its
+   `:focus-visible` and the app-wide press scale.
+
+   What survives from that attempt, because it is the part with 40 other call sites: on a
+   touch device EVERY `:hover` rule is also a stuck state, and `@media (hover: hover) and
+   (pointer: fine)` is the guard for the ones that must keep a hint. The sweep shipped
+   2026-09-08 and `styles/hover-is-gated.contract.test.ts` refuses an ungated one since.
+   Verified here in a real touch context: after a tap the hover is
+   latched (`:hover` matches) and the control paints exactly its resting state — ring
+   `--line`, mark `opacity: 0`. */
+.tsk-tick:focus-visible,
+.tsk-tick-sec:focus-visible {
+  outline: 2.5px solid var(--teal);
+  /* Inward by however much the 44px box overhangs its ink, so the ring lands ON the circle
+     in both densities instead of floating in the overhang at the smaller one. */
+  outline-offset: calc((var(--tick-ink) - 44px) / 2 + 1px);
+}
+.app[data-mode='plan'] .tsk-tick:focus-visible,
+.app[data-mode='plan'] .tsk-tick-sec:focus-visible {
+  outline-color: var(--plan);
+}
+/* A finished trip still ticks tasks (ADR-0239 §3) and wears its own hue, not plan's (ADR-0240). */
+.app[data-phase='past'] .tsk-tick:focus-visible,
+.app[data-phase='past'] .tsk-tick-sec:focus-visible {
+  outline-color: var(--memory);
+}
+.tsk-tick[aria-pressed='true'],
+.tsk-tick-sec[aria-pressed='true'] {
+  color: var(--on-fill);
+}
+.tsk-tick[aria-pressed='true']::before,
+.tsk-tick-sec[aria-pressed='true']::before {
+  background: var(--ok);
+  border-color: var(--ok);
+}
+.tsk-tick[aria-pressed='true'] .icon,
+.tsk-tick-sec[aria-pressed='true'] .icon {
+  opacity: 1;
+}
+
+/* ══ THE BEAT — `BEAT.TICK`, played once by `playBeat` from `TaskTick` (ADR-0195).
+   `lib/one-shot.ts` is the family and its four properties all hold here: one shot applied
+   imperatively, the duration from a token so the CSS and `motionDurationMs` cannot
+   disagree, symmetric so no `--dir`, and `linear` with the beat written as INTERIOR STOPS.
+
+   That last one is measured rather than inherited. `--ease-arrive` is the app's only
+   overshooting curve and it overshoots **0.073px on a 26px disc** — a fifth of a device
+   pixel, because "a nudge past the mark, not a bounce" was written for a sheet arriving.
+   And a ✓ drawn under `--ease-standard` is **61% complete at 60ms of 240** and then crawls:
+   a decelerate is right for an object arriving and wrong for a pen moving. So the liveliness
+   is in the keyframes and the offsets ARE the timing (`mockups/a-tick-that-is-seen-v1.html`,
+   whose filmstrip is where both numbers were sampled).
+
+   **The paint lands before the data does.** `is-ticking` carries the done paint itself,
+   because the hold means `aria-pressed` is still `false` for the beat's duration — the row
+   has not been told yet. It also makes the animation's endpoints unambiguous instead of
+   depending on when React commits.
+
+   Nothing here moves layout: both transforms are on the ::before and the mark, never on the
+   `<button>`. That is also cascade rather than taste — an animation outranks author normal
+   declarations, so a `transform` on the button would beat `tokens.css`'s app-wide
+   `:active { transform: scale(var(--press-scale)) }` and take the press acknowledgement
+   away with the finger still down. */
+.tsk-tick.is-ticking,
+.tsk-tick-sec.is-ticking {
+  color: var(--on-fill);
+}
+.tsk-tick.is-ticking::before,
+.tsk-tick-sec.is-ticking::before {
+  background: var(--ok);
+  border-color: var(--ok);
+  animation:
+    wp-tick-land var(--t-quick) var(--ease-standard),
+    wp-tick-pop var(--t-base) linear;
+}
+.tsk-tick.is-ticking .icon,
+.tsk-tick-sec.is-ticking .icon {
+  opacity: 1;
+  animation: wp-tick-pop var(--t-base) linear;
+}
+.tsk-tick.is-ticking .icon path,
+.tsk-tick-sec.is-ticking .icon path {
+  /* The dash LENGTH here and the OFFSET in the keyframe, never the other way round: under
+     `prefers-reduced-motion` `App.css` kills every animation, and a static
+     `stroke-dashoffset` would then leave a completed task with NO ✓ at all, in a green
+     circle, permanently — with nothing able to fail, since jsdom loads no stylesheet. This
+     way a beat that never runs simply leaves the mark drawn. 21 covers the path's 20.23
+     user units (`getTotalLength()`), with the round cap inside it. */
+  stroke-dasharray: 21;
+  animation: wp-tick-draw var(--t-base) linear;
+}
+@keyframes wp-tick-land {
+  /* `background-color`, not the `background` shorthand — a shorthand's discrete parts snap
+     instead of ramping. */
+  from {
+    background-color: var(--card);
+    border-color: var(--line);
+  }
+}
+@keyframes wp-tick-pop {
+  0% {
+    transform: scale(0.55);
+  }
+  55% {
+    transform: scale(1.14);
+  }
+  78% {
+    transform: scale(0.965);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+@keyframes wp-tick-draw {
+  from {
+    stroke-dashoffset: 21;
+  }
+}
+
+/* ══ AND THE WAY BACK IS NOT THE WAY IN (ADR-0195 §2; owner: _"unticking shouldn't use the
+   same animation if any, it should be much more minimal"_).
+
+   Un-ticking is a CORRECTION, not an achievement: no beat, no hold, no keyframe — the fill
+   drains and the mark fades over `--t-quick` on `--ease-exit`, the curve the app already
+   uses for a glow going out.
+
+   **Declared on the OPEN state, which is what makes the asymmetry one rule instead of a
+   flag**: a `transition` is read from the DESTINATION state's computed style, so this
+   governs done→open and is simply absent on open→done, where the keyframes above do the
+   work. Nothing has to know which direction it is going, and the beat stays a pure
+   entrance. (Measured 0.14s here against 0s on the pressed state — and read off the
+   `::before`, since reading `transition-duration` from the button reports 0s for both and
+   makes a working rule look broken.) */
+.tsk-tick:not([aria-pressed='true'])::before,
+.tsk-tick-sec:not([aria-pressed='true'])::before {
+  transition:
+    background-color var(--t-quick) var(--ease-exit),
+    border-color var(--t-quick) var(--ease-exit);
+}
+.tsk-tick:not([aria-pressed='true']) .icon,
+.tsk-tick-sec:not([aria-pressed='true']) .icon {
+  transition: opacity var(--t-quick) var(--ease-exit);
+}
+
+/* ══ A TASK THAT HOLDS A CHECKLIST (ADR-0196) ═════════════════════════════════════════════
+
+   THE ARC. `.tsk-tick`'s `::before` is the ring and is untouched; this is a second layer in
+   the same grid cell, masked to a 2.5px band. `--tsk-frac` is the only thing a row sets.
+
+   `--ok` and nothing else: "how much of this is done" is a STATUS, which is the one
+   mini-palette rule 4 leaves open (ADR-0028). No amber, no teal, no plan violet. */
+.tsk-arc::after {
+  content: '';
+  grid-area: 1 / 1;
+  width: var(--tick-ink);
+  height: var(--tick-ink);
+  border-radius: 50%;
+  /* Clockwise from 12 o'clock in both directions. A ring reads as a clock and a clock does
+     not mirror; what RTL owns on this row is the lead COLUMN, not the sweep. */
+  background: conic-gradient(var(--ok) calc(var(--tsk-frac, 0) * 360deg), transparent 0);
+  /* **`calc(100% - 2.5px)`, NOT `calc(50% - …)`** — a percentage in a radial-gradient COLOUR
+     STOP resolves against the gradient's own ray, not against the box, so under
+     `closest-side` on a 26px circle 100% is 13px and 50% is 6.5px. The first draft drew a
+     9px band with a 4px hole, i.e. a pie chart — and a pie at 4/5 is indistinguishable from
+     done. Invisible in source; caught by rendering it. */
+  -webkit-mask: radial-gradient(
+    closest-side,
+    transparent calc(100% - 2.5px),
+    #000 calc(100% - 2.5px)
+  );
+  mask: radial-gradient(closest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2.5px));
+}
+/* **A PARENT'S LEAD IS THE ORDINARY TICK** (ADR-0196 §3, reversed 2026-08-19: _"you should
+   be able to tick the parent task to mark all as complete"_). It was a `<span role="img">`
+   with `cursor: default` while the design said a parent had nothing to press; it is a
+   `<button>` again, so it inherits the cursor, the press scale, the focus ring and the ✓
+   from `.tsk-tick` and this class adds only the arc's marker.
+
+   Full is therefore painted by `[aria-pressed='true']` above, exactly as on a leaf: the arc
+   has become the fill and the ✓ is the fill's own mark. `data-done` stays because the e2e
+   spec and the arc's own reading key on it, and because it says "every step", which is not
+   the same sentence as "this row was ticked". */
+.tsk-ring[data-done='true']::before {
+  background: var(--ok);
+  border-color: var(--ok);
+}
+.tsk-ring[data-done='true'] .icon {
+  opacity: 1;
+  color: var(--on-fill);
+}
+
+/* THE COUNT, in the meta line. Neutral `--muted`: it is a quantity, not a status and not a
+   deadline, so it spends nothing. It shares line one with the deadline rather than opening a
+   third line — an undated parent therefore keeps ONE line, which is what `.tsk-due`'s own
+   `display: block` was bought for (ADR-0191 §8). */
+.wp-listrow-meta > .tsk-meta-when {
+  display: block;
+}
+.tsk-count {
+  font-weight: 700;
+  color: var(--muted);
+}
+/* No `·` between them: `.tsk-sep` is inked `--line`, the app's HAIRLINE, which at 11.5px is
+   barely a mark. The ink change plus this gap is what separates the two facts and stops
+   `04:30` and `2/5` reading as one numeric run. */
+.tsk-due + .tsk-count {
+  margin-inline-start: 7px;
+}
+
+/* THE STEPS, in the open region the row already has (ADR-0189 §3). The rows are
+   `.note-item.tsk-row` — the host section's shipped row — so all this declares is the two
+   variables `.note-sec` declares, and the indent that makes a step read as INSIDE its parent.
+
+   **The indent lands on the parent's TITLE, and 58px did not** (owner, 2026-08-19: _"is the
+   line difference between the title and the first sub task good? the tab before the sub
+   tasks?"_). 58px was written as "14px of card inset + the 44px lead", and both halves were
+   wrong: `.wp-listrow-lead` is flush to the card and IS the 44px, `.wp-listrow-open` adds its
+   own 10px, and the tick's paint sits 3px inside its 26px cell. Measured in the running app
+   at 390: the parent's title started at x=319 and a step's tick painted to x=312 — an
+   arbitrary 7px, aligned to nothing, which is what reads as a stray tab.
+
+   So the number is DERIVED rather than picked, and it aligns the thing that carries the
+   meaning: `--kid-title-x` is where the parent's title starts (44px lead + 10px button
+   inset), and subtracting the lead cell puts a STEP'S TEXT on that same x. The ticks then
+   step outboard toward the ring, which is the hierarchy. Aligning the step's TICK there
+   instead was rendered beside this and rejected: it leaves the texts in two columns, and
+   ADR-0191 §5's own reversal ("notes and tasks look totally different and have a different
+   allignment") is about exactly that. */
+.tsk-kids {
+  --sec-lead: 26px;
+  --sec-tick: 20px;
+  --kid-title-x: 54px;
+  padding-block: 2px;
+  padding-inline: calc(var(--kid-title-x) - var(--sec-lead)) 14px;
+}
+.tsk-kids .note-item {
+  margin-bottom: 6px;
+}
+/* Inside the editor the field is already inset, so the steps align to the field rather than
+   to a card. */
+.tsk-kids-form {
+  padding-inline: 0;
+}
+
+/* THE COMPOSER ROW — the checklist's last row, in the same grid as the steps, so the `＋`
+   sits in the very column the ticks are in.
+
+   **An `<input>`, not `NoteComposer`'s `<textarea>`, and Enter COMMITS here.** That is the
+   opposite of ADR-0152 §6b's rule for a note, on that rule's own reasoning: a note is prose,
+   so the key that ends a line inside one cannot end the note; a step is one line and has no
+   inside, so Enter has nothing else to do. */
+.tsk-kid-compose {
+  /* `.note-item` is `align-items: start`, which is right for a 20px tick beside a line of
+     text and wrong beside an input box — this row is the one member of that grid whose two
+     cells are different heights. */
+  align-items: center;
+}
+.tsk-kid-compose .note-item-lead {
+  color: var(--muted);
+}
+.tsk-kid-compose .note-item-lead .icon {
+  width: 15px;
+  height: 15px;
+}
+/* **`App.css` AND `field.css` BOTH DEFINE `.field`, AND ONLY ONE OF THEM IS RESET.**
+   `App.css` sets `margin-top: 18px` — a form's gap, from the birth form — and `field.css`
+   sets `display`/`gap` and never touches the margin, so every `.field` in the app carries it.
+   Inside a grid row that is not a gap, it is a shove: it put this box 9px below the `＋`
+   beside it. Zeroed here only, where the shell is a row rather than a form field. */
+.tsk-kid-compose .field {
+  margin-top: 0;
+}
+/* **THE BOX IS THE ROW, NOT THE INPUT.** With the border left where `field.css` puts it, the
+   assignee chip and the ✕ sat OUTSIDE the rounded box with nothing to align to.
+   `.note-compose-row` gets away with a control beside its box because that control has a box
+   of its own (`.note-compose-add`, 38px, bordered); these two are 26px and bare, so they
+   belong inside. One border, one radius, one focus ring, three controls in it. */
+.tsk-kid-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-12);
+  background: var(--card);
+  padding-inline: var(--space-2);
+}
+/* The focus hue moves out with the border — the same declaration `field.css` makes on the
+   input itself, one level up, because that is where the border now is. */
+.tsk-kid-row:focus-within {
+  border-color: var(--teal);
+}
+/* **`.field .tsk-kid-in`, not `.tsk-kid-in`** — `field.css`'s `.field input` is (0,1,1) and a
+   bare class is (0,1,0), so `border: 0` loses and the row paints a rounded box INSIDE a
+   rounded box. When a primitive styles by element, an override has to out-specify it rather
+   than merely follow it (ADR-0195's build log records the same trap one control over). */
+.field .tsk-kid-in {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 13px;
+  border: 0;
+  background: none;
+  padding-inline: 0;
+}
+.field .tsk-kid-in:focus-visible {
+  outline: none;
+}
+/* The two controls beside the input: who owes this step, and remove it. 26px of paint with a
+   44px `::after` reach — `row-open.css`'s own recipe, which holds a 44px target under a small
+   control without the line taking 44px of the block (ADR-0017).
+
+   **AND THE FIRST COPY OF IT REACHED SIDEWAYS, ONTO ITS NEIGHBOUR** (owner, 2026-08-19: _"on
+   an already created sub task you can't reassign … when clicking on the assignee it instead
+   registers as a delete sub task and simply removes it"_). Measured in the running app at 390:
+   the chip painted at x 72–98 and `elementFromPoint` at its own centre returned `.tsk-kid-x`.
+
+   Two mistakes in five lines. The overlay was **displaced** rather than centred — `left: 50%`
+   with `translate(50%)` starts the box at the control's centre and then pushes it 22px further
+   right, so each target sat 22–66px to the side of the control it belongs to. And it was given
+   a **width** at all: the recipe it cites reaches 44px in the BLOCK axis only (`inset: 50% 0
+   auto 0`), keeping the control's own width, which is exactly what stops two controls 6px
+   apart from swallowing each other. Both are restored here.
+
+   It only ever showed on an existing step, because `✕` is the neighbour and it renders only
+   while a step is being edited — the add row has the chip alone and worked. */
+.tsk-kid-who,
+.tsk-kid-x {
+  position: relative;
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  color: var(--muted);
+}
+.tsk-kid-who::after,
+.tsk-kid-x::after {
+  content: '';
+  position: absolute;
+  inset: 50% 0 auto 0;
+  transform: translateY(-50%);
+  height: 44px;
+}
+/* The row is 26px tall, so the block axis is where the floor bites and where the reach above
+   goes. Across, the two controls stay their own width and take a little more air between them
+   than the 6px the row gives everything else — enough that a fingertip landing between them
+   resolves to one of them rather than to whichever is on top. */
+.tsk-kid-who {
+  margin-inline-end: 10px;
+}
+.tsk-kid-x .icon {
+  width: 15px;
+  height: 15px;
+}
+/* Nobody yet: the same dashed person-shaped absence `.tsk-who-any` already draws in the
+   editor (ADR-0189 §2), at this row's size rather than the editor's 38px. */
+.tsk-kid-who .tsk-who-any {
+  width: 22px;
+  height: 22px;
+}
+.tsk-kid-who .tsk-who-any .icon {
+  width: 12px;
+  height: 12px;
+}
+.tsk-kid-who .wp-av {
+  width: 22px;
+  height: 22px;
+  font-size: 10px;
+}
+
+/* The cap's refusal, under the list it refused. `--miss-deep` because a refusal is a status
+   and this is the ink variant — the fill fails AA as text, the same reason `.tsk-due.late`
+   uses it. Not a `field-error`: nothing here is a field, and the message is about the list
+   rather than about anything typed. */
+.tsk-kids-full {
+  color: var(--miss-deep);
+  padding-inline: calc(var(--kid-title-x, 54px) - var(--sec-lead, 26px)) 14px;
+}
+.tsk-kids-form + .tsk-kids-full {
+  padding-inline: 0;
+}
+
+/* THE DEADLINE, in the meta line. `--amber-deep` is amber's paper variant and a due time IS
+   time and commitment, so this is inside rule 4 rather than an exception to it. Overdue is
+   a STATUS, so it takes `--miss-deep` (the ink variant — the fill fails AA as text). The
+   word `עד` is ADR-0171's shipped deadline phrasing, reused rather than re-invented. */
+.tsk-due {
+  font-weight: 700;
+  color: var(--amber-deep);
+}
+.tsk-due.late {
+  color: var(--miss-deep);
+}
+.tsk-due.lapsed {
+  color: var(--muted);
+}
+.tsk-due .icon {
+  width: 11px;
+  height: 11px;
+  vertical-align: -1px;
+}
+
+/* IMPORTANT is one flag and it spends NO colour (brief §7 — the palette has nothing left).
+   Shape and weight carry it: a star in the title line and the title at 800. That is also
+   what lets the flag become a scale later as a column rather than a redesign. */
+.tsk-star {
+  color: var(--ink);
+  flex: 0 0 auto;
+  display: inline-flex;
+  /* The title row is `align-items: center`, which on a TWO-LINE title centres the star
+     against both lines and reads as "under the first word". It belongs on the line it marks. */
+  align-self: flex-start;
+  margin-top: 2px;
+}
+.tsk-star .icon {
+  width: 13px;
+  height: 13px;
+  fill: currentColor;
+}
+.wp-listrow-title:has(.tsk-star) {
+  font-weight: 800;
+}
+
+/* A SETTLED task, on the screen's collapsed tail. Struck and quiet — the same treatment a
+   skipped event's title already gets. */
+.tsk-settled .wp-listrow-title {
+  text-decoration: line-through;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+/* The `·` between the meta line's facts — the app's separator, never an em dash. */
+.tsk-sep {
+  color: var(--line);
+  margin: 0 2px;
+}
+
+/* THE EDITOR's two-part deadline (ADR-0177): a `DateField` wearing the token's chip, and
+   an optional time `ValueToken` beside it. One line, so an undated task is the resting
+   state rather than a cleared one. */
+.tsk-when {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+/* The clear sits with the value it clears, and it is not a back action (ADR-0103's rule:
+   back navigates, it does not edit). */
+.tsk-when-clear {
+  border: 0;
+  background: none;
+  padding: 6px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+}
+@media (hover: hover) and (pointer: fine) {
+  .tsk-when-clear:hover {
+    color: var(--ink);
+  }
+}
+
+/* THE ASSIGNEE ROW (ADR-0189 §2) — `ChoiceGrid layout="pills"` with a person where the
+   glyph goes. The density wrapper is the whole of the new host's CSS: `choice-grid.css`
+   records in place that `.choice-pill` is 36px against ADR-0017's 44px floor "here AND on
+   the shipped category selector", and that raising it moves three shipped surfaces, one
+   with an arithmetic card height (ADR-0148 §1). A NEW host is not bound by that deferral
+   and pays nothing to meet the floor — it scopes its own sizing exactly as `.category-pills`
+   already does. */
+/* **Scoped to the grid, not to the wrapper** (owner, 2026-08-16: "the avatar is too big").
+   These were `.tsk-who .*`, and the ROW's assignee span was also called `.tsk-who` — so
+   `.tsk-who .wp-av { width: 38px }` (0-2-0) beat the row's own `.tsk-who-mini` (0-1-0) and
+   blew an 18px circle up to 38px on every task row. The row's span is `.tsk-assignee` now,
+   and these are scoped to `.choice-grid` as well, so neither rule can reach the other's
+   markup even if a future class name collides again. */
+.tsk-who .choice-grid .choice-pill {
+  /* 3 + 38 + 3 = 44 (ADR-0017). Logical padding: the avatar is the LEADING mark, so it is
+     the inline-start side that tightens. */
+  padding-block: 3px;
+  padding-inline: 3px 13px;
+  gap: 8px;
+  font-size: var(--text-secondary);
+}
+.tsk-who .choice-grid .wp-av {
+  width: 38px;
+  height: 38px;
+  font-size: 16px;
+}
+/* THE UNASSIGNED OPTION is a person-shaped absence, so it is the same circle with the group
+   glyph instead of a face — not a differently-shaped chip beside the people, which would say
+   "this is a different kind of answer" when it is the same question's default one. Dashed
+   while unchosen, for the reason `.wp-chip.provisional` already uses it (ADR-0110 §2). */
+.tsk-who-any {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--paper);
+  border: 1px dashed var(--soft-line);
+  color: var(--muted);
+  flex: none;
+}
+.tsk-who-any .icon {
+  width: 18px;
+  height: 18px;
+}
+.choice-pill.on .tsk-who-any {
+  border-style: solid;
+  border-color: currentColor;
+}
+
+/* The `important` flag's star in the editor. The control itself is `.field` + `ToggleChip
+   tone="cta" size="touch"` — `EventForm`'s `יש הזמנה` row verbatim (ADR-0136 §1) — so the
+   44px floor arrives from the primitive and nothing here sets a size. Rule 4 untouched:
+   `--cta` is the neutral primary and `important` spends no hue of its own. */
+.tsk-flag .icon {
+  fill: currentColor;
+  stroke: none;
+}
+
+/* READING A TASK (ADR-0189 §3). The foot is shared (`ui/domain/row-open.css`); the body
+   block is the only thing a task needs beyond what notes already ships. `pre-wrap` because
+   the field is a `<textarea>` and someone who typed a list meant the line breaks. */
+.tsk-open-body {
+  padding: 2px 14px 8px;
+  font-size: 12.5px;
+  line-height: var(--leading-normal);
+  color: var(--muted);
+  white-space: pre-wrap;
+}
+/* "There is more", at the end of the meta line. Its job is to SAY there is more, not to
+   print it — a preview would be the same sentence twice on every short task. */
+.tsk-more-mark {
+  color: var(--muted);
+  opacity: 0.75;
+}
+.tsk-more-mark .icon {
+  width: 13px;
+  height: 13px;
+  vertical-align: -2px;
+}
+
+/* WHO OWES IT, on the row (ADR-0190 §6). `.tsk-assignee`, NOT `.tsk-who` — that name is the
+   editor's density wrapper above, and sharing it is what shipped a 38px avatar into a
+   11.5px meta line. The owner's report was that members are prominent
+   in the editor and barely visible here; ADR-0188 §3 had made this a bare name to avoid "a
+   second identity system per row", and that premise expired when ADR-0189 put `Avatar` into
+   the editor for the same field — the row now reuses the system this feature established.
+
+   `Avatar` does the drawing (ADR-0133 §3, `size="inherit"`); this only sizes the circle to
+   the LINE it sits on, which is the same move `.wp-listrow-badge` already makes. */
+.tsk-assignee {
+  white-space: nowrap;
+}
+.tsk-who-mini {
+  /* **15px, and it no longer overhangs** (owner, 2026-08-16: _"the assignee got over the
+     due"_). This was an 18px circle with `margin-block: -7px`, so it overhung its own line
+     instead of stretching the row from 61px to 68.5px. That trick is only sound while the
+     meta line is ONE line — `.wp-listrow-meta` is `display: block`, so as soon as the line
+     wraps (a long deadline like `עד עוד 16 ימים`, and more so once the host chip joined it)
+     the circle on the second line overhangs UPWARD by 7px and paints straight through the
+     deadline above it. Measured on the reporter's own screenshot.
+
+     A circle that FITS its line box needs no overhang and cannot collide with anything: at
+     11.5px × 1.3 the box is ~15px, so the row keeps its height and the failure mode is gone
+     rather than prevented. */
+  width: 15px;
+  height: 15px;
+  font-size: 8px;
+  /* `middle`, not a pixel offset (owner, 2026-08-16: "the user icon is below the name") — a
+     fixed offset pushes the box DOWN from the baseline instead of centring it on the text,
+     and it stops being right the moment the meta line's font-size moves. */
+  vertical-align: middle;
+  margin-inline-end: 4px;
+  display: inline-grid;
+}
+/* The line box the circle above is sized to fit. Stated rather than inherited, because the
+   whole point is that these two numbers are a pair. */
+.wp-listrow-meta:has(.tsk-who-mini),
+.note-item-m:has(.tsk-who-mini) {
+  line-height: 1.35;
+}
+
+/* **WHO OWES IT: THE FACE ALONE, AT THE END OF THE TITLE ROW** (ADR-0190 §6, amended
+   2026-08-16 — owner, against Microsoft To Do: _"I actually prefer the way they handled
+   showing the assignee (title row, only avatar)"_).
+
+   §6 put a NAME in the meta line and argued that an unassigned task must say so, because
+   saying nothing there was indistinguishable from "assigned to someone whose name did not
+   fit". **In a fixed slot that premise expires**: there is a place for a face at the end of
+   every title row, so an empty one is unambiguous — which is what let the word go.
+
+   It also paid for itself. The meta line lost its longest element, so the deadline and the
+   host chip fit ONE line again and the deliberate two-row split added hours earlier retires
+   with the problem that forced it.
+
+   Sized to the title's own line box (13.5px × 1.4 ≈ 19px) so it needs no negative margin —
+   the trick that had `.tsk-who-mini` painting through the line above it when the meta
+   wrapped. `margin-inline-start: auto` is what puts it at the trailing edge; the title text
+   keeps everything else. */
+/* `flex: 1` and not just `min-width: 0` — `.wp-listrow-title` is a WRAPPING flex line, so a
+   bare `min-width: 0` let the text shrink to nothing and wrap whole to the next row, leaving
+   the star alone on the first. It takes the remaining width instead, and the face's
+   `margin-inline-start: auto` still pins to the trailing edge because the text stops there. */
+.tsk-title-txt {
+  /* `100%` of the basis is wrong here and `auto` is not enough: the title is a WRAPPING flex
+     line, so a two-line title still needs to start beside the star rather than under it.
+     `flex: 1` with a zero basis lets it take exactly the width the star leaves. */
+  flex: 1 1 0;
+  min-width: 0;
+}
+.wp-listrow-title .tsk-who-row,
+.note-item-b .tsk-who-row {
+  width: 19px;
+  height: 19px;
+  font-size: 9px;
+  flex: 0 0 auto;
+  margin-inline-start: auto;
+}
+/* The row's title is already a wrapping flex line; the section's is a plain button, so it
+   needs the same shape stated before `auto` can push anything to its end. */
+.note-item.tsk-row .note-item-b {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+/* A settled task's face goes quiet with the rest of the row rather than staying the one
+   full-colour thing on a struck line. */
+.tsk-settled .tsk-who-row,
+.tsk-hostdone .tsk-who-row {
+  opacity: 0.55;
+}
+
+/* **THE DEADLINE OWNS ITS OWN LINE** (ADR-0191 §8, the owner's proposal — and moving the
+   assignee to the title row did NOT retire it, it made it pay better). Measured at 360 after
+   the assignee left: on one line the chip still truncates to **24px of the 80px it needs**,
+   because a deadline and a host name do not fit a 190px meta together. On its own line the
+   chip now has the whole width to itself rather than sharing it with a name, so it reads
+   whole where the single-line version gives `זמן חו…`.
+
+   An undated task keeps ONE line: the second exists only when there is a deadline for the
+   first, so the split costs nothing where there is nothing to split. */
+.wp-listrow-meta > .tsk-due {
+  display: block;
+}
+.tsk-meta-about {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  max-width: 100%;
+}
+.tsk-meta-about .note-host {
+  min-width: 0;
+  flex: 0 1 auto;
+}
+.tsk-meta-about .tsk-more-mark {
+  flex: 0 0 auto;
+}
+
+/* A SETTLED TASK, and **a task whose HOST is settled** (ADR-0191 §6) — one style, because they
+   are the same statement: this is not an open obligation any more. The host case is not a
+   second vocabulary, which is the argument for choosing it. */
+.note-item.tsk-row.tsk-settled .note-item-b,
+.note-item.tsk-row.tsk-hostdone .note-item-b {
+  text-decoration: line-through;
+  color: var(--muted);
+}
+/* The star keeps its place but stops shouting once the row is settled: `important` is about
+   what to do next, and there is no next here. */
+.note-item.tsk-row.tsk-settled .tsk-star,
+.note-item.tsk-row.tsk-hostdone .tsk-star {
+  color: var(--muted);
+}
+
+/* ── TRIP HOME's OVERFLOW ROW (ADR-0193 §3) ───────────────────────────────────
+   One more row in the same `.checklist`, not a second control beside it — which is
+   the rule `TripHomeTaskBand` stated for its own overflow row and then never got,
+   because **`.tsk-more` had no CSS rule in this repo at all**. Nothing defined it,
+   `App.css` has no global `button` reset, and it rendered as a bare 19px UA button
+   inside a paper card, under ADR-0017's 44px floor.
+
+   Plan Home briefly shared this rule as `.chk-more` and no longer does: its toggle
+   is a `.chk-toggle` at the section's foot (owner, 2026-08-16). Worth knowing why
+   that row looked wrong there and not here — `.wp-collapse-toggle` used to set the
+   `font` SHORTHAND to `inherit`, which resets `font-size`/`font-weight` at equal
+   specificity, and `collapsible.css` loads after this file, so the primitive won
+   whatever a caller said. That is fixed at the primitive now (`font-family`, not the
+   shorthand). This rule was never affected: `.tsk-more` is a plain `<button>`, not a
+   `CollapseToggle`, so nothing else was ever competing for its font. */
+.tsk-more {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: 44px;
+  padding: 11px 14px;
+  border: 0;
+  border-top: 1px solid var(--line);
+  background: transparent;
+  font: inherit;
+  font-size: var(--text-secondary);
+  font-weight: 700;
+  color: var(--cta);
+  text-align: start;
+  cursor: pointer;
+}
+/* Trip Home's row carries a `NavArrow` because its verb LEAVES — it deep-links to the
+   tasks screen. Plan Home's carries a caret, because its verb EXPANDS IN PLACE, and the
+   caret turns to say which way it now goes. */
+.tsk-more .icon {
+  width: 15px;
+  height: 15px;
+  flex: none;
+}
+.chk-more-row .icon {
+  transition: transform var(--t-quick) ease;
+}
+.chk-more-row[aria-expanded='true'] .icon {
+  transform: rotate(180deg);
+}
+/* The far group's rows are revealed INSIDE the card, so the collapsible must not draw
+   a second border where the card already owns one. */
+.checklist > .wp-collapsible {
+  border-top: 0;
+}

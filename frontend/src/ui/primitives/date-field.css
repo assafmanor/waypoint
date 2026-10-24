@@ -41,10 +41,14 @@
   direction: ltr;
   color: var(--ink);
   color-scheme: light;
-  /* Invisible, not absent: the field is still tappable, focusable and fillable — only
-     its platform-formatted text is hidden, because the face says the same thing in the
+  /* Invisible, not absent: the field is still focusable and fillable — only its
+     platform-formatted text is hidden, because the face says the same thing in the
      app's order. */
   opacity: 0;
+  /* NOT the tap target: the wrapper is, and opens the picker itself (`DateField`'s
+     `openPicker`). An invisible form control is only as wide as each engine lays one out,
+     and a Galaxy's Chrome laid this one out narrower than the face, twice. */
+  pointer-events: none;
 }
 .df .df-input:focus-visible {
   outline: none;
@@ -69,6 +73,7 @@
    format belongs. */
 .df[data-typing] .df-input {
   opacity: 1;
+  pointer-events: auto;
 }
 .df[data-typing] .df-face {
   visibility: hidden;

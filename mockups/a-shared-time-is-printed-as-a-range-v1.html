@@ -1,0 +1,933 @@
+<!doctype html>
+<!-- שעה משותפת על הנייר — THE SAME RULE ON A4, AND THE ONE MEASUREMENT ONLY PAPER HAS — v1 (2026-08-31)
+
+     WHAT THIS IS. The A4 twin of `a-shared-time-says-what-it-means-v1.html`. Same
+     report, same rule, drawn on the renderer that actually withholds the second end:
+
+       "The pdf and live sharing currently only shows start times (except bookings
+        and hard events) … whenever there's a time range, we should display it. That
+        also includes flexible times like starting from.. Or until..."
+
+     Two files rather than one because ADR-0213 §7 is the reason: the teal route strip
+     was deleted from the reader page and kept PRINTING for a week — *"the same defect
+     one renderer behind"* — and the fix recorded there is one decision drawn on both
+     media, not one drawing that paper is assumed to inherit.
+
+     ─────────────────────────────────────────────────────────────────────────
+     WHAT ONLY PAPER HAS, AND IT IS WHY THIS FILE EXISTS.
+
+     THE TIME COLUMN IS A FIXED WIDTH WITH `white-space: nowrap`, AND IT WAS SIZED
+     FOR ONE STRING. `.pdf-event{grid-template-columns:56px minmax(0,1fr)}` — and
+     ADR-0213's own build log says where 56 came from: the shipped column was 38px,
+     `09:20–14:05` measured 52.9px of ink, *"so every row carrying one broke across
+     two lines and a flight's arrival read as a stray second number under its
+     departure."* That measurement was taken over the ONE string the `hard` gate let
+     through. This change lets four more shapes into the same cell — `מ-10:00`,
+     `עד 11:00`, `17:00–21:00` — two of which are Hebrew-plus-digits rather than pure
+     digits, so none of them is covered by the number that sized the column. §2 is
+     that measurement, and it is the whole argument for drawing this before coding it.
+
+     The reader page has no equivalent question: `.sh-time` sits inside a flowing
+     `.sh-place-line` and simply takes the width it needs.
+
+     ─────────────────────────────────────────────────────────────────────────
+     THE RULE (identical to the reader file, restated so this one stands alone):
+     sharing asks `edgeMeaning` (ADR-0184) instead of `event.hard`.
+
+       exact,  one end   → `14:30`
+       exact,  two ends  → `09:20–14:05`
+       not-before        → `מ-15:00`
+       not-after         → `עד 11:00`
+       window            → `17:00–21:00`
+
+     And `itinerary-pdf.template.ts:232` is the line that goes:
+       `const range = event.hard && event.endLabel && event.endLabel !== event.startLabel;`
+
+     ─────────────────────────────────────────────────────────────────────────
+     THIS FILE'S SECTIONS AGAINST THE ADR'S:
+
+       §1 the six arms on paper    → ADR-0213 amendment §1
+       §2 the time column, measured → §1's build note
+       §3 the stay's two moments    → §2
+       §4 what does NOT change      → §3
+
+     ─────────────────────────────────────────────────────────────────────────
+     Interactive: theme (the review chrome only — the sheet is a FIXED LIGHT palette
+     by design, ADR-0213 §4, so the paper never flips), screen scale, and
+     רוחב עמודת השעה, which is the number this file exists to settle. Every
+     measurement divides the preview scale back out, so the numbers are A4's own. -->
+<html lang="he" dir="rtl" data-theme="light">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>שעה משותפת על הנייר · מוקאפ v1</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;500;600;700&family=Secular+One&family=JetBrains+Mono:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- The A4 renderer's own stylesheet, extracted verbatim rather than hand-copied.
+             node mockups/tools/extract-pdf-css.mjs mockups/<this-file>.html -->
+    <!-- PDF-CSS: backend/src/sharing/itinerary-pdf.template.ts -->
+    <style data-pdf-css>
+      /* GENERATED — do not edit. Extracted verbatim from
+         backend/src/sharing/itinerary-pdf.template.ts by mockups/tools/extract-pdf-css.mjs.
+         Re-run after any change to that renderer. */
+:root{--pdf-ink:#16233d;--pdf-muted:#626b7e;--pdf-line:#d8dde6;--pdf-soft:#f3f5f8;--pdf-amber:#915e1e;--pdf-teal:#237d7a;}
+/* **No @page margin and no paper box.** The margins are Chromium's, declared beside
+   displayHeaderFooter in pdf-browser.service.ts, because the running footer lives IN the
+   page margin box — set them here and the footer would print over the last line of every
+   page, which is the defect this replaced. Only the SIZE stays here, so preferCSSPageSize
+   has something to prefer. */
+@page{size:A4;}
+*{box-sizing:border-box;}
+html,body{margin:0;background:#fff;color:var(--pdf-ink);font-family:'Assistant','Noto Emoji',system-ui,sans-serif;}
+.pdf-mast{display:flex;align-items:end;justify-content:space-between;gap:18px;margin-block-end:15px;padding-block-end:11px;border-block-end:2px solid var(--pdf-ink);}
+/* Takes what it needs before the strip does — it holds the title and the dates, which are the
+   two things a reader looks at first. */
+.pdf-mast-copy{min-width:0;flex:1 1 auto;}
+.pdf-eyebrow{margin-block-end:4px;color:var(--pdf-muted);font-size:9px;font-weight:700;letter-spacing:.08em;}
+.pdf-title{margin:0;font:27px/1.1 'Secular One',sans-serif;}
+/* **The trip's own facts may not wrap** (owner, 2026-08-30: _"why is the title area on the pdf
+   so compact … it doesn't need to be compacted to the right like that"_). The masthead is a flex
+   row and the copy block was the only shrinkable thing in it, so the strip and the QR took their
+   width first and the date-and-length line broke across three lines mid-phrase. It is short
+   and fixed; it says so, and the strip beside it yields instead. */
+.pdf-subtitle{margin-block-start:6px;color:var(--pdf-muted);font:500 9px 'Assistant',sans-serif;white-space:nowrap;}
+/* The provenance stamp: a line of its own and a step quieter, so it cannot push the trip's
+   own dates into a wrap (owner report, 2026-08-30). */
+.pdf-stamp{margin-block-start:2px;color:var(--pdf-muted);font:500 8px 'Assistant',sans-serif;opacity:0.8;white-space:nowrap;}
+/* The derived kind in front of an event's place line — the noun, so it reads as a label
+   rather than as part of the address. */
+.pdf-kind{font-weight:700;color:var(--pdf-ink);}
+/* Mono is for the RUN, never the row: the font SHORTHAND drops the family list, and
+   JetBrains Mono has no Hebrew glyphs, so a Hebrew word in a mono row prints as boxes. */
+.pdf-num{font-family:'JetBrains Mono',monospace;}
+/* Yields. It is a summary of a route whose ends the title already names, so it is the part of
+   the masthead that can afford to be narrow. */
+
+.pdf-qr-block{flex:0 0 auto;text-align:center;}
+/* **margin-inline:auto is what makes the block's own text-align mean anything here**
+   (owner, 2026-08-31: the QR and its link do not read as aligned). A block-level box with a
+   definite width ignores its parent's text-align entirely, so the 46px code sat flush
+   against the inline-start edge while the caption below it — a full-width block of centred
+   text — was centred: two alignments, one unit. Measured before and after in the real A4,
+   because the whole defect is one nobody can see in the markup: the image was at 55..101
+   inside a 0..101 block, and is now centred at 27..73 under a caption that spans it. */
+.pdf-qr{display:block;width:46px;height:46px;margin-inline:auto;}
+/* Latin by construction (a host and a path), so mono over the whole element is correct. */
+.pdf-qr-cap{display:block;margin-block-start:3px;color:var(--pdf-muted);font:7px 'JetBrains Mono',monospace;}
+.pdf-lede{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(200px,1fr);gap:16px;margin-block-end:15px;border:1px solid var(--pdf-line);border-radius:11px;overflow:hidden;}
+.pdf-story{padding:11px 13px;}
+.pdf-story strong{font:15px 'Secular One',sans-serif;}
+.pdf-story p{margin:3px 0 0;color:var(--pdf-muted);font-size:9px;line-height:1.5;}
+.pdf-facts{display:grid;grid-template-columns:repeat(3,1fr);border-inline-start:1px solid var(--pdf-line);}
+.pdf-fact{display:grid;align-content:center;justify-items:center;padding:8px 5px;}
+.pdf-fact+.pdf-fact{border-inline-start:1px solid var(--pdf-line);}
+.pdf-fact strong,.pdf-fact span{display:block;}
+.pdf-fact strong{font:17px/1 'Secular One',sans-serif;}
+.pdf-fact span{margin-block-start:3px;color:var(--pdf-muted);font-size:8px;}
+.pdf-section-title{display:flex;align-items:baseline;justify-content:space-between;margin:0 0 9px;break-after:avoid;page-break-after:avoid;}
+.pdf-section-title h2{margin:0;font:17px 'Secular One',sans-serif;}
+.pdf-section-title span{color:var(--pdf-muted);font-size:9px;}
+/* **Two columns as a MULTICOL, not a grid.** Chromium fragments a multi-column block across
+   printed pages a column at a time and honours break-inside inside it; a grid container that
+   outgrows the page fragments by ROW, which is where the overlapping lines came from. The
+   flow is one list from the first day to the last, so a page holds whatever fits and the
+   next one continues — nothing here decides how many days a page takes. */
+.pdf-days{column-count:2;column-gap:11px;}
+/* A day is the break-safe unit and an event row never splits across a page. */
+.pdf-day{break-inside:avoid;margin-block-end:9px;overflow:hidden;border:1px solid var(--pdf-line);border-radius:10px;}
+.pdf-day-head{display:grid;grid-template-columns:48px minmax(0,1fr);min-height:47px;background:var(--pdf-soft);}
+.pdf-date{display:grid;place-items:center;align-content:center;border-inline-end:1px solid var(--pdf-line);}
+.pdf-date strong{font:17px/1 'Secular One',sans-serif;}
+.pdf-date span{margin-block-start:3px;color:var(--pdf-muted);font-size:8px;}
+.pdf-day-copy{min-width:0;align-self:center;padding:6px 8px;}
+.pdf-day-copy strong,.pdf-day-copy span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.pdf-day-copy strong{font-size:11px;}
+.pdf-day-copy span{margin-block-start:2px;color:var(--pdf-muted);font-size:8px;}
+.pdf-parts{padding:4px 8px 6px;}
+.pdf-part{break-inside:avoid;}
+.pdf-part-head{min-height:18px;display:flex;align-items:center;gap:4px;color:var(--pdf-amber);font-size:8px;font-weight:700;break-after:avoid;page-break-after:avoid;}
+.pdf-part-head::after{content:'';height:1px;flex:1;background:color-mix(in srgb,var(--pdf-amber) 24%,var(--pdf-line));}
+.pdf-part-mark{width:15px;font-size:10px;text-align:center;}
+.pdf-event{break-inside:avoid;display:grid;grid-template-columns:38px minmax(0,1fr);gap:6px;padding:4px 0;border-block-start:1px solid var(--pdf-line);}
+/* A commitment reads firmer on paper too — ADR-0011's distinction survives printing. */
+.pdf-event.hard{border-inline-start:2px solid var(--pdf-amber);padding-inline-start:4px;}
+.pdf-event-time{color:var(--pdf-amber);font:600 8px 'JetBrains Mono',monospace;}
+.pdf-event-copy{min-width:0;}
+.pdf-event-copy strong,.pdf-event-copy span{display:block;}
+.pdf-event-copy strong{font-size:8.5px;}
+.pdf-event-copy span{margin-block-start:1px;overflow:hidden;color:var(--pdf-teal);font-size:7.4px;text-overflow:ellipsis;white-space:nowrap;}
+.pdf-summary-event{break-inside:avoid;min-height:18px;display:grid;grid-template-columns:17px minmax(0,1fr);align-items:center;gap:3px;border-block-start:1px solid var(--pdf-line);font-size:8.2px;}
+.pdf-summary-event span:first-child{text-align:center;}
+.pdf-summary-event strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.pdf-journey{padding:2px 0;color:var(--pdf-muted);font-size:7px;}
+/* One column, not two: a note is prose and a 2-column measure at this size is unreadable —
+   which is most of what "the section is too dense" meant (owner, 2026-08-30). */
+.pdf-ops{display:block;margin-block-start:12px;}
+/* **A heading may not be the last thing on a page.** break-after:avoid keeps it with the
+   block it names; without it the title landed alone at the foot of page 4 with its content on
+   page 5, which reads as a rendering fault (owner, 2026-08-30, with a screenshot). */
+.pdf-ops-title{margin:0 0 6px;font:13px 'Secular One',sans-serif;break-after:avoid;page-break-after:avoid;}
+.pdf-op{break-inside:avoid;padding:9px 11px;border:1px solid var(--pdf-line);border-radius:9px;}
+/* Two rules lived here for the per-family appendix markup (a title element and a
+   joined-lines element) that no longer exists. They were not merely dead: the descendant
+   selector .pdf-op span is (0,1,1) and beat .pdf-ops-line (0,1,0), so it silently held the
+   ops line at 7.8px however large this file said to set it — the third time in this feature
+   a declaration lost to a descendant selector and looked exactly like one never written. */
+
+/* ══ ADR-0213's 2026-08-30 amendment. **LAST IN THE SHEET ON PURPOSE**: these override
+   shipped rules at EQUAL specificity, so placed above them they lose and do it silently —
+   the first render of this change measured a 38px time cell against 52.9px of ink and
+   printed the range over its own title. ══ */
+/* **What the trip IS, under its name.** Replaces .pdf-route-mini, the capped stop sample
+   that printed in teal beside the QR and named two airports plus three arbitrary stops. */
+.pdf-what{margin-block-start:3px;font:600 10px 'Assistant',sans-serif;color:var(--pdf-ink);}
+/* Where you sleep, teal because it is a location and nothing else (ADR-0028). */
+.pdf-stay{color:var(--pdf-teal);}
+/* **The time column holds a range, or it wraps** (owner, 2026-08-30: "the times wrap to
+   two lines which also looks bad"). Measured in the print mockup: the shipped column is
+   38px and a range is 53px of ink at this face, so every row carrying one broke across two
+   lines and a flight's arrival read as a stray second number under its departure. 56px
+   costs 18px of a 288px copy column and buys every title starting at the same x. */
+.pdf-event{grid-template-columns:56px minmax(0,1fr);}
+.pdf-event-time{white-space:nowrap;}
+/* One frame over N legs, with the waits named between them. break-inside:avoid so a flight
+   and its layover never land on two pages. */
+/* The journey block now carries its own header, so the box holds the whole thing rather than
+   nesting one flight inside two others (ninth amendment §1-§3). No tint: this sheet is a
+   fixed light palette that has to stay legible in grayscale, so the border does the
+   containing work the screen gives to a teal wash. */
+.pdf-trek{break-inside:avoid;margin:3px 0;border:1px solid var(--pdf-line);border-radius:7px;overflow:hidden;}
+.pdf-trek-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px;
+  padding:3px 6px;border-block-end:1px solid var(--pdf-line);background:var(--pdf-soft);}
+.pdf-trek-head strong{font-size:8.4px;font-weight:700;color:var(--pdf-ink);}
+.pdf-trek-head span{font-size:7.4px;color:var(--pdf-muted);white-space:nowrap;}
+/* A leg's own flight time, under its code. Same relationship the screen draws at its own
+   micro scale: an annotation of this row, never a rival to the header's total. */
+.pdf-leg-span{display:block;font-size:7px;color:var(--pdf-muted);}
+.pdf-trek .pdf-event{padding-inline:6px;border-block-start:0;}
+.pdf-trek .pdf-event+.pdf-event{border-block-start:1px solid var(--pdf-line);}
+.pdf-leg-code{font:600 7.2px 'JetBrains Mono',monospace;color:var(--pdf-muted)!important;}
+.pdf-layover{padding:2px 6px 2px 50px;background:color-mix(in srgb,var(--pdf-ink) 3%,transparent);color:var(--pdf-muted);font-size:7px;}
+/* **Printed, not folded** — paper has no setting, and whoever holds the printout is the
+   operator. The one decision that inverts against the reader page. */
+/* **Assistant, and JetBrains only where the value is a code.** This rule set the font
+   shorthand to 600 7.2px JetBrains Mono — and JetBrains ships NO Hebrew, so every note body
+   printed as empty rectangles while the bold label beside it, which overrides back to
+   Assistant, printed perfectly (owner, 2026-08-30: "Notes also gibberish on the pdf"). That
+   is the same defect ADR-0213 already recorded once for .pdf-subtitle, in a second element:
+   the font SHORTHAND replaces the family list, so the fallback never applies. 7.2px was also
+   simply too small to read. */
+/* **'Noto Emoji' stays in the stack, and its absence was the tofu.** The font SHORTHAND
+   replaces the whole family list, so naming only Assistant here dropped the emoji face the
+   body sets — and a note written with 🚁 printed an empty rectangle (owner, 2026-08-31).
+   That is the SEVENTH time this shorthand has eaten a family in this file. Anything using the
+   font shorthand here must repeat the whole stack; a bare font-size property cannot make the
+   mistake at all, which is why the rules below prefer one. */
+.pdf-ops-line{display:block;margin-block-start:4px;color:var(--pdf-ink)!important;font-family:'Assistant','Noto Emoji',sans-serif;font-size:9.4px;font-weight:400;line-height:1.55;white-space:normal!important;}
+.pdf-ops-line b{font-weight:700;color:var(--pdf-muted);}
+.pdf-mono{font-family:'JetBrains Mono',monospace;font-weight:600;}
+.pdf-travel-facts{display:block;margin-block-start:1px;color:var(--pdf-muted);font-size:7.6px;}
+.pdf-note{display:block;}
+.pdf-note-title{display:block;margin-block-end:2px;}
+.pdf-note-p{margin:0 0 4px;}
+.pdf-note-h1{margin:6px 0 3px;font-size:10.4px;font-weight:700;}
+.pdf-note-h2{margin:5px 0 2px;font-weight:700;}
+.pdf-note-list{margin:0 0 4px;padding:0;list-style:none;}
+.pdf-note-list li{display:flex;gap:5px;align-items:baseline;margin-block-end:1px;}
+.pdf-note-mark{flex:none;color:var(--pdf-muted);font-variant-numeric:tabular-nums;}
+.pdf-note-quote{margin:0 0 4px;padding-inline-start:7px;border-inline-start:2px solid var(--pdf-line);color:var(--pdf-muted);}
+.pdf-note-rule{height:1px;margin:6px 0;background:var(--pdf-line);}
+/* A printed link states its destination, because it cannot be tapped. */
+.pdf-url{font-family:'JetBrains Mono',monospace;font-size:0.9em;color:var(--pdf-teal);word-break:break-all;}
+/* A note is prose the author wrote with line breaks in it; a paragraph that collapses them
+   is the wall of text this block keeps being reported as. */
+.pdf-prose{white-space:pre-line;}
+.pdf-travelers{margin-block-start:3px;color:var(--pdf-muted);font-size:8.4px;}
+/* A stop's description, clamped — a caption is two lines and four is a paragraph. */
+.pdf-cap{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;white-space:normal!important;color:var(--pdf-muted)!important;}
+/* **The day's photo, as a square in the header.** See dayCard for why it is not a band. */
+.pdf-day-head{grid-template-columns:48px 34px minmax(0,1fr);}
+.pdf-day-head.no-photo{grid-template-columns:48px minmax(0,1fr);}
+.pdf-shot{align-self:center;justify-self:center;width:34px;height:34px;border-radius:5px;object-fit:cover;}
+    </style>
+
+    <style>
+      /* ══════════════════════════════════════════════════════════════════════
+         PROPOSED — and §2's measurement emptied it. What was drafted as "widen the
+         time column" turned out to be unnecessary, so what ships from this file is a
+         deleted condition in `timeText` and the stay's own line: no column change.
+
+         It has to sit after the generated block above, which is exactly the trap
+         ADR-0213 recorded: the shipped rules are at equal specificity, so a
+         proposal placed above them loses SILENTLY — that is how a flight's range
+         printed over its own title while the smoke verifier's overprint check
+         passed throughout.
+         ══════════════════════════════════════════════════════════════════════ */
+      /* **AND THE COLUMN DOES NOT MOVE.** This block was written expecting to widen it,
+         and §2's measurement said otherwise: every new shape is NARROWER than the range
+         the ⁦56px⁩ was sized for — `מ-10:00` is ⁦34.75px⁩ and `עד 11:00` is ⁦38.38px⁩ against
+         `09:20–14:05`'s ⁦55px⁩ — because Hebrew-plus-four-digits is simply less ink than
+         ten digits and a dash. So the rule below stays a CONTROL for the review page and
+         ships as nothing at all. The proposed diff on paper is one deleted condition in
+         `timeText`, and no CSS.
+         (`--mk-timecol` defaults to the shipped ⁦56px⁩; the control offers the wider
+         values so the claim can be pressed rather than believed.) */
+      .pdf-event {
+        grid-template-columns: var(--mk-timecol, 56px) minmax(0, 1fr);
+      }
+      /* The stay's two moments, on their own line. Same decision as the reader page and
+         the same reason it may WRAP where the names above it may not: a name is
+         unbounded and must be cut, a pair of clocks is bounded and cutting it only
+         costs the fact. `.pdf-day-copy span` is (0,1,1); this is (0,2,0). */
+      .pdf-day-copy .pdf-stay-when {
+        margin-block-start: 1px;
+        color: var(--pdf-amber);
+        font-size: 7.6px;
+        white-space: normal;
+      }
+
+      /* ══════════════════════════════════════════════════════════════════════
+         mk-* — this file's own chrome. Nothing below ships.
+
+         The PAPER does not take a theme: ADR-0213 §4 gives the renderer a fixed
+         light palette that has to stay legible in grayscale, so the toggle here
+         moves only the review page around the sheet. That is a difference from
+         every other mockup in this repo and it is deliberate.
+         ══════════════════════════════════════════════════════════════════════ */
+      :root {
+        --mk-page: #eef1f6;
+        --mk-surface: #ffffff;
+        --mk-sub: #f7f8fa;
+        --mk-ink: #16233d;
+        --mk-prose: #45506b;
+        --mk-faint: #8b94a8;
+        --mk-line: #d8dde6;
+        --mk-cta: #3d5a99;
+        --paper-scale: 0.86;
+      }
+      :root[data-theme='dark'] {
+        --mk-page: #0a0f1a;
+        --mk-surface: #141d2e;
+        --mk-sub: #101827;
+        --mk-ink: #e8edf7;
+        --mk-prose: #b9c4de;
+        --mk-faint: #7d89a3;
+        --mk-line: #263248;
+        --mk-cta: #8fa9e6;
+      }
+      body {
+        margin: 0;
+        background: var(--mk-page);
+        font-family: 'Assistant', system-ui, sans-serif;
+        color: var(--mk-ink);
+      }
+      .wrap {
+        max-width: 1320px;
+        margin: 0 auto;
+        padding: 26px 18px 70px;
+      }
+      .doc-h h1 {
+        font-family: 'Secular One', sans-serif;
+        font-size: 25px;
+        margin: 0 0 8px;
+      }
+      .doc-h p {
+        margin: 0 0 8px;
+        font-size: 13px;
+        line-height: 1.8;
+        color: var(--mk-prose);
+        max-width: 92ch;
+      }
+      code {
+        font:
+          600 11.5px 'JetBrains Mono',
+          monospace;
+        background: color-mix(in srgb, var(--mk-ink) 7%, transparent);
+        padding: 1px 4px;
+        border-radius: 4px;
+        direction: ltr;
+        display: inline-block;
+      }
+      .controls {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        background: var(--mk-surface);
+        border: 1px solid var(--mk-line);
+        border-radius: 14px;
+        padding: 10px 14px;
+        margin-bottom: 20px;
+        position: sticky;
+        top: 8px;
+        z-index: 5;
+      }
+      .controls .lbl {
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--mk-faint);
+      }
+      .controls .sep {
+        width: 1px;
+        height: 18px;
+        background: var(--mk-line);
+        margin-inline: 6px;
+      }
+      .controls button {
+        font: inherit;
+        font-size: 12px;
+        font-weight: 700;
+        padding: 6px 12px;
+        border-radius: 999px;
+        border: 1px solid var(--mk-line);
+        background: var(--mk-surface);
+        color: var(--mk-prose);
+        cursor: pointer;
+      }
+      .controls button[aria-pressed='true'] {
+        border-color: var(--mk-cta);
+        color: var(--mk-cta);
+        background: color-mix(in srgb, var(--mk-cta) 12%, transparent);
+      }
+      section.case,
+      .panel {
+        background: var(--mk-surface);
+        border: 1px solid var(--mk-line);
+        border-radius: 18px;
+        overflow: hidden;
+        margin-bottom: 24px;
+      }
+      section.case > h2,
+      .panel > h2 {
+        margin: 0;
+        padding: 12px 16px;
+        font-size: 14.5px;
+        font-weight: 700;
+        border-block-end: 1px solid var(--mk-line);
+        background: var(--mk-sub);
+      }
+      section.case > .note,
+      .panel > p,
+      .panel > ul {
+        margin: 0;
+        padding: 11px 16px;
+        font-size: 12.5px;
+        line-height: 1.75;
+        color: var(--mk-prose);
+      }
+      section.case > .note b {
+        color: var(--mk-ink);
+      }
+      .panel > ul {
+        padding-inline-start: 34px;
+      }
+      .panel > ul li {
+        margin-bottom: 7px;
+      }
+      .tag {
+        display: block;
+        width: fit-content;
+        margin: 0 auto 8px;
+        font-size: 11px;
+        font-weight: 700;
+        padding: 3px 10px;
+        border-radius: 999px;
+      }
+      .tag.before {
+        background: rgba(198, 40, 40, 0.1);
+        color: #e06767;
+      }
+      .tag.after {
+        background: rgba(60, 154, 107, 0.12);
+        color: #2c7a55;
+      }
+      .tag.same {
+        background: color-mix(in srgb, var(--mk-faint) 16%, transparent);
+        color: var(--mk-faint);
+      }
+      /* A4 at 96dpi is 794×1123. The paper renders at FULL SIZE and is scaled for
+         preview, so every measurement divides the scale back out — a number read off
+         a scaled box is not the number Chromium lays out. */
+      .sheet {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 20px;
+        padding: 18px 16px;
+        justify-content: center;
+        align-items: flex-start;
+      }
+      .scale {
+        width: calc(794px * var(--paper-scale));
+      }
+      .paper {
+        width: 794px;
+        padding: 26px 30px;
+        background: #fff;
+        color: var(--pdf-ink);
+        box-shadow: 0 14px 38px rgba(15, 25, 43, 0.16);
+        font-family: 'Assistant', sans-serif;
+        transform: scale(var(--paper-scale));
+        transform-origin: top right;
+      }
+      /* A cropped detail at FULL SIZE, for the sections whose argument is a few
+         pixels of ink. Carries no transform, so its numbers are divided by nothing. */
+      .crop {
+        width: 340px;
+        padding: 12px 14px;
+        background: #fff;
+        color: var(--pdf-ink);
+        border: 1px solid var(--mk-line);
+        border-radius: 10px;
+        font-family: 'Assistant', sans-serif;
+      }
+      /* **THE `today` FRAMES RENDER THE SAME SHIPPED CLASSES**, so the proposed rule
+         above was repainting them too — which is how a measurement table ends up
+         reporting `62 ← 62px` for a column the proposal widens. This restores the
+         SHIPPED value under a chrome class, so the block above stays exactly the diff
+         that ships and the frame below stays exactly what production prints today. */
+      .mk-today .pdf-event {
+        grid-template-columns: 56px minmax(0, 1fr);
+      }
+      table.m {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12.5px;
+      }
+      table.m th,
+      table.m td {
+        text-align: start;
+        padding: 8px 16px;
+        border-block-start: 1px solid var(--mk-line);
+      }
+      table.m th {
+        color: var(--mk-faint);
+        font-size: 11px;
+      }
+      table.m td:last-child {
+        color: var(--mk-prose);
+      }
+      @media (prefers-reduced-motion: reduce) {
+        * {
+          animation: none !important;
+          transition: none !important;
+        }
+      }
+
+      /* THIS PAGE HAS TO SCROLL. The extracted PDF css carries
+         `html,body{margin:0;background:#fff;…}` — the renderer's own page rules — and
+         this block wins them at equal specificity by sitting last. */
+      html,
+      body {
+        overflow: visible;
+        background: var(--mk-page);
+        color: var(--mk-ink);
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="wrap">
+      <div class="doc-h">
+        <h1>שעה משותפת על הנייר</h1>
+        <p>
+          התאום של <code>a-shared-time-says-what-it-means-v1.html</code>. אותו כלל ·
+          <code>edgeMeaning</code> במקום <code>event.hard</code> · על המרנדר שבאמת מחזיק את
+          הקצה השני: <code>itinerary-pdf.template.ts:232</code>. שני קבצים ולא אחד, כי §7 של
+          ADR-0213 הוא בדיוק הסיבה · הרצועה הטורקיז ירדה מהעמוד החי והמשיכה להידפס שבוע,
+          &rlm;"אותו פגם מרנדר אחד מאחור"&rlm;.
+        </p>
+        <p>
+          <b>ומה שרק לנייר יש:</b> עמודת השעה היא רוחב קבוע עם <code>nowrap</code>, והיא נמדדה
+          פעם אחת מול מחרוזת אחת · <code>09:20–14:05</code>, ⁦52.9px⁩ של דיו, ומכאן ⁦56px⁩.
+          השינוי מכניס לאותה תא ארבע צורות נוספות, שתיים מהן עברית-עם-ספרות. §2 היא המדידה
+          הזאת, וזו כל הסיבה לצייר לפני שכותבים.
+        </p>
+      </div>
+
+      <div class="controls">
+        <span class="lbl">כרום הסקירה</span>
+        <button type="button" data-theme="light" aria-pressed="true">בהיר</button>
+        <button type="button" data-theme="dark">כהה</button>
+        <span class="sep"></span>
+        <span class="lbl">תצוגה</span>
+        <button type="button" data-scale="0.86" aria-pressed="true">⁦86%⁩</button>
+        <button type="button" data-scale="1">⁦100%⁩</button>
+        <span class="sep"></span>
+        <span class="lbl">רוחב עמודת השעה</span>
+        <button type="button" data-col="56" aria-pressed="true">⁦56px⁩ · היום</button>
+        <button type="button" data-col="62">⁦62px⁩</button>
+        <button type="button" data-col="70">⁦70px⁩</button>
+        <button type="button" data-col="38">⁦38px⁩ · לפני התיקון</button>
+      </div>
+
+      <!-- ══════════════════════════ §1 ══════════════════════════ -->
+      <section class="case">
+        <h2>§1 · שש הזרועות, על נייר</h2>
+        <p class="note">
+          <b>שורה אחת בקוד מחזיקה את כל ההבדל:</b>
+          <code>const range = event.hard &amp;&amp; event.endLabel &amp;&amp; …</code>. משמאל
+          מה שנדפס היום · טיול רגלי בן שעתיים מאבד את סופו, השכרת רכב לחמישה ימים מדפיסה
+          <code>10:00–18:00</code> כי היא <code>hard</code>, ולחלון צ׳ק-אין אין ייצוג בכלל.
+          מימין אותו יום תחת <code>edgeMeaning</code>.
+        </p>
+        <div class="sheet" id="s1"></div>
+      </section>
+
+      <!-- ══════════════════════════ §2 ══════════════════════════ -->
+      <section class="case">
+        <h2>§2 · עמודת השעה, נמדדת בגודל מלא</h2>
+        <p class="note">
+          <b>זו המדידה שהקובץ הזה קיים בשבילה, והיא הפכה את ההנחה שאיתה הוא נכתב.</b> כל צורה
+          נמדדת כ<b>דיו</b> בתוך התא · לא כתא · בגודל A4 אמיתי ובלי סקאלה. התוצאה: אף אחת מארבע
+          הצורות החדשות אינה רחבה מהטווח ש-⁦56px⁩ נמדדו בשבילו. <code>מ-⁦10:00⁩</code> הוא
+          ⁦34.75px⁩, <code>עד ⁦11:00⁩</code> הוא ⁦38.38px⁩, מול ⁦55px⁩ של
+          <code>⁦09:20–14:05⁩</code> · כי מילה עברית קצרה וארבע ספרות הן פשוט פחות דיו מעשר
+          ספרות ומקף. <b>לכן העמודה לא זזה, והשינוי על הנייר הוא CSS באפס שורות.</b>
+          <br />הפקד למעלה מחליף בכל זאת את הרוחב · כולל ⁦38px⁩, מה שהיה לפני התיקון של
+          ADR-0213 · כדי שאפשר יהיה ללחוץ על הטענה במקום להאמין לה: ב-⁦38px⁩ רואים מיד מה
+          <code>nowrap</code> עושה, כלומר לא מקפל אלא <b>מגליש על הכותרת</b>.
+        </p>
+        <div class="sheet" id="s2"></div>
+      </section>
+
+      <!-- ══════════════════════════ §3 ══════════════════════════ -->
+      <section class="case">
+        <h2>§3 · שני הרגעים של הלינה, בכותרת היום</h2>
+        <p class="note">
+          <b>אותה החלטה כמו בעמוד החי, ועל נייר היא זולה יותר.</b>
+          <code>.pdf-day-copy span</code> הוא <code>nowrap</code> עם חיתוך בדיוק כמו התאום שלו,
+          אבל המידה כאן היא עמודה של A4 ולא ⁦360px⁩ · אז שם מלון ארוך ושני רגעים נכנסים לשורה
+          אחת שם שבעמוד החי נדרשה גלישה. הכותרת שומרת על מינימום ⁦47px⁩ שכבר יש לה, אז ברוב
+          הימים זה עולה ⁦0px⁩ של נייר.
+        </p>
+        <div class="sheet" id="s3"></div>
+      </section>
+
+      <!-- ══════════════════════════ §4 ══════════════════════════ -->
+      <section class="case">
+        <h2>§4 · מה לא משתנה</h2>
+        <p class="note">
+          <b>תקציר לא מקבל שעון</b> · <code>.pdf-summary-event</code> הוא רשת של שתי עמודות
+          בלי תא זמן בכלל, והוא לא נוגע בשינוי. <b>רגלי מסע שומרות טווח מדויק</b> ·
+          <code>legTime</code> מדפיס <code>startLabel–endLabel</code> כי המראה ונחיתה הן שתי
+          נקודות, לא חלון · והמתנות ממשיכות להידפס ביניהן.
+        </p>
+        <div class="sheet" id="s4"></div>
+      </section>
+
+      <div class="panel">
+        <h2>מדידה · נקראת מה-DOM החי, מחולקת בחזרה בסקאלה</h2>
+        <p>
+          <code>.paper</code> נושא <code>transform: scale(var(--paper-scale))</code>, אז כל
+          מספר שנקרא ממנו מחולק בחזרה · אלה המספרים ש-Chromium פורש. <code>.crop</code> לא
+          נושא טרנספורם, אז מספריו מחולקים בכלום.
+        </p>
+        <table class="m" id="meas">
+          <thead>
+            <tr>
+              <th>מה נמדד</th>
+              <th>ערך</th>
+              <th>מול מה</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <div class="panel">
+        <h2>הערות · מה נבחר, ומה נדחה ולמה</h2>
+        <ul>
+          <li>
+            <b>מה שהמדידה הפכה: הקובץ הזה נכתב כדי להרחיב את העמודה, ולא צריך.</b> ההנחה
+            הייתה שעברית-עם-ספרות רחבה יותר מספרות בלבד. היא לא: הצורה הרחבה ביותר נשארה
+            <code>⁦09:20–14:05⁩</code>, שכבר עברה בשער <code>hard</code> ושבשבילה נמדדו
+            ⁦56px⁩ מלכתחילה. זו בדיוק הסיבה שהמדידה נקראת מה-DOM ולא נכתבת בפרוזה · ההערכה כאן
+            הייתה שגויה, והרינדור אמר את זה בשורה אחת.
+          </li>
+          <li>
+            <b>נדחה: להרשות ל-<code>.pdf-event-time</code> לגלוש לשתי שורות</b> · כלומר להוריד
+            את <code>nowrap</code> במקום להרחיב את העמודה. זה בדיוק המצב שממנו ADR-0213 יצא:
+            &rlm;"the times wrap to two lines which also looks bad"&rlm;, ואז נחיתה של טיסה
+            נקראה כמספר שני תלוש מתחת להמראה. הרוחב הקבוע הוא מה שמיישר את כל הכותרות לאותו
+            <code>x</code>, וזה מה שנקנה כאן.
+          </li>
+          <li>
+            <b>נדחה: לקצר את המילים כדי לחסוך רוחב</b> (למשל <code>≤11:00</code> או חץ במקום
+            <code>עד</code>). סימן שהקורא צריך לפענח אינו חיסכון, והוא גם לא היה נשאר עקבי עם
+            העמוד החי · שני מרנדרים שמדברים בשתי שפות הוא בדיוק מה שהשינוי הזה בא לסגור.
+          </li>
+          <li>
+            <b>נבחר: הבלוק המוצע יושב אחרון בגיליון.</b> לא סגנון · תיקון. הכללים המשלוחים
+            הם באותה ספציפיות, אז הצבה מעליהם מפסידה <b>בשקט</b>, וזה בדיוק איך שטווח של טיסה
+            נדפס פעם על הכותרת של עצמו בזמן שבדיקת החפיפה של הסמוק עברה לאורך כל הדרך.
+          </li>
+        </ul>
+      </div>
+    </div>
+
+    <script>
+      /* ══════════════════════════════════════════════════════════════════════
+         One row renderer, the shipped tree from `itinerary-pdf.template.ts`.
+         ══════════════════════════════════════════════════════════════════════ */
+      const ltr = (s) => `⁦${s}⁩`;
+      const auto = (s) => `⁨${s}⁩`;
+
+      /** THE RULE. Identical to the reader file's, deliberately — one derivation
+       *  read twice is the point of the pair. */
+      const proposed = (t) => {
+        if (!t) return 'גמיש';
+        if (t.meaning === 'not-before') return `מ-${ltr(t.label)}`;
+        if (t.meaning === 'not-after') return `עד ${ltr(t.label)}`;
+        return t.endLabel && t.endLabel !== t.label
+          ? ltr(`${t.label}–${t.endLabel}`)
+          : ltr(t.label);
+      };
+      /** `timeText` as it ships: a range only where the end is a commitment. */
+      const today = (t, hard) => {
+        if (!t) return 'גמיש';
+        return hard && t.endLabel && t.endLabel !== t.label
+          ? ltr(`${t.label}–${t.endLabel}`)
+          : ltr(t.label);
+      };
+
+      const ARMS = [
+        {
+          head: 'שעה מדויקת, קצה אחד',
+          ev: { title: 'מוזיאון הלוויתנים', place: 'רייקיאוויק' },
+          t: { label: '13:00', meaning: 'exact' },
+        },
+        {
+          head: 'טיסה · שני קצוות, התחייבות',
+          ev: { title: 'תל אביב ← קפלאוויק', place: 'נתב״ג', hard: true },
+          t: { label: '09:20', endLabel: '14:05', meaning: 'exact' },
+        },
+        {
+          head: 'טיול רגלי · שני קצוות, רך',
+          ev: { title: 'מסלול רייקיאדלור', place: 'הבלה' },
+          t: { label: '10:00', endLabel: '12:00', meaning: 'exact' },
+        },
+        {
+          head: 'השכרת רכב · רצפה',
+          ev: { title: 'השכרת רכב', kind: 'רכב', place: 'קפלאוויק', hard: true },
+          t: { label: '10:00', endLabel: '18:00', meaning: 'not-before' },
+        },
+        {
+          head: 'צ׳ק-אאוט · תקרה',
+          ev: { title: 'עזיבת הגסטהאוס', kind: 'לינה', place: 'פלוּדיר', hard: true },
+          t: { label: '11:00', meaning: 'not-after' },
+        },
+        {
+          head: 'צ׳ק-אין · חלון סגור',
+          ev: { title: 'The Hill Hotel', kind: 'לינה', place: 'פלוּדיר', hard: true },
+          t: { label: '17:00', endLabel: '21:00', meaning: 'window' },
+        },
+      ];
+
+      /** The shipped `.pdf-event` tree. */
+      const row = (ev, timeText) =>
+        `<div class="pdf-event${ev.hard ? ' hard' : ''}">` +
+        `<span class="pdf-event-time">${timeText}</span>` +
+        `<span class="pdf-event-copy"><strong>${auto(ev.title)}</strong>` +
+        (ev.kind || ev.place
+          ? `<span>${[ev.kind ? `<b class="pdf-kind">${ev.kind}</b>` : '', auto(ev.place)]
+              .filter(Boolean)
+              .join(' · ')}</span>`
+          : '') +
+        `</span></div>`;
+
+      const partHead = (glyph, word) =>
+        `<div class="pdf-part-head"><span aria-hidden="true">${glyph}</span><span>${word}</span></div>`;
+
+      /** The shipped `.pdf-day` tree, minus the photo (a separate decision). */
+      const day = (stayLine, rows) =>
+        `<article class="pdf-day"><header class="pdf-day-head no-photo">` +
+        `<span class="pdf-date"><strong>${ltr('04.09')}</strong><span>חמישי</span></span>` +
+        `<span class="pdf-day-copy"><strong>${auto('הדרום · ויק אל פלוּדיר')}</strong>` +
+        stayLine +
+        `</span></header><div class="pdf-parts">` +
+        partHead('🌅', 'בוקר') +
+        rows +
+        `</div></article>`;
+
+      /** **`.pdf-days` is `column-count: 2`**, so a day card prints at roughly half the
+       *  text column — about ⁦357px⁩, not ⁦734px⁩. Rendering it full-bleed would measure a
+       *  header that never truncates and a day that never breaks, i.e. the wrong page. */
+      const paper = (inner, todayClass) =>
+        `<div class="scale"><div class="paper${todayClass ? ' mk-today' : ''}">` +
+        `<div class="pdf-days">${inner}</div></div></div>`;
+      const wrapCol = (tag, inner) => `<div>${tag}${inner}</div>`;
+
+      const paint = () => {
+        /* §1 — the whole day, twice. */
+        const rowsToday = ARMS.map((a) => row(a.ev, today(a.t, a.ev.hard))).join('');
+        const rowsNew = ARMS.map((a) => row(a.ev, proposed(a.t))).join('');
+        const stayToday = `<span class="pdf-stay">${auto('לנים בפלוּדיר')}</span>`;
+        document.querySelector('#s1').innerHTML =
+          wrapCol('<span class="tag before">היום</span>', paper(day(stayToday, rowsToday), true)) +
+          wrapCol('<span class="tag after">בהצעה</span>', paper(day(stayToday, rowsNew), false));
+
+        /* §2 — the column, at full size, one crop per shape. */
+        document.querySelector('#s2').innerHTML = ARMS.map(
+          (a, i) =>
+            `<div><span class="tag ${
+              today(a.t, a.ev.hard) === proposed(a.t) ? 'same' : 'after'
+            }">${a.head}</span>` +
+            `<div class="crop" data-arm="${i}">${row(a.ev, proposed(a.t))}</div></div>`,
+        ).join('');
+
+        /* §3 — the stay's two moments, on the day header. */
+        const stayNew =
+          `<span class="pdf-stay">${auto('לנים בהגסטהאוס של סקאלהולט')}</span>` +
+          `<span class="pdf-stay-when">${'צ׳ק-אאוט ' + proposed({ label: '11:00', meaning: 'not-after' })} · ${
+            'צ׳ק-אין ' + proposed({ label: '15:00', meaning: 'not-before' })
+          }</span>`;
+        document.querySelector('#s3').innerHTML =
+          wrapCol(
+            '<span class="tag before">היום</span>',
+            paper(day(stayToday, rowsNew.slice(0, 400)), true),
+          ) +
+          wrapCol(
+            '<span class="tag after">בהצעה · שם ארוך ויום מעבר</span>',
+            paper(day(stayNew, rowsNew.slice(0, 400)), false),
+          );
+
+        /* §4 — the two arms the rule must not reach. */
+        document.querySelector('#s4').innerHTML =
+          wrapCol(
+            '<span class="tag same">תקציר · בלי תא זמן</span>',
+            `<div class="crop">` +
+              partHead('🌅', 'בוקר') +
+              `<div class="pdf-summary-event"><span aria-hidden="true">🥾</span><span>${auto('מסלול רייקיאדלור')}</span></div>` +
+              `<div class="pdf-summary-event"><span aria-hidden="true">💦</span><span>${auto('גייסיר · סטרוקור')}</span></div>` +
+              `</div>`,
+          ) +
+          wrapCol(
+            '<span class="tag same">רגלי מסע · טווח מדויק</span>',
+            `<div class="crop"><div class="pdf-trek">` +
+              `<div class="pdf-trek-head"><strong>${auto('טיסה לקפלאוויק')}</strong><span>שתי טיסות · ${ltr('06:05–13:55')}</span></div>` +
+              `<div class="pdf-event hard"><span class="pdf-event-time">${ltr('06:05–09:45')}</span>` +
+              `<span class="pdf-event-copy"><strong>${auto('תל אביב ← וינה')}</strong><span class="pdf-leg-code">${ltr('OS 858')}</span></span></div>` +
+              `<div class="pdf-layover">${auto('המתנה בוינה · 1:35 שע׳')}</div>` +
+              `<div class="pdf-event hard"><span class="pdf-event-time">${ltr('11:20–13:55')}</span>` +
+              `<span class="pdf-event-copy"><strong>${auto('וינה ← קפלאוויק')}</strong><span class="pdf-leg-code">${ltr('OS 341')}</span></span></div>` +
+              `</div></div>`,
+          );
+
+        measure();
+      };
+      paint();
+
+      /* ══ Controls ══ */
+      const press = (btns, on) =>
+        btns.forEach((b) => b.setAttribute('aria-pressed', String(b === on)));
+      const group = (sel, fn) => {
+        const btns = [...document.querySelectorAll(sel)];
+        btns.forEach((b) =>
+          b.addEventListener('click', () => {
+            fn(b);
+            press(btns, b);
+            measure();
+          }),
+        );
+      };
+      group('.controls button[data-theme]', (b) =>
+        document.documentElement.setAttribute('data-theme', b.dataset.theme),
+      );
+      group('.controls button[data-scale]', (b) =>
+        document.documentElement.style.setProperty('--paper-scale', b.dataset.scale),
+      );
+      group('.controls button[data-col]', (b) =>
+        document.documentElement.style.setProperty('--mk-timecol', b.dataset.col + 'px'),
+      );
+
+      /* ══ Measurement. Divides the preview scale back out of anything inside
+            `.paper`; `.crop` carries no transform, so it is read raw. ══ */
+      function measure() {
+        const scale =
+          Number(getComputedStyle(document.documentElement).getPropertyValue('--paper-scale')) || 1;
+        const col =
+          getComputedStyle(document.documentElement).getPropertyValue('--mk-timecol').trim() ||
+          '56px';
+        const px = (n) => `⁦${Math.round(n * 100) / 100}px⁩`;
+        /** Ink inside the time cell, at full size — `.crop` is unscaled, so this is
+         *  what Chromium lays out on A4. A shape wider than the column does not wrap
+         *  under `nowrap`; it overflows onto the title beside it. */
+        const inkRows = ARMS.map((a, i) => {
+          const cell = document.querySelector(`.crop[data-arm="${i}"] .pdf-event-time`);
+          if (!cell) return null;
+          // **A `Range`, not `scrollWidth`.** The cell is a GRID ITEM and stretches to
+          // its column, so `scrollWidth` reports the column width for every shape and
+          // an overflow can never be detected — the first render of this file duly
+          // reported all six as exactly ⁦62px⁩ and called the widest ⁦6262px⁩. A range over
+          // the cell's own contents measures the INK, which is the question.
+          const r = document.createRange();
+          r.selectNodeContents(cell);
+          const ink = r.getBoundingClientRect().width;
+          const box = cell.getBoundingClientRect().width;
+          return {
+            label: `${a.head} · <code dir="rtl">${cell.textContent.trim()}</code>`,
+            ink,
+            box,
+          };
+        }).filter(Boolean);
+        const widest = inkRows.reduce((m, r) => Math.max(m, r.ink), 0);
+        const dayH = (sel) => {
+          const e = document.querySelector(sel);
+          return e ? px(e.getBoundingClientRect().height / scale) : '—';
+        };
+        const rows = [
+          ['רוחב העמודה שנבחר', `⁦${col}⁩`, 'היום ⁦56px⁩ · נמדד פעם אחת מול <code>09:20–14:05</code>'],
+          ...inkRows.map((r) => [
+            r.label,
+            `${px(r.ink)} דיו / ${px(r.box)} תא`,
+            r.ink > r.box ? '<b>חורג · גולש על הכותרת</b>' : 'נכנס',
+          ]),
+          [
+            '<b>הצורה הרחבה ביותר</b>',
+            px(widest),
+            widest <= parseFloat(col)
+              ? `נכנסת ל-⁦${col}⁩ · יש נשימה של ${px(parseFloat(col) - widest)}`
+              : `<b>לא נכנסת ל-⁦${col}⁩</b> · חסרים ${px(widest - parseFloat(col))}`,
+          ],
+          [
+            'שורת אירוע · <code>.pdf-event</code>',
+            dayH('#s1 div:last-child .pdf-event'),
+            'גובה השורה · צריך להישאר שורה אחת',
+          ],
+          [
+            'כותרת יום · היום מול בהצעה',
+            `${dayH('#s3 div:first-child .pdf-day-head')} → ${dayH('#s3 div:last-child .pdf-day-head')}`,
+            'מינימום ⁦47px⁩ כבר קיים · ההפרש הוא מחיר הנייר',
+          ],
+          [
+            'שורת השעות על הנייר · דיו מול תיבה',
+            (() => {
+              const e = document.querySelector('#s3 .pdf-stay-when');
+              if (!e) return '—';
+              const r = document.createRange();
+              r.selectNodeContents(e);
+              const ink = r.getBoundingClientRect().width / scale;
+              const box = e.getBoundingClientRect().width / scale;
+              return `${px(ink)} דיו / ${px(box)} תא · ${ink > box ? 'שתי שורות' : 'שורה אחת'}`;
+            })(),
+            'המידה כאן היא חצי עמודת A4 · לא ⁦360px⁩',
+          ],
+          [
+            'יום שלם · היום מול בהצעה',
+            `${dayH('#s1 div:first-child .pdf-day')} → ${dayH('#s1 div:last-child .pdf-day')}`,
+            'צפיפות · ADR-0213 §4 מכוון ללו״ז מלא בשני עמודים',
+          ],
+        ];
+        document.querySelector('#meas tbody').innerHTML = rows
+          .map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join('')}</tr>`)
+          .join('');
+      }
+      measure();
+    </script>
+  </body>
+</html>

@@ -9,9 +9,18 @@ export const ENDED_TRIP_ARCHIVE_GRACE_MS = 7 * 24 * 60 * 60 * 1000;
 const cache = createByteCache<MapArchiveMeta>('waypoint-map-archives-v1');
 
 export interface MapArchiveMeta extends ByteCacheMeta {
-  kind: 'world' | 'extract';
+  /** **`routes` is the offline route pack** (ADR-0206 §V1.8) — not tiles, but the same artefact
+   *  in every way this file cares about: a cache and never data, counted in one budget, evicted
+   *  by one LRU, pinned for the current trip and deleted by one delete. Riding this store rather
+   *  than growing a second one is the whole reason §V1.8 is cheap. */
+  kind: 'world' | 'extract' | 'routes';
   tripId?: string;
   downloadedAt: number;
+  /** **Which vintage of the archive this is** (ADR-0186 §6 amendment) — the server states the
+   *  current one on `/me`, and this is what was current when these bytes were stored. Absent on
+   *  an entry downloaded before archives were vintaged at all, which reads as "unknown, so a
+   *  refresh is due". */
+  vintage?: string;
 }
 
 export type MapArchiveDownloadResult =
@@ -30,16 +39,40 @@ function retryAfterSeconds(response: Response): number {
   return 5;
 }
 
-function responseSize(response: Response): number {
-  const size = Number(response.headers.get('Content-Length'));
-  if (!Number.isSafeInteger(size) || size <= 0) {
-    throw new Error('Map archive response has no usable Content-Length');
-  }
-  return size;
+/**
+ * **How many bytes these are — declared where the server declares them, MEASURED where it does
+ * not** (2026-09-04, from a field report: _"saving offline maps is failing, always"_, on a device
+ * whose settings listed every archive as saved).
+ *
+ * `Content-Length` is a hint the origin does not own: anything re-encoded between it and the
+ * phone arrives chunked and declares nothing, and at the edge that is every compressible response
+ * — which the route pack, alone among these artefacts, is (JSON; the `.pmtiles` archives are an
+ * unknown media type nothing compresses). Refusing that response threw, and the throw painted
+ * "the map download failed" over a map already on the device.
+ *
+ * So the header is a fast path, not a requirement. The fallback materialises the body to weigh
+ * it, which is why it is a fallback: the archives are tens of MB and do declare their length, so
+ * only the few-hundred-KB pack is ever buffered. An EMPTY body is still a failure — nothing is
+ * what we did not download.
+ */
+async function weigh(response: Response): Promise<{ body: Response; sizeBytes: number }> {
+  const declared = Number(response.headers.get('Content-Length'));
+  if (Number.isSafeInteger(declared) && declared > 0)
+    return { body: response, sizeBytes: declared };
+  const blob = await response.blob();
+  if (blob.size <= 0) throw new Error('Map archive response is empty');
+  return { body: new Response(blob, { headers: response.headers }), sizeBytes: blob.size };
 }
 
 function isPinned(entry: MapArchiveMeta, currentTripId?: string): boolean {
   return entry.kind === 'world' || entry.tripId === currentTripId;
+}
+
+/** **Everything that belongs to one trip rather than to everybody** — the extract and the route
+ *  pack today. Retention below sweeps on this rather than on `kind === 'extract'`, which would
+ *  have left a pack behind on a trip that ended (ADR-0186 §6 rules 1 and 2). */
+function isTripArtefact(entry: MapArchiveMeta): boolean {
+  return entry.kind !== 'world';
 }
 
 async function hasStorageHeadroom(sizeBytes: number): Promise<boolean> {
@@ -60,16 +93,25 @@ export async function downloadMapArchive(opts: {
   kind: MapArchiveMeta['kind'];
   tripId?: string;
   currentTripId?: string;
+  /** What the server said it is cutting when this download was decided (`/me`). Recorded rather
+   *  than read back from the response: a range/byte route has no place to say it, and a label
+   *  that is one window behind costs nothing — the age test above already stops a device from
+   *  chasing the difference twice. */
+  vintage?: string | null;
   now?: number;
   budgetBytes?: number;
 }): Promise<MapArchiveDownloadResult> {
   const response = await apiFetch(opts.url);
-  if (response.status === 503) {
+  // **Two statuses mean "not yet", and they are one flow** (ADR-0187). An archive answers `503`
+  // because it has nothing to send until the cut lands; the route pack answers `202` with a body
+  // that is already usable but not yet complete. Storing a partial pack would freeze a half-warm
+  // trip onto the device, so both wait.
+  if (response.status === 503 || response.status === 202) {
     return { status: 'preparing', retryAfterSeconds: retryAfterSeconds(response) };
   }
   if (!response.ok) throw new Error(`Map archive download failed (${response.status})`);
 
-  const sizeBytes = responseSize(response);
+  const { body, sizeBytes } = await weigh(response);
   if (!(await hasStorageHeadroom(sizeBytes))) return { status: 'no-space', sizeBytes };
   const room = await cache.makeRoom({
     budgetBytes: opts.budgetBytes ?? MAP_ARCHIVE_BUDGET_BYTES,
@@ -80,13 +122,14 @@ export async function downloadMapArchive(opts: {
   if (!room) return { status: 'no-space', sizeBytes };
 
   const now = opts.now ?? getNow();
-  await cache.put(opts.url, response, {
+  await cache.put(opts.url, body, {
     key: opts.url,
     sizeBytes,
     lastUsedAt: now,
     downloadedAt: now,
     kind: opts.kind,
     tripId: opts.tripId,
+    ...(opts.vintage ? { vintage: opts.vintage } : {}),
   });
   return { status: 'stored', sizeBytes };
 }
@@ -126,7 +169,7 @@ export async function retainMapArchives(opts: {
 
   await Promise.all(
     entries.map(async (entry) => {
-      if (entry.kind !== 'extract' || entry.tripId === opts.currentTripId) return;
+      if (!isTripArtefact(entry) || entry.tripId === opts.currentTripId) return;
       const trip = entry.tripId ? trips.get(entry.tripId) : undefined;
       const endedAt = trip?.endDate ? Date.parse(`${trip.endDate}T23:59:59.999Z`) : Number.NaN;
       if (!trip || (Number.isFinite(endedAt) && endedAt + ENDED_TRIP_ARCHIVE_GRACE_MS < now)) {
@@ -145,7 +188,7 @@ export async function retainMapArchives(opts: {
 export async function seedMapArchiveForTests(
   url: string,
   sizeBytes: number,
-  opts: { kind: MapArchiveMeta['kind']; tripId?: string; now?: number },
+  opts: { kind: MapArchiveMeta['kind']; tripId?: string; now?: number; vintage?: string },
 ): Promise<void> {
   const now = opts.now ?? getNow();
   await cache.put(url, new Response(new Uint8Array(sizeBytes)), {
@@ -155,5 +198,6 @@ export async function seedMapArchiveForTests(
     downloadedAt: now,
     kind: opts.kind,
     tripId: opts.tripId,
+    ...(opts.vintage ? { vintage: opts.vintage } : {}),
   });
 }

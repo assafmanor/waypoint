@@ -13,9 +13,14 @@ import {
   type TripEvent,
 } from '@waypoint/shared';
 import { buildPlaceUsageIndex, type PlaceUsage } from './place-usage';
+import { dayBookendStays } from './glance';
 import {
+  amberLegIndex,
   buildDayStopSequence,
+  buildJourney,
   buildPinOrderIndex,
+  firstHappenedDate,
+  stayNights,
   hasScheduleSlot,
   isAsidePin,
   isFramedByCamera,
@@ -34,6 +39,7 @@ import {
   type DayStop,
 } from './map-pins';
 import { DEFAULT_EVENT_ICON, DEFAULT_MAYBE_ICON, DEFAULT_PLACE_ICON, MAP_PIN } from '../constants';
+import { t } from '../i18n/he';
 
 const DAY = '2026-07-20';
 const NEXT_DAY = '2026-07-21';
@@ -391,12 +397,15 @@ describe('pinTransition — which transition is next there (ADR-0141)', () => {
     expect(pinTransition(index.get('ramen')!, ctx, lookup([dinner]))).toBeUndefined();
   });
 
-  it('a strictly-middle stay night says nothing day-scoped, and its next EDGE all-days', () => {
+  it('a strictly-middle stay night says לינת לילה day-scoped, and its next EDGE all-days', () => {
     const index = usages({ places: [place('hotel')], events: [stay] });
     const of = lookup([stay]);
-    // Day-scoped, DAY is the middle night: no end happens there, so `DayUsage.edge` is
-    // undefined and the pin is silent by construction — exactly as the row is.
-    expect(pinTransition(index.get('hotel')!, ctx, of)).toBeUndefined();
+    // AMENDED (ADR-0054, 2026-08-26): day-scoped, DAY is the middle night, so `DayUsage.edge`
+    // is undefined and there is no transition to name — which used to mean silence, "exactly
+    // as the row is". The row can afford it; the CANVAS cannot, because this is the one pin
+    // sitting at BOTH ends of the day's route and nothing else on it says so. It names what
+    // it is rather than an end it does not have.
+    expect(pinTransition(index.get('hotel')!, ctx, of)).toBe(t.map.stayNight);
     // All-days it reads `placeMetaDay`, which walks a mid-span night to the stay's next
     // edge — the one case that function differs from `placeDay`, and the reason this reads
     // it rather than `pinOutcome`'s: a silent pin under a row saying `צ׳ק-אאוט` is the
@@ -429,6 +438,43 @@ describe('pinTransition — which transition is next there (ADR-0141)', () => {
       maybeItems: [maybe({ id: 'm', placeId: 'shrine', targetDate: DAY })],
     });
     expect(pinTransition(index.get('shrine')!, ctx, () => undefined)).toBeUndefined();
+  });
+
+  // ── A STAY IS THE ONE THING THAT KEEPS ITS WORD (ADR-0054's 2026-08-26 amendment) ──
+  describe('the day says which end of it the hotel was', () => {
+    it('a check-out you have already done still reads צ׳ק-אאוט', () => {
+      // Owner: _"you can't see from the map where you check in or out from"_. The map stated
+      // the check-IN it was heading for and went silent on the check-OUT it had done, which
+      // is half a route — and the half you need to read the line's start.
+      const of = lookup([stay]);
+      const index = usages({ places: [place('hotel')], events: [stay] });
+      // Noon on the check-out day: the 10:00 ceiling is behind you, so the tier is `behind`.
+      const afterwards = { onDate: NEXT_DAY, nowMs: Date.parse(`${NEXT_DAY}T12:00:00Z`) };
+      expect(placePinTier(index.get('hotel')!, afterwards)).toBe(PIN_TIER.behind);
+      expect(pinTransition(index.get('hotel')!, afterwards, of)).toBe('צ׳ק-אאוט');
+    });
+
+    it('a strictly middle night says לינת לילה, having no edge to name', () => {
+      const of = lookup([stay]);
+      const index = usages({ places: [place('hotel')], events: [stay] });
+      expect(pinTransition(index.get('hotel')!, ctx, of)).toBe(t.map.stayNight);
+    });
+
+    it('leaves every OTHER behind pin silent — the exemption is the stay, not the tier', () => {
+      // A departed flight naming itself as ahead is the lie ADR-0141's silence was written
+      // for, and it is untouched: a stay's word is which END of the day this was, which the
+      // afternoon does not falsify.
+      const flight = event({
+        id: 'f',
+        placeId: 'kef',
+        category: 'transport',
+        icon: '✈️',
+        startsAt: `${DAY}T07:40:00Z`,
+      });
+      const index = usages({ places: [place('kef')], events: [flight] });
+      expect(placePinTier(index.get('kef')!, ctx)).toBe(PIN_TIER.behind);
+      expect(pinTransition(index.get('kef')!, ctx, lookup([flight]))).toBeUndefined();
+    });
   });
 });
 
@@ -514,10 +560,44 @@ describe('pinOutcome — what happened there, on the two tiers that can say (ADR
     expect(pinOutcome(index.get('shelved')!, ctx)).toBeUndefined();
   });
 
-  // `spanDays` gives EVERY day of a span the event's status, so without this a hotel
-  // marked done would stamp a ✓ on each of its nights — a claim nobody made about any one
-  // of them. Same suppression the row runs (`Map.tsx`'s `dayMeta`).
+  // `spanDays` gives every day of a span the answer of the END it is, so without this a
+  // hotel marked done would stamp a ✓ on each of its middle nights — a claim nobody made
+  // about any one of them. Same suppression the row runs (`Map.tsx`'s `dayMeta`).
   it('a strictly-middle stay night reports nothing, though its stay is settled', () => {
+    const index = usages({
+      places: [place('hotel')],
+      events: [
+        event({
+          id: 'stay',
+          placeId: 'hotel',
+          category: 'lodging',
+          date: PREV_DAY,
+          endDate: NEXT_DAY,
+          startsAt: `${PREV_DAY}T15:00:00Z`,
+          endsAt: `${NEXT_DAY}T10:00:00Z`,
+          status: EVENT_STATUS.DONE,
+          endStatus: EVENT_STATUS.DONE,
+        }),
+      ],
+    });
+    // DAY is the strictly-middle night of PREV_DAY → NEXT_DAY, and the tier here is
+    // `behind` rather than `ambient`: settling the stay settles every day of it
+    // (ADR-0117 §2 outranks the clock), and `behind` is resolved first. Which is exactly
+    // why the ambient guard cannot live on the tier — it has to read the DAY.
+    const midStay = { onDate: DAY, nowMs: NOON };
+    expect(placePinTier(index.get('hotel')!, midStay)).toBe(PIN_TIER.behind);
+    expect(pinOutcome(index.get('hotel')!, midStay)).toBeUndefined();
+    // The stay's own EDGES do report it — that is where a human settled something, and
+    // since ADR-0224 §1 there are two of them to settle (`status` opens, `endStatus` closes).
+    expect(pinOutcome(index.get('hotel')!, { onDate: PREV_DAY, nowMs: NOON })).toBe('done');
+    expect(pinOutcome(index.get('hotel')!, { onDate: NEXT_DAY, nowMs: NOON })).toBe('done');
+  });
+
+  // **AND ONE EDGE'S ANSWER IS NOT THE OTHER'S** (ADR-0224 §1, 2026-09-16). The pin used to
+  // read the span's `status` on every day it touched, so a check-in ticked on arrival day put
+  // a ✓ on the hotel for the morning you had not yet left — the map's half of the owner's
+  // _"marking that makes it היינו for both check in and out"_.
+  it('a checked-in stay reports nothing yet on its check-out day', () => {
     const index = usages({
       places: [place('hotel')],
       events: [
@@ -533,16 +613,8 @@ describe('pinOutcome — what happened there, on the two tiers that can say (ADR
         }),
       ],
     });
-    // DAY is the strictly-middle night of PREV_DAY → NEXT_DAY, and the tier here is
-    // `behind` rather than `ambient`: settling the stay settles every day of it
-    // (ADR-0117 §2 outranks the clock), and `behind` is resolved first. Which is exactly
-    // why the ambient guard cannot live on the tier — it has to read the DAY.
-    const midStay = { onDate: DAY, nowMs: NOON };
-    expect(placePinTier(index.get('hotel')!, midStay)).toBe(PIN_TIER.behind);
-    expect(pinOutcome(index.get('hotel')!, midStay)).toBeUndefined();
-    // The stay's own EDGES do report it — that is where a human settled something.
     expect(pinOutcome(index.get('hotel')!, { onDate: PREV_DAY, nowMs: NOON })).toBe('done');
-    expect(pinOutcome(index.get('hotel')!, { onDate: NEXT_DAY, nowMs: NOON })).toBe('done');
+    expect(pinOutcome(index.get('hotel')!, { onDate: NEXT_DAY, nowMs: NOON })).toBeUndefined();
   });
 
   // Plan mode withdraws `behind` entirely (ADR-0130 §2), so a filled pin has no past to
@@ -684,11 +756,6 @@ describe('what a pin number is allowed to claim', () => {
     expect(index.get('kef')).toBe(1);
     expect(index.get('tlv')).toBe(2);
 
-    // **AND IT SINKS TO THE END** (ADR-0182 §3, as reversed 2026-08-11). Losing the number
-    // is not leaving the day — the check-out is still traversable — but it no longer sorts
-    // between the two flights on a ceiling it cannot defend. "By 11:00" is any time before,
-    // so placing it at 11:00 claims a position the app does not have; the numbered stops
-    // keep the clock and everything unnumbered follows them.
     const stops = buildDayStopSequence(all, {
       nameOf,
       onDate: DAY,
@@ -705,8 +772,16 @@ describe('what a pin number is allowed to claim', () => {
         event({ id: 'arr', category: 'transport', icon: '✈️', startsAt: at2('15:20') }),
       ]),
     });
-    expect(stops.map((s) => s.usage.placeId)).toEqual(['kef', 'tlv', 'hotel']);
-    expect(stops.map((s) => s.order)).toEqual([1, 2, undefined]);
+    // **AND IT LEADS THE DAY** (ADR-0054's 2026-08-25 amendment, reversing ADR-0182 §3's
+    // 2026-08-11 sink *for this sequence only*). Losing the number was never leaving the day,
+    // and the sink was the second answer this case has had: at its 11:00 ceiling it sat
+    // between the two flights, which claimed a position the app does not have, and at the
+    // tail it sat after the landing in Tel Aviv, which claims one that is simply false. It is
+    // a check-OUT, so the one thing certain about it is that the day began there — and this
+    // sequence is now the map's route, where a position is geography rather than schedule.
+    // The `order` column is untouched: a bookend holds a place and still earns no mark.
+    expect(stops.map((s) => s.usage.placeId)).toEqual(['hotel', 'kef', 'tlv']);
+    expect(stops.map((s) => s.order)).toEqual([undefined, 1, 2]);
   });
 
   it('gives an UNTIMED place no number either — the same claim, unreported', () => {
@@ -728,6 +803,354 @@ describe('what a pin number is allowed to claim', () => {
     });
     expect(index.get('museum')).toBe(1);
     expect(index.has('errand')).toBe(false);
+  });
+});
+
+// ── A DAY STARTS AND ENDS WHERE YOU SLEEP (ADR-0054's 2026-08-25 amendment) ────────────
+describe('the stay bookends the day, and wears no number for it', () => {
+  const at2 = (hhmm: string) => `${DAY}T${hhmm}:00Z`;
+  const eventsById = (all: TripEvent[]) => (id: string) => all.find((e) => e.id === id);
+  /** A stay covering `from`→`to`, plus a museum at 11:00 and dinner at 20:00. */
+  const day = (from: string, to: string) => {
+    const events = [
+      event({
+        id: 'stay',
+        placeId: 'hotel',
+        category: EVENT_CATEGORY.LODGING,
+        date: from,
+        endDate: to,
+        startsAt: `${from}T15:00:00Z`,
+        endsAt: `${to}T11:00:00Z`,
+      }),
+      event({ id: 'm', placeId: 'museum', startsAt: at2('11:00') }),
+      event({ id: 'd', placeId: 'dinner', startsAt: at2('20:00') }),
+    ];
+    const all = [
+      ...usages({ places: [place('hotel'), place('museum'), place('dinner')], events }).values(),
+    ];
+    return buildDayStopSequence(all, { nameOf, onDate: DAY, eventById: eventsById(events) });
+  };
+
+  it('a strictly middle night is BOTH ends of the day', () => {
+    // The night that was invisible here: `prominence: 'ambient'`, no edge, no clock at all,
+    // so no amount of re-sorting could have found it — it never entered the sequence.
+    const stops = day('2026-07-18', '2026-07-22');
+    expect(stops.map((s) => s.usage.placeId)).toEqual(['hotel', 'museum', 'dinner', 'hotel']);
+    // Twice in the sequence, twice unnumbered, and the numbered stops still count 1, 2 with
+    // no hole — the whole point of "sequence + route, no number".
+    expect(stops.map((s) => s.order)).toEqual([undefined, 1, 2, undefined]);
+  });
+
+  it('a check-IN day ends there and does not begin there', () => {
+    // "From 15:00" is a floor, so it used to sort between the museum and dinner on an hour
+    // it cannot defend. You end the day at the hotel; you did not start there.
+    const stops = day(DAY, '2026-07-22');
+    expect(stops.map((s) => s.usage.placeId)).toEqual(['museum', 'dinner', 'hotel']);
+    expect(stops.map((s) => s.order)).toEqual([1, 2, undefined]);
+  });
+
+  it('a check-OUT day begins there and does not end there', () => {
+    const stops = day('2026-07-18', DAY);
+    expect(stops.map((s) => s.usage.placeId)).toEqual(['hotel', 'museum', 'dinner']);
+    expect(stops.map((s) => s.order)).toEqual([undefined, 1, 2]);
+  });
+
+  // **THE DRIFT GUARD** (ADR-0206 §AD, M6a). The day LIST needs the same fact for its own first
+  // leg — the journey block sits between two rows, so a mid-stay day's first row has nothing above
+  // it — and it asks `dayBookendStays(events, date)` rather than this sequence, because a leg is
+  // not a sequence. Two shapes of one rule, so what holds them together is this: the stay that
+  // function names is the stay this one puts first. If either drifts, the day row and the map's
+  // route disagree about where the morning starts, and the whole reason §AD exists is that they
+  // must not.
+  const bookendAgreement = (from: string, to: string) => {
+    const events = [
+      event({
+        id: 'stay',
+        placeId: 'hotel',
+        category: EVENT_CATEGORY.LODGING,
+        date: from,
+        endDate: to,
+        startsAt: `${from}T15:00:00Z`,
+        endsAt: `${to}T11:00:00Z`,
+      }),
+      event({ id: 'm', placeId: 'museum', startsAt: at2('11:00') }),
+      event({ id: 'd', placeId: 'dinner', startsAt: at2('20:00') }),
+    ];
+    const all = [
+      ...usages({ places: [place('hotel'), place('museum'), place('dinner')], events }).values(),
+    ];
+    const stops = buildDayStopSequence(all, { nameOf, onDate: DAY, eventById: eventsById(events) });
+    return { bookends: dayBookendStays(events, DAY), stops, events };
+  };
+
+  it.each([
+    ['a middle night', '2026-07-18', '2026-07-22', 'stay', 'stay'],
+    ['a check-in day', DAY, '2026-07-22', undefined, 'stay'],
+    ['a check-out day', '2026-07-18', DAY, 'stay', undefined],
+  ])('%s: the list and the route name the same bookends', (_label, from, to, woke, sleeps) => {
+    const { bookends, stops, events } = bookendAgreement(from, to);
+    expect(bookends.woke?.id).toBe(woke);
+    expect(bookends.sleeps?.id).toBe(sleeps);
+    // …and the sequence agrees, read off the stop rather than asserted from the same rule: the
+    // first stop is the woken stay's place exactly when there is one, and the last the slept-in
+    // stay's. Anything else means one of the two derivations moved.
+    const placeOf = (id?: string) => (id ? events.find((e) => e.id === id)?.placeId : undefined);
+    expect(stops[0]?.usage.placeId).toBe(placeOf(woke) ?? 'museum');
+    expect(stops[stops.length - 1]?.usage.placeId).toBe(placeOf(sleeps) ?? 'dinner');
+  });
+
+  // ── THE AMBER LEG ON A PLACE YOU VISIT TWICE (owner report, 2026-08-26) ─────────────────
+  //
+  // _"instead of stretching a line from #4 to #5 which is what it was supposed to do, it stretched
+  // from #1"_. A place with two events in one day is two STOPS and one PIN, and since this
+  // milestone's own bookends that is the ordinary case rather than an edge one — a middle night's
+  // stay is the day's first stop AND its last. `screens/Map.tsx` resolved the selection with
+  // `findIndex` over pins, which answers the FIRST occurrence, so selecting the evening visit drew
+  // the leg into the morning one.
+  //
+  // The rule is `relevantMoment`'s, the same one `buildPinOrderIndex` uses to decide which NUMBER
+  // the pin wears — which is why the fix makes the line agree with the badge.
+  describe('the amber leg, on a place the day visits twice', () => {
+    const at2 = (hhmm: string) => `${DAY}T${hhmm}:00Z`;
+    const eventsById = (all: TripEvent[]) => (id: string) => all.find((e) => e.id === id);
+    /** Morning at the gate, lunch at the hall, dinner back at the gate: stops 1, 2, 3 where the
+     *  gate is both 1 and 3. The leg into the evening visit is leg 1 (stop 2 → stop 3). */
+    const twiceVisited = () => {
+      const events = [
+        event({ id: 'm', placeId: 'gate', startsAt: at2('09:00') }),
+        event({ id: 'l', placeId: 'hall', startsAt: at2('13:00') }),
+        event({ id: 'd', placeId: 'gate', startsAt: at2('19:00') }),
+      ];
+      const all = [...usages({ places: [place('gate'), place('hall')], events }).values()];
+      const route = buildDayStopSequence(all, {
+        nameOf,
+        onDate: DAY,
+        eventById: eventsById(events),
+      });
+      return { route, events };
+    };
+
+    it('the day really does hold the same place twice', () => {
+      expect(twiceVisited().route.map((s) => s.usage.placeId)).toEqual(['gate', 'hall', 'gate']);
+    });
+
+    // The reported case: it is the EVENING visit that is live, so the amber leg is the one
+    // arriving at it — `hall → gate`, leg 1 — and not `gate → hall`, leg 0.
+    it('spends the amber on the leg into the visit the clock is about, not the first one', () => {
+      const { route } = twiceVisited();
+      // **The shipped shape, pinned so the defect is legible here rather than only in a
+      // changelog:** `findIndex` over a place id answers the FIRST occurrence, and the leg into
+      // stop 1 is leg 0 — the line from the morning gate, which is what was drawn.
+      const naive = route.findIndex((stop) => stop.usage.placeId === 'gate');
+      expect(Math.max(naive, 1) - 1).toBe(0);
+      // …and what the evening visit actually owes: the leg arriving at stop 3.
+      expect(
+        amberLegIndex(route, { selectedPlaceId: 'gate', nowMs: Date.parse(at2('18:00')) }),
+      ).toBe(1);
+    });
+
+    // …and in the morning the same tap means the other visit, which is the whole point of asking
+    // the clock rather than the array.
+    it('spends it on the FIRST visit’s leg when that is the one the clock is about', () => {
+      const { route } = twiceVisited();
+      // Stop 1 is the day's first, which has no leg arriving at it, so it takes the leg
+      // departing it — leg 0.
+      expect(
+        amberLegIndex(route, { selectedPlaceId: 'gate', nowMs: Date.parse(at2('08:00')) }),
+      ).toBe(0);
+    });
+
+    it('answers the same way for the NEXT stop as for a selection', () => {
+      const { route } = twiceVisited();
+      expect(
+        amberLegIndex(route, { nextStopPlaceId: 'gate', nowMs: Date.parse(at2('18:00')) }),
+      ).toBe(1);
+    });
+
+    // ── THE LEG YOU ARE ON (owner report, 2026-09-12) ────────────────────────────────────
+    //
+    // _"After a layover, i.e. on the second flight, the map doesn't show the route"_. Mid-leg
+    // the live "next stop" is whatever waits past the landing — the hire counter, the hotel —
+    // so the amber went to a leg you have not started while the one you are flying was drawn
+    // nowhere. `currentDestination`'s `inTransit` answers where the journey is taking you, and
+    // the leg arriving there is the leg you are on.
+    it('spends the amber on the leg you are flying, over the stop waiting past it', () => {
+      const { route } = twiceVisited();
+      expect(amberLegIndex(route, { transitPlaceId: 'hall', nextStopPlaceId: 'gate' })).toBe(0);
+    });
+
+    // …and a selection still outranks it: a tap is a question, and this is a state.
+    it('yields to a selection, and falls through to the next stop when there is no journey', () => {
+      const { route } = twiceVisited();
+      expect(
+        amberLegIndex(route, {
+          selectedPlaceId: 'gate',
+          transitPlaceId: 'hall',
+          nowMs: Date.parse(at2('18:00')),
+        }),
+      ).toBe(1);
+      expect(amberLegIndex(route, { transitPlaceId: undefined, nextStopPlaceId: 'hall' })).toBe(0);
+    });
+
+    // A place visited once needs no clock at all, and a route with nothing asked of it spends no
+    // amber — Plan mode with no selection (§AC1).
+    it('needs no clock for a place visited once, and spends none when nothing is asked', () => {
+      const { route } = twiceVisited();
+      expect(amberLegIndex(route, { selectedPlaceId: 'hall' })).toBe(0);
+      expect(amberLegIndex(route, {})).toBe(-1);
+      expect(amberLegIndex(route, { selectedPlaceId: 'nowhere' })).toBe(-1);
+      expect(amberLegIndex(route.slice(0, 1), { selectedPlaceId: 'gate' })).toBe(-1);
+    });
+  });
+
+  it('a car hire is NOT a bookend — you hold it, you do not sleep in it', () => {
+    // The owner's second class: a soft-timed booking "from X / until Y". It belongs in the
+    // sequence at its own instant, which is what the sort change buys it — and nowhere near
+    // the day's ends, which is what `countsNights` refuses it (ADR-0163 §4).
+    const events = [
+      event({
+        id: 'car',
+        placeId: 'depot',
+        category: EVENT_CATEGORY.TRANSPORT,
+        icon: '🚗',
+        startsAt: at2('09:00'),
+        endsAt: at2('18:00'),
+      }),
+      event({ id: 'm', placeId: 'museum', startsAt: at2('11:00') }),
+      event({ id: 'd', placeId: 'dinner', startsAt: at2('20:00') }),
+    ];
+    const all = [
+      ...usages({ places: [place('depot'), place('museum'), place('dinner')], events }).values(),
+    ];
+    const stops = buildDayStopSequence(all, { nameOf, onDate: DAY, eventById: eventsById(events) });
+    expect(stops.map((s) => s.usage.placeId)).toEqual(['depot', 'museum', 'dinner']);
+    expect(stops.map((s) => s.order)).toEqual([undefined, 1, 2]);
+  });
+
+  // ── WHAT BROUGHT YOU IN THROUGH THE NIGHT SORTS BEFORE THE BED ─────────────────────
+  // Owner, 2026-08-26: _"we only land at 23:20 and pick up the car at 00:00 so realistically
+  // we only check in at like 2:00, but check in starts at like 15:00 … the route shows it
+  // before the car pick up"_.
+  //
+  // **THE FIXTURES BELOW ARE THE POINT.** The first pass at this shipped green with
+  // `startsAt: at2('02:00')` — a check-in instant on the day itself — which is not the shape
+  // the report is about. The real booking carries a FLOOR on the previous afternoon, so the
+  // rule (compare each stop against `startsAt`) moved nothing, and the spec that asserted
+  // that outcome asserted the bug. A fixture built from the rule proves the rule.
+  describe('a stay you reached during the night does not claim the whole day', () => {
+    /** The day's morning, resolved by the screen in the day's own zone. */
+    const dawnMs = Date.parse(at2('07:00'));
+    const car = event({
+      id: 'car',
+      placeId: 'depot',
+      category: EVENT_CATEGORY.TRANSPORT,
+      icon: '🚗',
+      startsAt: at2('00:00'),
+      endsAt: '2026-07-24T18:00:00Z',
+      endDate: '2026-07-24',
+    });
+    const museum = event({ id: 'm', placeId: 'museum', startsAt: at2('11:00') });
+    /** The owner's booking: the night BEFORE (which is how a hotel counts a 02:00 arrival),
+     *  and its `startsAt` is the room's ⁦15:00⁩ FLOOR on that previous afternoon — not an
+     *  arrival, which is exactly what `knowsMoment` already refuses to call a moment. */
+    const overnight = event({
+      id: 'a',
+      placeId: 'hotelA',
+      category: EVENT_CATEGORY.LODGING,
+      date: PREV_DAY,
+      endDate: DAY,
+      startsAt: `${PREV_DAY}T15:00:00Z`,
+      endsAt: at2('10:00'),
+    });
+    const sequence = (events: TripEvent[], ids: string[], ctx?: { dawnMs?: number }) =>
+      buildDayStopSequence([...usages({ places: ids.map((id) => place(id)), events }).values()], {
+        nameOf,
+        onDate: DAY,
+        eventById: eventsById(events),
+        dawnMs,
+        ...ctx,
+      }).map((s) => s.usage.placeId);
+
+    it('puts the midnight pick-up that brought you there BEFORE the hotel', () => {
+      // Pinned first unconditionally, this read `hotelA → depot → museum`: the route left
+      // the airport, teleported to bed, and came back for the car.
+      expect(sequence([car, overnight, museum], ['hotelA', 'museum', 'depot'])).toEqual([
+        'depot',
+        'hotelA',
+        'museum',
+      ]);
+    });
+
+    it('leaves the hotel first for an EXACT pre-dawn departure', () => {
+      // The case a bare dawn cut-off gets wrong, and the reason the rule asks two questions.
+      // A ⁦06:30⁩ flight is a moment the app KNOWS, so it is something you left the bed for —
+      // where a car "available from ⁦00:00⁩" claims no hour at all and is the shape of a night
+      // arrival. Same day, same dawn, opposite answers.
+      const flight = event({
+        id: 'f',
+        placeId: 'kef',
+        category: EVENT_CATEGORY.TRANSPORT,
+        icon: '✈️',
+        startsAt: at2('06:30'),
+      });
+      expect(sequence([flight, overnight], ['hotelA', 'kef'])).toEqual(['hotelA', 'kef']);
+    });
+
+    it('leaves an AFTER-dawn floor where it falls', () => {
+      // Dawn is the other half of the gate: a car collected at ⁦09:00⁩ is a floor too, and you
+      // were plainly already up for it.
+      const late = { ...car, startsAt: at2('09:00') };
+      expect(sequence([late, overnight, museum], ['hotelA', 'museum', 'depot'])).toEqual([
+        'hotelA',
+        'depot',
+        'museum',
+      ]);
+    });
+
+    it('still ends the day at the DIFFERENT hotel you move to', () => {
+      // The change-over day, with the compressed stay at its head. Each span answers only
+      // about itself, so no rule of its own is needed for this.
+      const next = event({
+        id: 'b',
+        placeId: 'hotelB',
+        category: EVENT_CATEGORY.LODGING,
+        date: DAY,
+        endDate: '2026-07-24',
+        startsAt: at2('20:00'),
+        endsAt: '2026-07-24T10:00:00Z',
+      });
+      expect(
+        sequence([car, overnight, museum, next], ['hotelA', 'hotelB', 'museum', 'depot']),
+      ).toEqual(['depot', 'hotelA', 'museum', 'hotelB']);
+    });
+
+    it('moves nothing on a surface that resolves no dawn', () => {
+      // `dawnMs` needs a zone, so a surface without one behaves exactly as it did — the same
+      // inertness `eventById` and `isConnectionStop` already have here.
+      expect(
+        sequence([car, overnight, museum], ['hotelA', 'museum', 'depot'], { dawnMs: undefined }),
+      ).toEqual(['hotelA', 'depot', 'museum']);
+    });
+  });
+
+  it('answers nothing on a surface that cannot resolve events', () => {
+    // `eventById` absent means no stay is ever found, so a middle night stays backdrop and
+    // the sequence is exactly what it was — the same inertness `knowsMoment` has there.
+    const events = [
+      event({
+        id: 'stay',
+        placeId: 'hotel',
+        category: EVENT_CATEGORY.LODGING,
+        date: '2026-07-18',
+        endDate: '2026-07-22',
+        startsAt: `2026-07-18T15:00:00Z`,
+        endsAt: `2026-07-22T11:00:00Z`,
+      }),
+      event({ id: 'm', placeId: 'museum', startsAt: at2('11:00') }),
+    ];
+    const all = [...usages({ places: [place('hotel'), place('museum')], events }).values()];
+    const stops = buildDayStopSequence(all, { nameOf, onDate: DAY });
+    expect(stops.map((s) => s.usage.placeId)).toEqual(['museum']);
   });
 });
 
@@ -1277,6 +1700,76 @@ describe('buildDayStopSequence — the day in order, which is what you step thro
   const ids = (stops: DayStop[]) => stops.map((s) => s.usage.placeId);
   const orders = (stops: DayStop[]) => stops.map((s) => s.order);
 
+  // ── TWO THINGS AT ONE TIME ARE ONE STOP (ADR-0225 §2, §5) ───────────────────────────────
+  describe('two overlapping events are one stop', () => {
+    const eventsById = (all: TripEvent[]) => (id: string) => all.find((e) => e.id === id);
+    const day = (g: Partial<TripEvent> = {}, s: Partial<TripEvent> = {}) => {
+      const events = [
+        event({ id: 'first', placeId: 'hotel', startsAt: at2('07:30') }),
+        // `glj` sorts before `selj` alphabetically and was added SECOND — the case the map got
+        // backwards while the day list had it right.
+        event({
+          id: 'g',
+          placeId: 'glj',
+          startsAt: at2('08:30'),
+          endsAt: at2('10:00'),
+          sortOrder: 0,
+          createdAt: at2('00:02'),
+          ...g,
+        }),
+        event({
+          id: 's',
+          placeId: 'selj',
+          startsAt: at2('08:30'),
+          endsAt: at2('10:00'),
+          sortOrder: 0,
+          createdAt: at2('00:01'),
+          ...s,
+        }),
+        event({ id: 'cafe', placeId: 'faxi', startsAt: at2('10:45'), endsAt: at2('11:30') }),
+      ];
+      const all = [
+        ...usages({
+          places: [place('hotel'), place('glj'), place('selj'), place('faxi')],
+          events,
+        }).values(),
+      ];
+      return buildDayStopSequence(all, { nameOf, onDate: DAY, eventById: eventsById(events) });
+    };
+
+    it("peers share the stop's number, the stop after them counts once more, and the entry is the one added first", () => {
+      const stops = day();
+      expect(ids(stops)).toEqual(['hotel', 'selj', 'glj', 'faxi']);
+      expect(orders(stops)).toEqual([1, 2, 2, 3]);
+      expect(stops[1]!.peerKey).toBeDefined();
+      expect(stops[1]!.peerKey).toBe(stops[2]!.peerKey);
+      expect(stops[0]!.peerKey).toBeUndefined();
+      expect(stops[3]!.peerKey).toBeUndefined();
+    });
+
+    it('partial overlap: the entry starts first and the exit ends last, whatever was added when', () => {
+      const stops = day({ startsAt: at2('09:00'), endsAt: at2('10:30'), createdAt: at2('00:00') });
+      expect(ids(stops)).toEqual(['hotel', 'selj', 'glj', 'faxi']);
+      expect(orders(stops)).toEqual([1, 2, 2, 3]);
+    });
+
+    it('the amber leg into the second peer is the leg into the STOP, never the tether', () => {
+      const route = day();
+      expect(amberLegIndex(route, { nextStopPlaceId: 'glj' })).toBe(0);
+      expect(amberLegIndex(route, { nextStopPlaceId: 'selj' })).toBe(0);
+      expect(amberLegIndex(route, { selectedPlaceId: 'faxi' })).toBe(2);
+    });
+
+    it('without an event resolver nothing clusters, as before', () => {
+      const events = [
+        event({ id: 'g', placeId: 'glj', startsAt: at2('08:30'), endsAt: at2('10:00') }),
+        event({ id: 's', placeId: 'selj', startsAt: at2('08:30'), endsAt: at2('10:00') }),
+      ];
+      const all = [...usages({ places: [place('glj'), place('selj')], events }).values()];
+      expect(orders(buildDayStopSequence(all, { nameOf, onDate: DAY }))).toEqual([1, 2]);
+    });
+  });
+
   it('is the day in clock order, numbered 1..n over the moments it knows', () => {
     const all = [
       ...usages({
@@ -1438,5 +1931,96 @@ describe('buildDayStopSequence — the day in order, which is what you step thro
     for (const stop of buildDayStopSequence(all, ctx)) {
       if (stop.order != null) expect(index.get(stop.usage.placeId)).toBe(stop.order);
     }
+  });
+});
+
+// ADR-0241 §1: a finished trip's map reads the RECORD (`recapHappened`), not the clock.
+describe('a finished trip: the pin says what happened, and the line runs through it', () => {
+  const AFTER = at('2026-07-30', '12:00');
+  const events = [
+    // A hard row nobody skipped happened (ADR-0239 §9), though nobody marked it.
+    event({
+      id: 'dinner',
+      placeId: 'dinner',
+      kind: EVENT_KIND.HARD,
+      date: DAY,
+      startsAt: `${DAY}T19:00:00Z`,
+    }),
+    event({
+      id: 'museum',
+      placeId: 'museum',
+      date: DAY,
+      startsAt: `${DAY}T10:00:00Z`,
+      status: EVENT_STATUS.DONE,
+    }),
+    event({
+      id: 'skipped',
+      placeId: 'skipped',
+      date: DAY,
+      startsAt: `${DAY}T13:00:00Z`,
+      status: EVENT_STATUS.SKIPPED,
+    }),
+    event({ id: 'unmarked', placeId: 'unmarked', date: DAY, startsAt: `${DAY}T15:00:00Z` }),
+    event({
+      id: 'cafe',
+      placeId: 'cafe',
+      date: NEXT_DAY,
+      startsAt: `${NEXT_DAY}T09:00:00Z`,
+      status: EVENT_STATUS.DONE,
+    }),
+    event({
+      id: 'stay',
+      placeId: 'hotel',
+      kind: EVENT_KIND.HARD,
+      category: 'lodging',
+      icon: '🏨',
+      date: PREV_DAY,
+      endDate: NEXT_DAY,
+      startsAt: `${PREV_DAY}T15:00:00Z`,
+      endsAt: `${NEXT_DAY}T10:00:00Z`,
+    }),
+  ];
+  const eventById = (id: string) => events.find((e) => e.id === id);
+  const index = usages({
+    places: ['dinner', 'museum', 'skipped', 'unmarked', 'cafe', 'hotel'].map((id) => place(id)),
+    events,
+  });
+  const ctx = { nowMs: AFTER, today: '2026-07-30', finished: { eventById } };
+
+  it('a hard row reads as happened: a full pin with no mark', () => {
+    expect(placePinTier(index.get('dinner')!, ctx)).not.toBe(PIN_TIER.behind);
+    expect(pinOutcome(index.get('dinner')!, ctx)).toBeUndefined();
+  });
+
+  it('is not `behind` for a place that happened or nobody marked, though the clock passed it', () => {
+    expect(placePinTier(index.get('museum')!, ctx)).toBe(PIN_TIER.upcoming);
+    expect(placePinTier(index.get('unmarked')!, ctx)).toBe(PIN_TIER.upcoming);
+    expect(placePinTier(index.get('museum')!, { ...ctx, onDate: DAY })).toBe(PIN_TIER.upcoming);
+  });
+
+  it('a skipped place is the grey pin with the ✕, and an unmarked one the empty ring', () => {
+    expect(placePinTier(index.get('skipped')!, ctx)).toBe(PIN_TIER.behind);
+    expect(pinOutcome(index.get('skipped')!, ctx)).toBe('skipped');
+    expect(pinOutcome(index.get('unmarked')!, ctx)).toBe('open');
+    expect(pinOutcome(index.get('museum')!, ctx)).toBeUndefined();
+  });
+
+  it('the journey runs day by day through what happened, off the skipped and unmarked stops', () => {
+    const journey = buildJourney([...index.values()], [PREV_DAY, DAY, NEXT_DAY], {
+      nameOf,
+      eventById,
+    });
+    const ids = journey.map((stop) => stop.usage.placeId);
+    expect(ids).not.toContain('skipped');
+    expect(ids).not.toContain('unmarked');
+    // The bed that ends one day and starts the next is one point.
+    expect(ids).toEqual(['hotel', 'museum', 'dinner', 'hotel', 'cafe']);
+  });
+
+  it('a stay counts the nights we slept, and a row opens the first day it happened on', () => {
+    expect(stayNights(index.get('hotel')!, eventById)).toBe(2);
+    expect(stayNights(index.get('museum')!, eventById)).toBe(0);
+    expect(firstHappenedDate(index.get('cafe')!, eventById)).toBe(NEXT_DAY);
+    expect(firstHappenedDate(index.get('unmarked')!, eventById)).toBeUndefined();
   });
 });

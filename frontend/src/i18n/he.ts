@@ -1,10 +1,42 @@
 // Hebrew UI copy — the active locale. All user-facing strings live here so logic
 // stays language-agnostic (conventions.md). Interpolated copy is a function;
 // runs that must render left-to-right (times, codes) stay as JSX in the caller.
-import { NOTE_HOST_FIELD, type BookingType, type DocumentType } from '@waypoint/shared';
+//
+// ── THE REGISTER: THREE VOICES, EACH WITH A JOB, AND NO GENDERED SINGULAR ────────
+// Written down 2026-08-17 because the file had drifted into a near 50/50 split — ~60
+// singular-masculine imperatives (`שמור`, `ערוך`, `מחק`, `נקה`, `בחר`) against ~46 plural
+// ones (`נסו`, `בחרו`, `הזמינו`), colliding on the same screens: `הוסף מסמך` beside
+// `העלו`, `index.sheet.save: 'שמור'` beside the canonical `common.save: 'שמירה'`, and
+// three spellings of one clear action. Singular-masculine also *genders* a product whose
+// subject is a mixed group of five, which is the half no consistency argument fixes.
+//
+//   · A CONTROL says a verbal noun            — `עריכה` · `מחיקה` · `שמירה` · `ניקוי`
+//   · A DIALOG TITLE asks in the infinitive   — `למחוק את הפתק?` · `לצאת בלי לשמור?`
+//   · A SENTENCE to the reader is plural      — `נסו שוב` · `בדקו את החיבור`
+//
+// Three exceptions, all deliberate. **Disclosure toggles keep `הצג`/`הסתר`** — one matched
+// pair for one job, picked by the owner on 2026-08-16, and `הצגה`/`הסתרה` on a caret row
+// reads like a setting rather than a switch. **A stepper keeps its imperative**
+// (`actions.delayBy`, `earlierBy`): `דחייה 15 דק׳` is not a thing anyone says. And **an act on
+// someone ELSE's state takes the infinitive** (`settings.promote`), because the noun forms of
+// those verbs are the formal register — `מינוי כמנהל` was rejected on exactly that (owner).
+//
+// The GROUP is `החבר'ה`; the people in it are `נוסעים` (`memberCount`, `rolePeer`). It was
+// seven words for the same five people — חבורה, חבר'ה, חברים, משתתפים, מטיילים, נוסעים,
+// קבוצה — and `משתתפים` in particular reads like a webinar, not a trip. And an INVITATION
+// is a `לינק`, never a bare `הזמנה`: that word is a booking everywhere in the Index, so
+// `טוען הזמנה…` on the join screen read as "loading booking".
+import {
+  NOTE_HOST_FIELD,
+  type BookingType,
+  type DocumentType,
+  type EventCategory,
+  type LegTravelMode,
+} from '@waypoint/shared';
 import { countdownText } from '../lib/time';
+import { yearPhrase } from '../lib/hebrew';
 import { type OutboxVerb } from '../lib/outbox';
-import { measure } from '../lib/bidi';
+import { bindPrefix, measure } from '../lib/bidi';
 
 /** The two legs of a journey, in one place. Said by the authoring form's leg headings
  *  (ADR-0154 §4) AND by the detail's derived-pair fact and the delete prompt (§5) — a
@@ -55,11 +87,16 @@ const PLACE_REF_NAME_LIMIT = 2;
 
 export const t = {
   common: {
-    undo: 'בטל',
+    undo: 'ביטול',
     yes: 'כן',
     no: 'לא',
     now: 'עכשיו',
+    today: 'היום',
     loading: 'טוען',
+    // **"About"** — the hedge on an estimate, for the ladder rungs that are WORDS rather than
+    // numbers (`כשעה`, `כשעתיים`). The number-led rungs take `~` inside the bidi isolate
+    // instead; `approxDuration` owns which is which and why (ADR-0206 §D5).
+    about: 'כ',
     // Canonical action labels — one wording shared by every FormActions bar and
     // confirm dialog (U-02), so Save/Cancel/Delete never drift between forms.
     save: 'שמירה',
@@ -80,16 +117,16 @@ export const t = {
     },
     // Unsaved-changes discard confirm (U-05), shown when closing a dirty form.
     discardTitle: 'לצאת בלי לשמור?',
-    discardBody: 'יש שינויים שעדיין לא נשמרו. אם תצא עכשיו הם יאבדו.',
-    discardConfirm: 'צא בלי לשמור',
+    discardBody: 'יש שינויים שלא נשמרו. אם יוצאים עכשיו הם הולכים לאיבוד.',
+    discardConfirm: 'לצאת בלי לשמור',
     discardCancel: 'המשך עריכה',
   },
   // FilePicker (ADR-0086): the two pick tiles + preview clear, shared by every
   // attachment surface so the wording never drifts.
   filePicker: {
     upload: 'העלאת קובץ',
-    capture: 'צלמו עכשיו',
-    remove: 'הסר',
+    capture: 'מצלמה',
+    remove: 'הסרה',
     /** Names the action AND the file, because the card's own filename is the button's
      *  content and an `aria-label` would otherwise replace it. */
     view: (name: string) => `תצוגה מלאה: ${name}`,
@@ -116,8 +153,73 @@ export const t = {
     // the user can do about it. No apology and no detail: the body has to be true
     // of a crash nobody predicted.
     crash: {
-      body: 'רענון יחזיר את האפליקציה לפעולה.',
+      body: 'רענון אחד וזה חוזר לעבוד.',
       action: 'רענון האפליקציה',
+    },
+  },
+  // "Put this on your home screen" (ADR-0204). Its own top-level block rather than a member
+  // of `shell.account`, because the settings row is only one of four places it is said and
+  // the others are nowhere near the account screen.
+  install: {
+    // THE TWO UNPROMPTED ASKS (§2). Each states the fact that earned it, and they are two
+    // strings and not one parameterised one on purpose: a generic "install our app" is
+    // exactly the sentence that turns this into a nag, and a shared template invites one.
+    ask: {
+      // Door A — the first arrival after joining. `tripName` is the trip you just joined,
+      // which is what makes this an observation rather than a pitch.
+      joined: (tripName: string) => `הצטרפתם ל${tripName} · אפשר לקחת אותו איתכם למסך הבית.`,
+      // Door B — departure is close. `days` is 1-3 (INSTALL_DEPARTURE_WINDOW_DAYS), and the
+      // singular is spelled out because `בעוד 1 ימים` is not Hebrew.
+      soon: (days: number) =>
+        days === 1
+          ? 'הטיול מתחיל מחר · על מסך הבית הוא עובד גם בלי רשת.'
+          : `הטיול מתחיל בעוד ${days} ימים · על מסך הבית הוא עובד גם בלי רשת.`,
+      action: 'התקנה',
+    },
+    // Door C (§3) — the blocked want. It names what was just asked for rather than the app,
+    // because the person did not ask for an app, they asked to be reminded. The verb is
+    // `איך` and not `התקנה`: on iOS nothing here can install, and the sheet teaches.
+    blocked: {
+      text: 'כדי שהתזכורת הזו תגיע באייפון, האפליקציה צריכה להיות על מסך הבית.',
+      action: 'איך',
+    },
+    // THE SHEET (§4).
+    sheet: {
+      title: 'Travelive על מסך הבית',
+      sub: 'אותה אפליקציה · בלי סרגל הדפדפן',
+      // Three reasons, one line each, in the order they become true on a trip.
+      whyOffline: 'עובדת בלי רשת · היומן, המסמכים והאינדקס',
+      whyNotify: 'תזכורות מגיעות בזמן, גם כשהיא סגורה',
+      whyHome: 'נפתחת במסך מלא, בנגיעה אחת',
+      // Chrome: one tap, a real install.
+      doInstall: 'התקנה',
+      // iOS: nothing here can install, so the button closes and says so honestly.
+      doGot: 'הבנתי',
+      // The taught gesture. The gershayim are the app's own quoting convention (`נתב״ג`),
+      // not straight quotes — and the WORDS are what identify the menu item, because the
+      // glyph beside them is our nearest shape and not Apple's mark.
+      stepShare: 'הקישו על כפתור השיתוף בסרגל הדפדפן',
+      stepAdd: 'בחרו ״הוספה למסך הבית״',
+      // The embedded-browser path, which is the common first open of a link-only-join app
+      // (ADR-0030) and not an edge case.
+      inAppTitle: 'הקישור נפתח בתוך אפליקציה אחרת',
+      inAppBody:
+        'מכאן אי אפשר להתקין. פתחו את Travelive בדפדפן של הטלפון, ומשם אפשר להוסיף אותו למסך הבית.',
+      inAppCopy: 'העתקת הקישור',
+      inAppCopied: 'הקישור הועתק',
+      note: 'אפשר תמיד להתקין מההגדרות.',
+    },
+    // THE PERMANENT HOME (§6).
+    settings: {
+      section: 'האפליקציה',
+      label: 'התקנה למסך הבית',
+      installed: 'מותקנת',
+      notInstalled: 'לא מותקנת',
+      action: 'התקנה',
+      hint: 'על מסך הבית Travelive נפתחת במסך מלא, עובדת בלי רשת ויכולה לשלוח תזכורות.',
+      // What the row says where no path exists at all — honest rather than absent, so the
+      // section does not silently disappear on a desktop browser.
+      unavailable: 'בדפדפן הזה אין התקנה · בטלפון זה יעבוד.',
     },
   },
   // No arrow lives in the copy: every visible arrow renders as an SVG (ui/NavArrow,
@@ -319,7 +421,7 @@ export const t = {
       // claims: everything in `refs` survives without a location, and this does not survive.
       // It says WHERE it is, since the shelf is the one surface the reader has to picture.
       idea: 'גם הרעיון שעל המדף יימחק',
-      confirm: 'מחק',
+      confirm: 'מחיקה',
     },
     // Map-local day scope (ADR-0110 §4): the strip focuses one day; this chip
     // shows every day's places at once.
@@ -335,6 +437,22 @@ export const t = {
     // the two surfaces read one resolver (`deriveNow`), so they must also say one
     // thing. Amber like `nextStop`: both are time (ADR-0028).
     happeningNow: 'עכשיו',
+    // A STRICTLY MIDDLE NIGHT of a stay, in the same pin slot the two words above and
+    // `transition.checkIn`/`checkOut` fill (ADR-0054's 2026-08-26 amendment). It has no
+    // edge, so it has no transition word to say — and it is the one pin that bookends BOTH
+    // ends of the day, which is exactly what a reader cannot otherwise tell. Neutral, not
+    // amber: it is where you are sleeping, not a commitment on the clock.
+    stayNight: 'לינת לילה',
+    // A finished trip's row button (ADR-0241 §1): the first day we were at this place.
+    openDay: (n: number) => `יום ${n}`,
+    // The empty ring's words, for the pin's accessible name (ADR-0241 §1).
+    pinOpen: 'לא סומן',
+    // Replay on a finished trip (ADR-0241 §2): the control's two states, and the day it shows.
+    replay: {
+      play: 'הילוך חוזר של הטיול',
+      stop: 'עצירה',
+      caption: (day: number, name: string) => `יום ${day} · ${name}`,
+    },
     // The list is three blocks (ADR-0109 session-110 + session-127), keyed by
     // `PlaceBlock` so the header and the order read one vocabulary. The behind header
     // is deliberately NEUTRAL (ADR-0117 §3): it holds three outcomes — visited,
@@ -359,12 +477,14 @@ export const t = {
       // Number-then-unit via `measure` (ADR-0118): the numeral is the LTR island,
       // the Hebrew unit stays in the RTL flow, so the chip reads "9 ק״מ".
       meters: (m: number) => measure(m, 'מ׳'),
-      km: (km: number) => measure(km, 'ק״מ'),
+      // `string` as well as `number` since ADR-0212: past ⁦1,000 ק״מ⁩ the caller does the
+      // grouping, and `measure` has always taken either.
+      km: (km: number | string) => measure(km, 'ק״מ'),
       // Offline: you can't re-locate, so a number would be a stale claim.
       unavailable: 'מרחק לא זמין',
       prompt: {
         title: 'למיין לפי קרבה',
-        body: 'כדי להראות מה קרוב אליכם עכשיו נשתמש במיקום המכשיר. המיקום נשאר במכשיר ואינו משותף עם הקבוצה.',
+        body: 'כדי להראות מה קרוב אליכם עכשיו נשתמש במיקום המכשיר. המיקום נשאר במכשיר ולא נשלח לאף אחד.',
         allow: 'אפשר מיקום',
         notNow: 'לא עכשיו',
       },
@@ -441,11 +561,31 @@ export const t = {
     // are already looking at the map.
     frameOnPlace: 'התמקדות במקום הזה',
     frameAll: 'התאמת התצוגה לכל המקומות',
+    // **The compass, and the label says what the TAP DOES, not what the state is**
+    // (ADR-0234 §1). Three states, two actions: from north-up a tap starts following your
+    // heading, and from anywhere else it brings the map back. The label changes with the
+    // state, which is correct here and would be wrong on `באזור` — that control has visible
+    // text the label must not override (ADR-0126 §4), and this one has none but its needle.
+    orient: {
+      follow: 'סיבוב המפה לפי הכיוון שלכם',
+      north: 'החזרת המפה לצפון',
+      // The one thing the tap cannot deliver. Heading-up needs the device's orientation,
+      // which is a separate permission from the location one, and a refusal leaves the
+      // control doing its other job rather than leaving it dead.
+      denied: 'אין גישה לחיישן הכיוון · אפשר עדיין להחזיר את המפה לצפון',
+    },
     // The canvas card's own way out (ADR-0182's device pass). The card was already dismissible
     // three ways — a tap on blank canvas, system back, selecting something else — and none of
     // them is visible on it. Names the card, because `סגירה` alone sits beside a filter close
     // and a search close on the same screen.
     closeCard: 'סגירת כרטיס המקום',
+    // The other half of the same owner ask, built a year of sessions later (ADR-0122 §7's
+    // 2026-08-27 amendment): folding the card away leaves the place selected, its pin ringed
+    // and its amber leg drawn — so the words are about the CARD and never about the place.
+    // `כיווץ`/`פתיחה` rather than `הסתרה`/`הצגה`, because nothing is hidden: the card's
+    // identity row stays on screen and is what you tap to bring the rest back.
+    collapseCard: 'כיווץ כרטיס המקום',
+    expandCard: 'פתיחת כרטיס המקום',
     // The way-in block's one primary action (ADR-0135 §1): a place in the trip could only
     // ever be an idea, and nothing said "put this on Tuesday at 14:00". Names the verb, not
     // the schema — "event or booking?" is the app's question, not the traveller's.
@@ -474,6 +614,11 @@ export const t = {
       // shipped idiom the refs row already uses.
       more: 'עוד',
       back: 'חזרה לפרטי המקום',
+      // **The same word for a different move.** On the collapsed row `עוד` goes THROUGH to the
+      // expanded card; on a card that has nowhere to go it opens the clamped extract where it
+      // stands and `פחות` puts it back. One pair rather than a second vocabulary, because the
+      // reference block beside it already says `עוד`/`פחות` for exactly this (`map.refs`).
+      less: 'פחות',
       // The hero opens the full-screen zoomable preview (ADR-0062's one permitted zoom). Named
       // for what the tap does, since the picture itself carries no label.
       fullPicture: 'תמונה מלאה',
@@ -516,13 +661,18 @@ export const t = {
     dayProgress: (day: number, total: number) => `${day}/${total}`,
     todayShort: 'היום',
     backToToday: 'חזרה להיום',
+    // A finished trip's anchor (ADR-0240 §3): `לפני` over the trip's age, phrased by the
+    // one elapsed ladder (`formatDuration`), and `הסתיים · היום` on the last date itself.
+    agoCap: 'לפני',
+    endedCap: 'הסתיים',
+    endedToday: 'היום',
   },
   // Per-entity sync status (U-04, ADR-0080): the per-row SyncBadge, the header
   // failed-summary affordance, and the review/retry (dead-letter) sheet.
   sync: {
     badge: {
       synced: 'נשמר',
-      pending: 'ממתין לסנכרון',
+      pending: 'מחכה לסנכרון',
       failed: 'לא נשמר',
     },
     // Persistent header affordance — replaces the old timed failed badge. Never
@@ -541,8 +691,8 @@ export const t = {
       deleteMaybeItem: 'מחיקת רעיון',
       updateMaybeItem: 'עדכון רעיון',
       updateTrip: 'עדכון פרטי הטיול',
-      setMemberRole: 'עדכון הרשאות חבר',
-      removeMember: 'הסרת חבר',
+      setMemberRole: 'עדכון הרשאות נוסע',
+      removeMember: 'הסרת נוסע',
       deleteTrip: 'מחיקת הטיול',
       createBooking: 'הוספת הזמנה',
       updateBooking: 'עדכון הזמנה',
@@ -554,8 +704,13 @@ export const t = {
       createNote: 'כתיבת פתק',
       updateNote: 'עריכת פתק',
       deleteNote: 'מחיקת פתק',
+      createTask: 'הוספת משימה',
+      updateTask: 'עדכון משימה',
+      deleteTask: 'מחיקת משימה',
       createDocumentAttachment: 'צירוף מסמך',
       deleteDocumentAttachment: 'ביטול צירוף מסמך',
+      setTravelMode: 'שינוי אופן הנסיעה',
+      clearTravelMode: 'ביטול אופן הנסיעה',
       // `satisfies Record<OutboxVerb, string>`, not `as Record<string, string>`: this map is
       // read as `t.sync.verb[f.verb]`, so a verb missing from it renders a queued failure with
       // NO name — and the loose cast made that silent. Typed, a new outbox verb is a compile
@@ -563,12 +718,12 @@ export const t = {
     } satisfies Record<OutboxVerb, string>,
     review: {
       title: 'שינויים שלא נשמרו',
-      intro: 'השינויים האלה נדחו בסנכרון. אפשר לנסות שוב או להשליך.',
+      intro: 'השינויים האלה לא נשמרו בשרת. אפשר לנסות שוב או לזרוק.',
       reason: 'השרת דחה את השינוי',
       retry: 'נסו שוב',
-      discard: 'השליכו',
-      discardAll: 'השליכו הכל',
-      empty: 'אין שינויים שממתינים לטיפול.',
+      discard: 'לזרוק',
+      discardAll: 'לזרוק הכל',
+      empty: 'אין שינויים שמחכים.',
     },
   },
   placeholder: {
@@ -588,7 +743,10 @@ export const t = {
       nextPrefix: 'הבא:',
       pastCount: (n: number) => `${n} מהעבר`,
       emptyBookings: 'אין עדיין הזמנות',
+      // A finished trip's: `עדיין` promises bookings still to come.
+      noBookings: 'אין הזמנות',
       emptyDocuments: 'אין עדיין מסמכים',
+      noDocuments: 'אין מסמכים',
     },
     filter: {
       all: 'הכל',
@@ -607,15 +765,17 @@ export const t = {
       button: 'חיפוש הזמנות',
       modeTitle: 'חיפוש הזמנות',
       placeholder: 'חפשו לפי שם, קוד אישור או קטגוריה…',
-      clear: 'נקה חיפוש',
+      clear: 'ניקוי',
       backAria: 'סגירת חיפוש',
     },
     pastToggle: {
-      show: (n: number) => `הצג הזמנות מהעבר (${n})`,
+      show: (n: number) => `הצג ${n} מהעבר`,
       hide: 'הסתר הזמנות מהעבר',
     },
     bookingsTitle: 'הזמנות',
     offlineBadge: 'עובד אופליין',
+    // A finished trip's Index (ADR-0240 §6), on Trip's past-day banner.
+    archiveBanner: 'הטיול הסתיים · לקריאה בלבד',
     unlinked: 'לא משובצת במסלול',
     bookingType: {
       flight: 'טיסה',
@@ -687,7 +847,7 @@ export const t = {
       other: [],
     },
     emptyTitle: 'עוד אין הזמנות שמורות',
-    emptyBody: 'טיסות, לינה ושאר ההזמנות שלכם יופיעו כאן · ידנית או מיובאות אוטומטית מ-Gmail',
+    emptyBody: 'טיסות, לינה ושאר ההזמנות שלכם יופיעו כאן · שתוסיפו או שייכנסו לבד מ-Gmail',
     toast: {
       saved: 'ההזמנה נשמרה',
       savedQueued: 'יישמר כשנחזור לרשת',
@@ -696,15 +856,14 @@ export const t = {
     // Read-only booking detail view (ADR-0053): tap a booking → facts + a visible
     // edit button + a "⋯" menu (edit / delete).
     detail: {
-      // Imperatives, matching the event menus (ADR-0138 §6). These were the
-      // nouns עריכה/מחיקה while the very same actions on an event read ערוך/מחק —
-      // a menu item is something you tell the app to do, so the verb wins.
-      edit: 'ערוך',
+      // Verbal nouns, like every other control in the app (the register rule at the top of
+      // this file, which amended ADR-0138 §6). These were `ערוך`/`מחק` for one release.
+      edit: 'עריכה',
       actions: 'פעולות',
-      delete: 'מחק',
-      /** The verb the row's own `לא משובצת במסלול` was asking for (§7). */
-      schedule: 'שבץ במסלול',
-      reschedule: 'שנה שיבוץ',
+      delete: 'מחיקה',
+      /** The action the row's own `לא משובצת במסלול` was asking for (§7). */
+      schedule: 'שיבוץ במסלול',
+      reschedule: 'שינוי השיבוץ',
       /** The manage sheet's subject line, where the row says the long form. */
       isScheduled: 'משובצת במסלול',
       timing: 'מתי',
@@ -778,6 +937,54 @@ export const t = {
         activity: 'Klook · GetYourGuide',
         other: '',
       } satisfies Record<BookingType, string>,
+      // **The service's own number, and where you board it** (ADR-0222 §1). Two more
+      // `Record`s over the enum, for the reason `providerLabel` above already gives: a
+      // flight number IS a train number and a gate IS a platform, so one abstract word
+      // would be the vague option everywhere. Absent for the types that have neither.
+      numberLabel: {
+        car: '',
+        flight: 'מספר טיסה',
+        train: 'מספר הרכבת',
+        transit: 'מספר הקו',
+        hotel: '',
+        restaurant: '',
+        activity: '',
+        other: '',
+      } satisfies Record<BookingType, string>,
+      numberPlaceholder: {
+        car: '',
+        flight: 'LY315',
+        train: 'Hikari 503',
+        transit: '',
+        hotel: '',
+        restaurant: '',
+        activity: '',
+        other: '',
+      } satisfies Record<BookingType, string>,
+      gateLabel: {
+        car: '',
+        flight: 'שער',
+        train: 'רציף',
+        transit: 'רציף',
+        hotel: '',
+        restaurant: '',
+        activity: '',
+        other: '',
+      } satisfies Record<BookingType, string>,
+      gatePlaceholder: {
+        car: '',
+        flight: 'B7',
+        train: '14',
+        transit: '3',
+        hotel: '',
+        restaurant: '',
+        activity: '',
+        other: '',
+      } satisfies Record<BookingType, string>,
+      // What leaving it empty costs, said inline — `Field`'s `hint`, never a dialog
+      // (ADR-0109 §6's anti-nag rule). It is the one field on this step nobody fills in
+      // while booking, so the form says so instead of looking unfinished.
+      gateHint: 'בדרך כלל מתפרסם קרוב ליציאה · אפשר להשלים אחר כך',
       locationLabel: 'מיקום',
       roomLabel: 'חדר',
       notesLabel: 'הערות',
@@ -787,12 +994,12 @@ export const t = {
       wifiPassword: 'סיסמה',
       scheduledOn: (label: string) => `משובצת במסלול · ${label}`,
       notScheduled: 'לא משובצת במסלול · תזמון יתווסף בהמשך',
-      save: 'שמור',
-      cancel: 'בטל',
-      delete: 'מחק הזמנה זו',
+      save: 'שמירה',
+      cancel: 'ביטול',
+      delete: 'מחיקת ההזמנה',
     },
     form: {
-      add: 'הוסף הזמנה',
+      add: 'הזמנה חדשה',
       createTitle: 'הזמנה חדשה',
       originLabel: 'מוצא 📍',
       destLabel: 'יעד 📍',
@@ -823,6 +1030,20 @@ export const t = {
       stopLabel: 'עצירה 📍',
       stopShort: 'עצירה',
       addStop: 'עצירת ביניים',
+      /** **The way home's own route** (ADR-0203 §6). Reported from the field: a round trip's
+       *  stops "could be different stops and/or a different number of stops".
+       *
+       *  `אותה דרך` / `דרך אחרת` deliberately avoid the word `חזרה`, which already names the
+       *  section — the rejected text-offer variant had to say `חזרה לאותה דרך` and would have
+       *  used one word for two things in adjacent lines. */
+      returnRouteAria: 'דרך החזרה',
+      returnSameWay: 'אותה דרך',
+      returnOtherWay: 'דרך אחרת',
+      /** What a mirrored return IS, as a derived sentence rather than a control. */
+      returnMirrors: 'אותן עצירות, בסדר הפוך',
+      /** A return stop with no place cannot be flown to, scheduled or titled — the same
+       *  refusal the outbound's stops already make, at the same field. */
+      returnStopRequired: 'לכל עצירה בחזרה צריך מקום',
       // The direction control (ADR-0154 §4), offered on flight/train at create only.
       // Defaults to one-way: the control row costs 44px on every transport booking, and
       // the second leg a further 492px that only an explicit tap should buy.
@@ -916,9 +1137,9 @@ export const t = {
       linkedTitle: 'ההזמנה משובצת במסלול',
       linkedBody: 'יש אירוע במסלול שמסתמך על ההזמנה. מה לעשות?',
       hardNote: 'האירוע קשיח · מחויבות',
-      both: 'מחק את שניהם',
+      both: 'מחיקת שניהם',
       bothSub: 'ההזמנה והאירוע במסלול יימחקו',
-      unlink: 'בטל שיוך ושמור את האירוע',
+      unlink: 'ביטול השיוך · האירוע נשאר',
       unlinkSub: 'האירוע יישאר במסלול כרשומה ידנית',
       plainTitle: 'למחוק את ההזמנה?',
       plainBody: 'ההזמנה תוסר מהאינדקס.',
@@ -930,8 +1151,8 @@ export const t = {
         leg === 'out'
           ? `ה${LEG.out} יישאר בטיול. המחיקה כאן לא נוגעת בו.`
           : `ה${LEG.back} תישאר בטיול. המחיקה כאן לא נוגעת בה.`,
-      confirmDelete: 'מחק',
-      cancel: 'בטל',
+      confirmDelete: 'מחיקה',
+      cancel: 'ביטול',
     },
   },
   // פתקים (ADR-0152 / ADR-0153). `פתק` over the incumbent `הערות` — the group's own
@@ -956,6 +1177,8 @@ export const t = {
     tile: {
       latest: (author: string, text: string) => `${author}: ${text}`,
       empty: 'אין עדיין פתקים',
+      // A finished trip's, as `noBookings` is: notes are frozen after the trip (ADR-0239 §4).
+      none: 'אין פתקים',
     },
     add: 'פתק חדש',
     filter: {
@@ -1012,10 +1235,12 @@ export const t = {
     // The composer on a host's form (ADR-0152 §6b). No title field, no category, no second
     // save — one box, and a blank one writes nothing.
     composer: {
+      // **Still used by `DocumentUploadSheet` and `MapPlaceForm`**, which keep the composer in
+      // a `Field` of its own. The event and booking forms do not: ADR-0192 §2 folded their
+      // composer into the notes SECTION, so it is named by the section header and needs no
+      // label at all. `labelMore` ('פתק חדש · לא חובה') retired with the same change — it
+      // existed only because those forms rendered the word `פתקים` twice in a row.
       label: 'פתקים · לא חובה',
-      // On a form that ALSO lists the host's existing notes (editing an event), two headings
-      // reading `פתקים` one under the other is one heading twice — this box is the new one.
-      labelMore: 'פתק חדש · לא חובה',
       placeholder: 'משהו שכדאי לזכור על זה',
       another: 'פתק נוסף',
       add: 'פתק נוסף',
@@ -1031,10 +1256,35 @@ export const t = {
     open: {
       general: 'פתק כללי',
       edit: 'עריכה',
+      // **The way in to the note's own screen** (ADR-0202 §1). `תצוגה מלאה` and not the
+      // shorter `מסך מלא` the mockup drew: `FilePicker` already names this exact action
+      // `תצוגה מלאה: {name}` when it opens `MediaViewer`, and one meaning with two nouns is
+      // how a vocabulary drifts (ADR-0138's recurring finding). It costs ~22px more on an
+      // 11.5px line than the invented word did, which is what `row-open.css`'s truncation
+      // rule is there to absorb.
+      full: 'תצוגה מלאה',
       openLink: 'פתיחת הקישור',
       /** The accessible name for the way in, which the visible label (the host's own name)
        *  does not say on its own. */
       toHost: (name: string) => `מעבר אל ${name}`,
+    },
+    // **A clipped note that grows WHERE IT STANDS** (ADR-0235 §5) — the shared itinerary and
+    // nothing else, because it is the one surface with no app under it and therefore no full
+    // screen to open. Everywhere else a clipped note's control says `open.full` above, since
+    // the word has to say where you are going.
+    //
+    // The same two words `map.know.more`/`less` carry for the same move on the place card,
+    // repeated rather than imported: a public read-only page reaching into the Map's
+    // namespace for its copy is a dependency nobody would predict from either side.
+    clip: {
+      more: 'עוד',
+      less: 'פחות',
+    },
+    // The note's own screen (ADR-0202 §2). No title of its own beyond `notes.one` — the bar
+    // says what KIND of thing you are reading and the note's words say the rest, which is
+    // ADR-0153 §4's rule for the row one surface up.
+    full: {
+      backAria: 'חזרה מהפתק',
     },
     // The note section on a detail surface, where the body lives.
     section: {
@@ -1045,7 +1295,7 @@ export const t = {
     manage: {
       actions: 'פעולות על הפתק',
       edit: 'עריכה',
-      openHost: 'מעבר למה שהפתק מדבר עליו',
+      openHost: 'מעבר למה שהפתק שייך אליו',
       delete: 'מחיקה',
       deleteTitle: 'למחוק את הפתק?',
       // Says what is NOT harmed: the host outlives its notes, and a delete confirm that
@@ -1061,15 +1311,180 @@ export const t = {
       deleted: 'הפתק נמחק',
     },
   },
+  // Tasks (tasks brief, ADR-0188). **One noun — משימה** — for a manual task and, from phase
+  // 2, for a derived readiness check too: ADR-0152 §3's two-noun rule does not transfer,
+  // because it was bought by machine VOLUME and readiness has five closed checks.
+  tasks: {
+    title: 'משימות',
+    one: 'משימה',
+    add: 'משימה חדשה',
+    /** The tick's accessible name — a bare ✓ says nothing about which row it closes. */
+    tick: (title: string) => `סימון «${title}» כהושלמה`,
+    /** **A parent's leading element is a READ** (ADR-0196 §3), so it is named rather than
+     *  labelled as a control: a sighted reader gets the arc, a screen reader gets this. */
+    progress: (done: number, total: number) => `הושלמו ${done} מתוך ${total}`,
+    /** The mark on a host's row (ADR-0191). Named for a screen reader the way `NoteMark`
+     *  and `DocumentMark` are, so it is not a mystery glyph. It counts OPEN tasks. */
+    mark: (n: number) => (n === 1 ? 'משימה פתוחה אחת' : `${n} משימות פתוחות`),
+    /** A host's own tasks section (ADR-0191 §5) — `NoteSection`'s shape, its own words. */
+    section: {
+      title: 'משימות',
+      add: 'משימה',
+      empty: 'אין משימות',
+    },
+    head: {
+      count: (n: number) => (n === 1 ? 'משימה אחת' : `${n} משימות`),
+    },
+    subject: {
+      /** A real state and the default, never a missing value (brief §6). The word names the
+       *  state rather than claiming one — `של כולנו` belongs to phase 6's `everyone`, and
+       *  spending it here is what made a presumed default read as a false claim. */
+      group: 'לא משויך',
+      /** An automatic task's subject line (ADR-0188 §5). It states, once and above the
+       *  verbs that remain, why `עריכה` and `מחיקה` are not among them — an absence with a
+       *  reason over it is a behaviour; an absence with none is a bug. */
+      derived: 'מתעדכנת לבד לפי הטיול',
+    },
+    due: {
+      // ADR-0171's shipped deadline word, reused rather than re-invented.
+      by: 'עד',
+      // Overdue is a STATUS, so it takes `--miss` and its own word. The `·` is the app's
+      // separator; an em dash is never used in UI copy.
+      late: 'באיחור ·',
+    },
+    /** The Trip Home band (ADR-0188 §6). It says `today` rather than `tasks` because the
+     *  band is not the collection — the section is the subset that is due, and the tile is
+     *  where the collection lives. Absent entirely when nothing is due, so there is no empty
+     *  string to write here. */
+    band: {
+      /** `קרובות`, not `להיום` — the window is a week (`TASK_BAND_LOOKAHEAD_DAYS`), and a
+       *  section titled "today" listing something due Friday is simply wrong. */
+      title: 'משימות קרובות',
+      /** The section-title end, and it only appears when something is actually late. */
+      overdue: (n: number) => (n === 1 ? 'אחת באיחור' : `${n} באיחור`),
+      /** The overflow row into the tasks screen — one more row in the same card. */
+      more: (n: number) => (n === 1 ? 'עוד משימה אחת' : `עוד ${n} משימות`),
+    },
+    // The tile's one changing line: what is due soonest, with an overdue count when there is
+    // one (brief §13). A raw open-count barely moves and answers nothing.
+    tile: {
+      // Carries the deadline when there is one, and otherwise the row the tasks screen leads
+      // with — `הבאה` is true of both, which is why "open, none dated" needed no string of
+      // its own (`taskPreview.lead`).
+      next: (text: string) => `הבאה: ${text}`,
+      overdue: (n: number) => (n === 1 ? 'אחת באיחור' : `${n} באיחור`),
+      empty: 'אין משימות פתוחות',
+    },
+    filter: {
+      label: 'סינון משימות',
+      all: 'הכל',
+      mine: 'שלי',
+      // Done AND dismissed. One word for both, because what the reader wants is "the ones I
+      // am finished with" and the row itself says which kind it was.
+      settled: 'הושלמו',
+      // **Facet-neutral, and that is the whole requirement.** It was `הכל סגור` for a day,
+      // which is a claim rather than an empty state: with `הושלמו` picked and nothing settled
+      // it said "everything is closed" about a list of open tasks, and under `שלי` it spoke
+      // for other people's rows. One string serves three facets, so it may not describe any.
+      noResults: 'אין כלום כאן',
+    },
+    empty: {
+      title: 'עדיין אין משימות',
+      body: 'דברים שצריך לסגור לפני שממשיכים: להזמין, לאסוף, לשלם, לבדוק.',
+      action: 'משימה ראשונה',
+    },
+    // The editor. The title is the one required field — a task with no title is nothing —
+    // so it is the one refusal, and it marks the box that can cure it (ADR-0150).
+    sheet: {
+      createTitle: 'משימה חדשה',
+      editTitle: 'עריכת משימה',
+      titleLabel: 'מה צריך לעשות',
+      // Says what goes in the box, not what someone else wrote — the rule the NOTES form
+      // already settled (owner, 2026-08-02: "a sample note reads as content on a blank
+      // form"), which this form shipped without following. `להזמין את המסעדה` read as a
+      // task already typed. `אחד` earns its place: it is the model's own bound, since a task
+      // holding a checklist is a separate feature nobody has built.
+      titlePlaceholder: 'משהו אחד שצריך לעשות',
+      needsTitle: 'צריך לכתוב מה המשימה',
+      dueLabel: 'עד מתי · לא חובה',
+      addDate: 'הוספת תאריך',
+      addTime: 'הוספת שעה',
+      timeLabel: 'שעת יעד',
+      clearDue: 'ללא תאריך',
+      // **The second door** (ADR-0197 §7): the ask that appears under the deadline field the
+      // moment a deadline is on the draft, once per install, dismissible, never re-asked.
+      // A question rather than a claim, because taking it opens the platform's own prompt and
+      // this line must not promise what that prompt may refuse.
+      notifyAsk: {
+        text: 'שנזכיר לכם כשהמשימה תגיע?',
+        action: 'הפעלת התראות',
+      },
+      assigneeLabel: 'מי אחראי',
+      nobody: 'לא משויך',
+      bodyLabel: 'פרטים · לא חובה',
+      bodyPlaceholder: 'משהו שכדאי לדעת כדי לסגור את זה',
+      // Not inflected for `משימה`: this labels a mark, it does not describe the task.
+      importantLabel: 'חשוב',
+      save: 'שמירה',
+      cancel: 'ביטול',
+      /** **The checklist field, fourth in the form** (ADR-0196 §12) — after `מי אחראי` and
+       *  before `פרטים`. `· לא חובה` because the form marks its optional fields that way and
+       *  most tasks have no steps. */
+      subtasksLabel: 'תתי משימות · לא חובה',
+    },
+    /** **A task's own checklist** (ADR-0196). The word is `תת משימה` / `תתי משימות`, the
+     *  owner's call over the first draft's `משימות בפנים`: the ENTITY stays one noun (one
+     *  table, one row shape, one tick, one sort), and what that rule cannot do is name a
+     *  field inside a task's own editor, where `משימות` is ambiguous with the task being
+     *  edited. */
+    subtasks: {
+      /** The way in, in every open row's foot and in the editor's empty field. Present even
+       *  on a task with no steps — otherwise nothing could get its first one. */
+      add: 'תת משימה',
+      /** The composer's box. Says what goes in it, never a sample step — the rule the notes
+       *  form settled and this one follows. */
+      first: 'תת משימה ראשונה',
+      another: 'תת משימה נוספת',
+      remove: 'הסרת תת המשימה',
+      /** Who owes this step. The chip is a control, so it is named for a reader who cannot
+       *  see the face in it. */
+      assign: 'מי אחראי לתת המשימה',
+      /** Refused at the cap rather than silently truncated (`TASK_SUBTASK_CAP`). */
+      full: (n: number) => `אפשר עד ${n} תתי משימות במשימה אחת`,
+      /** **The parent's own tick** (ADR-0196 §3, reversed 2026-08-19). It is a control again,
+       *  so it is named for what pressing it does — and the fraction stays in the name,
+       *  because for a reader who cannot see the arc the name is the only place it was. */
+      tickAll: (title: string, done: number, total: number) =>
+        `סימון כל תתי המשימות של «${title}» · הושלמו ${done} מתוך ${total}`,
+      /** One press writes several rows, so it is confirmed once and undoable once. */
+      allTicked: (n: number) => (n === 1 ? 'תת משימה אחת סומנה' : `${n} תתי משימות סומנו`),
+      allReopened: (n: number) => (n === 1 ? 'תת משימה אחת הוחזרה' : `${n} תתי משימות הוחזרו`),
+    },
+    manage: {
+      actions: 'פעולות על המשימה',
+      edit: 'עריכה',
+      flag: 'סימון כחשוב',
+      unflag: 'ביטול הסימון כחשוב',
+      // Dismissing is not doing — it stopped mattering, which is the other outcome and not
+      // the absence of one.
+      dismiss: 'הסרה מהרשימה',
+      reopen: 'החזרה לרשימה',
+      delete: 'מחיקה',
+      deleteTitle: 'למחוק את המשימה?',
+      deleteBody: 'המשימה תיעלם אצל כולם.',
+      confirmDelete: 'מחיקה',
+      cancel: 'ביטול',
+    },
+  },
   docs: {
     title: 'מסמכים',
     encrypted: 'מוצפן',
-    add: 'הוסף מסמך',
+    add: 'מסמך חדש',
     loading: 'טוען מסמכים…',
     offline: 'המסמכים ייטענו כשנחזור לרשת',
     emptyTitle: 'אין עדיין מסמכים שמורים',
     emptyBody: 'דרכונים, כרטיסים וביטוח · מוצפנים ונשמרים בבטחה',
-    emptyAdd: 'העלה מסמך ראשון',
+    emptyAdd: 'העלאת מסמך ראשון',
     group: {
       passport: 'דרכונים',
       visa: 'ויזות',
@@ -1210,7 +1625,7 @@ export const t = {
       // that nobody would guess — the same service `index.search.placeholder` does with
       // `או קטגוריה`.
       placeholder: 'חפשו לפי שם או סוג…',
-      clear: 'נקה חיפוש',
+      clear: 'ניקוי',
       backAria: 'סגירת חיפוש',
       noResults: 'לא נמצאו מסמכים',
     },
@@ -1223,10 +1638,10 @@ export const t = {
       fileRequired: 'צריך לבחור קובץ',
       titleLabel: 'שם',
       titlePlaceholder: 'שם לזיהוי המסמך',
-      save: 'העלה',
+      save: 'העלאה',
       saving: 'מעלה…',
       queued: 'ממתין להעלאה',
-      cancel: 'בטל',
+      cancel: 'ביטול',
       saved: 'המסמך הועלה',
       failed: 'ההעלאה נכשלה, נסו שוב',
       tooLarge: (mb: number) => `הקובץ גדול מדי · עד ${mb}MB`,
@@ -1238,21 +1653,21 @@ export const t = {
       // system back and Escape, and none of them is labelled.
       loading: 'טוען ומפענח…',
       error: 'לא הצלחנו לפתוח את המסמך',
-      open: 'פתח בכרטיסייה',
+      open: 'פתיחה בכרטיסייה',
       download: 'הורדה',
     },
     // Per-row manage menu + optimistic-action toasts (ADR-0052).
     manage: {
       actions: 'פעולות',
-      // Imperatives, matching every other row menu (ADR-0138 §6).
-      edit: 'ערוך',
-      delete: 'מחק',
+      // Verbal nouns, matching every other row menu (the register rule, top of this file).
+      edit: 'עריכה',
+      delete: 'מחיקה',
       nameField: 'שם',
       save: 'שמירה',
       saved: 'המסמך עודכן',
       deleteTitle: 'למחוק את המסמך?',
-      deleteBody: 'הקובץ מוצפן ונמחק לצמיתות. אי אפשר לשחזר.',
-      deleteConfirm: 'מחק לצמיתות',
+      deleteBody: 'הקובץ נמחק לגמרי. אין דרך לשחזר אותו.',
+      deleteConfirm: 'מחיקה סופית',
       cancel: 'ביטול',
       deleted: 'המסמך נמחק',
       failed: 'הפעולה נכשלה, נסו שוב',
@@ -1325,7 +1740,7 @@ export const t = {
       teaserCountdownUnit: 'דקות',
       featBookings: 'כל ההזמנות, גם אופליין',
       featMap: 'הכל נעוץ על המפה',
-      featSync: 'כל החבורה מסונכרנת',
+      featSync: 'כולם רואים אותו דבר',
       continueWithGoogle: 'המשך עם Google',
       offline: 'צריך חיבור לרשת כדי להתחבר',
       note: 'כל אחד מתחבר עם החשבון האישי שלו.',
@@ -1336,14 +1751,14 @@ export const t = {
       connected: (email: string) => `מחובר · ${email}`,
       offSignal: 'אין שידור',
       boardOffTitle: 'הלוח עוד כבוי',
-      boardOffBody: 'טיול ראשון מדליק אותו - מה עכשיו, מה הבא, וכל ההזמנות של החבורה במקום אחד.',
+      boardOffBody: "טיול ראשון מדליק אותו - מה עכשיו, מה הבא, וכל ההזמנות של החבר'ה במקום אחד.",
       create: 'טיול חדש',
-      createSub: 'אתה זה שמארגן',
-      join: 'הצטרף עם לינק',
-      joinSub: 'קיבלת הזמנה מחבר',
-      joinToast: 'קיבלת לינק מחבר? פשוט פתח אותו - ותוך שנייה אתה בפנים',
+      createSub: 'כשאתם מארגנים',
+      join: 'הצטרפות עם לינק',
+      joinSub: 'קיבלתם לינק מחבר',
+      joinToast: 'קיבלתם לינק מחבר? פשוט פותחים אותו - ותוך שנייה אתם בפנים',
       offline: 'יצירה והצטרפות צריכות חיבור לרשת',
-      teach: 'בחבורה של חמישה, בדרך כלל אחד יוצר את הטיול - וכל השאר נכנסים עם הלינק שלו.',
+      teach: 'בדרך כלל אחד פותח את הטיול, וכל השאר נכנסים עם הלינק שלו.',
     },
     stub: {
       newTrip: 'טיול חדש',
@@ -1391,7 +1806,7 @@ export const t = {
       modePill: 'מצב תכנון',
       emoji: '🎉',
       title: 'יש טיול!',
-      sub: 'עכשיו הכי חשוב - להכניס את החבורה.',
+      sub: "עכשיו הכי חשוב - להכניס את החבר'ה.",
       inviteLabel: 'לינק הזמנה',
       invitePending: 'טוען לינק הזמנה…',
       inviteFailed: 'הלינק יהיה מוכן בהגדרות הטיול',
@@ -1410,18 +1825,19 @@ export const t = {
       skip: 'דילוג',
     },
     join: {
-      loading: 'טוען הזמנה…',
+      loading: 'טוען את הלינק…',
       // The pass's stamp (ADR-0143). Short enough to read inside a rotated stamp on a
       // dark ticket — a sentence would not fit and would not read as a stamp.
       stamp: 'מצטרפים',
       stampRefused: 'פג תוקף',
-      refusedTitle: 'ההזמנה כבר לא בתוקף',
+      refusedTitle: 'הלינק כבר לא בתוקף',
       invalid: 'הלינק הזה כבר לא בתוקף. אפשר לבקש מהחבר שישלח לינק חדש.',
       expired: 'הטיול הזה כבר הסתיים · הלינק כבר לא פעיל.',
-      offline: 'צריך חיבור לרשת כדי לטעון את ההזמנה',
+      offline: 'צריך חיבור לרשת כדי לטעון את הלינק',
       heroTitle: 'הוזמנת לטיול!',
-      ticketBadge: 'כרטיס הזמנה',
-      members: (count: number) => (count === 1 ? 'חבר אחד כבר בפנים' : `${count} חברים כבר בפנים`),
+      ticketBadge: 'הזמנה לטיול',
+      members: (count: number) =>
+        count === 1 ? 'נוסע אחד כבר בפנים' : `${count} נוסעים כבר בפנים`,
       membersSub: 'מחכים רק לך',
       joinButton: 'הצטרפות לטיול',
       joinError: 'ההצטרפות נכשלה · אפשר לנסות שוב',
@@ -1429,7 +1845,7 @@ export const t = {
       // renders the same refused pass, with the same words, as an invalid code — naming
       // the block would disclose a roster decision to someone who is no longer a member.
       // If this line ever comes back, that is the reason it should not.
-      note: 'תוך שנייה אתה בפנים · מתחברים עם החשבון האישי, והכול נפתח מיד',
+      note: 'תוך שנייה אתם בפנים · מתחברים עם החשבון האישי, והכול נפתח מיד',
     },
     switcher: {
       title: 'הטיולים שלך',
@@ -1440,8 +1856,14 @@ export const t = {
       sectionNow: 'עכשיו',
       sectionSoon: 'בקרוב',
       sectionPast: 'הסתיים',
+      // The lifetime line under `הסתיים` (ADR-0240 §7). Countries drop out, not to zero,
+      // when no finished trip names one.
+      lifeTrips: (n: number) => (n === 1 ? 'טיול אחד' : `${n} טיולים`),
+      lifeDays: (n: number) => (n === 1 ? 'יום אחד בדרך' : `${n} ימים בדרך`),
+      lifeCountries: (n: number) => (n === 1 ? 'מדינה אחת' : `${n} מדינות`),
+      // The anniversary card (ADR-0240 §7). The push says the same line (ADR-0241 §7).
+      anniversary: (years: number) => `לפני ${yearPhrase(years)} בדיוק`,
       chipSoon: (days: number) => countdownText(days),
-      chipPast: 'הסתיים',
       create: 'טיול חדש',
       offlineNote: 'מעבר בין טיולים שמורים עובד גם אופליין · יצירה צריכה חיבור',
     },
@@ -1467,19 +1889,61 @@ export const t = {
       // neighbour above says device — a row that inherited the theme's promise
       // would state the opposite of the truth.
       currencyLabel: 'מטבע',
-      currencyHint: 'המטבע נשמר בחשבון ומגיע איתכם לכל מכשיר · הוא הצד השני של כל המרה בטיול.',
+      currencyHint: 'המטבע נשמר בחשבון ומגיע איתכם לכל מכשיר · לפיו מחושבת כל המרה בטיול.',
       currencyUnset: '-',
       mapStorage: 'מפות אופליין',
       mapStorageSize: 'כל המפות',
       mapStorageClear: 'למחוק הכל',
       mapStorageWorld: 'מפת העולם',
-      mapStorageUnknownTrip: 'טיול שכבר אינו זמין',
+      mapStorageUnknownTrip: 'טיול שכבר לא קיים',
       mapStorageDelete: 'מחיקה',
       mapStorageDeleteTrip: (name: string) => `מחיקת ${name}`,
-      mapStorageHint: 'המפות הן מטמון במכשיר הזה · מחיקה לא מוחקת מקומות או פרטי טיול.',
+      mapStorageHint: 'המפות שמורות רק במכשיר הזה · מחיקה לא נוגעת במקומות או בפרטי הטיול.',
+      // The notifications section (ADR-0197 §7.1, ADR-0198 §6). TWO cards, because the
+      // device half and the preferences half have opposite persistence and ADR-0180 §2
+      // already settled that this means one hint per card.
+      notifications: 'התראות',
+      notifyLabel: 'קבלת התראות',
+      notifyDeviceHint: 'ההתראות נשמרות במכשיר הזה · בכל מכשיר צריך להפעיל אותן בנפרד.',
+      // The five states where there is no switch. A control that reliably does nothing is
+      // worse than no control, so each of these is a SENTENCE and the switch is absent.
+      notifyGranted: 'ההרשאה כבר ניתנה בדפדפן הזה · הפעלה כאן לא תשאל שוב.',
+      notifyDenied: 'חסמתם התראות מהאפליקציה הזאת · אפשר להחזיר רק מהגדרות הדפדפן, לא מכאן.',
+      // No pseudo-markup for the emphasis the mockup drew: a copy string that carries its
+      // own bold tags is a second templating language living in the i18n file, and the
+      // sentence carries itself. The gershayim are the app's own quoting convention
+      // (`נתב״ג`, `ק״מ`), not straight quotes.
+      // Shortened when the install surface arrived (ADR-0204 §6). It used to teach the
+      // share-sheet gesture here, in full, because this was the only place that could —
+      // and that made two places in the app explaining one gesture. Now it states the
+      // rule and points at the row directly below it, which is where the gesture is
+      // actually drawn.
+      notifyNeedsInstall:
+        'באייפון ההתראות עובדות רק כשהאפליקציה על מסך הבית · אפשר להתקין אותה בשורה שמתחת.',
+      notifyUnsupported: 'הדפדפן הזה לא יודע לקבל התראות · בכרום או בספארי זה יעבוד.',
+      notifyFailed: 'לא הצלחנו להפעיל התראות במכשיר הזה. אפשר לנסות שוב.',
+      notifyOff: '-',
+      notifyBlockedValue: 'כבוי בדפדפן',
+      // The categories card. Switches for phases A and B, and the anniversary's own
+      // (ADR-0239 §8) — and `notifyGroup` still
+      // absent, because a preference for a phase that may never ship is a promise and not a
+      // control (ADR-0198 §6, amended).
+      notifyTasksLabel: 'משימות ותזכורות',
+      notifyObligationsLabel: 'טיסות, לינה וזמנים',
+      notifyMemoriesLabel: 'זיכרונות מטיולים',
+      notifyPrefsHint: 'הבחירה נשמרת בחשבון ומגיעה איתכם לכל מכשיר.',
+      // The device list, which renders only when there IS another device.
+      notifyDevices: 'המכשירים שלי',
+      notifyDeviceHere: 'המכשיר הזה',
+      notifyDeviceNeverSent: 'עוד לא נשלח',
+      notifyDeviceLastSent: (when: string) => `נשלח לאחרונה ${when}`,
+      notifyDeviceRemove: 'הסרה',
+      notifyDeviceRemoveLabel: (name: string) => `הסרת ${name}`,
+      notifyDevicesHint: 'הסרת מכשיר מפסיקה לשלוח אליו · אם אבד לכם טלפון, זה המקום.',
       accountSection: 'החשבון',
       emailLabel: 'אימייל',
-      emailHint: 'האימייל מגיע מהחשבון שאיתו נכנסתם ואינו נערך כאן, כי הוא מזהה את החשבון.',
+      emailHint:
+        'האימייל מגיע מהחשבון שנכנסתם איתו, ואי אפשר לשנות אותו כאן - הוא מה שמזהה את החשבון.',
       saveFailed: 'השינוי לא נשמר. בדקו את החיבור ונסו שוב.',
       // The picture page — two states, so the ramp shows only when the colour is
       // what actually gets drawn (ADR-0133 §6).
@@ -1504,9 +1968,9 @@ export const t = {
         // A rejected pick is almost always "that file isn't a picture" — the size cap
         // is nearly unreachable once the phone re-encodes to a 512px square.
         uploadFailed: 'העלאת התמונה נכשלה. אפשר לנסות תמונה אחרת.',
-        notAnImage: 'הקובץ שנבחר אינו תמונה.',
-        removeHint: 'הסרה כאן היא ״לא להשתמש בה״, ולא מחיקה אצל גוגל, ולכן תמיד יש דרך חזרה.',
-        noPhotoHint: 'אין תמונה בחשבון גוגל שאיתו נכנסתם, ולכן מוצגות האותיות הראשונות.',
+        notAnImage: 'הקובץ שבחרתם הוא לא תמונה.',
+        removeHint: 'הסרה כאן רק מפסיקה להשתמש בה. בגוגל היא נשארת, אז תמיד אפשר לחזור.',
+        noPhotoHint: 'אין תמונה בחשבון הגוגל שנכנסתם איתו, אז מוצגות האותיות הראשונות.',
         uploadHint: 'התמונה נחתכת לריבוע ומוקטנת במכשיר לפני ההעלאה.',
         hueName: {
           plum: 'שזיף',
@@ -1525,11 +1989,122 @@ export const t = {
     nextLabel: 'הבא בתור',
     // The countdown's unit while a window is shutting (ADR-0184 §6) — the number is the
     // minutes left, so this says what they are left OF.
+    //
+    // **It sits BELOW the measure word, it does not replace it** (ADR-0206 §AR2). The tile spread
+    // `formatCountdown` and then overwrote its `unit` with this, so a shutting window read
+    // `15 · לסגירה` — a number with nothing saying what it counts. Same defect as `leaveIn`, and
+    // found by fixing that one.
     closesIn: 'לסגירה',
+    // **The same slot, pointed one step earlier** (ADR-0206 §Z1/§AA2). The board's one
+    // countdown swaps what it counts TO once leaving is the live question, and `לסגירה` is the
+    // precedent in grammar and in mechanism: a preposition plus the noun the minutes are left
+    // of. `לצאת` was the alternative and reads as an instruction where this is a measurement.
+    //
+    // **The referent, on its own line UNDER the measure** (ADR-0206 §AR2). It used to replace
+    // `formatCountdown`'s own word rather than join it, so the tile read `6 · ליציאה` and the owner
+    // asked the obvious question — _"6 what?"_. That is ADR-0208 §1's rule, which this arm had
+    // escaped: the slot carries the measure AND the referent, never one of the two.
+    leaveIn: 'ליציאה',
+    // **The same slot, pointed at the JOURNEY** (ADR-0206 §Z1's swap, a third time). Once a fix
+    // says you are on the leg, counting to a departure you have made is the wrong question and
+    // counting to the event says you have an hour when you have forty minutes of driving. So the
+    // tile counts what is left of the road, under the ladder's own measure word — `1:12 · שעות ·
+    // לדרך`. A preposition plus the noun the minutes are left OF, which is `closesIn`'s and
+    // `leaveIn`'s grammar rather than a third one.
+    toTravel: 'לדרך',
+    // **And when the arrival lands after the point's own start** (2026-09-20): `49 · דקות באיחור ·
+    // להגעה`. ADR-0208 §1's three-part slot with its third referent — how much, that it is
+    // lateness, and what for — where `leaveIn` names a departure and this names the arrival.
+    // **Still a claim about the NUMBER**, which is what `lateBy` below has always been: the fix
+    // knows where the device is, and `אתם מאחרים` would be a claim about the travellers, which
+    // ADR-0208 §Z5 M4 refuses whether or not there is a sensor.
+    lateToArrival: 'להגעה',
+    // **And once the leave-by has gone by: `15 · דקות באיחור · ליציאה`** (ADR-0208 §1). Two
+    // words were reported unclear here before this one, and each was missing a different half
+    // of the sentence. `מהיציאה` read as _measured from_ — "15, counted from the departure".
+    // Then a bare `באיחור` said the number was lateness and named nothing it was late FOR, so
+    // `15` could as easily have meant the event started a quarter of an hour ago.
+    //
+    // So the slot says all three parts: **how much** (the ladder's own word, below), **that it
+    // is lateness**, and **what for** — and the third is `leaveIn` above, reused verbatim,
+    // because the two arms are about the same departure and only differ on which side of it
+    // the clock is.
+    //
+    // **The measure word is the LADDER's, never a literal** — `formatCountdown` steps to `H:MM`
+    // past an hour, and a leg long enough to be an hour late is a drive, not a walk. A
+    // hardcoded `דק׳` would have labelled `1:20` as minutes.
+    //
+    // **Still a measurement, not the accusation §Z5 §M4 refused.** `אתם באיחור` is a claim
+    // about people, who may well be walking; this says what the NUMBER is — and by the time it
+    // can print, `בדרך`, a device fix and the plan's own claim have each had a chance to
+    // withdraw it (ADR-0207 §2, ADR-0208 §2).
+    lateBy: (unit: string) => `${unit} באיחור`,
     endOfDay: 'סוף היום',
+    /** **Where tomorrow ends up** (ADR-0214) — the only words the tomorrow strip carries, and
+     *  only when the bed actually moves (ADR-0209: a stay is named once, and the same bed is
+     *  already on the stay strip one surface up).
+     *
+     *  `לינה` is a noun about the PLAN. `ישנים` was refused by ADR-0211 §3 as a claim about a
+     *  person the app has no sensor for, and nothing about pointing at tomorrow changes that —
+     *  if anything it is weaker, since the claim would be about a night that has not happened. */
+    tomorrowSleeps: (stay: string) => `לינה · ${stay}`,
+    /** The way through from the LIFTED hero to the day itself (ADR-0214 §6). It exists there
+     *  and not on the collapsed board for a mechanical reason rather than a hierarchy one: the
+     *  board is a `<button>` and ADR-0160 §4 is the record of what a nested one does to it. */
+    tomorrowDay: 'ליום של מחר',
+    /** **WHAT THE NOW-SLOT SAYS WHEN NOTHING IS RUNNING** (ADR-0211), keyed by
+     *  `GapCharacter`. A `Record<…>`, so the compiler flags a missing case when that union
+     *  grows (`frontend/CLAUDE.md`'s per-enum-lookup rule) — a sixth character has to say
+     *  what it prints or the build stops.
+     *
+     *  **`open` reuses `freeLabel`/`freeTitle` above rather than restating them**, because
+     *  the gap that really is a gap is the one case `זמן חופשי` was always right about, and a
+     *  second copy of the phrase is how the board and the lifted hero would start disagreeing
+     *  about it (root rule 8). Same for `day-done`, which reads `endOfDay` — the words the
+     *  `הבא בתור` slot has always used for this.
+     *
+     *  **`at-the-stay` has no title here on purpose.** Its title is the stay's own NAME, which
+     *  is data. What it does carry is the two band words, and they are claims about the HOUR
+     *  rather than about the person (ADR-0208): `ישנים` would say what you are doing, and the
+     *  app has no sensor for that. */
+    gap: {
+      onTheWay: { label: 'כרגע', title: 'בדרך' },
+      // **The state just before that one** (the 2026-09-15 amendment to ADR-0211 §8): the
+      // leave-by has gone by and nobody has said `בדרך` yet, so the board was printing
+      // `פנוי · זמן חופשי` over its own red `12 דקות באיחור ליציאה`. The label is `onTheWay`'s
+      // on purpose — one word, and the title moves from the question to the answer the moment
+      // somebody presses the mark.
+      //
+      // **`זמן לצאת` is a claim about the CLOCK, which is what lets it print at all.**
+      // `אתם באיחור` and `יוצאים` are claims about people and stay refused (ADR-0208 §Z5 M4);
+      // `זמן היציאה עבר` is already the journey line's sentence two rows down, and this slot
+      // takes a noun phrase rather than a third printing of one fact.
+      dueOut: { label: 'כרגע', title: 'זמן לצאת' },
+      // **The state after `on-the-way`, and the one the app could never say** (2026-09-20): a
+      // fix at the next stop, before its clock. `הגענו` is `settleWords.arrival` — what the day
+      // row's settle control already calls an edge you made — rather than a new word for a new
+      // state, and it is a claim a position actually backs, which is the whole test ADR-0208
+      // applies to this slot. `כאן` and `במקום` were the alternatives: the first says where
+      // without saying that anything happened, and the second reads as an instruction.
+      //
+      // **No meta line under it.** The next row says `17:30` ⁦40px⁩ lower and the tile counts to
+      // it, so `מתחיל ב־17:30` in the title's own meta prints one clock twice — the duplication
+      // ADR-0214 §3 removed from this card once already.
+      arrived: { label: 'כרגע', title: 'הגענו' },
+      // **The two band words, and they belong to the HOUR rather than to the stay** — which is
+      // why the key is `band` since the 2026-09-01 amendment to ADR-0211 and no longer
+      // `atTheStay`. `open` spends them too: at ⁦01:12⁩ on a night the plan gave no bed, the
+      // label read `פנוי` over `זמן חופשי`, which is a claim about a day that has not started.
+      band: { night: 'לילה', morning: 'בוקר' },
+      dayDone: { label: 'היום' },
+      emptyDay: { label: 'היום', title: 'יום פנוי' },
+    },
     // Concurrency on the board (ADR-0041): the "ועוד N עכשיו" expander for extra
     // in-progress events, and the group-split header when several run at once.
     alsoNow: (n: number) => `ועוד ${n} עכשיו`,
+    // The next STOP's other places, when there are several (ADR-0225 §6): `בו-זמנית · ועוד 2`.
+    // One peer is named instead; `ועוד 1` would hide the one thing the line exists to say.
+    peersMore: (n: number) => `ועוד ${n}`,
     concurrentNow: 'עכשיו · במקביל',
     // **The middle of a bracketed span, by mode** (ADR-0059 §2's mid-span, generalized in
     // session 215). Keyed by `CategoryTimeProfile.midSpan`, resolved through
@@ -1575,18 +2150,296 @@ export const t = {
   // them. `הבא בתור`, `עד`, `עכשיו · במקביל`, `קשיח`/`גמיש`, `היינו`/`דילגנו` are
   // NOT here — the lifted hero reads the board's and the settle control's own words,
   // which is what keeps one surface from renaming a thing the other already names.
+  // **The three travel modes, as words** (ADR-0206). Top level rather than under `hero`, because
+  // the hero's line, M6a's journey block and M8's mode control all name the same three things and
+  // a second copy is how they start disagreeing (root rule 8).
+  //
+  // **The mode LEADS a travel line, and that is §D10 rather than decoration.** `~23 דקות הליכה`
+  // and `שעה הליכה` disagree in a way the phrase does not expose, and ADR-0159 §1 dodged the
+  // identical problem by leading with the noun (`פנוי · 2:40 שע׳`) — so `הליכה · ~23 דק׳`. It is
+  // also what makes the number legible: 40 minutes is a different fact walking and driving.
+  // Drawn that way in the M3 mockup's §1d.
+  //
+  // A `Record<LegTravelMode, string>`, so the compiler flags a missing case when the enum grows
+  // (`frontend/CLAUDE.md`'s per-enum-lookup rule). These are the WORDS, not the control: §AA3
+  // gives the chips three real icons and M6a/M8 own those.
+  // **THE ACTIVITY, NEVER THE VEHICLE** (owner, 2026-08-26: _"it says רכב/הליכה · maybe it should
+  // be changed to נסיעה?"_). Every call site uses these as the noun LEADING a duration —
+  // `נסיעה · ~44 דק׳` on the day's journey block, the lifted hero's line, the Map — which is
+  // §D10's agreement dodge, and the noun therefore has to name the thing being measured. Two of
+  // the three named the OBJECT instead (`אופניים` is bicycles, `רכב` is a vehicle), so the set
+  // mixed "walking" with "car" and only the walk read as a length of time. A fourth mode joins as
+  // a gerund or it will read as an inventory.
+  travelMode: {
+    walking: 'הליכה',
+    cycling: 'רכיבה',
+    driving: 'נסיעה',
+    // **The fourth is a leg's mode and not a routable one** (ADR-0206 §AA4/§AM5). This is the ONE
+    // `Record<…>` of the three that widens: `TRAVEL_GATE` and the provider's `COSTING` keep three
+    // entries, because a transit mode reaching either of those is the bug. Here it just needs a
+    // word.
+    transit: 'תחב״צ',
+  } satisfies Record<LegTravelMode, string>,
+  // ── WHAT A JOURNEY SAYS, ON EITHER ELEVATION (ADR-0206 §V1.2 / §V1.3 / §V1.4) ─────────
+  // Top level beside `travelMode`, and for the identical reason: the horizon's line, the day's
+  // journey block and the board all name one journey, so a second copy of `זמן היציאה עבר` is
+  // how they start describing it differently (root rule 8). These four lived under `hero` while
+  // the hero was the only surface that had them; M6a is the second, which is the moment they
+  // move rather than get copied.
+  travel: {
+    // The clock arrives already isolated: `18:37` is a digit run inside Hebrew, and the maqaf
+    // before it is a strong RTL character, so the run needs the isolate its caller gives it
+    // (ADR-0118).
+    //
+    // **Two forms, because the two elevations are asking different things.** The hero is the
+    // live surface and speaks to you — `צאו ב־18:37`, an instruction. The day list is a
+    // schedule, and most of its holes are not the one you are standing in: an imperative on
+    // every hole of the day would be the app telling you to leave four times before breakfast.
+    // So the day's form is the NOUN (`יציאה 18:37`), which is §D10's own dodge again and reads
+    // as a fact wherever it lands.
+    leaveAt: (clock: string) => `צאו ב־${clock}`,
+    leaveAtDay: (clock: string) => `יציאה ${clock}`,
+    // **What a passed leave-by may claim, and it is only this** (§Z5 §M4): the time has gone
+    // by. Never `אתם באיחור` — the app has no sensor and a settle mark is not one, so a claim
+    // about where a person is would be a claim it cannot stand behind (§D5 applied to a
+    // sentence rather than to a number). ADR-0208 §1 lets the countdown TILE carry `באיחור` in
+    // its unit slot, where it labels a number rather than a person; this sentence is unchanged.
+    leavePassed: (clock: string) => `זמן היציאה עבר ב־${clock}`,
+    // **The one thing a fix lets the app say that the clock could not** (ADR-0207 §2). A passed
+    // leave-by was a claim about a clock; with a position at the leg's first stop it becomes one
+    // the app has actually checked, and this is that check said out loud. Drawn in the v2
+    // mockup's §3d. It is still not `אתם באיחור` — it reports where you are, not what you are.
+    stillHere: 'עדיין כאן',
+    // **WHAT A DECLARED תחב״צ LEG SAYS** (ADR-0206 §AA4/§AL3). It names exactly what is absent and
+    // promises nothing — no `עדיין`, no `טרם` — because the one thing §D9's original caution still
+    // forbids is implying a transit ETA is coming. **It carries no `warn` glyph**, deliberately:
+    // §AK claims that mark for "this journey does not fit", and two meanings on one block in one
+    // release is the drift ADR-0138 exists to end. The absent duration is the statement; this only
+    // labels the absence so it does not read as data that failed to load.
+    noEstimate: 'בלי הערכת זמן',
+    // **WHAT A MODE THE GATE REFUSES SAYS** (ADR-0206 §AM10). Deliberately NOT `noEstimate` above,
+    // which reads as "we are not estimating this" — a statement about us. This is a statement about
+    // the leg: the distance is past what that mode admits, so nothing is coming and the fix is to
+    // pick another mode. It names the mode, because a hole showing four chips has to say which one
+    // it means. A middle dot separates the two facts, never an em dash (root CLAUDE.md).
+    tooFarFor: (mode: string) => `רחוק מדי ל${mode}`,
+    // **WHAT A LEG STILL BEING COMPUTED SAYS** (ADR-0206 §AU1). Deliberately none of the three
+    // sentences above: `noEstimate` says we are not estimating this, `tooFarFor` says it cannot be
+    // done, and both are permanent. This one is temporary and says so — present tense, with the
+    // three dots that are the only thing in the phrase promising anything.
+    //
+    // **`מחשב` and not `טוען`.** Nothing is being fetched from anywhere the reader can picture; a
+    // route is being worked out, which is what the app is actually doing and the word people use
+    // for it. And no `~`: §D5's hedge belongs on a NUMBER, and there is no number here yet.
+    computing: 'מחשב מסלול…',
+    // **WHAT A JOURNEY UNDER THE LADDER'S FLOOR SAYS** (ADR-0206 §AW). The fourth of these
+    // sentences and the only one that is not about an absence: the app has the number, and
+    // ADR-0114's minutes rung has no rung for ⁦12⁩ seconds. So it says the length in the one form
+    // that is available — a bound — rather than borrowing `noEstimate`, which would claim we never
+    // measured it, or printing `~0 דק׳`, which is the value this whole floor exists to refuse.
+    // No `~`: §D5's hedge belongs on a number, and `פחות` is already the hedge.
+    underMinute: 'פחות מדקה',
+    // What is LEFT of the journey, once the fix says you are on it (ADR-0207 §6). An
+    // approximation of an approximation, and `~` is what says so; the alternative was the
+    // untouched total, which read as "44 minutes still to walk" two minutes from the door.
+    remaining: (duration: string) => `נותרו ${duration}`,
+    // **§V1.1's correction, said in the day's own slot** — and said the way somebody would say it
+    // (owner, 2026-08-26: _"פנוי לפני X דקות is bad Hebrew · I'm not even sure what you meant to
+    // say"_). It meant "of this hole, X is actually yours; the rest is the walk", and it reached
+    // for `לפני` because the journey sits at the END of the hole — which is a fact about the
+    // SHAPE of the slot that no reader was asking for, wrapped in a phrase that reads as "free
+    // 46 minutes ago". Which side is free is answered by the `יציאה 14:11` beside it anyway.
+    //
+    // **The agreement is composed rather than dodged** (`freeTimePhrase`, `lib/duration.ts`).
+    // Every other length in this app is noun-led precisely to avoid it — `פנוי · 2:40 שע׳` —
+    // but here the natural word order puts the number first, and the ladder has exactly two
+    // singular rungs (`שעה`, one minute) so agreeing costs three lines and buys `שעה פנויה`
+    // instead of `שעה פנויות`. Reuse it; do not inline the plural.
+    freeTime: (length: string) => `${length} פנויות`,
+    freeTimeOneMinute: 'דקה פנויה',
+    freeTimeOneHour: 'שעה פנויה',
+    // **WHEN YOU WILL GET THERE, WHERE THE APP MAY NOT SAY WHEN TO LEAVE** (ADR-0206 §AI).
+    //
+    // A check-in window's `17:00` is the hour the door OPENS, so counting back from it invents a
+    // deadline nobody set — and a departure that lands inside the row it leaves from is one you
+    // could not have made. In both cases the arrival is what the app can stand behind: when you
+    // can go, plus the leg.
+    //
+    // **Hedged, and the `~` is inside the isolate** — it is derived from an estimate, so it owes
+    // the same admission `approxDuration` makes about a duration (§D5). The clock arrives already
+    // isolated from the caller (ADR-0118).
+    arriveAt: (clock: string) => `הגעה ${clock}`,
+    /** **Where a spanning leg leaves from** (ADR-0232 R3) — said only where the row above the
+     *  block is not its origin, because then the block reads as a drive FROM that row. Bound the
+     *  way Hebrew binds a one-letter prefix (`bindPrefix`): `מ-Nettó Hofn`, `מארוחת צהריים`. The
+     *  name arrives already isolated from the caller (ADR-0118). */
+    from: (origin: string) => bindPrefix('מ', origin),
+    // **AND BOTH, WHERE THERE IS A DEADLINE BUT NO SLACK** (§AJ2). The
+    // departure is the origin's own end — go the moment you are done — and the arrival is why that
+    // matters: `יציאה 14:00 · הגעה ~14:58` in front of a ⁦15:00⁩ start says "leave now and you only
+    // just make it" in one line. Two nouns, the row's own voice, and the `·` the app separates
+    // peer facts with.
+    //
+    // **It is what answers the owner's _"why does it sometimes say יציאה and some other times
+    // הגעה"_.** The two words were serving three situations: no deadline at all, a window, and a
+    // leg with no slack — the last of which is a warning and read exactly like the first, which is
+    // reassurance. Now `יציאה` means the app has a deadline to advise against and `הגעה` alone
+    // means it has none, which is a difference a reader can act on.
+    //
+    // Measured before it was written: ⁦140.06px⁩ of ink in the meta line's ⁦206.95px⁩ box at 360, so it
+    // does not clip — and the widest sentence already shipping in that slot is ⁦171px⁩.
+    leaveThenArrive: (leave: string, arrive: string) => `יציאה ${leave} · הגעה ${arrive}`,
+    /**
+     * **THE SAME TWO SENTENCES, FOR THE INSTANT THAT IS A CEILING** (owner, 2026-08-31:
+     * _"when there's a gap before a journey, it could show `יציאה עד X`"_).
+     *
+     * `leaveByMs` is `arriveByMs - travel - buffer`, i.e. ADR-0171's `not-after` — and `עד`
+     * is the word this app already prints for that meaning (`t.day.untilTime` two blocks up).
+     * The pair above stays, because §AJ2's clamp turns the same field into a FLOOR whenever
+     * the buffer lands behind the row you leave from, and there the earlier form is the true
+     * one. `DayJourney.leaveByIsFloor` picks between them.
+     *
+     * Measured in `free-time-comes-before-the-leave-by-v1.html` §5: the word costs ⁦15px⁩ of
+     * ink (⁦70px⁩ against ⁦55px⁩) in a ⁦165px⁩ box at 360 — well inside the ⁦153.03px⁩ ADR-0206
+     * §AH4 had to shorten these lines to.
+     *
+     * The hero keeps `leaveAt` and gains nothing: it speaks in the imperative to somebody
+     * standing in the hole (`צאו ב־18:37`), and `צאו עד` is a different sentence with a
+     * different posture — §D10's noun-vs-instruction split, unchanged.
+     */
+    leaveByDay: (clock: string) => `יציאה עד ${clock}`,
+    leaveByThenArrive: (leave: string, arrive: string) => `יציאה עד ${leave} · הגעה ${arrive}`,
+    // …and the one warning nobody can currently be given at plan time: `hero-booking.ts` computes
+    // `missed` off the CLOCK, once it is already too late. This is the same fact predicted, on the
+    // surface that holds the plan, readable at breakfast.
+    arriveAfterClose: (clock: string) => `הגעה ${clock} · אחרי סגירת החלון`,
+    // **A LEG THAT DOES NOT FIT STILL LANDS SOMEWHERE** (ADR-0206 §AS5). The shortfall says how
+    // much has to move; it does not say when you would actually get there, and those are different
+    // questions when you are deciding what to cut. Reported off the deploy: _"I see the
+    // חסרות 8 דקות לדרך row doesn't show the (late) arrival time. We'd want to know how late we
+    // arrive, no?"_
+    //
+    // **The arrival here is the earliest one that exists** — you leave the instant the row above
+    // frees you, because on this arm there is no departure to advise (`leaveByMs` is null and the
+    // clamp already pulled it to the origin's own end). So it is a prediction the app can stand
+    // behind rather than the best case of advice nobody can follow.
+    overrunThenArrive: (shortfall: string, clock: string) => `${shortfall} · הגעה ${clock}`,
+    // **THE LEG THAT DOES NOT FIT** (ADR-0206 §V1.1's third `fit`, drawn in
+    // `where-a-route-shows-up-v1.html` §2's `tight` state). `freeAfterTravel` has answered
+    // `overruns` since M2 and nothing rendered it, so a 78-minute walk into a 60-minute hole read
+    // `פנוי לפני 0 דק׳` — which is not a small amount of free time, it is a journey nobody can
+    // make. It says the SHORTFALL, because that is the number you act on: how much has to move.
+    //
+    // Noun-led like every other line here (§D10), and no `~` on the shortfall: the estimate is
+    // hedged and the arithmetic on it is not, so hedging twice would be theatre. The one hedge is
+    // already on the duration beside it.
+    //
+    // **The wording is the owner's correction, the length is the measured constraint**
+    // (2026-08-26: _"`הדרך ארוכה מהפער ב X דקות` is also bad phrasing · maybe `הדרך ארוכה ב-X
+    // דקות מהזמן שיש לנו`"_). Their version is right about what was wrong — `ארוכה מהפער ב־`
+    // stacks two prepositions and asks the reader to hold `פער` in their head to parse it — and
+    // it is **41 characters** where the meta line has ⁦180px⁩ of box at 360px, so it ellipsises on
+    // the one arm that matters. `חסרות 18 דק׳ לדרך` says the same thing in half of it and leads
+    // with the number you act on. **The word `פער` is gone from the sentence** and nothing is
+    // lost: what the journey is longer than is the hole it is drawn inside.
+    shortfall: (length: string) => `חסרות ${length} לדרך`,
+    // Agreement again, and only the hour rung needs it — the tolerance in
+    // `TRAVEL_FIT_TOLERANCE_SECONDS` means a shortfall never rounds below two minutes.
+    shortfallOneHour: 'חסרה שעה לדרך',
+    // **And when there is no gap at all, nothing is said.** `אין זמן לדרך` stood here from
+    // 2026-08-26 to 2026-09-16 and was retired on the owner's call — _"doesn't add any information
+    // + is actually confusing"_. It repeated three things the block already shows (the strip's
+    // absent free time, the head's duration, the `--miss` tone and mark) and had fired falsely
+    // three times against windows it misread (ADR-0206 §AJ1, ADR-0232 §8). The arm keeps its
+    // arrival alone where it lands somewhere (§AS5).
+    // ── THE DAY'S OWN VERDICT (ADR-0206 §V1.7 / §AN) ──────────────────────────────────
+    //
+    // **Plan mode only, and that is a posture difference rather than a disagreement about a
+    // fact** (ADR-0159 §1): a day-level verdict in Trip mode is a verdict on a day you are
+    // already living, where every leg's own row is the useful scope. The words are here rather
+    // than under `planDay` because they are about travel and `lib/duration.ts` composes them
+    // beside `shortfall` above.
+    //
+    // **It must read as help, not refusal** — ADR-0206's own Consequence, and the copy is where
+    // that is won or lost. So the subject is the JOURNEYS and never the planner: `לא נכנסות`
+    // is a fact about how long the roads take, where anything shaped like `היום עמוס מדי` is
+    // the app having an opinion about somebody's holiday.
+    //
+    // Two lines and not one, because they answer different questions — how many there are, and
+    // how much has to move — and only the second is a number a leg's own row can also say.
+    // Hebrew makes the verb agree with a count the phrase would otherwise have to expose, so
+    // this takes the same three-rung dodge `planDay.gapHour`/`gapTwoHours`/`gapHours` does.
+    //
+    // **`ביום` and `בסך הכול` were drawn and then cut** (2026-08-27, measured on the mockup's
+    // §5): with both, the row is ⁦314.9px⁩ of ink in a ⁦308px⁩ box at 360 and the count loses its
+    // end. Neither word carries anything the reader cannot recover — the row is inside the day,
+    // and a count beside a duration is already a sum — and what they cost is the measurement.
+    dayInfeasibleOne: 'דרך אחת לא נכנסת',
+    dayInfeasibleTwo: 'שתי דרכים לא נכנסות',
+    dayInfeasible: (n: string) => `${n} דרכים לא נכנסות`,
+    // The sum, on ADR-0114's one ladder like every other duration here. Deliberately the same
+    // opening word as the leg's `חסרות X לדרך`: one scope up, same fact, and a reader who has
+    // seen one should not have to learn a second vocabulary for the other.
+    dayShortfall: (length: string) => `חסרות ${length}`,
+    dayShortfallOneHour: 'חסרה שעה',
+    // ── HOW FAR THE DAY GOES (ADR-0206 §V1.9, amended §AP) ────────────────────────────
+    //
+    // **No mode word, and that is a correction rather than a trim.** §V1.9 was written
+    // `3.2 ק״מ · 48 דק׳ הליכה` on 2026-08-24, when a trip had one mode; M8b made the mode per-leg
+    // three days later, so on a real day — walk to the station, declared תחב״צ to the next town,
+    // drive the last stretch — `הליכה` names one leg of three and is simply false about the other
+    // two. There is no true word to put there, because the day has no single mode.
+    //
+    // **And the minutes are hedged where the kilometres are not**, which is §D5 doing exactly the
+    // job it was written for: the two halves do not cover the same legs (a declared leg keeps its
+    // distance and has no duration, §AA4/§AM6), so the `~` is what says this counts what could be
+    // counted. `approxTravelTime` owns it, along with the exact-hour rungs that take `כ` instead.
+    //
+    // Both halves are noun-led, so nothing has to agree with a number the phrase does not expose
+    // (ADR-0159 §1's dodge, root `CLAUDE.md`'s separator).
+    dayTotal: (distance: string, duration: string) => `${distance} · ${duration}`,
+    // **AND WHEN THE TOTAL IS A FLOOR** (ADR-0206 §AT2). A hole with an end nobody placed is a leg
+    // this app can never measure, so it is missing from both halves — and a total that covers three
+    // of five hops while reading as the day's whole travel is §D4's own "the reader must not be
+    // able to tell" failing in the direction that matters: it does not look absent, it looks wrong.
+    //
+    // One word, wrapping whatever the line already is, so the half-line case (a day of declared
+    // legs, distance alone) needs no second string and cannot drift from this one. `לפחות` is true
+    // of both halves at once, which is why it leads rather than trailing as a qualifier: the
+    // kilometres and the minutes are each a floor, and a tag at the end would attach to the minutes.
+    dayTotalFloor: (line: string) => `לפחות ${line}`,
+  },
   hero: {
     title: 'עכשיו והבא בתור',
     close: 'סגירה',
     where: 'איפה',
     note: 'פתק',
+    /** **The settle block's own label** (ADR-0224 §6), and the render is what asked for it:
+     *  every other block on this card is labelled and `Settle` was not — fine on the lead
+     *  point, where it follows prose, and not in `הבא בתור`, where it lands directly under a
+     *  row of hand-off chips and reads as a third row of them. Measured at 19px.
+     *
+     *  Edge-neutral on purpose: the pair beneath already says which transition it is asking
+     *  about (`יצאנו` / `נחתנו`), so a per-edge question would print that fact twice. */
+    settleAsk: 'כבר קרה?',
     then: 'אחר כך',
     onMap: 'במפה',
     navigate: 'ניווט',
     toBooking: 'להזמנה',
     // The hero shows ONE note and says how many it is not showing, so a group that
     // wrote three does not read as a group that wrote one.
-    moreNotes: (n: number) => `ועוד ${n} פתקים`,
+    //
+    // **`1` is its own word in Hebrew** and both of these read it constantly: the note block
+    // still shows one, so two notes is the common case and `ועוד 1 פתקים` was the common
+    // string. It went unnoticed until the task cap rose to three and made the remainder-of-one
+    // visible in a screenshot. `t.tasks.mark` already inflects this way — same fix, same shape.
+    moreNotes: (n: number) => (n === 1 ? 'ועוד פתק אחד' : `ועוד ${n} פתקים`),
+    // The fourth content type (ADR-0160 §U). **Plural since 2026-08-16** (owner: _"lifted hero
+    // writes משימה and not משימות"_), because the block stopped being one row: it shows up to
+    // `HERO_TASK_CAP` and this is the section's NOUN, exactly as `פתקים` is on a host surface —
+    // a label naming a list does not inflect to the length of the list it happens to have.
+    task: 'משימות',
+    moreTasks: (n: number) => (n === 1 ? 'ועוד משימה אחת' : `ועוד ${n} משימות`),
   },
   // Real, offline-safe shortcuts only (ADR-0045): next confirmation code, WiFi,
   // documents. Empty tiles are an "add" affordance; documents stays a fixture
@@ -1605,6 +2458,66 @@ export const t = {
   // Money (ADR-0180). `מבט מהיר` is the SECTION ADR-0045 removed for holding
   // fixtures and promised back "as their own glance cards" — this is that return,
   // so the title is the original words and not a new heading.
+  // **Daylight** (design brief 2026-09-02). No em dashes: the golden-hour range
+  // uses an en dash INSIDE an isolated LTR run, which is a numeric range rather
+  // than UI punctuation, and the separator between peer facts is the app's `·`.
+  sun: {
+    // NO GLYPHS HERE, and their absence is the decision (owner, 2026-09-02).
+    // The first build kept 🌅 🌇 ✨ ☀️ 🌑 in this block, filed as content. They
+    // are chrome the app DRAWS — nothing behind them is an entity — so they are
+    // icons, and `ui/domain/SunGlyph.tsx` draws them. The two strings below used
+    // to open with one apiece, which ADR-0138 names as the shape to avoid: a
+    // mark baked into a copy string can only ever BE an emoji, so the string
+    // gives it up and the call site renders the icon.
+    golden: 'זהב',
+    // The half-open arm: above the polar circles the sun can enter golden hour
+    // and never leave it, so this says the range is open rather than printing a
+    // second time that does not exist.
+    goldenFrom: 'זהב מ־',
+    polarDay: 'השמש לא שוקעת היום',
+    polarNight: 'השמש לא זורחת היום',
+  },
+  // The forecast (ADR-0218). **No glyphs here, and their absence is NOT the same call the `sun`
+  // block above makes.** The sun's marks are chrome the app draws, so they left the copy and
+  // became `SunGlyph`. A condition is a fact MET Norway computed and this app merely holds, so it
+  // stays an emoji — but it is looked up from `symbol_code` in `@waypoint/shared`, which is data,
+  // not a mark baked into a sentence. ADR-0218 §7 settles both, and §7's tripwire is the only
+  // thing that reopens it: if the card ever grows an illustration, the mark joins it.
+  weather: {
+    // NO `today` here, and its absence is the decision (ADR-0218's amendment §C): the head IS
+    // today, so no tile is, and a `היום` tile would have repeated the head's own number ⁦60px⁩
+    // away. Also no `attribution` string, for the reason `fx` states below — the credit is the
+    // source's own wording, carried on the data and rendered verbatim.
+    tomorrow: 'מחר',
+    // The day's low, beside the high. Labelled because two bare numbers in one line say nothing
+    // about which is which, and the high is already the big run above it.
+    low: (temp: string) => `מינ׳ ${temp}`,
+    // **W4 · the one fact that changes a plan, and it is an AMOUNT.** MET publishes no
+    // probability of precipitation, so this must never read as a chance — `40% גשם` is a number
+    // nobody can act on and, here, one the source never said. Composed here rather than at the
+    // call site, so the separator between the two peer facts is the app's middle dot and not
+    // whatever a component reached for.
+    precip: (mm: string) => `${mm} מ״מ`,
+    condPrecip: (condition: string, mm: string) => `${condition} · ${mm} מ״מ`,
+    // The nine conditions `forecastCondition` resolves a `symbol_code` to. Keys, not glyphs —
+    // the shared package supplies the stable key and the frontend supplies the word (ADR-0009).
+    condition: {
+      clear: 'בהיר',
+      fair: 'בהיר בעיקרו',
+      partlycloudy: 'מעונן חלקית',
+      cloudy: 'מעונן',
+      fog: 'ערפילי',
+      rainshowers: 'ממטרים',
+      rain: 'גשום',
+      sleet: 'שלג מעורב',
+      snow: 'שלג',
+      thunder: 'סופת רעמים',
+    },
+    // A day past the provider's horizon, for the screen reader. The tile itself is a dashed
+    // placeholder and says this without a word (§5); this is the word for someone who cannot
+    // see the dashes.
+    beyond: 'אין עדיין תחזית ליום הזה',
+  },
   fx: {
     sectionTitle: 'מבט מהיר',
     // The date is interpolated as an already-isolated LTR island (ADR-0118), never
@@ -1627,12 +2540,16 @@ export const t = {
   // Group change-feed (ADR-0081, review U-09): a quiet strip narrating recent
   // SHARED peer edits. The subject is inlined in each lead; a moved-to clock time
   // is appended separately as a dir="auto" island (never inside these strings).
-  // Verbs are masculine by convention (actor gender is unknown), matching the
-  // settings/toast copy. No em dashes.
+  // **The one place a gendered verb survives the 2026-08-17 register pass**, and it is the
+  // narration that forces it: the feed reports what a NAMED person did, so there is a
+  // grammatical subject and Hebrew makes it pick a gender. The register rule's escapes do
+  // not reach here — a verbal noun drops the actor (`הזזה של האירוע` says nothing about who),
+  // and the passive drops them too. Masculine by convention, actor gender unknown. Revisit
+  // only if `Member` ever carries a pronoun. No em dashes.
   changeFeed: {
     title: 'עדכונים מהקבוצה',
-    clearAll: 'נקה הכל',
-    clearAllLabel: 'נקה את כל העדכונים',
+    clearAll: 'ניקוי הכל',
+    clearAllLabel: 'ניקוי כל העדכונים',
     dismiss: 'הסתר עדכון',
     someone: 'מישהו',
     nouns: {
@@ -1641,7 +2558,7 @@ export const t = {
       place: 'המקום',
       document: 'המסמך',
       note: 'הפתק',
-      member: 'משתתף',
+      member: 'נוסע',
       trip: 'הטיול',
       item: 'הפריט',
     },
@@ -1666,15 +2583,22 @@ export const t = {
   // "נותרו" and overlaps never inflate the day.
   glance: {
     title: 'היום במבט',
-    remaining: 'נותרו היום',
-    hardAnchor: 'עוגן קשיח',
-    freeUntil: 'פנוי עד',
+    // **WHAT IS LEFT OF THE DAY, AS A SENTENCE** (ADR-0215 §4), replacing the ⁦32px⁩ mono numeral
+    // beside `נותרו היום`: in the evening the common reading was a huge `0`, which is the
+    // opposite of inviting, and the night board now speaks for that moment anyway.
+    //
+    // **The verb is the one the card already used** — a reader does not have to relearn the
+    // number — and the noun is deliberately `דברים`, which is this app's word for a mixed bag
+    // (`דברים קטנים שכדאי לזכור`, `דברים שצריך לסגור`). Not `עצירות`: ADR-0159 spent `עצירה`
+    // on a layover, and this count is not events either — it counts the containment forest's
+    // ROOTS (ADR-0041/0045), so three things at once are one of them. `דברים` is the only
+    // word here that is true of a block.
+    //
+    // At zero it says the day is done rather than counting to nothing, and the card renders
+    // that arm quiet — the sentence steps back instead of announcing an absence.
+    leftToday: (n: number) =>
+      n === 0 ? 'זה הכל להיום' : n === 1 ? 'נותר דבר אחד היום' : `נותרו ${n} דברים היום`,
     dayEnds: 'מסתיים',
-    // Collapsed composite blocks on the rail: a cluster of parallel peers ("×N")
-    // or an envelope with nested children ("כולל N"); overnight end marker.
-    concurrent: (n: number) => `×${n}`,
-    contains: (n: number) => `כולל ${n}`,
-    nextDay: '+1',
     emptyTitle: 'היום עוד פתוח',
     emptySub: 'אין אירועים מתוכננים · יום חופשי',
     emptyAdd: 'הוסיפו אירוע',
@@ -1719,25 +2643,61 @@ export const t = {
       // Fallback for the rare plan-mode-while-the-trip-runs case (a manual
       // override peeking at Plan mid-trip): no countdown to show.
       underway: 'הטיול בעיצומו',
+      /** The eve's clock, read aloud (`PrepHero`'s `role="timer"`): under an hour it counts
+       *  minutes, since `formatCountdown`'s ladder starts at `H:MM שעות`. */
+      minutes: 'דקות',
+      /** The flap clock at `00:00:00`, read aloud — on day 1 the count to the trip is over. */
+      over: 'הספירה נגמרה',
       readiness: 'מוכנות הטיול',
+      /** **The second number, and the whole point is that it has its own noun**
+       *  (ADR-0193 §2). `readiness` above is the five derived checks and nothing else,
+       *  so 100% above eight open tasks told the same lie the `allDone` hint told. It is
+       *  NOT folded into the percentage: that denominator grows every time somebody
+       *  writes a task, so recording work would read as losing ground. Naming the second
+       *  measurement is what stops the first from implying it covers it.
+       *
+       *  The overdue count reuses `t.tasks.band.overdue` rather than restating it — one
+       *  phrasing for one fact, on whichever surface says it. */
+      openTasks: 'משימות פתוחות',
     },
     checklist: {
       title: 'מה חסר להשלמה',
-      allDone: 'הכול מוכן 🎉',
+      /** **The empty state's two lines** (ADR-0193 §6). This was `הכול מוכן 🎉`, an 11px
+       *  `.hint` in the section title — 15px of section against 136px of block, which is why
+       *  the owner asked for an empty state while looking at one. Promoted into
+       *  `EmptyState`, whose icon slot takes an `Icon`, so the emoji retires: emoji are
+       *  CONTENT and icons are UI (design-language, ADR-0138).
+       *
+       *  `אפשר לנשום` and not `הכול מוכן` (owner's pick): the readiness bar directly above
+       *  already says 100%, so repeating it here would be the same fact twice on one screen.
+       *  What the bar cannot say is what it means for the reader. */
+      emptyTitle: 'אפשר לנשום',
+      emptyBody: 'אין מה להשלים לפני היציאה',
       done: 'הושלם',
       // Completed checks collapse into a one-line summary with a show/hide toggle
       // (ADR-0061), so the list stays about what's still missing.
-      showCompleted: (n: number) => `הצג שהושלמו (${n})`,
-      hideCompleted: 'כווץ שהושלמו',
-      completedSummary: 'הושלמו',
-      // Short labels for the collapsed-summary pills (one per completed check).
-      summaryLabels: {
-        flights: 'טיסות',
-        lodging: 'לינה',
-        itinerary: 'ימים',
-        documents: 'מסמכים',
-        group: 'הקבוצה',
-      },
+      /** **Both toggles read as one pair** (owner, 2026-08-16: the Hebrew _"is bad"_ and
+       *  wants improving on both). Three things were wrong and they were shared:
+       *
+       *  `הצג` ⇄ `כווץ` is not a pair — one is "show", the other "collapse", so the control
+       *  described its own mechanism on the way back and its content on the way out. Both
+       *  directions are `הצג`/`הסתר` now, which is the pair `Collapsible`'s own docstring
+       *  already uses for the Index's past bookings.
+       *
+       *  `(3)` in brackets is a UI convention, not Hebrew. The count reads inline, before
+       *  the noun, which is where Hebrew puts it when speaking.
+       *
+       *  And `שהושלמו` cannot carry a bracketed number as a bare noun — `הצג שהושלמו (3)`
+       *  is "show that-were-completed (3)". With the count inline it becomes a real phrase:
+       *  `הצג 3 שהושלמו`. */
+      showCompleted: (n: number) => (n === 1 ? 'הצג אחת שהושלמה' : `הצג ${n} שהושלמו`),
+      hideCompleted: 'הסתר',
+      /** **The remainder, past the cap** (ADR-0193 §3, amended 2026-08-16). Not `רחוקות`
+       *  and no longer a group with a meaning: it is simply what did not fit in the first
+       *  `PLAN_TASK_CAP` rows, so the word is the one Trip Home's overflow row already uses.
+       *  `הסתר` on the way back, because the row's caret says which way it goes. */
+      showRest: (n: number) => (n === 1 ? 'עוד משימה אחת' : `עוד ${n} משימות`),
+      hideRest: 'הסתר',
       // Flights = round-trip aware (ADR-0061): the meta names the missing leg, and
       // the CTA opens the flight form seeded with that direction.
       flightsTitle: 'טיסות',
@@ -1758,14 +2718,23 @@ export const t = {
       buildDay: 'בנו יום',
       // Documents = per-traveller passport rollup (ADR-0061), from the snapshot docs.
       documentsTitle: 'מסמכים ודרכונים',
-      documentsDoneMeta: 'כל המטיילים העלו דרכון',
+      documentsDoneMeta: 'כל הנוסעים העלו דרכון',
       documentsMissingMeta: (have: number, total: number) => `${have} מתוך ${total} העלו דרכון`,
       uploadDocs: 'העלו',
-      groupTitle: 'החבורה',
-      groupDoneMeta: (n: number) => `${n} מטיילים בפנים`,
-      groupMissingTitle: 'עדיין רק אתה',
-      groupMissingMeta: 'הזמינו את החבורה עם לינק',
+      groupTitle: "החבר'ה",
+      groupDoneMeta: (n: number) => `${n} נוסעים בפנים`,
+      groupMissingTitle: 'עדיין לבד פה',
+      groupMissingMeta: "הזמינו את החבר'ה עם לינק",
       invite: 'הזמינו',
+    },
+    /** **The lifted prep hero** (ADR-0193 §4). One word, because after the owner's
+     *  2026-08-16 call the card carries no headings at all: it is one list in the tasks
+     *  screen's own order (`orderTaskRows`), so the five band labels that used to live
+     *  here — `דחוף`, `לפני היציאה`, `בזמן הטיול`, `ללא תאריך` and a reuse of
+     *  `checklist.title` — are deleted rather than left unused. `title` survives as the
+     *  card's accessible name, which a `Modal` requires. */
+    lift: {
+      title: 'ההכנות לטיול',
     },
     stats: {
       title: 'מבט על',
@@ -1776,16 +2745,96 @@ export const t = {
     // Past-trip retrospective — the calm read-only archive (ADR-0040). No prep
     // dashboard, no countdown, no board; a quiet summary and a way back into the
     // days.
+    // **The memory Home** (ADR-0240 §4). A figure counts what happened and says what is still
+    // unmarked (ADR-0239 §9), which is why `unresolved` sits under a figure as well as in the
+    // cover's footer.
     past: {
-      complete: 'הטיול הסתיים',
-      summary: 'לזיכרון',
-      days: 'ימים',
       viewDays: 'עיון בימי הטיול',
+      figures: 'במספרים',
+      days: 'הימים',
+      /** The days the sheet does not draw, counted (`ועוד 7 ימים בלי רשומות`). */
+      quietDays: (days: string) => `ועוד ${days} בלי רשומות`,
+      // **Firsts and bests** (ADR-0240 §4). Each label says what makes the row a best; the
+      // facts behind it follow on the same line.
+      bests: {
+        title: 'ראשונים וטובים',
+        first: 'הדבר הראשון',
+        last: 'הדבר האחרון',
+        longestStop: 'העצירה הארוכה',
+        busiestDay: 'היום המלא',
+        places: (n: number) => `${n} מקומות`,
+      },
+      unresolved: (n: number) => `${n} לא סומנו`,
+      // **Coming home** (ADR-0241 §3): the beat the first open of a finished trip plays.
+      comingHome: {
+        kicker: 'חזרנו הביתה',
+        skip: 'דילוג',
+      },
+      // **The stragglers sheet** (ADR-0240 §4): the cover's footer action, and where the walk is.
+      // **The record by kind, and the search over it** (ADR-0240 §4, epic 4.7).
+      record: {
+        title: 'לפי סוג',
+        kindsLabel: 'סוג',
+        kindsAll: 'הכל',
+        open: 'לא סומן',
+        search: {
+          button: 'חיפוש בטיול',
+          modeTitle: 'חיפוש בטיול',
+          placeholder: 'חיפוש לפי שם, מקום או סוג',
+          clear: 'ניקוי',
+          backAria: 'סגירת החיפוש',
+          noResults: 'אין בטיול משהו שמתאים לחיפוש',
+        },
+      },
+      // **The journal** (ADR-0240 §4): every note in day order. A note about a day outside the
+      // trip is planning, counted under the section rather than drawn.
+      journal: {
+        title: 'מה כתבנו',
+        outside: (n: number) =>
+          n === 1 ? 'ועוד פתק אחד מחוץ לימי הטיול' : `ועוד ${n} פתקים מחוץ לימי הטיול`,
+        // The continuation row under the notes the journal leads with (`journalLead`).
+        more: (n: number) => (n === 1 ? 'עוד פתק אחד' : `עוד ${n} פתקים`),
+        hide: 'הסתר',
+      },
+      // **Next time** (ADR-0240 §4): what the trip skipped, then ideas it never reached.
+      nextTime: {
+        title: 'בפעם הבאה',
+        idea: 'רעיון שלא הגענו אליו',
+        // One row for everything past the skipped rows shown (`foldNextTime`). `ועוד` only when
+        // rows sit above it: with nothing skipped, the row is the section's first line.
+        more: (n: number, ideas: number, lead: boolean) => {
+          const and = lead ? 'ועוד ' : '';
+          if (ideas === n)
+            return n === 1
+              ? `${and}רעיון אחד שלא הגענו אליו`
+              : `${and}${n} רעיונות שלא הגענו אליהם`;
+          if (ideas === 0) return `ועוד ${n}`;
+          return `ועוד ${n} · ${ideas === 1 ? 'אחד מהם רעיון' : `${ideas} מהם רעיונות`}`;
+        },
+        hide: 'הסתר',
+      },
+      settle: {
+        action: 'לסמן',
+        progress: (n: number, total: number) => `${n} מתוך ${total}`,
+      },
+      fig: {
+        places: 'מקומות',
+        air: 'ק״מ בטיסה',
+        shift: 'שעות הפרש',
+        // Not `ברחובות`, the mockup's word: the figure carries trains and drives too.
+        ground: 'ק״מ בדרכים',
+      },
     },
   },
   day: {
     heading: (day: number, weekday: string, destination: string) =>
       `יום ${day} · ${weekday} · ${destination}`,
+    // **The way from an open card into the read** (ADR-0229 §2). A booked row says `להזמנה`
+    // instead — `t.hero.toBooking`, the lifted hero's own word, because it is the same journey
+    // one surface over and the label is what tells you whether the tap gets you the code.
+    read: {
+      details: 'פרטים',
+    },
     // **What sits between two events** (ADR-0159). Trip mode STATES the gap where Plan
     // mode offers to fill it, so the wording is a fact and not an invitation: no verb,
     // no `שבץ`. `פנוי · <משך>` and not `<משך> פנויות`, because the adjective has to
@@ -1828,6 +2877,37 @@ export const t = {
     // The STATE, not the gesture (owner, 2026-08-11): the card is a button and its tap
     // restores — what the line has to say is that this one was skipped.
     skippedTag: 'דילגתם',
+    // …and a parked COMMITMENT says what it is in, not what we did (ADR-0231 §2, F1): a tour the
+    // operator cancelled is not something you skipped, and "not happening" is true whoever
+    // called it off. A label on the card, never a fourth status (ADR-0228 §6b).
+    notHappeningTag: 'לא מתקיים',
+    // The parked card's own sheet (ADR-0231 §2, F2) — a tap used to RESTORE, which on a
+    // cancelled booking is the wrong verb for the tap you make looking for its code.
+    parked: {
+      restore: 'שחזור ליום',
+    },
+    // **The day takes a delay** (ADR-0231 §5) — `מאחרים` in the head's footer, today only.
+    late: {
+      action: 'מאחרים',
+      title: 'מאחרים',
+      // What moves, said BEFORE the tap: the count and the first row's hour.
+      what: (n: number, from: string) =>
+        n === 1
+          ? `בכמה דקות? יזוז אירוע גמיש אחד, מ־${from}.`
+          : `בכמה דקות? יזוזו ${n} אירועים גמישים מ־${from} ואילך.`,
+      // …and what stays: the first commitment ahead, which the shift stops at (ADR-0011). The
+      // title and its hour are nodes the sheet composes (`TitleLabel`); this is the tail.
+      anchorStays: 'נשאר · הזמנה. מה שאחריו לא זז.',
+      minutes: (n: number) => `${n} דקות`,
+    },
+    // **The quick add** (ADR-0231 §3; ADR-0043 §3's Tier-1 add, finally built): a title, one
+    // when-sentence, one primary. The sheet's title carries `היום` so the sentence need not.
+    quickAdd: {
+      title: 'אירוע חדש · היום',
+      titlePlaceholder: 'למשל: קפה שמצאנו',
+      add: 'הוספה',
+      more: 'עוד פרטים…',
+    },
     // The idea's sheet — the surface a tap now opens. `שיבוץ ליום` leads it, so the
     // verb the tile used to perform is one press away and named.
     idea: {
@@ -1884,7 +2964,7 @@ export const t = {
   },
   // Plan-mode Day-by-day — the itinerary builder (screens/PlanDay.tsx).
   planDay: {
-    empty: 'היום ריק · הוסף אירוע או שבץ מהמדף',
+    empty: 'היום ריק · אפשר להוסיף אירוע או לשבץ מהמדף',
     // A finished trip is a structural archive but stays settle-editable
     // (ADR-0044): the header note says so, since the ✓ / הסדרה is still live.
     pastNote: 'טיול שהסתיים · מבנה קפוא, אפשר להסדיר',
@@ -1892,8 +2972,8 @@ export const t = {
     // The archive settle control (ADR-0044): tap ○ on an unresolved soft event
     // to record it — the "we were there / skip" the trip never got.
     settleTitle: (title: string) => `הסדרת «${title}»`,
-    settleUnresolved: 'הסדר: היינו או דלג',
-    addToDay: 'הוסף אירוע',
+    settleUnresolved: 'להסדיר: היינו או דילגנו',
+    addToDay: 'אירוע חדש',
     // `move`/`moveChoose`/`moveHere` were the ⋯ sheet's `הזז` step (ADR-0138 §8) and went
     // with it: the row's own time opens the shared picker now (ADR-0161 §7), and its words
     // are the `slot*` and `seam*` keys above — one vocabulary for a position, however you
@@ -1902,9 +2982,9 @@ export const t = {
     rowActions: 'פעולות',
     // The sheet's own copy moved to `slotFill` below: it serves two headers on two screens
     // now (ADR-0161 §6), so it stopped being Plan mode's.
-    addIdea: 'הוסף רעיון למדף',
+    addIdea: 'הוספת רעיון למדף',
     addIdeaPlaceholder: 'רעיון חדש למדף…',
-    removeIdea: 'הסר רעיון',
+    removeIdea: 'הסרת הרעיון',
     // An empty day has no gaps to drop onto, so the empty state becomes the target
     // while a drag is live (ADR-0116 session-117). It has no slot to offer, so it
     // promises a time chooser rather than a schedule.
@@ -1917,7 +2997,19 @@ export const t = {
     // zones name their outcome rather than both saying "drop here".
     parkDropHere: 'שחררו כאן להעברה למדף · ליום הזה',
     parkSomedayDropHere: 'שחררו כאן להעברה למדף · מתישהו',
+    // **`פער` and not `חור`, on the owner's call (2026-08-26)**, and this is the string that
+    // settled it: the app already had a name for this slot, so `חור` was a third word for one
+    // thing. `חלון` was the other candidate and is refused — the app spends "window" on a
+    // check-in's own (ADR-0184 §6's `לסגירה`), and two windows would be worse than two gaps.
+    // **The drawing says `חור`** (`where-a-route-shows-up-v1.html` §2) and a drawing is not
+    // retrofitted; the note lives here so nobody restores it from there.
     gap: (label: string) => `פער של ${label} · שבץ`,
+    // **Why the offer is smaller than the hole** (`where-a-route-shows-up-v1.html` §2's drawn
+    // `bld-slot-note`). Plan mode does not display a hole, it OFFERS it — so when ADR-0206 §V1.1's
+    // correction shrinks the offer, the chip owes the reader the arithmetic rather than a smaller
+    // number with no account of itself. Both values are `gapLabel`'s, the same ladder the chip
+    // above is written in.
+    gapOfWhich: (hole: string, travel: string) => `מתוך ${hole} · ${travel} מהם דרך`,
     // A SEAM (ADR-0161 §2): the same position a gap chip offers, below the chip
     // threshold — including zero, two rows that touch. It exists only while a drag is
     // live, so it names its OUTCOME the way every other drop zone in the builder does
@@ -1960,7 +3052,7 @@ export const t = {
     slotOtherDay: 'ליום אחר…',
     slotMoveTitle: (title: string) => `להזיז · ${title}`,
     // "הזז" resolve sheet: choose which soft event to move, then a clean slot.
-    resolve: 'הזז',
+    resolve: 'הזזה',
     resolveTitle: 'פתרו את החפיפה',
     resolveChoose: 'בחרו איזה אירוע גמיש להזיז',
     resolveAnchor: 'עוגן · לא זז',
@@ -1976,11 +3068,24 @@ export const t = {
     replaceTitle: (title: string) => `החלפה · ${title}`,
     /** Under a replacement header: the slot the replacement inherits, whole. */
     replaceSub: (range: string) => `אותה שעה, אותו אורך · ${range}`,
-    empty: 'אין רעיונות במדף · הוסף אירוע חדש',
+    empty: 'אין רעיונות במדף · אפשר להוסיף אירוע חדש',
+    /**
+     * **When the shelf has ideas and none of them fits this slot** (ADR-0216 §6). A different
+     * sentence from `empty` because it is a different fact: `אין רעיונות במדף` would be a lie
+     * under a shelf of fourteen, and the reader would go looking for the bug.
+     */
+    noneFit: 'אין רעיון שנכנס בפער הזה · אפשר להוסיף אירוע חדש',
+    /**
+     * **The count the filter refused**, as a quiet statement under the list — never a row and
+     * never a name (§1: an offer nobody can take is not offered at all). It exists so a short
+     * list reads as an answer rather than as a fault.
+     */
+    dropped: (count: number) => `${count} רעיונות רחוקים מדי לפער הזה`,
+    droppedOne: 'רעיון אחד רחוק מדי לפער הזה',
     // The sheet is capped at the best few; these are the way past the cap and the
     // search that only appears once the pool is big enough to need one.
     search: 'חיפוש ברעיונות',
-    searchClear: 'נקה חיפוש',
+    searchClear: 'ניקוי',
     all: (n: number) => `כל ${n} הרעיונות`,
   },
   event: {
@@ -1993,7 +3098,7 @@ export const t = {
     notMarked: 'עבר · לא סומן',
     didThis: 'היינו',
     skipped: 'דילגנו',
-    nextDay: 'מסתיים למחרת',
+    nextDay: 'מסתיים מחר',
     bookingLabel: 'הזמנה',
     hardWarn: 'קשיח · שינוי מחייב עדכון ההזמנה',
     // The conflicting event's title renders as a NODE between these two halves
@@ -2010,10 +3115,10 @@ export const t = {
     routeFrom: (origin: string) => `מ־${origin}`,
   },
   actions: {
-    restore: 'שחזר',
+    restore: 'שחזור',
     // The done ✓ doubles as a one-tap undo (ADR-0043 revision) — its accessible
     // name / tooltip.
-    undoDone: 'בטל סימון · שחזר',
+    undoDone: 'ביטול הסימון · שחזור',
     navigate: 'ניווט',
     // The view-on-map peer of navigate (directions). Kept to one word so the two
     // location actions ("ניווט · מפה") stay compact in the crowded card row.
@@ -2027,21 +3132,48 @@ export const t = {
     onWay: 'בדרך',
     done: 'סיימנו',
     // THE SETTLE PAIR (ADR-0043/0044/0139), shared by all three of `SettleControl`'s
-    // densities. Both halves are records of what happened, not instructions: the skip
+    // densities. Both halves are records of what happened, not actions: the skip
     // side reuses `event.skipped` ('דילגנו'), because the pair `היינו` / `דלג` mixed a
     // record with an imperative and read as "yes, or move it along".
     wasThere: 'היינו',
+    /** **THE SAME PAIR, ASKED ABOUT A TRANSITION** (ADR-0224 §3). A stop keeps `היינו` /
+     *  `דילגנו` above; an EDGE of a bracketed span cannot use either. `היינו` on a check-out
+     *  says we were at the hotel, which is true and is not what was asked — and `דילגנו` is
+     *  worse than vague, because ADR-0208 gave `skipped` a real job on this data (a skipped
+     *  stop denies the plan the right to claim where you are), so on a check-out you actually
+     *  made it records that you never left.
+     *
+     *  So the done arm is the transition's OWN past tense, keyed on the same profile keys
+     *  `glance.transition` names the edges with (ADR-0063) — a ninth transition is one line
+     *  here, not a decision. The marks, the hues and the undo are `SettleControl`'s and do
+     *  not vary: what the host may change is the word (ADR-0139). */
+    transitionDid: {
+      checkIn: 'נכנסנו',
+      checkOut: 'יצאנו',
+      departure: 'יצאנו',
+      arrival: 'הגענו',
+      flightDeparture: 'המראנו',
+      flightArrival: 'נחתנו',
+      carPickup: 'אספנו',
+      carDropoff: 'החזרנו',
+    },
+    /** The other arm, and it is ONE word for every edge, because what it says does not vary:
+     *  this edge is not going to happen. Per-edge negations (`לא יצאנו`) would put a negation
+     *  beside a positive and make the pair read as one verb with a toggle rather than as two
+     *  outcomes (ADR-0117 §1). `לא רלוונטי` was drafted and dropped for talking about the ROW
+     *  where its partner talks about the world — the same reason `דילגנו` beat `דלג` above. */
+    transitionNotHappened: 'לא קרה',
     // What the undo takes back, said as what it undoes rather than a bare "בטל".
-    undoSettle: 'ביטול הסימון',
-    // The row-menu / action-row verb, which IS an instruction ("skip this one") — not the
-    // settle pair's other half.
-    skip: 'דלג',
-    swap: 'החלף',
-    scheduleToDay: 'שבץ ליום',
+    undoSettle: 'ביטול סימון',
+    // The row-menu / action-row ACTION ("skip this one") — not the settle pair's other half,
+    // which is the record `דילגנו`. The two stay different words on purpose.
+    skip: 'דילוג',
+    swap: 'החלפה',
+    scheduleToDay: 'שיבוץ ליום',
     scheduled: 'שובץ',
     newEvent: 'אירוע חדש',
-    edit: 'ערוך',
-    delete: 'מחק',
+    edit: 'עריכה',
+    delete: 'מחיקה',
     more: 'פעולות',
   },
   toast: {
@@ -2053,11 +3185,20 @@ export const t = {
     // decision now, so it gets one toast: what took the slot, and where the other one went.
     replaced: (title: string) => `${title} נכנס לשעה הזו · הקודם עבר למדף`,
     hardDelayed: 'נדחה · צריך לעדכן גם את ההזמנה',
+    // Its twin for the other direction (ADR-0228 §4), now that a hard row's stepper offers
+    // both. `hardDelayed` could not be reused: it says the move was a postponement, and the
+    // half that matters — go and change the booking — is the same either way.
+    hardEarlier: 'הוקדם · צריך לעדכן גם את ההזמנה',
     softDelayed: (minutes: number) => `נדחה ב-${minutes} דקות`,
     softEarlier: (minutes: number) => `הוקדם ב-${minutes} דקות`,
-    onWayShared: 'שותף לקבוצה · בדרך',
+    // `בדרך` writes a device mark now (ADR-0206 §Z5 §M4) and the toast says exactly that. It
+    // used to read `שותף לקבוצה · בדרך` over a verb that wrote nothing at all, which made it
+    // the one confirmation in the app that was false.
+    onWayMarked: 'בדרך · לא שותף לקבוצה עדיין',
     scheduled: (title: string, time: string) => `${title} שובץ ל-${time}`,
     rippleApplied: 'האירועים הבאים נדחו',
+    dayDelayed: (minutes: number, n: number) =>
+      n === 1 ? `אירוע אחד נדחה ב-${minutes} דקות` : `${n} אירועים נדחו ב-${minutes} דקות`,
     hardConfirmRequired: 'שינוי אירוע קשיח מחייב אישור',
     writeFailed: 'משהו השתבש · אפשר לנסות שוב',
     moveIntoPast: 'אי אפשר לשבץ אירוע לשעה שכבר עברה',
@@ -2093,15 +3234,15 @@ export const t = {
     // copy is what follows it — a flight names its route, shortened, with the SVG
     // arrow, like every other surface (ADR-0059 §3 session-101 amendment).
     hardEditTitle: 'לשנות אירוע קשיח?',
-    hardEditBody: 'מחובר להזמנה אמיתית - שינוי כאן מחייב עדכון שלה. ממשיכים?',
+    hardEditBody: 'מחובר להזמנה אמיתית - שינוי כאן ידרוש לעדכן גם אותה. ממשיכים?',
     hardDeleteTitle: 'למחוק אירוע קשיח?',
     hardDeleteBody: 'מחובר להזמנה אמיתית - המחיקה לא מבטלת את ההזמנה עצמה. ממשיכים?',
   },
   iconPicker: {
-    open: 'בחר סמל',
+    open: 'בחירת סמל',
     title: 'בחירת סמל',
     all: 'הכול',
-    searchPlaceholder: 'חפש סמל או מדינה…',
+    searchPlaceholder: 'חיפוש סמל או מדינה…',
     noMatch: 'לא נמצא סמל',
     categoryReadout: (label: string) => `קטגוריה: ${label}`,
     // Browse-group labels — keyed by IconGroup.id in @waypoint/shared's ICON_SET.
@@ -2168,7 +3309,17 @@ export const t = {
     // category pill, so the app is visibly understanding rather than quietly deciding.
     // Two tails because the two operations differ: a create can be completed later, a
     // conversion moves two fields off the event being edited (§3).
-    bookedDerived: (type: string) => `האירוע יירשם גם כהזמנה · ${type}, ואפשר להשלים אותה אחר כך`,
+    //
+    //
+    // **The CREATE one names the kind it is setting; the convert one does not** (ADR-0192 §3).
+    // `סוג` moved up into the time band, so it now sits ABOVE this row and can be re-derived
+    // off screen — a clause pays for that rather than a second control. It is on the create
+    // alone because the re-derivation only runs while the kind is UNTOUCHED, and ADR-0136 §4
+    // counts an existing event as touched: on an edit this toggle never moves the kind, so
+    // saying `יסומן …` there would announce a change that is not going to happen. A spec
+    // caught that, which is the whole reason it is written down here.
+    bookedDerived: (type: string, kind: string) =>
+      `האירוע יירשם גם כהזמנה · ${type}, ויסומן ${kind}. אפשר להשלים אותה אחר כך`,
     bookedDerivedConvert: (type: string) =>
       `האירוע הזה יירשם גם כהזמנה · ${type}, והמיקום והקטגוריה יעברו אליה`,
     // Already linked: no control at all, a statement with a way in (§3) — the code, room
@@ -2196,8 +3347,8 @@ export const t = {
     // The word between a start and its duration, now that the clock reads as a
     // sentence rather than two captioned cells (ADR-0177 §1).
     forPrefix: 'למשך',
-    addTime: 'הוסף שעה',
-    addEnd: 'הוסף סיום',
+    addTime: 'הוספת שעה',
+    addEnd: 'הוספת סיום',
     noTime: 'ללא שעה',
     exactStart: 'שעה מדויקת',
     exactEnd: 'סיום מדויק',
@@ -2221,6 +3372,10 @@ export const t = {
     open: 'בחירת מקום',
     empty: 'הוספת מקום',
     clear: 'הסרת המקום',
+    // **A stop's ✕ removes the STOP, not just its place** (ADR-0203 §4). The control is the
+    // same one; what differs is what it means on a row that is itself optional, and a screen
+    // reader is the only place that difference can be heard.
+    removeStop: 'הסרת העצירה',
     title: 'מקום',
     // Under an empty location field, in BOTH authoring forms — one key, because an
     // event and a booking lose exactly the same five things. Entities saved happily
@@ -2230,7 +3385,7 @@ export const t = {
     // legitimate mid-planning path would be clicked through (ADR-0109 §6's anti-nag
     // reasoning). So the note names what is lost and gets out of the way.
     noLocationHint:
-      'בלי מיקום אין סימון במפה ואין שורה ברשימה, אין ניווט, אין מרחק ואין דירוג, והשעות ייקראו באזור הזמן של הקטע בטיול ולא של המקום עצמו.',
+      'בלי מיקום אין סימון במפה, אין ניווט ואין מרחק. והשעות ייקראו באזור הזמן של הקטע בטיול, לא של המקום עצמו.',
     searchPlaceholder: 'חיפוש מקום…',
     alreadyInTrip: 'כבר בטיול',
     saveNameOnly: (name: string) => `שמירת "${name}" כשם בלבד`,
@@ -2259,14 +3414,52 @@ export const t = {
   },
   // The "when" standard (WhenField). Shared span-endpoint copy for the tap-to-open
   // time field, the derived duration read-out, and the crosses-a-day marker.
+  /** **A journey's schedule** (ADR-0203). The relative day is the load-bearing string: it
+   *  replaces the arrival's second calendar date, which is what was read as a return flight. */
+  journey: {
+    sameDay: 'באותו יום',
+    nextDay: 'למחרת',
+    plusDays: (n: number) => `+${n} ימים`,
+    /** The token's accessible name — the visible run is the day alone. */
+    dayLabel: 'היום',
+    /** A summarised node's one control: it reopens the node's real fields. */
+    editTimes: 'עריכת הזמנים',
+    waitShort: 'המתנה',
+    /** The app's separator, between peer facts on a summarised line. */
+    dot: '·',
+    noPlace: '-',
+    /** A summarised first node still carries the journey's ONE date — collapsing it away
+     *  hides the single fact the design rests on — and reads it compactly (ADR-0176 allows
+     *  both faces; the numeric one is what a summary is for). */
+    shortDate: (iso: string) => {
+      const [, m, d] = iso.split('-');
+      return `${Number(d)}.${Number(m)}`;
+    },
+    /** Said while a seeded return is still an exact mirror of its outbound (§6), and gone
+     *  the moment any of it diverges. */
+    sameRouteReversed: 'אותו מסלול בהיפוך',
+    /** The words a suggestion source may put on its pill (ADR-0203 §5/§8). Passed INTO
+     *  `lib/form-suggest.ts` rather than imported there: that module is logic, and Hebrew
+     *  copy lives here (ADR-0009). */
+    suggest: {
+      tripStart: 'תחילת הטיול',
+      tripEnd: 'סוף הטיול',
+      afterPrevious: 'יום הקטע הקודם',
+      /** Which leg a suggested PLACE was read off. `הלוך`/`חזרה` are already one pair of
+       *  words here (ADR-0154 §6) because the leg headings write them, so a suggestion says
+       *  where it came from in vocabulary the reader has already seen on this form. */
+      fromOutbound: 'מההלוך',
+      fromReturn: 'מהחזרה',
+    },
+  },
   whenField: {
     // ONE label for the whole when (ADR-0177 §1), replacing a caption per atom — the
     // values say what they are, so "תאריך" over a date was the screen saying it twice.
     label: 'מתי',
     dateCap: 'תאריך',
     timeCap: 'שעה',
-    addDate: 'הוסף תאריך',
-    addTime: 'הוסף שעה',
+    addDate: 'הוספת תאריך',
+    addTime: 'הוספת שעה',
     exactTime: 'שעה מדויקת',
     durationPrefix: 'משך:',
     crossesDay: 'חוצה יממה',
@@ -2291,13 +3484,412 @@ export const t = {
     windowCap: 'סוף החלון',
     windowFromCap: 'תחילת החלון',
   },
+  // **Itinerary sharing** (ADR-0213). Two readerships in one section: `owner` is written for
+  // the person deciding what to publish, `public` for a stranger holding a link who has no
+  // account and never will — which is why nothing under `public` mentions signing in until
+  // the invitation at the very bottom of the page.
+  share: {
+    // The control, in the trip header. On All Trips there is no control: the way in is a
+    // hold on the card (ADR-0033's 2026-08-30 amendment), and this is its visible twin.
+    entry: 'שיתוף',
+    owner: {
+      // **The trip, not the itinerary** — the sheet grants two different things now, and
+      // one of them adds a person to the trip (ADR-0213's 2026-08-30 amendment).
+      title: 'שיתוף הטיול',
+      // **The question changed with the model** (ADR-0213's tenth amendment). It used to ask
+      // how much of the route would appear, because there was one link and the answer was a
+      // setting on it. Now each level holds its own link, so the choice is which link you
+      // are handing over — and nothing you touch here changes what somebody already holds.
+      lead: 'איזה לינק לשלוח?',
+      levels: {
+        summary: 'תקציר',
+        full: 'לו״ז מלא',
+        everything: 'הכל',
+      },
+      // The consequence of the choice, said plainly. This is the only place a reader is
+      // told what stays private, so it names the exclusions rather than implying them.
+      scope: {
+        summary: {
+          title: 'התמונה הגדולה',
+          detail: 'חלקי יום ועיקרי המסלול, בלי שעות מדויקות וכתובות',
+        },
+        full: {
+          title: 'כל הלו״ז, בלי סודות',
+          detail: 'שעות, מקומות, כתובות ונסיעות, בלי קודים ופרטים אישיים',
+        },
+        everything: {
+          title: 'הלו״ז המלא, עם מה שתבחרו',
+          detail: 'כל האפשרויות הרגישות מתחילות כבויות',
+        },
+      },
+      privateRows: {
+        bookingSecrets: { title: 'סודות הזמנה', detail: 'קודי אישור, חדר ו-WiFi' },
+        notesAndTasks: { title: 'פתקים ומשימות', detail: 'רק תוכן שמחובר למסלול' },
+        travelerIdentity: { title: 'זהות הנוסעים', detail: 'שמות בלבד, אף פעם לא אימייל' },
+        documents: { title: 'כרטיסים והזמנות', detail: 'בחירה נפרדת של כל קובץ' },
+      },
+      noDocuments: 'אין עדיין קבצים בטיול',
+      liveNote: 'לינק חי שמתעדכן עם הטיול',
+      // The scope note's last line reports what exists at the selected level, so the sheet
+      // says what is exposed before anything is pressed.
+      noLinkYet: 'אין עדיין לינק ברמה הזאת · יווצר בשליחה',
+      oneLive: 'לינק חי אחד · אפשר להחזיק כמה במקביל',
+      manyLive: (n: number) => `${n} לינקים חיים · כל אחד עם המדיניות שלו`,
+      /** A level card that already holds a live link. The dot is paint, so the card says so
+       *  in its accessible name instead (`ChoiceGrid`'s `ariaLabel`). */
+      levelLive: (level: string) => `${level} · לינק פעיל`,
+      actions: {
+        liveLink: 'שיתוף לינק חי',
+        pdf: 'שיתוף PDF',
+        // After the trip the paper is the book, not the plan (ADR-0241 §4).
+        book: 'ספר הטיול',
+        download: 'הורדה',
+        // A policy with no link yet. The press is what creates it, exactly as before — the
+        // sheet must never publish a trip just because somebody looked at a control.
+        createAndShare: 'יצירה ושליחה',
+        another: 'לינק נוסף',
+      },
+      /**
+       * **A link is named by what it reveals, never by who it went to.**
+       *
+       * A derived title is checkable — the app can prove `קודים · פתקים · 2 קבצים` is what
+       * this policy publishes — where a name somebody typed says who received it, which
+       * nothing can verify and which goes stale in silence (the tenth amendment §7 rejects
+       * typed names on exactly that ground). Composed in the app's `·` grammar so a row
+       * reads like every other list row.
+       */
+      policy: {
+        secrets: 'קודים',
+        notes: 'פתקים',
+        travelers: 'שמות',
+        files: (n: number) => (n === 1 ? 'קובץ אחד' : `${n} קבצים`),
+        /** Everything switched off is still a policy, and saying so beats an empty title
+         *  that reads as a rendering fault. */
+        none: 'בלי תוספות',
+      },
+      // **What the recipient's chat will show** (ADR-0241 §4), heading the sheet in every phase.
+      // Before and during the trip it follows the audience; after it, the card.
+      preview: {
+        title: 'כך זה ייראה בצ׳אט',
+        join: 'ההזמנה להצטרף · מתעדכנת עם הטיול',
+        read: 'הלו״ז החי · אותו לינק כל הטיול',
+      },
+      card: {
+        title: 'כרטיס לקבוצה',
+        line: 'השער, התאריכים ושלושה מספרים · בלי שמות',
+        send: 'שליחה לקבוצה',
+        preparing: 'מכינים את הכרטיס',
+        filename: (tripName: string) => `${tripName} · כרטיס לקבוצה.png`,
+      },
+      // The file's name is `backend/src/sharing/hebrew.copy.ts`'s `book.filename` by value, so a
+      // shared book and a downloaded one are called the same thing.
+      book: {
+        preparing: 'מכינים את ספר הטיול',
+        filename: (tripName: string) => `${tripName} · ספר הטיול.pdf`,
+      },
+      pdf: {
+        preparing: 'מכינים את ה-PDF',
+        preparingDetail: 'המסלול נשאר פתוח בזמן ההכנה',
+        ready: 'ה-PDF מוכן',
+        failed: 'לא הצלחנו להכין את הקובץ. נסו שוב.',
+      },
+      copied: 'הלינק הועתק',
+      // **`levelSaved` is gone, and its absence is the feature** (ADR-0213's tenth
+      // amendment §2). It announced that moving the level control had changed what a live
+      // link shows. With one link per policy nothing in this sheet changes a live link, so
+      // there is no longer anything to announce.
+      manage: 'ניהול הלינק',
+      // Both verbs name their scope, because a "stop sharing" that stops one link out of
+      // three is the most dangerous word in the sheet.
+      rotate: 'החלפת הלינק הזה',
+      rotateTitle: 'להחליף את הלינק?',
+      rotateBody: 'הלינק הקודם יפסיק לעבוד מיד, גם אצל מי שכבר קיבל אותו. שאר הלינקים לא ישתנו.',
+      rotateConfirm: 'החלפה',
+      stop: 'הפסקת השיתוף הזה',
+      stopTitle: 'להפסיק לשתף?',
+      stopBody:
+        'הלינק יפסיק לעבוד. שאר הלינקים של הטיול ימשיכו. תוכלו לשתף שוב מתי שתרצו, עם לינק חדש.',
+      stopConfirm: 'הפסקה',
+      // The panic button, shown only at two or more live links: whoever wants the sharing
+      // to stop now should not have to visit three rows to do it.
+      stopAll: (n: number) => `הפסקת כל השיתופים · ${n}`,
+      stopAllTitle: 'להפסיק את כל השיתופים?',
+      stopAllBody: 'כל הלינקים הציבוריים של הטיול יפסיקו לעבוד מיד.',
+      stopAllConfirm: 'הפסקת הכל',
+      /**
+       * **What a peer MAY do, before what they may not** (owner, 2026-08-31: _"non admins
+       * should be able to [decide what's being shared] too, just not add more links"_).
+       *
+       * The line used to be a bare refusal — `רק מנהלי הטיול יכולים לשנות מה הלינק מראה` —
+       * and it was correct for a sheet where a peer had nothing to choose. With a level
+       * chooser on screen it is the caption under a control, so it states the capability
+       * first and the boundary second.
+       */
+      peerNote: 'אפשר לשלוח כל לינק שכבר נוצר · יצירה ושינוי הם של מנהלי הטיול.',
+      /** Names who can fix it. A peer reading this cannot, and a sentence that stops at the
+       *  fact leaves them with nowhere to go. */
+      notShared: 'הטיול עדיין לא משותף · מנהל טיול יכול ליצור לינק.',
+      /** The list's own header at Everything, where several links live side by side. */
+      linksHere: 'הלינקים ברמה הזאת',
+      manageLink: 'ניהול הלינק הזה',
+      sendLink: 'שליחת הלינק',
+      failed: 'משהו השתבש. נסו שוב.',
+      copyLink: 'העתקת הלינק',
+      // **The sheet's first question, because the two links are two GRANTS** (ADR-0213's
+      // 2026-08-30 amendment). One adds a person to the trip, the other hands a stranger a
+      // projection — so the audience is asked before anything else, and never offered as a
+      // third button beside the two that are merely two formats of the same grant.
+      audience: {
+        lead: 'למי זה הולך?',
+        join: 'מצטרפים לטיול',
+        read: 'רק לצפייה',
+      },
+      join: {
+        scope: {
+          title: 'הלינק להצטרפות',
+          detail: 'מי שנכנס נוסף לרשימת הנוסעים · רואה הכל ויכול לערוך · פעיל עד סוף הטיול',
+        },
+        note: 'לינק אחד לטיול · אפשר לשלוח אותו לקבוצה',
+        action: 'שליחת הלינק',
+        // Distinct from the read-only link's `החלפת הלינק`: this one also says who keeps
+        // their place, which is the question anyone hesitates over before pressing it.
+        rotate: 'לינק הזמנה חדש',
+        rotateTitle: 'ליצור לינק הזמנה חדש?',
+        rotateBody: 'הלינק הקודם יפסיק לעבוד מיד. מי שכבר הצטרף נשאר בטיול.',
+        rotateConfirm: 'יצירה',
+        rotated: 'נוצר לינק חדש · הקודם בוטל',
+        // ADR-0239 §5: an ended trip takes no one new, so this branch says so and points
+        // at the audience that still works, instead of a link the join route would refuse.
+        ended: {
+          title: 'הטיול הסתיים',
+          detail: 'אי אפשר להצטרף לטיול שכבר נגמר · אפשר לשתף אותו לצפייה',
+        },
+      },
+    },
+    /** **A list, not the trip** (ADR-0242). `name` is `backend/src/sharing/hebrew.copy.ts`'s
+     *  `list.name` by value, so the preview and the sheet call a list the same thing. */
+    list: {
+      name: {
+        transport: 'רשימת התחבורה',
+        food: 'רשימת האוכל',
+        lodging: 'רשימת הלינה',
+        sightseeing: 'רשימת האתרים',
+        nature: 'רשימת הטבע',
+        activity: 'רשימת הפעילויות',
+        shopping: 'רשימת הקניות',
+        services: 'רשימת השירותים',
+        other: 'רשימת השונות',
+      } satisfies Record<EventCategory, string>,
+      send: (listName: string) => `שליחת ${listName}`,
+      places: (n: number) => (n === 1 ? 'מקום אחד שהיינו בו' : `${n} מקומות שהיינו בהם`),
+      scope: 'השם, המקום ולינק למפה. בלי שעות, בלי הזמנות, בלי פתקים ובלי שמות.',
+      live: 'כל מי שיש לו את הלינק יכול לקרוא אותו',
+      create: 'יצירת לינק ושליחה',
+      again: 'שליחת הרשימה',
+      stop: 'הפסקת השיתוף',
+      stopBody: 'הלינק לרשימה יפסיק לעבוד. שאר הלינקים של הטיול ימשיכו.',
+      // The reader's page (§4): what the kicker calls it, and a heading per kind that says
+      // what the group did there.
+      kicker: 'רשימה',
+      heading: {
+        transport: 'איך נסענו',
+        food: 'מה אכלנו',
+        lodging: 'איפה ישנו',
+        sightseeing: 'מה ראינו',
+        nature: 'איפה טיילנו',
+        activity: 'מה עשינו',
+        shopping: 'איפה קנינו',
+        services: 'מה עזר לנו',
+        other: 'מה עוד',
+      } satisfies Record<EventCategory, string>,
+      order: 'לפי סדר הביקור',
+      empty: 'עוד אין ברשימה מקומות שהיינו בהם.',
+    },
+    public: {
+      brand: 'Travelive',
+      /**
+       * **Where the trip IS, in the line that used to assert it was live** (ADR-0213's
+       * eleventh amendment §4). `kicker` was the constant `מסלול חי`, printed identically on
+       * a trip that ended six months ago; these three say something a reader can act on. The
+       * numbers are isolated at the call site, not here.
+       */
+      phase: {
+        soon: (days: number) => (days === 1 ? 'מתחילים מחר' : `עוד ${days} ימים`),
+        live: (day: number, total: number) => `יום ${day} מתוך ${total}`,
+        ended: 'הטיול הסתיים',
+      },
+      /** `עודכן לפני 4 ד׳` / `עודכן עכשיו`, over `duration.ts`'s `agoLabel` — the app's one
+       *  elapsed ladder (ADR-0114) rather than a second time vocabulary for this page. It
+       *  replaced a fixed `עודכן עכשיו` that was stamped at load and never revisited. */
+      updated: (ago: string) => `עודכן ${ago}`,
+      stale: 'לא הצלחנו לעדכן',
+      staleBody: 'מוצגת הגרסה האחרונה שנטענה. ננסה לעדכן שוב כשהחיבור יחזור.',
+      days: 'המסע יום אחר יום',
+      schedule: 'הלו״ז',
+      daysHint: 'כל יום לפי חלקיו',
+      map: 'פתיחה במפה',
+      // The counts sentence the deterministic narrative deliberately does NOT send from
+      // the server (it ships data, this ships the words around it).
+      counts: (days: number, events: number) =>
+        `${days} ${days === 1 ? 'יום' : 'ימים'} · ${events} ${events === 1 ? 'אירוע' : 'אירועים'} במסלול`,
+      // **The leg says WHAT it is before it says how long** (owner, 2026-08-30: _"the live
+      // map doesn't show driving/walking etc. properly"_). It shipped as two bare numbers,
+      // so a 121-minute walk and a 67-minute drive were the same shape of line and nothing
+      // on the page said which. The noun leads the duration exactly as `travelMode`'s own
+      // note requires, and it is `travelMode`'s word rather than a second copy of it.
+      // Takes the WORD, not the mode key — `travelMode` is the one place those words live
+      // and this file cannot reference `t` from inside its own literal. Same shape as
+      // `DayJoinRow`, which is already handed `t.travelMode.walking` by its host.
+      journey: (mode: string, minutes: number, km: number) =>
+        `${mode} · ${measure(minutes, 'דק׳')} · ${measure(km, 'ק״מ')}`,
+      /**
+       * **The words a derived day headline is made of** (ADR-0213's 2026-08-30 amendment;
+       * owner: _"Some day titles could also be derived (flying to Iceland, flying back…)"_).
+       *
+       * The projection ships `{ kind, …values }` and never a sentence — that is what keeps
+       * one server derivation feeding a Hebrew page and a Hebrew PDF — so this is where a
+       * `flightOut` becomes words. Every value arrives already bidi-isolated by the caller;
+       * these add the Hebrew around it and nothing else.
+       *
+       * `PDF_COPY.dayTitle` in the backend is the print renderer's copy of exactly these
+       * words, for the reason its own header explains. Reword one, reword the other.
+       */
+      dayTitle: {
+        flightOut: (to: string) => `טסים ל${to}`,
+        // No place: home is the absence of the trip, not somewhere the derivation knows —
+        // and naming the arrival airport instead is what printed a full airport name twice
+        // on every returning day.
+        flightHome: 'טסים הביתה',
+        flight: (to: string) => `טיסה ל${to}`,
+        // **A day named by what its stops ARE** (Wikidata `P31`). Four waterfalls in one
+        // day is a day of waterfalls — a better name than any two of their names. `region`
+        // needs no entry: its value is a place name and prints as itself.
+        kind: (noun: string) => `יום ${noun}`,
+      },
+      /** Names the route strip, which is otherwise an unexplained list of place names. */
+      route: 'המסלול',
+      // **A flight has to say when it lands** (owner, 2026-08-30: _"important time ranges, for
+      // example flights must show when they start and when they finish"_). Both ends were in
+      // the projection all along and both renderers printed only the first, so an eleven-hour
+      // leg and a forty-minute one were the same shape of line. The numbers are isolated by
+      // the caller; the en dash is the app's own range mark (`formatTripDates`).
+      timeRange: (from: string, to: string) => `${from}–${to}`,
+      /**
+       * **A floor and a deadline, in the app's own two words** (ADR-0213's 2026-08-31
+       * amendment §1). `מ-` and `עד` are exactly `t.day.fromTime` / `t.day.untilTime`, which
+       * the app has printed for ADR-0171's two flexible meanings since they were written.
+       *
+       * `share.public` keeps its own copy of every word for the reason this block's header
+       * gives — a stranger never sees the app's dictionary — and the WORDING is deliberately
+       * identical: two words for one meaning is how two surfaces start disagreeing about a
+       * fact, which §7 already recorded once for this feature.
+       */
+      timeFrom: (clock: string) => `מ-${clock}`,
+      timeUntil: (clock: string) => `עד ${clock}`,
+      /** The stay's two moments on the day's frame (§2). The nouns are the app's own
+       *  (`t.transition.checkIn`/`checkOut`), so the shared page and the day view name the
+       *  same thing the same way. Neither names a place: see `checkOut` below. */
+      checkIn: 'צ׳ק-אין',
+      /** **No place** (2026-08-31). It took one, and naming the hotel you are LEAVING put a
+       *  past place under tonight's and inside the amber clock run. The card above already
+       *  says where you slept, and its header is never collapsed. */
+      checkOut: 'צ׳ק-אאוט',
+      // **How the trip moves**, in the owner's own words (2026-08-30): a circumnavigation
+      // where the base changes every day or two is a different thing from a trip you take
+      // from one place. `הקפה` is mine — a rolling trip that closes its circle is common
+      // enough, and different enough in feel from a one-way traverse, to earn a word.
+      tripShape: {
+        base: 'טיול כוכב',
+        loop: 'הקפה',
+        line: 'טיול מתגלגל',
+        // No nights recorded: the shape is unknown, and the clause is simply absent.
+        unknown: '',
+      },
+      bases: (count: number) => `${count} ${count === 1 ? 'בסיס' : 'בסיסים'}`,
+      // **Where you sleep, as the day's frame** (ADR-0213's 2026-08-30 amendment). The
+      // value arrives isolated, so this joins it rather than composing around a raw name.
+      stay: (place: string) => `לנים ${bindPrefix('ב', place)}`,
+      /** **Where a leg leaves from, said only where the row above it is not its origin**
+       *  (ADR-0238 §1's 2026-09-21 correction). The app's own word for the same situation
+       *  (`t.travel.from`, ADR-0232 R3) and bound the same way Hebrew binds a one-letter
+       *  prefix: `מ-Laugavegur 22`, `מהמלון`. The name arrives already isolated. */
+      legFrom: (origin: string) => bindPrefix('מ', origin),
+      // The wait between two legs of one journey. Named by the place you wait IN, because
+      // "45 דקות" alone says nothing about where you are standing.
+      layover: (place: string, span: string) => `המתנה ${bindPrefix('ב', place)} · ${span}`,
+      /** **A download that reports itself** (owner, 2026-08-31: _"it simply downloads in the
+       *  background, giving no indication"_). Four states now, because
+       *  `shareFileOrDownload` returns three outcomes and `נשלח` is not `ירד`: on Android the
+       *  file goes to the system share sheet, and telling a reader it "downloaded" when they
+       *  sent it to WhatsApp is a small lie the mechanism does not require us to tell
+       *  (ADR-0213 ninth amendment §5). `cancelled` says nothing at all — the reader
+       *  dismissed the sheet on purpose, and a page that comments on that is nagging. */
+      file: { working: 'מוריד…', done: 'ירד', shared: 'נשלח', failed: 'לא הצליח' },
+      /** **A journey's header names where it ENDS** (ninth amendment §1) — the legs beneath
+       *  it already spell the route out. `bindPrefix` because `לקפלאוויק` binds and
+       *  `ל-Keflavík` takes the maqaf. */
+      journeyTo: (place: string) => `טיסה ${bindPrefix('ל', place)}`,
+      /** How many flights the journey is, so the header says what the container holds. */
+      journeyLegs: (count: number) => (count === 2 ? 'שתי טיסות' : `${count} טיסות`),
+      /** The reader's own copy of the itinerary. Not `שיתוף PDF` — that is the OWNER's verb
+       *  in `share.owner.actions`; a stranger is taking it, not sharing it. */
+      takePdf: 'הורדת המסלול כ-PDF',
+      takePdfShort: 'PDF',
+      takePdfWorking: 'מכינים…',
+      takePdfFailed: 'לא הצלחנו להכין את הקובץ',
+      ops: {
+        // A count, because the row is otherwise a bare disclosure with nothing to promise.
+        more: (count: number) => (count === 1 ? 'פרט אחד' : `${count} פרטים`),
+      },
+      commitments: {
+        // **Not `מה שקבוע`** (owner, 2026-08-30: _"makes no sense in Hebrew"_). Every row
+        // in this block is booking-backed — a flight, a car, a stay, a booked tour — so the
+        // plain word for what they are is both accurate and what a person would say.
+        title: 'ההזמנות',
+        // **The day is stated, not jumped to** (owner, 2026-08-30: _"clicking on a booking
+        // teleports you down which is inconvenient"_). A row that says which day it is on
+        // answers the question the jump was answering, without moving the reader.
+        day: (ordinal: number) => `יום ${ordinal}`,
+      },
+      appendix: {
+        // **Not `פרטים נוספים`.** What is left here after the amendment is only what is
+        // attached to no moment in the trip — the packing list, the group's own reminders.
+        // That is a real category and deserves its own name rather than a catch-all.
+        title: 'לקראת הנסיעה',
+      },
+      unavailableTitle: 'המסלול לא זמין',
+      unavailableBody: 'יכול להיות שהלינק בוטל או שהטיול כבר לא קיים. בקשו לינק חדש ממי ששלח.',
+      /**
+       * **The card for a failure that is not the link's** (ADR-0213's seventeenth
+       * amendment). The two sentences above were drawn for every failed read, so a deploy
+       * swapping containers, a tunnel and a busy minute all told a reader their link had
+       * been revoked. This one is allowed to say the opposite, because it is only reached
+       * after the ladder ran and the server never once answered `404`.
+       */
+      failedTitle: 'לא הצלחנו לטעון את המסלול',
+      failedBody: 'הלינק לא בוטל, פשוט לא קיבלנו תשובה. בדקו את החיבור ונסו שוב.',
+      failedAction: 'נסו שוב',
+      loading: 'טוען את המסלול…',
+      inviteTitle: 'גם אתם מתכננים טיול?',
+      inviteBody: 'Travelive מחבר את הלו״ז, המקומות והמסמכים במקום אחד.',
+      inviteCta: 'תכננו טיול משלכם',
+    },
+    dayparts: {
+      morning: 'בוקר',
+      noon: 'צהריים',
+      afternoon: 'אחר הצהריים',
+      evening: 'ערב',
+      night: 'לילה',
+      flexible: 'גמיש',
+    },
+  },
   // Trip settings (ADR-0039): admin-governed. Mode-neutral chrome.
   settings: {
     title: 'הגדרות הטיול',
     back: 'חזרה לטיול',
     details: 'פרטי הטיול',
     edit: 'עריכה',
-    save: 'שמור',
+    save: 'שמירה',
     cancel: 'ביטול',
     nameLabel: 'שם הטיול',
     destinationLabel: 'יעד',
@@ -2321,56 +3913,63 @@ export const t = {
     // app's "no value" placeholder.
     currencyUnset: '-',
     peerManaged: 'רק מנהל יכול לערוך את פרטי הטיול',
-    party: 'חבורה',
-    memberCount: (n: number) => `${n} משתתפים`,
-    you: 'אתה',
+    party: "החבר'ה",
+    memberCount: (n: number) => `${n} נוסעים`,
+    // Renders after a name (`דן · זה אני`), which is why it is a clause and not `אתה`: the
+    // roster is the one surface that has to point at the reader, and every second-person
+    // singular in Hebrew picks a gender the app does not know.
+    you: 'זה אני',
     roleAdmin: 'מנהל',
-    rolePeer: 'משתתף',
+    rolePeer: 'נוסע',
     memberActions: (name: string) => `פעולות על ${name}`,
     // The member surface's detail rows (ADR-0133 §9) — the joined date moved here
     // off the row, which only names who is present.
     member: {
       roleLabel: 'תפקיד',
-      joinedLabel: 'הצטרף',
+      joinedLabel: 'הצטרפות',
     },
-    roster: 'חבורה',
-    rosterOpen: (n: number) => `החבורה, ${n} נוסעים`,
-    rosterFoot: 'הזמנה של אנשים חדשים והלינק לטיול נמצאים בהגדרות הטיול.',
+    roster: "החבר'ה",
+    rosterOpen: (n: number) => `החבר'ה, ${n} נוסעים`,
+    rosterFoot: 'הזמנת אנשים חדשים והלינק לטיול נמצאים בהגדרות הטיול.',
     // The member surface closes rather than cancels: it is a detail card that may
     // carry actions, not a prompt you back out of.
     closeMember: 'סגירה',
-    promote: 'הפוך למנהל',
-    removeMember: 'הסר מהטיול',
-    invite: 'הזמנת חברים',
-    inviteGenerate: 'הצג לינק הזמנה',
+    // **The infinitive, and it is the register rule's third carve-out.** The noun forms are
+    // both unusable: `מינוי` is what a committee does, and `הפיכה למנהל` is not a phrase.
+    // Hebrew's casual way to name an act on someone ELSE's state is the infinitive.
+    promote: 'להפוך למנהל',
+    removeMember: 'הסרה מהטיול',
+    invite: "הזמנת החבר'ה",
+    inviteGenerate: 'הצגת הלינק',
     inviteHint: 'לינק אחד לטיול · פעיל עד סוף הטיול · שתפו בקבוצה',
+    inviteEnded: 'הטיול הסתיים · אין יותר לינק להצטרפות',
     inviteCopied: 'הלינק הועתק · שתפו בקבוצה',
-    inviteReset: 'אפס לינק',
+    inviteReset: 'לינק חדש',
     inviteResetHint: 'מבטל את הלינק הקודם ויוצר חדש · למנהל בלבד',
     inviteReset_done: 'נוצר לינק חדש · הקודם בוטל',
     removedTitle: 'הוסרו מהטיול',
     removedHint: 'לא יוכלו לחזור דרך הלינק · אפשר להחזיר אותם',
-    allowBack: 'החזר לטיול',
+    allowBack: 'החזרה לטיול',
     allowedBack: (name: string) => `${name} יכול לחזור דרך הלינק`,
     dangerZone: 'אזור רגיש',
-    leave: 'עזוב את הטיול',
-    leaveAction: 'עזוב',
-    leaveHint: 'תוסר מרשימת המשתתפים · אפשר לחזור דרך לינק תקף',
+    leave: 'יציאה מהטיול',
+    leaveAction: 'יציאה',
+    leaveHint: 'יוצאים מרשימת הנוסעים · אפשר לחזור עם לינק תקף',
     leaveConfirmTitle: 'לעזוב את הטיול?',
-    leaveConfirmBody: (name: string) => `תוסר מ״${name}״. אפשר להצטרף מחדש דרך לינק הזמנה תקף.`,
-    delete: 'מחק את הטיול לכולם',
-    deleteAction: 'מחק',
-    deleteHint: 'מחיקה זמינה למנהל בלבד · מוחקת את הטיול לכל המשתתפים',
+    leaveConfirmBody: (name: string) => `אתם יוצאים מ״${name}״. אפשר לחזור עם לינק תקף.`,
+    delete: 'מחיקת הטיול לכולם',
+    deleteAction: 'מחיקה',
+    deleteHint: 'מחיקה זמינה למנהל בלבד · מוחקת את הטיול לכל הנוסעים',
     deleteConfirmTitle: 'למחוק את הטיול לכולם?',
-    deleteConfirmBody: (name: string) => `״${name}״ יימחק לכל המשתתפים · אין דרך חזרה. ממשיכים?`,
-    removeConfirmTitle: 'להסיר משתתף?',
+    deleteConfirmBody: (name: string) => `״${name}״ יימחק לכל הנוסעים · אין דרך חזרה. ממשיכים?`,
+    removeConfirmTitle: 'להסיר נוסע?',
     removeConfirmBody: (name: string) => `${name} יוסר מהטיול. תמיד אפשר להזמין מחדש.`,
     toast: {
       saved: 'הפרטים נשמרו',
       savedQueued: 'נשמר · יסונכרן כשנחזור לרשת',
-      promoted: 'המשתתף קודם למנהל',
-      promotedQueued: 'קודם למנהל · יסונכרן כשנחזור לרשת',
-      removed: 'המשתתף הוסר',
+      promoted: 'הנוסע הוא מנהל עכשיו',
+      promotedQueued: 'עכשיו מנהל · יסונכרן כשנחזור לרשת',
+      removed: 'הנוסע הוסר',
       left: 'עזבת את הטיול',
       deleted: 'הטיול נמחק',
     },

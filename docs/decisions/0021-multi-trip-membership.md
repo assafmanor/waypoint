@@ -17,7 +17,7 @@ A user routinely plans/joins **more than one trip** (a future trip while another
 ## Consequences
 
 - New client work only: a switcher + active-trip state (new task) that slightly widens the mode-switch (T-019) and Home (T-008) tasks.
-- **Deferred:** overlapping in-progress trips (two trips both "now") — default to last-opened + let the user switch; a real "which is primary now" resolution waits until it actually happens.
+- **Deferred:** overlapping in-progress trips (two trips both "now") — default to last-opened + let the user switch; a real "which is primary now" resolution waits until it actually happens. _Resolved 2026-09-10 ([ADR-0033](0033-all-trips-home.md) amendment): last-opened still wins when it is live; with no live last-opened, a cold load goes to All trips and the user picks._
 - PRD clarified: the simple multi-trip list is **in** for v1.
 
 ## Alternatives considered

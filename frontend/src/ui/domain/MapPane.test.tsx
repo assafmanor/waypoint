@@ -48,7 +48,7 @@ class FakeMapLibreMap {
   viewport: { north: number; south: number; east: number; west: number } | null = null;
   /** 0×0 by default: an unsized container has no honest fit. */
   box = { width: 0, height: 0 };
-  readonly fits: { padding?: { bottom: number } }[] = [];
+  readonly fits: { bounds: unknown; padding?: { bottom: number } }[] = [];
   readonly sources = new Map<string, unknown>();
   readonly layers: Record<string, unknown>[] = [];
   removed = 0;
@@ -74,6 +74,12 @@ class FakeMapLibreMap {
   getMaxZoom() {
     return undefined;
   }
+  /** Which way is up (ADR-0234). This fake stands in for the MapLibre instance, so it
+   *  speaks MapLibre's own `(-180, 180]` and the normalising happens above it. */
+  bearing = 0;
+  getBearing() {
+    return this.bearing;
+  }
   getBounds() {
     const b = this.viewport;
     if (!b) return undefined;
@@ -84,12 +90,23 @@ class FakeMapLibreMap {
       getWest: () => b.west,
     };
   }
-  jumpTo(at: { center?: [number, number]; zoom?: number }) {
+  jumpTo(at: { center?: [number, number]; zoom?: number; bearing?: number }) {
     if (at.center) this.centre = { lat: at.center[1], lng: at.center[0] };
     if (at.zoom != null) this.zoom = at.zoom;
+    // A stated bearing is a command and a missing one leaves the angle alone — MapLibre's
+    // own contract, and what `CameraAt.bearing` being optional encodes (ADR-0234).
+    if (at.bearing != null) this.bearing = at.bearing;
   }
-  fitBounds(_bounds: unknown, options?: { padding?: { bottom: number } }) {
-    this.fits.push({ padding: options?.padding });
+  /** The adapter hands MapLibre `[[west, south], [east, north]]`, so that is what a test
+   *  reading `fits` gets — and reading it is how "the camera framed the LEG, not the stop"
+   *  is asserted at all (ADR-0206 §AC8). */
+  /** What `fitBounds` resolves the camera to, which is how the leg-framing floor is exercised
+   *  from here (`useMapCamera` learns a fit by asking the map and reading the zoom back).
+   *  `undefined` leaves the zoom alone — what every test that does not care about it wants. */
+  fitResultZoom: number | undefined = undefined;
+  fitBounds(bounds: unknown, options?: { padding?: { bottom: number } }) {
+    this.fits.push({ bounds, padding: options?.padding });
+    if (this.fitResultZoom !== undefined) this.zoom = this.fitResultZoom;
   }
   resize() {
     this.resizes += 1;
@@ -97,8 +114,40 @@ class FakeMapLibreMap {
   remove() {
     this.removed += 1;
   }
+  /** **What `isStyleLoaded()` answers, and it is not "can I add a layer".** MapLibre's is false
+   *  while ANY tile is in flight — the state a camera move creates — so a test may set this
+   *  `false` with the style perfectly able to take a layer. That gap is the whole of field
+   *  report "the amber route sometimes doesn't render at all". */
+  styleLoaded = true;
+  /** Whether the style SPEC has parsed. `addSource`/`addLayer` reject before mutating anything
+   *  when it has not, exactly as the real ones do. */
+  specReady = true;
   isStyleLoaded() {
-    return true;
+    return this.styleLoaded;
+  }
+  /** Fire the event a style spec arriving fires. */
+  styleDataFired() {
+    this.handlers.get('styledata')?.forEach((fn) => fn());
+  }
+  /** Fire the event a camera coming to rest fires. */
+  idled() {
+    this.handlers.get('idle')?.forEach((fn) => fn());
+  }
+  /** **A projection, because the connector's collar and stub are SCREEN distances** (ADR-0206
+   *  §AC3/§AC5). Linear and deliberately simple: 1° = 100px, y inverted like a real screen. That
+   *  makes every px assertion below arithmetic a reader can check, which a real Mercator would
+   *  not. */
+  project(at: [number, number]) {
+    return { x: at[0] * 100, y: -at[1] * 100 };
+  }
+  unproject(p: [number, number]) {
+    return { lng: p[0] / 100, lat: -p[1] / 100 };
+  }
+  /** Fire what `zoomend` would, at a new zoom: the collar is a px distance, so a big enough zoom
+   *  re-derives the geometry — and a small one deliberately does not. */
+  zoomEnded(to?: number) {
+    if (to !== undefined) this.zoom = to;
+    this.handlers.get('zoomend')?.forEach((fn) => fn());
   }
   /** **The ground sources the style declares** — what `styleState` counts. A test can empty this
    *  to model the state `sdk:` could not distinguish: a camera that answers perfectly on a map
@@ -115,8 +164,16 @@ class FakeMapLibreMap {
       layers: this.layers,
     };
   }
+  /** A GeoJSON source, with the one method the connector calls on an existing one. The real
+   *  `GeoJSONSource` has `setData`; without it here the "already added, so update in place" path
+   *  — the whole style-reload guard — was never exercised. */
   addSource(id: string, source: unknown) {
-    this.sources.set(id, source);
+    if (!this.specReady) throw new Error('Style is not done loading');
+    const src = source as { data?: unknown; setData?: (d: unknown) => void };
+    src.setData = (d: unknown) => {
+      src.data = d;
+    };
+    this.sources.set(id, src);
   }
   getSource(id: string) {
     return this.sources.get(id);
@@ -124,8 +181,13 @@ class FakeMapLibreMap {
   removeSource(id: string) {
     this.sources.delete(id);
   }
-  addLayer(layer: Record<string, unknown>) {
-    this.layers.push(layer);
+  /** **`beforeId` honoured**, because the connector's paint order depends on it: a layer added
+   *  by a later `draw()` must land at its place in the stack, not on top of it. */
+  addLayer(layer: Record<string, unknown>, beforeId?: string) {
+    if (!this.specReady) throw new Error('Style is not done loading');
+    const at = beforeId ? this.layers.findIndex((l) => l.id === beforeId) : -1;
+    if (at >= 0) this.layers.splice(at, 0, layer);
+    else this.layers.push(layer);
   }
   getLayer(id: string) {
     return this.layers.find((layer) => layer.id === id);
@@ -154,6 +216,36 @@ class FakeMapLibreMap {
     this.zoom = zoom;
     this.handlers.get('zoom')?.forEach((fn) => fn());
   }
+  /** **A two-finger twist** (ADR-0234) — the gesture that has always been able to turn this
+   *  map and that nothing could undo. `rotate` is MapLibre's own per-frame event, which is
+   *  what the compass needle reads, so a test can turn the ground exactly as a finger does. */
+  twistTo(bearing: number) {
+    this.bearing = bearing;
+    this.handlers.get('rotate')?.forEach((fn) => fn());
+  }
+}
+
+/** **jsdom has no `DeviceOrientationEvent`**, so heading-up is `unsupported` here unless a
+ *  test says otherwise — which is honest (a desktop without a magnetometer is the ordinary
+ *  case) and useless for testing the mode. This installs the constructor without a
+ *  `requestPermission`, i.e. the Chrome/Android shape where the events simply flow; the iOS
+ *  shape is the one `useDeviceHeading`'s own spec covers. */
+function withOrientationSensor() {
+  const existing = Reflect.get(window, 'DeviceOrientationEvent');
+  Object.defineProperty(window, 'DeviceOrientationEvent', {
+    value: class {},
+    configurable: true,
+    writable: true,
+  });
+  return () => {
+    if (existing === undefined) Reflect.deleteProperty(window, 'DeviceOrientationEvent');
+    else
+      Object.defineProperty(window, 'DeviceOrientationEvent', {
+        value: existing,
+        configurable: true,
+        writable: true,
+      });
+  };
 }
 
 /** The map the next `paint()` hands over. Always present — a test that wants no map is not a
@@ -225,9 +317,11 @@ import { mapReading } from '../../lib/dev-tuning';
 import {
   DRAG_CLICK_SWALLOW_MS,
   DRAG_HOLD_MS,
+  MAP_CAMERA_EASE,
   MAP_CONNECTOR,
   MAP_LOAD_TIMEOUT_MS,
   MAP_ZOOM,
+  REPLAY,
 } from '../../constants';
 import { RELOAD_GUARD_KEY, stampReload } from '../../lib/guarded-reload';
 import { setAccessToken } from '../../lib/api';
@@ -272,6 +366,8 @@ function paint(props: Partial<Parameters<typeof MapPane>[0]> = {}) {
       results={props.results}
       onSelectResult={props.onSelectResult}
       draftMarker={props.draftMarker}
+      replay={props.replay}
+      onReplayChange={props.onReplayChange}
     />,
   );
 }
@@ -283,13 +379,50 @@ const pins = () => [...document.querySelectorAll('.map-pin')];
  *  is a plain element we own, so its click is in the same stream everything else is. */
 const firePinTap = (pin: Element) => act(() => void fireEvent.click(pin));
 const markers = () => [...document.querySelectorAll<HTMLElement>('.map-marker')];
-/** The day connector, as it now exists: a line layer on the map, not a `<Polyline>` element. */
-const connectorLayer = () =>
-  mapStub.current.layers.find((layer) => layer.type === 'line') as
-    { paint: Record<string, unknown> } | undefined;
+/** A layer by id. **By id and not by type**, because there are four now (ADR-0206 §AC): the
+ *  dashed legs, the one solid amber leg, the stubs, and the end dots. */
+const layerById = (id: string) =>
+  mapStub.current.layers.find((layer) => layer.id === id) as
+    | {
+        paint: Record<string, unknown>;
+        layout?: Record<string, unknown>;
+        filter?: unknown;
+        source?: string;
+      }
+    | undefined;
+const connectorLayer = () => layerById('wp-connector-line');
+const routeLayer = () => layerById('wp-route-line');
+const stubLayer = () => layerById('wp-connector-stub');
+const dotLayer = () => layerById('wp-connector-dot-circle');
+
+interface Feature {
+  geometry: { type: string; coordinates: number[][] & number[] };
+  properties: { kind?: string; emphasis?: string };
+}
+const featuresOf = (source: string): Feature[] => {
+  const src = mapStub.current.getSource(source) as { data?: { features?: Feature[] } } | undefined;
+  return src?.data?.features ?? [];
+};
+const legFeatures = () => featuresOf('wp-connector').filter((f) => f.properties.kind === 'leg');
+const stubFeatures = () => featuresOf('wp-connector').filter((f) => f.properties.kind === 'stub');
+const dotFeatures = () => featuresOf('wp-connector-dot');
+
+const A = { lat: 1, lng: 1 };
+const B = { lat: 2, lng: 2 };
+const C = { lat: 3, lng: 1 };
+/** One leg, the ordinary case: two stops sitting on their own route. */
+const ONE_LEG = [{ path: [A, B], from: A, to: B }];
+/** Two legs, so "which leg" and "how many dots" have answers worth asserting. */
+const TWO_LEGS = [
+  { path: [A, B], from: A, to: B },
+  { path: [B, C], from: B, to: C },
+];
 
 afterEach(() => {
   cleanup();
+  // One test asks its question under reduced motion (a camera move becomes a single jump), and
+  // a leaked `matchMedia` would silently answer it for every test after it.
+  vi.unstubAllGlobals();
   mapStub.current = new FakeMapLibreMap();
   canvas.firstPaint = undefined;
   canvas.idle = undefined;
@@ -624,69 +757,429 @@ describe('MapPane — our markup, not PinElement (ADR-0121 §6)', () => {
     expect(document.querySelector('.map-me')).toBeTruthy();
   });
 
-  // Dashed, neutral, no arrowheads — it says "this is the order", not "this is the route"
-  // (§10). **And the dash is REAL now** (ADR-0186 §2): ADR-0121 §10 had to fake one as a
-  // repeating symbol along a fully transparent stroke because the Maps API had no dash array,
-  // so the assertion changes from "transparent-stroked with icons" to the thing anyone would
-  // have written in the first place.
-  it('draws the day connector only with two or more stops, dashed and neutral', () => {
-    const { unmount } = paint({ connector: [{ lat: 1, lng: 1 }] });
-    expect(connectorLayer()).toBeUndefined();
+  // Dashed, neutral, no arrowheads — it says "this is the order", not "this is the route" (§10).
+  // **And since ADR-0206 §AB5 it follows the real routed path**, so the dash means "not the leg
+  // you are looking at" rather than "not a route" (§AC).
+  it('draws one dashed feature per leg, neutral, at the shipped dash', () => {
+    const { unmount } = paint({ connector: [{ path: [A], from: A, to: B }] });
+    expect(legFeatures()).toHaveLength(0);
     unmount();
-    paint({
-      connector: [
-        { lat: 1, lng: 1 },
-        { lat: 2, lng: 2 },
-        { lat: 3, lng: 3 },
-      ],
-    });
+
+    paint({ connector: TWO_LEGS });
     const line = connectorLayer()!;
     expect(line.paint['line-color']).toBe(MAP_CONNECTOR.COLOR.light);
     expect(line.paint['line-dasharray']).toEqual([...MAP_CONNECTOR.DASH]);
-    expect(line.paint['line-width']).toBe(MAP_CONNECTOR.WEIGHT);
-    // All three stops, in MapLibre's own coordinate order.
-    const source = mapStub.current.getSource('wp-connector') as {
-      data: { geometry: { coordinates: number[][] } };
-    };
-    expect(source.data.geometry.coordinates).toEqual([
-      [1, 1],
-      [2, 2],
-      [3, 3],
-    ]);
+    // Two legs, two features — not one polyline through three stops, which is what lets each
+    // leg carry its own geometry and its own prominence.
+    expect(legFeatures()).toHaveLength(2);
+    expect(legFeatures()[0]!.geometry.type).toBe('LineString');
   });
 
   // The dash colour was a TS constant handed to Google, so it sat out the CSS remap entirely
-  // and measured 1.01:1 on the night style's land — invisible (ADR-0158 §16). It takes the same
-  // scheme the ground was painted from, so the line and the canvas cannot disagree.
+  // and measured 1.01:1 on the night style's land (ADR-0158 §16). It takes the same scheme the
+  // ground was painted from, so the line and the canvas cannot disagree.
   it('takes the connector colour from the canvas it was built for, not the document', () => {
-    paint({
-      scheme: MAP_COLOR_SCHEME.dark,
-      connector: [
-        { lat: 1, lng: 1 },
-        { lat: 2, lng: 2 },
-      ],
-    });
+    paint({ scheme: MAP_COLOR_SCHEME.dark, connector: ONE_LEG });
     expect(connectorLayer()!.paint['line-color']).toBe(MAP_CONNECTOR.COLOR.dark);
   });
 
-  it('draws no connector when none is given (Trip mode, or all-days scope)', () => {
+  it('draws no connector when none is given (Trip mode with no live next, or all-days)', () => {
     paint();
     expect(connectorLayer()).toBeUndefined();
+    expect(mapStub.current.getSource('wp-connector')).toBeUndefined();
   });
 
-  // The layer and its source are the map's, not React's, so nothing unmounts them for us — and
-  // a leak here would stack a second `wp-connector` on the next mount and throw.
-  it('takes its layer and source back off the map on unmount', () => {
-    const { unmount } = paint({
+  /* ── THE COLLAR AND THE END DOT (ADR-0206 §AC3) ────────────────────────────────────────── */
+
+  // **A plain gap is invisible on a line already made of gaps** — measured on the mockup, where
+  // a 9px collar against a 5px dash gap could not be told apart. The mark is a filled DOT; the
+  // collar only decides how far back from the stop it sits, so the pin's tip does not cover it.
+  it('trims each leg back from its stops and marks the ends with dots', () => {
+    paint({ connector: ONE_LEG });
+
+    // 1° = 100px in the stub's projection, so the leg is ~141px and the collar takes 9px off
+    // each end: the drawn line starts and ends INSIDE the two stops.
+    const drawn = legFeatures()[0]!.geometry.coordinates as number[][];
+    expect(drawn[0]![0]).toBeGreaterThan(A.lng);
+    expect(drawn[drawn.length - 1]![0]).toBeLessThan(B.lng);
+
+    // One dot per leg END, so two for one leg — and they sit on the trimmed ends, not the stops.
+    expect(dotFeatures()).toHaveLength(2);
+    expect(dotFeatures()[0]!.geometry.coordinates).toEqual(drawn[0]);
+    expect(dotLayer()!.paint['circle-radius']).toBeDefined();
+  });
+
+  // The dot needs a point source of its own — a `circle` layer cannot read a line source. That
+  // is the cost §AC3 names, and it is asserted so a later change cannot quietly drop it.
+  it('keeps the dots in their own point source, and the line treatments in one', () => {
+    const OFF = { lat: 2.4, lng: 2.4 };
+    paint({
       connector: [
-        { lat: 1, lng: 1 },
-        { lat: 2, lng: 2 },
+        { path: [A, B], from: A, to: OFF, emphasis: 'route' as const },
+        { path: [B, C], from: OFF, to: C },
       ],
     });
-    expect(mapStub.current.getSource('wp-connector')).toBeTruthy();
+    expect(dotLayer()!.source).toBe('wp-connector-dot');
+    for (const layer of [connectorLayer()!, routeLayer()!, stubLayer()!]) {
+      expect(layer.source).toBe('wp-connector');
+    }
+  });
+
+  // **A layer with no features is not free, and that is measured rather than tidiness.** A
+  // Trip-mode day draws ONE leg; adding the other three layers beside it — empty, but composited
+  // every frame — tripled `place-know.spec.ts` from ⁦38s⁩ to ⁦1.1m⁩ on a software-rendered canvas
+  // and made its scroll assertions fail outright. So a layer is added only when something in the
+  // data belongs to it, and removed when nothing does.
+  it('adds only the layers that have something to draw', () => {
+    // Trip mode's shape: one amber leg, nothing dashed, no stub.
+    const { unmount } = paint({
+      connector: [{ path: [A, B], from: A, to: B, emphasis: 'route' as const }],
+    });
+    expect(routeLayer()).toBeTruthy();
+    expect(connectorLayer()).toBeUndefined();
+    expect(stubLayer()).toBeUndefined();
     unmount();
-    expect(mapStub.current.getLayer('wp-connector-line')).toBeUndefined();
+
+    // Plan mode's: dashed legs and their dots, but still no amber and no stub.
+    paint({ connector: TWO_LEGS });
+    expect(connectorLayer()).toBeTruthy();
+    expect(dotLayer()).toBeTruthy();
+    expect(routeLayer()).toBeUndefined();
+    expect(stubLayer()).toBeUndefined();
+  });
+
+  // …and it gives them back when the data stops needing them, rather than leaving them behind.
+  it('takes a layer away again once nothing belongs to it', () => {
+    const OFF = { lat: 2.4, lng: 2.4 };
+    const { rerender } = paint({ connector: [{ path: [A, B], from: A, to: OFF }] });
+    expect(stubLayer()).toBeTruthy();
+
+    rerender(
+      <MapPane
+        scheme={MAP_COLOR_SCHEME.light}
+        urls={URLS}
+        pins={[pin({ placeId: 'a' })]}
+        setSignal="day"
+        onSelectPin={vi.fn()}
+        onCanvasTap={vi.fn()}
+        onViewChange={vi.fn()}
+        areaCount={1}
+        areaSorted={false}
+        onAreaSort={vi.fn()}
+        onLocate={vi.fn()}
+        connector={[{ path: [A, B], from: A, to: B }]}
+      />,
+    );
+
+    expect(stubLayer()).toBeUndefined();
+    expect(connectorLayer()).toBeTruthy();
+  });
+
+  // The collar is a SCREEN distance, so the drawn geometry is a function of the camera — but the
+  // redraw is DEFERRED and THRESHOLDED, because doing it inside the `zoomend` handler mutates the
+  // style exactly as the app settles after a camera fit. That is measured: it took
+  // `place-know.spec.ts` from 38s to 1.1m and made its stability assertions fail.
+  it('re-derives the trimmed geometry after a real zoom, off the settling frame', async () => {
+    paint({ connector: ONE_LEG });
+    const before = JSON.stringify(legFeatures()[0]!.geometry.coordinates);
+
+    mapStub.current.project = (at: [number, number]) => ({ x: at[0] * 400, y: -at[1] * 400 });
+    mapStub.current.unproject = (p: [number, number]) => ({ lng: p[0] / 400, lat: -p[1] / 400 });
+    act(() => mapStub.current.zoomEnded(16));
+    // Nothing yet — the handler only queues the work.
+    expect(JSON.stringify(legFeatures()[0]!.geometry.coordinates)).toBe(before);
+
+    await act(async () => {
+      await new Promise((r) => requestAnimationFrame(() => r(null)));
+    });
+
+    // Same collar in pixels, four times the scale, so it eats a quarter of the degrees it did.
+    expect(JSON.stringify(legFeatures()[0]!.geometry.coordinates)).not.toBe(before);
+  });
+
+  // Under half a level a 9px setback is still a 9px-ish setback, and the redraw is not worth what
+  // it costs the frame it lands in.
+  it('leaves the geometry alone for a zoom too small to see', async () => {
+    paint({ connector: ONE_LEG });
+    const before = JSON.stringify(legFeatures()[0]!.geometry.coordinates);
+
+    mapStub.current.project = (at: [number, number]) => ({ x: at[0] * 400, y: -at[1] * 400 });
+    act(() => mapStub.current.zoomEnded(14.2));
+    await act(async () => {
+      await new Promise((r) => requestAnimationFrame(() => r(null)));
+    });
+
+    expect(JSON.stringify(legFeatures()[0]!.geometry.coordinates)).toBe(before);
+  });
+
+  /* ── THE LINE THAT DID NOT DRAW, AND THE TURN THAT WAS ERASED (field report 2026-08-27) ── */
+
+  // **Tapping a stop MOVES the camera, and a moving camera has tiles in flight — which is
+  // exactly when `isStyleLoaded()` says `false`.** The first build read that as "the style
+  // cannot take a layer" and deferred the draw to `load`, which fires once per map instance and
+  // had long since fired; this effect's own teardown had already removed the layers, so the
+  // amber route to the stop you just tapped simply never came back.
+  it('draws the route while the camera is still fetching tiles', () => {
+    mapStub.current.styleLoaded = false;
+    paint({ connector: [{ path: [A, B], from: A, to: B, emphasis: 'route' as const }] });
+    expect(routeLayer()).toBeTruthy();
+  });
+
+  // The one case a draw genuinely cannot be served: the style SPEC has not parsed. It is
+  // refused before anything is mutated, and the spec arriving is what brings the line in.
+  it('waits for the style spec, then draws the moment it arrives', () => {
+    mapStub.current.specReady = false;
+    mapStub.current.styleLoaded = false;
+    paint({ connector: ONE_LEG });
+    expect(connectorLayer()).toBeUndefined();
+
+    mapStub.current.specReady = true;
+    act(() => mapStub.current.styleDataFired());
+    expect(connectorLayer()).toBeTruthy();
+  });
+
+  // …and `idle` is the backstop, for a spec that arrives without a `styledata` this pane hears.
+  it('draws on the camera coming to rest, if nothing else got there first', () => {
+    mapStub.current.specReady = false;
+    mapStub.current.styleLoaded = false;
+    paint({ connector: ONE_LEG });
+
+    mapStub.current.specReady = true;
+    act(() => mapStub.current.idled());
+    expect(connectorLayer()).toBeTruthy();
+  });
+
+  // **The collar may shorten the last straight; it may never reach the turn behind it.** At trip
+  // zoom ⁦9px⁩ is hundreds of metres of real road, and the first build spent its pixels by
+  // POPPING points — so pulling the camera back erased the route's last turn (reported with a
+  // screenshot) and, on a leg shorter than two collars, erased the leg. The point count is now
+  // an invariant of the trim.
+  it('keeps every turn of the route however far the camera pulls back', async () => {
+    // North from A, then east to B: the last turn is the thing a reader checks against the pin.
+    const TURN = { lat: 2, lng: 1 };
+    paint({ connector: [{ path: [A, TURN, B], from: A, to: B }] });
+    expect(legFeatures()[0]!.geometry.coordinates).toHaveLength(3);
+
+    // Pull back until each end segment is ⁦10px⁩ — thinner than the collar that wants to eat it.
+    mapStub.current.project = (at: [number, number]) => ({ x: at[0] * 10, y: -at[1] * 10 });
+    mapStub.current.unproject = (p: [number, number]) => ({ lng: p[0] / 10, lat: -p[1] / 10 });
+    act(() => mapStub.current.zoomEnded(10));
+    await act(async () => {
+      await new Promise((r) => requestAnimationFrame(() => r(null)));
+    });
+
+    const drawn = legFeatures()[0]!.geometry.coordinates as number[][];
+    expect(drawn).toHaveLength(3);
+    expect(drawn[1]).toEqual([TURN.lng, TURN.lat]);
+    // And the leg is still a line, not a dot: the collar took half of each end segment, not all.
+    expect(drawn[0]).not.toEqual(drawn[1]);
+  });
+
+  // A `draw()` off a zoom does not tear the set down first, so a layer that only NOW has
+  // something to draw would land on top of the stack — the neutral tail painting over the amber
+  // leg it belongs under.
+  it('adds a later layer at its place in the paint order, not on top', async () => {
+    // Coarse enough that the stop sits under STUB.MIN_PX from where its route ends: amber leg,
+    // no tail.
+    mapStub.current.project = (at: [number, number]) => ({ x: at[0] * 20, y: -at[1] * 20 });
+    mapStub.current.unproject = (p: [number, number]) => ({ lng: p[0] / 20, lat: -p[1] / 20 });
+    const OFF = { lat: 2.4, lng: 2.4 };
+    paint({ connector: [{ path: [A, B], from: A, to: OFF, emphasis: 'route' as const }] });
+    expect(routeLayer()).toBeTruthy();
+    expect(stubLayer()).toBeUndefined();
+
+    mapStub.current.project = (at: [number, number]) => ({ x: at[0] * 100, y: -at[1] * 100 });
+    mapStub.current.unproject = (p: [number, number]) => ({ lng: p[0] / 100, lat: -p[1] / 100 });
+    act(() => mapStub.current.zoomEnded(16));
+    await act(async () => {
+      await new Promise((r) => requestAnimationFrame(() => r(null)));
+    });
+
+    expect(stubLayer()).toBeTruthy();
+    const ids = mapStub.current.layers.map((l) => l.id);
+    expect(ids.indexOf('wp-connector-stub')).toBeLessThan(ids.indexOf('wp-route-line'));
+  });
+
+  // MapLibre simplifies a GeoJSON source per tile zoom unless told not to — i.e. the further out
+  // the camera, the more of the route it is allowed to straighten. On a line whose whole job is
+  // to be the provider's own geometry, that is the one thing it must never do.
+  it('asks MapLibre never to simplify the drawn route', () => {
+    paint({ connector: ONE_LEG });
+    const source = mapStub.current.getSource('wp-connector') as { tolerance?: number };
+    expect(source.tolerance).toBe(0);
+  });
+
+  /* ── THE ONE AMBER LEG (ADR-0206 §D1/§D8/§AC1/§AC2) ────────────────────────────────────── */
+
+  // §AC1: the "otherwise the first leg" arm is gone, so a day with nothing selected and no live
+  // next spends NO amber. The screen decides; the pane must not invent one.
+  it('spends no amber when no leg is marked as the route', () => {
+    paint({ connector: TWO_LEGS });
+    expect(legFeatures().every((f) => f.properties.emphasis !== 'route')).toBe(true);
+    expect(dotFeatures().every((f) => f.properties.emphasis !== 'route')).toBe(true);
+  });
+
+  // §M3: solid `--amber` measures 1.72:1 on the day ground, under the 3:1 a graphic owes what it
+  // crosses — so the line is a per-theme pair switched in JS. One value here is the defect.
+  it('paints the marked leg solid and amber, per theme, over the dash', () => {
+    const { unmount } = paint({
+      connector: [{ ...TWO_LEGS[0]!, emphasis: 'route' }, TWO_LEGS[1]!],
+    });
+    const route = routeLayer()!;
+    expect(route.paint['line-color']).toBe(MAP_CONNECTOR.ROUTE.COLOR.light);
+    expect(route.paint['line-width']).toBe(MAP_CONNECTOR.ROUTE.WEIGHT);
+    expect(route.paint['line-dasharray']).toBeUndefined();
+    // Painted after the dash it belongs to.
+    const ids = mapStub.current.layers.map((l) => l.id);
+    expect(ids.indexOf('wp-route-line')).toBeGreaterThan(ids.indexOf('wp-connector-line'));
+    unmount();
+
+    paint({
+      scheme: MAP_COLOR_SCHEME.dark,
+      connector: [{ ...TWO_LEGS[0]!, emphasis: 'route' }],
+    });
+    expect(routeLayer()!.paint['line-color']).toBe(MAP_CONNECTOR.ROUTE.COLOR.dark);
+    expect(MAP_CONNECTOR.ROUTE.COLOR.dark).not.toBe(MAP_CONNECTOR.ROUTE.COLOR.light);
+  });
+
+  // §D8 rations the amber to ONE leg, and the two layers split by filter rather than by a second
+  // copy of the data — so "how many solid lines" is a property of the features, not of the layers.
+  it('draws exactly one solid leg, whatever else is on the canvas', () => {
+    paint({
+      connector: [
+        { ...TWO_LEGS[0]!, emphasis: 'route' },
+        { ...TWO_LEGS[1]!, emphasis: 'near' },
+      ],
+    });
+    expect(legFeatures().filter((f) => f.properties.emphasis === 'route')).toHaveLength(1);
+  });
+
+  // §AC2: prominence is weight and opacity, never a second hue — the budget has none spare.
+  it('carries prominence as data, so one layer draws legs of different weight', () => {
+    paint({
+      connector: [
+        { ...TWO_LEGS[0]!, emphasis: 'route' },
+        { ...TWO_LEGS[1]!, emphasis: 'near' },
+      ],
+    });
+    expect(legFeatures().find((f) => f.properties.emphasis === 'near')).toBeTruthy();
+    // Data-driven `match` expressions rather than a per-leg layer.
+    expect(connectorLayer()!.paint['line-width']).toEqual(
+      expect.arrayContaining(['match', ['get', 'emphasis']]),
+    );
+    expect(connectorLayer()!.paint['line-opacity']).toEqual(
+      expect.arrayContaining(['match', ['get', 'emphasis']]),
+    );
+  });
+
+  /* ── THE APPROACH STUB (ADR-0206 §AC5) ─────────────────────────────────────────────────── */
+
+  // A stop that sits on its route needs no tail at all; most do.
+  it('draws no stub when the route already reaches the stop', () => {
+    paint({ connector: ONE_LEG });
+    expect(stubFeatures()).toHaveLength(0);
+  });
+
+  // **One per STOP, never one per leg end.** Drawn per end, an interior off-network stop got two
+  // tails meeting in a V — the same fact drawn twice, since a stop meets the network in one place.
+  it('draws ONE stub for an interior stop the route only comes near', () => {
+    const OFF = { lat: 2.4, lng: 2.4 };
+    paint({
+      connector: [
+        { path: [A, B], from: A, to: OFF },
+        { path: [B, C], from: OFF, to: C },
+      ],
+    });
+
+    expect(stubFeatures()).toHaveLength(1);
+    // It anchors on the ARRIVING leg's end (§AB2's own choice), not the departing leg's start.
+    const stub = stubFeatures()[0]!.geometry.coordinates as number[][];
+    expect(stub[0]).toEqual([B.lng, B.lat]);
+  });
+
+  // The day's FIRST stop is the one with no arriving leg, so it takes the departing one.
+  it('gives the day’s first stop a stub from the leg departing it', () => {
+    const OFF = { lat: 0.6, lng: 0.6 };
+    paint({ connector: [{ path: [A, B], from: OFF, to: B }] });
+
+    expect(stubFeatures()).toHaveLength(1);
+    expect(stubFeatures()[0]!.geometry.coordinates[0]).toEqual([A.lng, A.lat]);
+  });
+
+  it('paints the stub dotted and faded, and never as a route', () => {
+    const OFF = { lat: 2.4, lng: 2.4 };
+    paint({ connector: [{ path: [A, B], from: A, to: OFF }] });
+    const stub = stubLayer()!;
+    expect(stub.paint['line-dasharray']).toEqual([...MAP_CONNECTOR.STUB.DASH]);
+    expect(stub.paint['line-width']).toBe(MAP_CONNECTOR.STUB.WEIGHT);
+    expect(stub.paint['line-opacity']).toBe(MAP_CONNECTOR.STUB.OPACITY);
+  });
+
+  /* ── TEARDOWN AND THE THEME FLIP ───────────────────────────────────────────────────────── */
+
+  // The trap this file already documents, now with four layers through it: a theme swap tears the
+  // style down and rebuilds it, so everything has to be re-added and re-coloured.
+  it('survives a theme flip, and repaints for the ground it now crosses', () => {
+    const legs = [{ ...TWO_LEGS[0]!, emphasis: 'route' as const }, TWO_LEGS[1]!];
+    const { rerender } = paint({ connector: legs });
+    expect(routeLayer()!.paint['line-color']).toBe(MAP_CONNECTOR.ROUTE.COLOR.light);
+
+    act(() => {
+      for (const id of [
+        'wp-connector-line',
+        'wp-connector-stub',
+        'wp-route-line',
+        'wp-connector-dot-circle',
+      ]) {
+        mapStub.current.removeLayer(id);
+      }
+      mapStub.current.removeSource('wp-connector');
+      mapStub.current.removeSource('wp-connector-dot');
+    });
+    rerender(
+      <MapPane
+        scheme={MAP_COLOR_SCHEME.dark}
+        urls={URLS}
+        pins={[pin({ placeId: 'a' })]}
+        setSignal="day"
+        onSelectPin={vi.fn()}
+        onCanvasTap={vi.fn()}
+        onViewChange={vi.fn()}
+        areaCount={1}
+        areaSorted={false}
+        onAreaSort={vi.fn()}
+        onLocate={vi.fn()}
+        connector={legs}
+      />,
+    );
+
+    expect(routeLayer()!.paint['line-color']).toBe(MAP_CONNECTOR.ROUTE.COLOR.dark);
+    expect(connectorLayer()!.paint['line-color']).toBe(MAP_CONNECTOR.COLOR.dark);
+    expect(legFeatures().filter((f) => f.properties.emphasis === 'route')).toHaveLength(1);
+  });
+
+  // The layers and their sources are the map's, not React's, so nothing unmounts them for us —
+  // and a leak would stack a second set on the next mount and throw.
+  it('takes every layer and both sources back off the map on unmount', () => {
+    const OFF = { lat: 2.4, lng: 2.4 };
+    const { unmount } = paint({
+      connector: [{ path: [A, B], from: A, to: OFF, emphasis: 'route' as const }],
+    });
+    expect(mapStub.current.getSource('wp-connector')).toBeTruthy();
+    expect(mapStub.current.getSource('wp-connector-dot')).toBeTruthy();
+
+    unmount();
+
+    for (const id of [
+      'wp-connector-line',
+      'wp-connector-stub',
+      'wp-route-line',
+      'wp-connector-dot-circle',
+    ]) {
+      expect(mapStub.current.getLayer(id)).toBeUndefined();
+    }
     expect(mapStub.current.getSource('wp-connector')).toBeUndefined();
+    expect(mapStub.current.getSource('wp-connector-dot')).toBeUndefined();
   });
 
   // ADR-0106 §4 decided pan/zoom IS the area filter and no chip is ever built. This
@@ -873,24 +1366,214 @@ describe('MapPane — our markup, not PinElement (ADR-0121 §6)', () => {
   });
 
   // ADR-0126 §6 splits the one control that branched on a permission you could not
-  // see. Both are named icon controls, and the pair is not ADR-0109 §1's rejected one:
-  // that objection is about confusable silhouettes, which a crosshair and four corner
-  // brackets are not.
-  it('the two camera controls are named icon controls, not raw glyphs', () => {
+  // see. All three are named icon controls, and they are not ADR-0109 §1's rejected
+  // pair: that objection is about confusable silhouettes, and a round crosshair, four
+  // rectangular corner brackets and a solid needle share none.
+  it('the camera controls are named icon controls, not raw glyphs', () => {
     paint();
-    for (const name of [t.map.locate, t.map.frameAll]) {
+    for (const name of [t.map.locate, t.map.frameAll, t.map.orient.follow]) {
       const button = screen.getByRole('button', { name });
       expect(button.querySelector('svg.icon')).toBeTruthy();
       expect(button.textContent).toBe('');
     }
   });
 
-  // Both live in ONE cluster, which is what lets ADR-0122 §6's one-floating-object
-  // rule keep working with a single extra selector instead of a third one.
-  it('the camera controls are one band, not two independently placed objects', () => {
+  // All three live in ONE cluster, which is what lets ADR-0122 §6's one-floating-object
+  // rule keep working with a single extra selector instead of a fourth one — and it is
+  // ADR-0126 §1's own prediction, that a third piece of furniture joins this band rather
+  // than opening a second, arriving (ADR-0234 §2).
+  it('the camera controls are one band, not three independently placed objects', () => {
     paint();
     expect(document.querySelectorAll('.map-camctl')).toHaveLength(1);
-    expect(document.querySelectorAll('.map-camctl > button')).toHaveLength(2);
+    expect(document.querySelectorAll('.map-camctl > button')).toHaveLength(3);
+  });
+
+  // ── REPLAY (ADR-0241 §2) ─────────────────────────────────────────────────────
+  describe('replay on a finished trip', () => {
+    const stop = (placeId: string, date: string) => ({
+      placeId,
+      reach: `${date}|${placeId}`,
+      lat: 35.6,
+      lng: 139.7,
+    });
+    const DAYS = [
+      { caption: 'יום 1 · טוקיו', stops: [stop('a', 'd1'), stop('b', 'd1')] },
+      { caption: 'יום 2 · ניקו', stops: [stop('c', 'd2')] },
+    ];
+    const replayPins = () => ['a', 'b', 'c'].map((placeId) => pin({ placeId }));
+    const pinOf = (id: string) => document.querySelector(`.map-pin[data-pin="${id}"]`)!;
+    afterEach(() => vi.useRealTimers());
+
+    it('has no control without days to play', () => {
+      paint();
+      expect(screen.queryByRole('button', { name: t.map.replay.play })).toBeNull();
+    });
+
+    it('plays each day: its name at the foot, its stops lighting in order, then ends', () => {
+      vi.useFakeTimers();
+      const onReplayChange = vi.fn();
+      paint({ pins: replayPins(), replay: DAYS, onReplayChange });
+      fireEvent.click(screen.getByRole('button', { name: t.map.replay.play }));
+      expect(onReplayChange).toHaveBeenLastCalledWith(true);
+      expect(
+        screen.getByRole('button', { name: t.map.replay.stop }).getAttribute('aria-pressed'),
+      ).toBe('true');
+      expect(document.querySelector('.map-replay-caption')?.textContent).toBe('יום 1 · טוקיו');
+      expect(document.querySelector('.map-areacount')).toBeNull();
+      expect(pinOf('a').classList.contains('is-ahead')).toBe(true);
+      act(() => void vi.advanceTimersByTime(MAP_CAMERA_EASE.DURATION_MS));
+      expect(pinOf('a').classList.contains('is-lit')).toBe(true);
+      expect(pinOf('b').classList.contains('is-ahead')).toBe(true);
+      act(() => void vi.advanceTimersByTime(2 * 220 + REPLAY.DAY_HOLD_MS));
+      expect(pinOf('b').classList.contains('is-lit')).toBe(true);
+      expect(document.querySelector('.map-replay-caption')?.textContent).toBe('יום 2 · ניקו');
+      act(() => void vi.advanceTimersByTime(10_000));
+      expect(onReplayChange).toHaveBeenLastCalledWith(false);
+      expect(document.querySelector('.map-pane')?.hasAttribute('data-replay')).toBe(false);
+      expect(document.querySelector('.map-areacount')).toBeTruthy();
+    });
+
+    it('a finger on the canvas stops it where it is', () => {
+      vi.useFakeTimers();
+      const onReplayChange = vi.fn();
+      paint({ pins: replayPins(), replay: DAYS, onReplayChange });
+      fireEvent.click(screen.getByRole('button', { name: t.map.replay.play }));
+      fireEvent.pointerDown(document.querySelector('.map-pane')!);
+      expect(onReplayChange).toHaveBeenLastCalledWith(false);
+      expect(screen.getByRole('button', { name: t.map.replay.play })).toBeTruthy();
+      expect(document.querySelector('.map-replay-caption')).toBeNull();
+    });
+  });
+
+  // ── THE COMPASS (ADR-0234) ───────────────────────────────────────────────────
+  // **Always in the band**, which is the §2 decision and the one a reader is most likely
+  // to expect the other way round: Google's compass appears only off north, and that
+  // variant deletes the only way INTO heading-up, because the control would be absent in
+  // exactly the state you enter that mode from.
+  it('the compass is present at north, because that is the state you enter following from', () => {
+    paint();
+    const compass = screen.getByRole('button', { name: t.map.orient.follow });
+    expect(compass.className).toContain('map-compass');
+    expect(compass.getAttribute('aria-pressed')).toBe('false');
+  });
+
+  // The label says what the TAP DOES, and changes with the state — correct here (the
+  // control has no visible text) and deliberately unlike `באזור`, whose visible count must
+  // stay its accessible name (ADR-0126 §4).
+  it('a tap at north starts following, and the label then offers the way back', async () => {
+    const restore = withOrientationSensor();
+    try {
+      paint();
+      fireEvent.click(screen.getByRole('button', { name: t.map.orient.follow }));
+      const compass = await screen.findByRole('button', { name: t.map.orient.north });
+      expect(compass.getAttribute('aria-pressed')).toBe('true');
+      expect(compass.className).toContain('on');
+    } finally {
+      restore();
+    }
+  });
+
+  // **The defect the whole ADR starts from**: a two-finger twist has always been able to turn
+  // this map — `touchZoomRotate` is a MapLibre default `MapCanvas` never switched off — and
+  // nothing read the bearing back, so there was no control, no cue and no way home.
+  it('a twist offers the way back to north, which nothing did before', () => {
+    paint();
+    const map = mapStub.current;
+    // At rest the tap offers to FOLLOW, because there is nothing to undo.
+    expect(screen.getByRole('button', { name: t.map.orient.follow })).toBeTruthy();
+    act(() => map.twistTo(40));
+    expect(screen.getByRole('button', { name: t.map.orient.north })).toBeTruthy();
+  });
+
+  // §4: a reset changes the ANGLE and nothing else. The difference between "put the map
+  // back" and "move the map", and every other camera verb on this surface does the second.
+  //
+  // Under reduced motion a camera move is a single `moveCamera` to the destination — a real
+  // shipped path (ADR-0098 §4), not a test-only shortcut — so this asks WHERE the camera
+  // ended up rather than racing its 480ms ease through jsdom's timer-driven rAF. A
+  // `waitFor` here would be a 480ms animation under a 1000ms bound, i.e. a spec that passes
+  // on an idle machine and loses on a loaded runner: the exact shape of the failure this
+  // branch had already spent a round on in `ShareItinerarySheet.test.tsx`.
+  it('a reset turns the map to north and moves neither centre nor zoom', () => {
+    vi.stubGlobal('matchMedia', () => ({ matches: true }) as unknown as MediaQueryList);
+    paint();
+    const map = mapStub.current;
+    const before = { centre: { ...map.centre }, zoom: map.zoom };
+    act(() => map.twistTo(40));
+    fireEvent.click(screen.getByRole('button', { name: t.map.orient.north }));
+    expect(map.bearing).toBe(0);
+    expect(map.centre).toEqual(before.centre);
+    expect(map.zoom).toBe(before.zoom);
+  });
+
+  // The needle is CSS reading a custom property the pane writes on the map's own `rotate`,
+  // never React state — a bearing in state would re-render this subtree on every frame of a
+  // turn, on a screen that already re-renders every second.
+  it('the bearing reaches the needle as a custom property, not as state', () => {
+    paint();
+    const map = mapStub.current;
+    act(() => map.twistTo(40));
+    const pane = document.querySelector('.map-pane') as HTMLElement;
+    expect(pane.style.getPropertyValue('--map-needle')).toBe('40deg');
+  });
+
+  // **The needle's angle is CONTINUOUS, and this is the defect that made it so** (owner,
+  // 2026-09-18: _"when the compass rolls over the top and then a little more it does a full
+  // circle instead of just slightly moving"_).
+  //
+  // `rotate` carries a `transition`, and CSS interpolates the property NUMERICALLY — so a
+  // bearing wrapped into `[0, 360)` hands the browser a cliff at north: 358 → 2 animates
+  // −356° the long way round for a four-degree turn. Asserting the VALUE is the only way to
+  // see it; the rendered angle is identical either way, which is why nothing caught it.
+  //
+  // **What is asserted is the STEP, not the value.** The absolute number is an accumulation
+  // and depends on where the needle started, so pinning it invites a test that is rewritten
+  // every time the arithmetic is touched. What must hold is that no single step the browser
+  // interpolates is ever the long way round — which is the bug, stated directly.
+  it('crosses north without unwinding the long way', () => {
+    paint();
+    const map = mapStub.current;
+    const pane = document.querySelector('.map-pane') as HTMLElement;
+    const needle = () => parseFloat(pane.style.getPropertyValue('--map-needle'));
+
+    act(() => map.twistTo(350));
+    const before = needle();
+
+    // Twenty degrees clockwise, straight over the top. Wrapped into `[0, 360)` this is the
+    // step CSS would animate as −340°; continuous, it is +20.
+    act(() => map.twistTo(10));
+    expect(needle() - before).toBeCloseTo(20, 5);
+
+    // …and back the other way across the same seam: −20, never +340.
+    act(() => map.twistTo(350));
+    expect(needle() - before).toBeCloseTo(0, 5);
+  });
+
+  // The general form of the rule above: whatever the map does, no single step may exceed a
+  // half turn. A step over 180° is by definition the long way round to the same picture.
+  it('never hands CSS a step longer than half a turn', () => {
+    paint();
+    const map = mapStub.current;
+    const pane = document.querySelector('.map-pane') as HTMLElement;
+    const needle = () => parseFloat(pane.style.getPropertyValue('--map-needle'));
+
+    let last = needle();
+    for (const bearing of [359, 1, 180, 181, 90, 270, 0, 359.5, 0.5]) {
+      act(() => map.twistTo(bearing));
+      expect(Math.abs(needle() - last)).toBeLessThanOrEqual(180);
+      last = needle();
+    }
+  });
+
+  // Many crossings in one direction keep accumulating rather than snapping back — the
+  // property is an angle, not a bearing, and nothing downstream may wrap it.
+  it('keeps accumulating over repeated crossings', () => {
+    paint();
+    const map = mapStub.current;
+    const pane = document.querySelector('.map-pane') as HTMLElement;
+    for (const bearing of [90, 180, 270, 0, 90, 180, 270, 0]) act(() => map.twistTo(bearing));
+    // Two full turns clockwise from 0, by the short arc each time.
+    expect(pane.style.getPropertyValue('--map-needle')).toBe('720deg');
   });
 
   // `points` falls back to `[me]` when the day has no pins of its own, so a frame
@@ -1029,6 +1712,147 @@ describe('the dot tier degrades a pin below a zoom threshold (ADR-0128 §1)', ()
     mapStub.current.viewport = WIDE;
     paint({ pins: two, cardReserve: 160 });
     expect(mapStub.current.fits.at(-1)!.padding!.bottom).toBeGreaterThan(plain);
+  });
+
+  // **A LEG NOTHING ROUTES DRAWS THE LINE THAT SAYS SO** (ADR-0206 §AL6/§AM10). Two causes, one
+  // treatment: a declared תחב״צ leg, and a leg whose chosen mode the gate refuses. Both hand the
+  // pane a straight segment, and painting that in the route's SOLID amber would assert a road
+  // journey — the false claim §AA4 exists to forbid, reached the second way.
+  it('draws an unrouted leg in its own disclaiming layer, never as the route', () => {
+    paint({
+      connector: [{ path: [A, B], from: A, to: B, emphasis: 'route' as const, unrouted: true }],
+    });
+    const transit = mapStub.current.getLayer('wp-route-transit')!;
+    expect(transit).toBeTruthy();
+    // Butt caps, so the long dash keeps its gap and the line cannot read as solid.
+    expect(transit.layout).toMatchObject({ 'line-cap': MAP_CONNECTOR.TRANSIT.CAP });
+    expect(transit.paint).toMatchObject({ 'line-dasharray': [...MAP_CONNECTOR.TRANSIT.DASH] });
+    // And it belongs to NEITHER of the other two, or an empty layer would be composited beside it.
+    expect(mapStub.current.getLayer('wp-route-line')).toBeUndefined();
+    expect(mapStub.current.getLayer('wp-connector-line')).toBeUndefined();
+  });
+
+  // **A SELECTION IS ABOUT ITS LEG, NOT ITS DOT** (ADR-0206 §AC8; owner report, 2026-08-27:
+  // _"the place details pops up and hides most of the path"_). The camera already refused to
+  // put the selected PIN under the card (the test above) and knew nothing about the leg — so it
+  // centred one point and the amber route ran off underneath. Framing the leg answers both at
+  // once, because a fit already reserves the card's band. The wiring is one prop, which is
+  // exactly the shape of thing that silently fails to exist, so it is asserted at the pane.
+  it('frames the amber leg a selection is about, not just the stop', () => {
+    mapStub.current.box = { width: 390, height: 517 };
+    mapStub.current.viewport = { north: 60, south: 10, east: 160, west: 110 };
+    const stop = pin({ placeId: 'b', lat: 35.9, lng: 139.9, selected: true });
+    paint({
+      pins: [pin({ placeId: 'a' }), stop],
+      connector: [{ path: [A, B], from: A, to: B, emphasis: 'route' as const }],
+    });
+
+    // `[[west, south], [east, north]]`, the shape the adapter hands MapLibre: the LEG's extent,
+    // which contains the stop rather than being it.
+    const fitted = mapStub.current.fits.at(-1)!.bounds as number[][];
+    expect(fitted).toEqual([
+      [A.lng, A.lat],
+      [B.lng, B.lat],
+    ]);
+  });
+
+  // …and a selection with no leg is the ordinary pan it has always been. A day's first stop,
+  // a shelf idea, an all-days scope: there is no path to frame, so nothing about this changed.
+  it('still pans to a selected stop that has no leg', () => {
+    mapStub.current.box = { width: 390, height: 517 };
+    mapStub.current.viewport = { north: 60, south: 10, east: 160, west: 110 };
+    paint({ pins: [pin({ placeId: 'a', selected: true })] });
+    const framedLeg = mapStub.current.fits.some(
+      (fit) =>
+        JSON.stringify(fit.bounds) ===
+        JSON.stringify([
+          [A.lng, A.lat],
+          [B.lng, B.lat],
+        ]),
+    );
+    expect(framedLeg).toBe(false);
+  });
+
+  // **AND WHAT THE BAND EFFECT KEEPS CENTRED IS WHAT THE CAMERA WAS PUT ON — never a second
+  // derivation of its own** (field report, 2026-08-27, with a screenshot). The two effects each
+  // decided for themselves: the band effect took the leg's centre whenever a leg existed, while
+  // the selection effect frames the leg only when `framePath` AGREES to. So on a leg the floor
+  // refuses — long ones, which on an Iceland day is most of them — the camera panned correctly to
+  // the stop and was then dragged straight off it to the middle of a ⁦40 km⁩ leg, at street zoom,
+  // because `recentreInBand` pans the whole offset and does not care that the point is off
+  // screen. What the owner saw was an empty hillside reading `אין מקומות באזור`.
+  it('never re-centres on a leg the camera refused to frame', () => {
+    mapStub.current.box = { width: 390, height: 517 };
+    mapStub.current.viewport = { north: 60, south: 10, east: 160, west: 110 };
+    // What the fit would resolve this leg to: under the floor, so `framePath` refuses it and the
+    // stop takes the pan instead.
+    mapStub.current.fitResultZoom = MAP_ZOOM.DOT_BELOW - 1;
+    // Under reduced motion a camera move is a single `moveCamera` to the destination — a real
+    // shipped path (ADR-0098 §4), not a test-only shortcut — so this asks WHERE the camera went
+    // rather than how it travelled, which is the whole question here.
+    vi.stubGlobal('matchMedia', () => ({ matches: true }) as unknown as MediaQueryList);
+    paint({
+      pins: [
+        pin({ placeId: 'a', lat: A.lat, lng: A.lng }),
+        pin({ placeId: 'b', lat: B.lat, lng: B.lng, selected: true }),
+      ],
+      connector: [{ path: [A, B], from: A, to: B, emphasis: 'route' as const }],
+      cardReserve: 160,
+    });
+
+    // **Latitude, because `keepCentred` pans VERTICALLY only** — an assertion on longitude
+    // cannot see this bug at all, and one written that way passed against the defect. The camera
+    // is on the stop's parallel, not on ⁦1.5⁩, the middle of a leg nobody framed. A band
+    // correction is a few pixels, i.e. thousandths of a degree at this zoom; the defect is half
+    // a degree, so this gap is the whole of the question.
+    expect(Math.abs(mapStub.current.centre.lat - B.lat)).toBeLessThan(0.1);
+  });
+
+  // **AND A REFUSED LEG DOES NOT KEEP THE PREVIOUS LEG'S ZOOM** (§AC8's 2026-08-28 amendment;
+  // owner: _"after moving from close stops to more far stops, the zoom stays instead of zooming
+  // out"_). The fallback was a pan, and a pan keeps the zoom you are on — which since AC8 is a
+  // zoom the CAMERA chose, for a leg two stops on one street earned. So the map stayed in close
+  // on a leg that leaves the canvas immediately. Asserted at the pane because the report is about
+  // walking a day: the leg prop changes with the selection, and the camera reads both.
+  it('pulls the zoom back to the dot floor when it refuses the leg', () => {
+    mapStub.current.box = { width: 390, height: 517 };
+    mapStub.current.viewport = { north: 60, south: 10, east: 160, west: 110 };
+    vi.stubGlobal('matchMedia', () => ({ matches: true }) as unknown as MediaQueryList);
+    // Two stops on one street: the fit resolves tight, and the camera is left there.
+    mapStub.current.fitResultZoom = MAP_ZOOM.MAX_FIT;
+    const { rerender } = paint({
+      pins: [
+        pin({ placeId: 'a', lat: A.lat, lng: A.lng }),
+        pin({ placeId: 'b', lat: B.lat, lng: B.lng, selected: true }),
+      ],
+      connector: [{ path: [A, B], from: A, to: B, emphasis: 'route' as const }],
+    });
+    expect(mapStub.current.zoom).toBe(MAP_ZOOM.MAX_FIT);
+
+    // Now a stop an hour away, whose leg the fit resolves below the floor — so it is refused,
+    // and the pan that answers it must not carry the previous leg's zoom with it.
+    mapStub.current.fitResultZoom = MAP_ZOOM.DOT_BELOW - 1;
+    rerender(
+      <MapPane
+        scheme={MAP_COLOR_SCHEME.light}
+        urls={URLS}
+        pins={[
+          pin({ placeId: 'b', lat: B.lat, lng: B.lng }),
+          pin({ placeId: 'c', lat: C.lat, lng: C.lng, selected: true }),
+        ]}
+        setSignal="day"
+        onSelectPin={vi.fn()}
+        onCanvasTap={vi.fn()}
+        onViewChange={vi.fn()}
+        areaCount={1}
+        areaSorted={false}
+        onAreaSort={vi.fn()}
+        onLocate={vi.fn()}
+        connector={[{ path: [B, C], from: B, to: C, emphasis: 'route' as const }]}
+      />,
+    );
+
+    expect(mapStub.current.zoom).toBe(MAP_ZOOM.DOT_BELOW);
   });
 
   // ADR-0128 §1's session-154 amendment: **demote what claims precision, keep what claims

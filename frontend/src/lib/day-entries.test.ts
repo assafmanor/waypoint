@@ -1,6 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { EVENT_KIND, EVENT_SOURCE, EVENT_STATUS, type TripEvent } from '@waypoint/shared';
-import { dayTransitions, mergeDayEntries, placeDayEntries, staysOnDate } from './day-entries';
+import {
+  dayListEvents,
+  dayTransitions,
+  groupEndEvent,
+  groupStartEvent,
+  mergeDayEntries,
+  placeDayEntries,
+  placedEdgeOf,
+  staysOnDate,
+  type DayEntry,
+} from './day-entries';
+import { bookingTransitionsOnDate, spanDrawsWholeOn } from './glance';
 import { buildTimeTree } from './time';
 
 const OFF = '+09:00';
@@ -89,6 +100,28 @@ describe('dayTransitions', () => {
     expect(arr).toHaveLength(1);
     expect(arr[0].edge).toBe('end');
     expect(arr[0].labelKey).toBe('arrival');
+  });
+});
+
+describe('groupStartEvent / groupEndEvent — a cluster has one entry and one exit (ADR-0225 §5)', () => {
+  const peer = (id: string, startsAt: string, endsAt: string, createdAt: string) =>
+    ev({ id, title: id, startsAt, endsAt, createdAt, sortOrder: 0 });
+
+  it('equal spans: the entry is the one added first and the exit the one added last', () => {
+    const s = peer('s', '2026-08-03T08:30:00Z', '2026-08-03T10:00:00Z', '2026-08-01T00:00:01Z');
+    const g = peer('g', '2026-08-03T08:30:00Z', '2026-08-03T10:00:00Z', '2026-08-01T00:00:02Z');
+    const [group] = buildTimeTree([g, s]);
+    expect(group!.kind).toBe('cluster');
+    expect(groupStartEvent(group!).id).toBe('s');
+    expect(groupEndEvent(group!).id).toBe('g');
+  });
+
+  it('partial overlap: the entry starts first and the exit ends last', () => {
+    const s = peer('s', '2026-08-03T08:30:00Z', '2026-08-03T10:00:00Z', '2026-08-01T00:00:02Z');
+    const g = peer('g', '2026-08-03T09:00:00Z', '2026-08-03T10:30:00Z', '2026-08-01T00:00:01Z');
+    const [group] = buildTimeTree([s, g]);
+    expect(groupStartEvent(group!).id).toBe('s');
+    expect(groupEndEvent(group!).id).toBe('g');
   });
 });
 
@@ -352,5 +385,251 @@ describe('placeDayEntries — a closed window comes back into the list (ADR-0184
     const out = positioned.filter((e) => e.kind === 'transition');
     // Day 1 carries the check-in only; the check-out belongs to the 9th.
     expect(out.every((e) => e.edge === 'start')).toBe(true);
+  });
+});
+
+// ── A STAY NAMED BY ITS OWN ROW IS NOT ALSO A ROW AT ITS BOUND (ADR-0209 §1) ───────────────
+//
+// The moment of checking out or in is not a fact the app holds — a ceiling says "by 09:40" and a
+// window says "from 17:00" — so positioning it read as coming back to the hotel after driving
+// away. The edge leaves the list and is **returned** rather than dropped, because the row that
+// replaces it still says the bound and this is where that sentence comes from.
+describe('placeDayEntries — stay edges leave the list when the stay has its own row', () => {
+  const AT = (hhmm: string) => Date.parse(`2026-08-03T${hhmm}:00Z`);
+  const hotel = ev({
+    id: 'hotel',
+    title: 'מלון',
+    category: 'lodging',
+    startsAt: '2026-08-01T13:00:00Z',
+    endsAt: `2026-08-03T09:40:00Z`,
+  });
+  const entries = (): DayEntry[] => [
+    { kind: 'transition', event: hotel, edge: 'end', atMs: AT('09:40'), labelKey: 'checkout' },
+  ];
+
+  it('keeps the edge positioned when nothing names the stay', () => {
+    const placed = placeDayEntries(entries(), [], []);
+    expect(placed.positioned).toHaveLength(1);
+    expect(placed.stayEdges).toHaveLength(0);
+  });
+
+  it('takes it out of the list when the stay has a row, and hands it back', () => {
+    const placed = placeDayEntries(entries(), [], [], new Set(['hotel']));
+    expect(placed.positioned).toHaveLength(0);
+    expect(placed.stayEdges).toHaveLength(1);
+    expect(placed.stayEdges[0].event.id).toBe('hotel');
+  });
+
+  it('touches nothing else', () => {
+    const other = ev({ id: 'other', startsAt: `2026-08-03T11:00:00Z` });
+    const placed = placeDayEntries(
+      [
+        ...entries(),
+        { kind: 'transition', event: other, edge: 'start', atMs: AT('11:00'), labelKey: 'x' },
+      ],
+      [],
+      [],
+      new Set(['hotel']),
+    );
+    expect(placed.positioned.map((e) => (e.kind === 'transition' ? e.event.id : ''))).toEqual([
+      'other',
+    ]);
+  });
+});
+
+// **WHAT BROUGHT YOU IN THROUGH THE NIGHT** (ADR-0054's 2026-08-26 amendment).
+//
+// Reported off the deploy: a car collected at ⁦00:00⁩ after a late landing read BELOW the hotel row
+// on both day surfaces, with a ⁦25km⁩ drive out to the counter drawn in between — the map has sorted
+// that pickup ahead of the bed since 2026-08-25, so this was one fact answered two ways
+// (ADR-0159 §1). The predicate is the map's own (`broughtInOvernight`), and every case below is
+// one of its two questions.
+describe('placeDayEntries — the overnight run comes out of the list (ADR-0054, 2026-08-26)', () => {
+  const AT = (hhmm: string) => Date.parse(`2026-08-03T${hhmm}:00Z`);
+  const DAWN = AT('07:00');
+  const hire = ev({
+    id: 'hire',
+    title: 'Iceland Car Rental',
+    category: 'transport',
+    // The glyph is the fixture's point: ADR-0162 makes a hire a HELD resource, so its start is a
+    // floor (`מ-00:00`) rather than a departure — and a floor is what the app does not know.
+    icon: '\u{1F697}',
+    date: '2026-08-03',
+    endDate: '2026-08-12',
+    startsAt: '2026-08-03T00:00:00Z',
+    endsAt: '2026-08-12T10:00:00Z',
+  });
+  /** A floor at midnight: `מ-00:00` claims no hour, which is the shape of a night arrival. */
+  const pickup = (atMs = AT('00:00')): DayEntry => ({
+    kind: 'transition',
+    event: hire,
+    edge: 'start',
+    atMs,
+    labelKey: 'pickup',
+  });
+
+  it('diverts a pre-dawn floor, and hands it back in its own bucket', () => {
+    const placed = placeDayEntries([pickup()], [], [], undefined, DAWN);
+    expect(placed.positioned).toHaveLength(0);
+    expect(placed.overnight.map((e) => e.event.id)).toEqual(['hire']);
+  });
+
+  it('leaves it in the list when no dawn is supplied', () => {
+    const placed = placeDayEntries([pickup()], [], []);
+    expect(placed.overnight).toHaveLength(0);
+    expect(placed.positioned).toHaveLength(1);
+  });
+
+  // The second of the predicate's two questions, and the one a dawn test alone would miss: a
+  // ⁦06:30⁩ flight is an exact commitment you got out of bed for, so the bed still leads it.
+  it('keeps a pre-dawn EXACT moment in the list', () => {
+    const flight = ev({
+      id: 'flight',
+      category: 'transport',
+      date: '2026-08-03',
+      endDate: '2026-08-04',
+      startsAt: '2026-08-03T06:30:00Z',
+      endsAt: '2026-08-04T09:00:00Z',
+    });
+    const placed = placeDayEntries(
+      [{ kind: 'transition', event: flight, edge: 'start', atMs: AT('06:30'), labelKey: 'dep' }],
+      [],
+      [],
+      undefined,
+      DAWN,
+    );
+    expect(placed.overnight).toHaveLength(0);
+    expect(placed.positioned).toHaveLength(1);
+  });
+
+  it('keeps a floor AFTER dawn in the list', () => {
+    const placed = placeDayEntries([pickup(AT('09:00'))], [], [], undefined, DAWN);
+    expect(placed.overnight).toHaveLength(0);
+    expect(placed.positioned).toHaveLength(1);
+  });
+
+  // A stay named by its own row is a stay row first: the two buckets are asked in that order, or a
+  // pre-dawn check-in floor would be drawn twice.
+  it('a stay with a row stays a stay row', () => {
+    const placed = placeDayEntries(
+      [
+        {
+          kind: 'transition',
+          event: hotel2Nights,
+          edge: 'start',
+          atMs: AT('03:00'),
+          labelKey: 'i',
+        },
+      ],
+      [],
+      [],
+      new Set(['hotel']),
+      DAWN,
+    );
+    expect(placed.overnight).toHaveLength(0);
+    expect(placed.stayEdges).toHaveLength(1);
+  });
+
+  it('placedEdgeOf finds the sentence in either bucket', () => {
+    const placed = placeDayEntries([pickup()], [], [], undefined, DAWN);
+    expect(placedEdgeOf(placed, 'hire')?.edge).toBe('start');
+    expect(placedEdgeOf(placed, 'nobody')).toBeUndefined();
+  });
+});
+
+/* ── ADR-0236 §4: an end the trip has no day for is hosted by the day it departed from ──
+   A trip running 2026-07-05…14, and a flight home leaving ⁦22:10⁩ on the last night and
+   landing at ⁦04:30⁩ on the 15th — a day `tripDates` does not enumerate, `activeDate`
+   cannot select and `?day=` falls back from. The `E` numbers are the ADR's register. */
+const TRIP_RANGE = { startDate: '2026-07-05', endDate: '2026-07-14' };
+const flightHome = ev({
+  id: 'ev-home',
+  category: 'transport',
+  date: '2026-07-14',
+  endDate: '2026-07-15',
+  startsAt: at('2026-07-14', '22:10'),
+  endsAt: at('2026-07-15', '04:30'),
+});
+
+describe('dayTransitions — an arrival the trip has no day for (ADR-0236 §4)', () => {
+  it('draws the arrival nowhere at all without the range — which is the bug', () => {
+    expect(dayTransitions([flightHome], '2026-07-14')).toHaveLength(1); // the departure only
+    expect(dayTransitions([flightHome], '2026-07-15')).toHaveLength(1); // a day nothing asks for
+  });
+
+  it('hosts it on the day the leg departed from, with the distance (E12)', () => {
+    const lastDay = bookingTransitionsOnDate([flightHome], '2026-07-14', TRIP_RANGE);
+    expect(lastDay.map((tr) => tr.edge)).toEqual(['start', 'end']);
+    const arrival = lastDay[1];
+    expect(arrival.atMs).toBe(ms('2026-07-15', '04:30'));
+    expect(arrival.dayOffset).toBe(1);
+    // It sorts last by INSTANT even though its clock reads smaller (E17).
+    expect(arrival.atMs).toBeGreaterThan(lastDay[0].atMs);
+  });
+
+  it('but the DAY does not draw them as two rows — it draws the leg whole (§8)', () => {
+    // The hosting fact above is what says both ends land here; §8 is what that then means.
+    // `dayTransitions` is the two-rows renderer, so it must decline the leg entirely or the
+    // same journey is drawn twice on one day.
+    expect(spanDrawsWholeOn(flightHome, '2026-07-14', TRIP_RANGE)).toBe(true);
+    expect(dayTransitions([flightHome], '2026-07-14', TRIP_RANGE)).toHaveLength(0);
+    expect(dayListEvents([flightHome], '2026-07-14', TRIP_RANGE)).toEqual([flightHome]);
+  });
+
+  it('leaves an ordinary arrival on its own day, and unmarked', () => {
+    const inside = ev({
+      id: 'ev-leg',
+      category: 'transport',
+      date: '2026-07-07',
+      endDate: '2026-07-08',
+      startsAt: at('2026-07-07', '23:00'),
+      endsAt: at('2026-07-08', '02:00'),
+    });
+    expect(dayTransitions([inside], '2026-07-07', TRIP_RANGE)).toHaveLength(1);
+    const own = dayTransitions([inside], '2026-07-08', TRIP_RANGE);
+    expect(own).toHaveLength(1);
+    expect(own[0].edge).toBe('end');
+    expect(own[0].dayOffset).toBeUndefined();
+  });
+
+  it('draws nothing on any day the trip HAS when the leg starts after it ends (E13)', () => {
+    // The trip was shrunk past the departure as well, so the span covers no day the trip
+    // has. Asked about the days it does have, the answer is nothing — and the 14th is not
+    // one of them, so no surface ever asks about it.
+    const shrunk = { startDate: '2026-07-05', endDate: '2026-07-13' };
+    expect(dayTransitions([flightHome], '2026-07-13', shrunk)).toHaveLength(0);
+    expect(dayTransitions([flightHome], '2026-07-12', shrunk)).toHaveLength(0);
+  });
+
+  it('hosts a stay’s check-out the same way (E15)', () => {
+    const staysPast = ev({
+      id: 'ev-stay',
+      category: 'lodging',
+      date: '2026-07-12',
+      endDate: '2026-07-15',
+      startsAt: at('2026-07-12', '15:00'),
+      endsAt: at('2026-07-15', '11:00'),
+    });
+    // The LAST NIGHT you are actually there — not the check-in day, which is what makes the
+    // host rule one sentence for a stay and a leg alike.
+    const hosted = dayTransitions([staysPast], '2026-07-14', TRIP_RANGE);
+    expect(hosted).toHaveLength(1);
+    expect(hosted[0].edge).toBe('end');
+    expect(hosted[0].dayOffset).toBe(1);
+    expect(dayTransitions([staysPast], '2026-07-12', TRIP_RANGE).map((tr) => tr.edge)).toEqual([
+      'start',
+    ]);
+  });
+
+  it('counts the distance for a leg that lands two days out (E14)', () => {
+    const long = ev({
+      id: 'ev-ferry',
+      category: 'transport',
+      date: '2026-07-14',
+      endDate: '2026-07-16',
+      startsAt: at('2026-07-14', '20:00'),
+      endsAt: at('2026-07-16', '06:00'),
+    });
+    expect(bookingTransitionsOnDate([long], '2026-07-14', TRIP_RANGE)[1].dayOffset).toBe(2);
   });
 });

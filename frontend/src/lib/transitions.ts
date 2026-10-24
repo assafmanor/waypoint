@@ -5,10 +5,13 @@
 import {
   categoryForBookingType,
   edgeMeaning,
+  edgeStatusOf,
   eventMidSpan,
   eventTransitionKeys,
   isBracketed,
+  isEdgeSettled,
   windowBoundOf,
+  TIME_MEANING,
   type BookingType,
   type EventCategory,
   type TripEvent,
@@ -16,10 +19,63 @@ import {
 import { ltrIsolate } from './bidi';
 import { formatTime } from './time';
 import { t } from '../i18n/he';
+import type { SettleOutcome, SettleWords } from '../ui/domain/SettleControl';
+
+/**
+ * **`למחרת` / `+N ימים`** — ADR-0203 §2's relative-day words, borrowed by every surface that
+ * draws a moment on a day it does not fall on (ADR-0236 §4's hosted arrival).
+ *
+ * Deliberately NOT the board's `מחר`, which means "tomorrow from now": a row read in advance
+ * on the trip's last day would then claim a landing is tomorrow when it is three days out.
+ * This says how far after the day it is DRAWN ON the moment lands, which is the only relation
+ * a hosted row can state without a clock.
+ */
+export const relativeDayWord = (offset: number): string =>
+  offset === 1 ? t.journey.nextDay : t.journey.plusDays(offset);
 
 /** The Hebrew word for a profile transition key (המראה / צ׳ק-אין …). */
 export const transitionLabel = (key: string): string =>
   (t.glance.transition as Record<string, string>)[key] ?? key;
+
+/** **The settle pair's words for ONE edge** (ADR-0224 §3), resolved the way the label above
+ *  is and for the same reason: the word belongs to the transition, not to the surface showing
+ *  it, so the lifted hero and the day's row cannot end up saying two things about one fact.
+ *
+ *  `undefined` when the event has no bracketed ends, which is most of the app — and the
+ *  callers read that as "this is a stop", falling back to `SettleControl`'s own `היינו` /
+ *  `דילגנו`. The skip arm is one shared word at every edge (see `transitionNotHappened`). */
+export function edgeSettleWords(
+  event: TripEvent,
+  edge: 'start' | 'end',
+): { did: string; not: string } | undefined {
+  if (!isBracketed(event)) return undefined;
+  const keys = eventTransitionKeys(event);
+  const key = edge === 'end' ? keys?.endKey : keys?.startKey;
+  const did = key ? (t.actions.transitionDid as Record<string, string>)[key] : undefined;
+  return did ? { did, not: t.actions.transitionNotHappened } : undefined;
+}
+
+/** **Everything the settle pair needs to be about ONE edge** — the words it asks in, and the
+ *  answer that edge already has (ADR-0224 §1/§3).
+ *
+ *  The two were resolved side by side in `TransitionRow` and nowhere else, and that is how
+ *  three other hosts of the same control went on reading `status` at *both* ends of a span:
+ *  the day's bookend rows, the untimed-commitment row and the Map's reference row all showed
+ *  `היינו` on a check-out and wrote the check-in when you tapped it (owner, 2026-09-16 —
+ *  _"marking that makes it היינו for both check in and out"_). One resolution rather than a
+ *  fourth copy of the pairing (rule 8), so the next host is a spread and not a re-derivation.
+ *
+ *  `words` absent means "this is a stop", which `SettleControl` reads as its own
+ *  `היינו` / `דילגנו`; `outcome` absent means nobody has answered THIS edge yet. */
+export function edgeSettleProps(
+  event: TripEvent,
+  edge: 'start' | 'end',
+): { words?: SettleWords; outcome?: SettleOutcome } {
+  return {
+    words: edgeSettleWords(event, edge),
+    outcome: isEdgeSettled(event, edge) ? (edgeStatusOf(event, edge) as SettleOutcome) : undefined,
+  };
+}
 
 /** The Hebrew word for a `midSpan` key — what the middle of a bracketed span is called
  *  while you are inside it (`בטיסה` / `בדרך` / `הרכב אצלנו`). The ends' resolver above,
@@ -105,8 +161,8 @@ export function edgeTimePhrase(
   // of it invents the other.
   const clock = ltrIsolate(formatTime(new Date(atMs), zone));
   const meaning = edgeMeaning(event, edge);
-  if (meaning === 'not-after') return t.day.untilTime(clock);
-  if (meaning === 'not-before') return t.day.fromTime(clock);
+  if (meaning === TIME_MEANING.NOT_AFTER) return t.day.untilTime(clock);
+  if (meaning === TIME_MEANING.NOT_BEFORE) return t.day.fromTime(clock);
   return clock;
 }
 

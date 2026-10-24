@@ -10,7 +10,7 @@
 // framing ignores the current view and waits for the map to be real, a LATER framing
 // is containment-guarded, and a re-render is neither.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { renderHook } from '@testing-library/react';
+import { act, renderHook } from '@testing-library/react';
 import { useMapCamera, type MapCamera } from './useMapCamera';
 import { mapFitPadding, type LatLng, type MapArrival, type MapBounds } from './map-camera';
 import type { CameraMap, CameraProjection } from './map-camera-adapter';
@@ -28,7 +28,7 @@ class FakeMap {
   zoom: number = MAP_ZOOM.WORLD;
   /** Every `moveCamera` the hook made. The camera is now driven ONE FRAME AT A TIME
    *  (ADR-0129 §3), so "how it got there" is as much of the behaviour as "where". */
-  readonly moves: { center: LatLng; zoom: number }[] = [];
+  readonly moves: { center: LatLng; zoom: number; bearing: number }[] = [];
   /** `null` models a map that has not rendered yet: `getBounds()` is undefined until
    *  Google has a projection, which is also when the div has a real size. */
   bounds: MapBounds | null = null;
@@ -66,10 +66,18 @@ class FakeMap {
       lng: (bounds.east + bounds.west) / 2,
     };
   }
-  moveCamera(at: { center?: LatLng; zoom?: number }) {
+  /** Which way is up (ADR-0234). Modelled the way MapLibre behaves: a stated bearing is a
+   *  command and a missing one leaves the angle alone, which is the whole distinction
+   *  `CameraAt.bearing` being optional encodes. */
+  bearing = 0;
+  moveCamera(at: { center?: LatLng; zoom?: number; bearing?: number }) {
     if (at.center) this.center = at.center;
     if (at.zoom != null) this.zoom = at.zoom;
-    this.moves.push({ center: this.center, zoom: this.zoom });
+    if (at.bearing != null) this.bearing = at.bearing;
+    this.moves.push({ center: this.center, zoom: this.zoom, bearing: this.bearing });
+  }
+  getBearing() {
+    return this.bearing;
   }
   getZoom() {
     return this.zoom;
@@ -1123,5 +1131,149 @@ describe('a settled result set moves the camera (ADR-0168 §1)', () => {
     expect(map.fits).toHaveLength(1);
     expect(map.center.lat).toBeCloseTo(FLORENCE.lat, 5);
     expect(map.idleListeners).toBe(0);
+  });
+});
+
+// **A SELECTION IS ABOUT A LEG, NOT A DOT** (ADR-0206 §AC8). Centring the stop is what put the
+// amber route under the place card: the camera knew the card was there and did not know a leg
+// was. `framePath` fits the leg — and refuses, moving nothing, when the fit would drop below the
+// zoom at which every pin is a dot anyway, so a train journey does not pull the map to country
+// scale for a stop you asked about.
+describe('framing the leg a selection is about (ADR-0206 §AC8)', () => {
+  const LEG = [TOKYO, { lat: 35.7, lng: 139.8 }];
+
+  it('fits the whole leg, not just its end', () => {
+    const map = new FakeMap();
+    map.bounds = WORLD;
+    const view = mount(map, DAY);
+    map.fits.length = 0;
+
+    expect(view.result.current.framePath(LEG, TOKYO)).toBe(true);
+    const fitted = map.fits.at(-1)!.bounds;
+    expect(fitted.south).toBeCloseTo(TOKYO.lat, 5);
+    expect(fitted.north).toBeCloseTo(LEG[1]!.lat, 5);
+    expect(fitted.west).toBeCloseTo(TOKYO.lng, 5);
+    expect(fitted.east).toBeCloseTo(LEG[1]!.lng, 5);
+  });
+
+  it('refuses a leg it could only frame from country zoom, and fits nothing', () => {
+    const map = new FakeMap();
+    map.bounds = WORLD;
+    const view = mount(map, DAY);
+    map.fits.length = 0;
+
+    // What `fitBounds` would resolve Tokyo→Kyoto to: below `DOT_BELOW`, where a pin is a dot
+    // and the leg is unreadable — so the answer is "no", and the camera lands on the stop.
+    map.fitResultZoom = MAP_ZOOM.DOT_BELOW - 1;
+    expect(view.result.current.framePath([TOKYO, KYOTO], KYOTO)).toBe(false);
+    // The probe is not a framing: the camera is not left on the country-scale zoom `fitBounds`
+    // resolved to, which is the whole reason the floor exists.
+    expect(map.zoom).not.toBe(MAP_ZOOM.DOT_BELOW - 1);
+  });
+
+  // **THE REFUSAL IS ABOUT THE LEG, NOT A LICENCE TO KEEP THE PREVIOUS ONE'S ZOOM** (§AC8's
+  // 2026-08-28 amendment; owner: _"after moving from close stops to more far stops, the zoom
+  // stays instead of zooming out"_). The fallback pan keeps the zoom you are on — which, once
+  // the camera frames legs itself, is the zoom IT chose for the leg before this one. So a day
+  // walked from two stops on one street to two an hour apart stayed at street zoom, on a leg
+  // that leaves the canvas at any zoom tighter than the floor.
+  it('pulls back to the floor when it refuses a leg from a tighter zoom', () => {
+    const map = new FakeMap();
+    map.bounds = WORLD;
+    const view = mount(map, DAY);
+    // Where framing a SHORT leg has just left the camera.
+    map.zoom = MAP_ZOOM.MAX_FIT;
+    map.fitResultZoom = MAP_ZOOM.DOT_BELOW - 1;
+
+    expect(view.result.current.framePath([TOKYO, KYOTO], KYOTO)).toBe(false);
+    // Where the ease is heading, which under a fake clock is the last frame it wrote.
+    expect(map.moves.at(-1)!.zoom).toBe(MAP_ZOOM.DOT_BELOW);
+    expect(map.moves.at(-1)!.center.lat).toBeCloseTo(KYOTO.lat, 1);
+  });
+
+  // …and only ever back. A view already wider than the floor is owed nothing, so the refusal
+  // does not zoom IN on a leg the camera has just said it cannot frame.
+  it('leaves a view already wider than the floor at its own zoom', () => {
+    const map = new FakeMap();
+    map.bounds = WORLD;
+    const view = mount(map, DAY);
+    map.zoom = MAP_ZOOM.DOT_BELOW - 4;
+    map.fitResultZoom = MAP_ZOOM.DOT_BELOW - 1;
+
+    expect(view.result.current.framePath([TOKYO, KYOTO], KYOTO)).toBe(false);
+    expect(map.moves.at(-1)!.zoom).toBe(MAP_ZOOM.DOT_BELOW - 4);
+  });
+});
+
+// ── WHICH WAY IS UP (ADR-0234) ────────────────────────────────────────────────
+// The compass's two verbs, tested here rather than only through the pane, because both
+// failure modes are invisible on screen: a reset that moves the needle and not the map, and
+// a heading write that an in-flight ease reads as somebody's finger.
+describe('orientTo / turnTo', () => {
+  it('turns to the angle and moves neither centre nor zoom', () => {
+    const map = new FakeMap();
+    const camera = mount(map, DAY);
+    map.settle();
+    const before = { center: { ...map.center }, zoom: map.zoom };
+
+    act(() => camera.result.current.orientTo(90));
+
+    expect(map.bearing).toBe(90);
+    expect(map.center).toEqual(before.center);
+    expect(map.zoom).toBe(before.zoom);
+  });
+
+  // **The bug this spec exists for.** `easeTo`'s reduced-motion branch writes a single
+  // `moveCamera` to the destination, and it shipped without `bearing` in it — so for
+  // everyone with reduced motion on (and for a map that has not rendered yet) the reset
+  // turned the needle and left the ground where it was. It is the whole of the feature on
+  // that path, and nothing on screen would have said so.
+  it('turns under reduced motion too, where the whole move is one write', () => {
+    // `settleInstantly` is already the suite's default, so this IS the reduced-motion path.
+    const map = new FakeMap();
+    const camera = mount(map, DAY);
+    map.settle();
+    act(() => camera.result.current.orientTo(90));
+    expect(map.bearing).toBe(90);
+  });
+
+  it('goes the short way round, so crossing north is not a spin', () => {
+    const map = new FakeMap();
+    const camera = mount(map, DAY);
+    map.settle();
+    map.bearing = 350;
+    act(() => camera.result.current.orientTo(10));
+    expect(map.bearing).toBe(10);
+  });
+
+  // A pan or a fit must stay bearing-blind: it states no angle, so the renderer keeps
+  // whatever the user's fingers last left. A move that straightened a turned map by
+  // accident is the defect the optional field exists to prevent.
+  it('a fit says nothing about the angle, so a turned map stays turned', () => {
+    const map = new FakeMap();
+    mount(map, DAY);
+    map.bearing = 40;
+    map.settle();
+    expect(map.fits.length).toBeGreaterThan(0);
+    expect(map.bearing).toBe(40);
+  });
+
+  // `turnTo` is the follow path: a jump, because the device reports a heading many times a
+  // second. It records the write so `sameCamera` does not read it as a finger — without
+  // that, following the compass would cancel any pan still easing on its first sample.
+  it('follows without the ease', () => {
+    const map = new FakeMap();
+    const camera = mount(map, DAY);
+    map.settle();
+    act(() => camera.result.current.turnTo(120));
+    expect(map.bearing).toBe(120);
+  });
+
+  it('reads the angle back, normalised off the renderer dialect', () => {
+    const map = new FakeMap();
+    const camera = mount(map, DAY);
+    map.settle();
+    map.bearing = -90; // MapLibre reports (-180, 180]
+    expect(camera.result.current.readBearing()).toBe(270);
   });
 });

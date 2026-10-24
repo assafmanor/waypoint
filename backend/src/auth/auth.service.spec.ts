@@ -4,10 +4,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { UnauthorizedException } from '@nestjs/common';
 import { decryptAtRest } from '../common/crypto.util';
 import { requireEnv, TOKEN_ENCRYPTION_KEY } from '../common/env';
+import { EnrichmentImagePipeline } from '../enrichment/image-pipeline';
+import { EnrichmentFetcher } from '../enrichment/outbound-fetch';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthService } from './auth.service';
 import * as googleClient from './google-oauth.client';
 import { verifyAccessToken } from './token.util';
+
+// The live map build is the server's answer, not a constant, so `/me` reads it from
+// `map/planet.ts` (ADR-0187 §1 amendment). Stubbed: nothing here should touch upstream.
+vi.mock('../map/planet', () => ({
+  livePlanetBuild: () => '20260821',
+  archiveVintage: () => 'v7',
+}));
 
 vi.mock('./google-oauth.client', async () => {
   const actual = await vi.importActual<typeof googleClient>('./google-oauth.client');
@@ -33,7 +42,10 @@ function fakeUserinfo(sub: string, email: string, emailVerified = true) {
 
 describe('AuthService', () => {
   const prisma = new PrismaService();
-  const service = new AuthService(prisma);
+  // The image pipeline is a REAL one over a fetcher that never reaches a socket: these specs
+  // are about what the rows and the bytes do, and an outbound call inside them would be a
+  // network dependency in a DB test. The Google-copy path has its own spec.
+  const service = new AuthService(prisma, new EnrichmentImagePipeline(new EnrichmentFetcher()));
   const createdUserIds: string[] = [];
 
   beforeEach(() => {
@@ -136,6 +148,29 @@ describe('AuthService', () => {
     expect(identity.refreshTokenEnc).toBeNull();
   });
 
+  it('logout still signs out when no key can open the stored Google token', async () => {
+    const sub = `sub-${randomUUID()}`;
+    const email = `${randomUUID()}@example.com`;
+    vi.mocked(googleClient.fetchGoogleUserinfo).mockResolvedValue(fakeUserinfo(sub, email));
+    const result = await service.handleGoogleCallback('code', 'verifier');
+    const user = await prisma.user.findUniqueOrThrow({ where: { email } });
+    createdUserIds.push(user.id);
+    vi.mocked(googleClient.revokeGoogleToken).mockClear();
+    vi.stubEnv(TOKEN_ENCRYPTION_KEY, Buffer.alloc(32, 9).toString('base64'));
+
+    try {
+      await expect(service.logout(result!.refreshToken)).resolves.toBeUndefined();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+
+    expect(googleClient.revokeGoogleToken).not.toHaveBeenCalled();
+    const identity = await prisma.authIdentity.findUniqueOrThrow({
+      where: { provider_providerAccountId: { provider: 'google', providerAccountId: sub } },
+    });
+    expect(identity.refreshTokenEnc).toBeNull();
+  });
+
   it('logout is idempotent for an unknown/already-invalidated refresh token', async () => {
     await expect(service.logout('not-a-real-token')).resolves.toBeUndefined();
   });
@@ -151,5 +186,12 @@ describe('AuthService', () => {
     const me = await service.getMe(user.id);
     expect(me.user.id).toBe(user.id);
     expect(me.memberships).toEqual([]);
+    // What this server can do about the map: which live planet build it is serving. The client
+    // builds its detail URL from this rather than from a build id compiled into the bundle —
+    // upstream deletes a daily after about a week, and a pinned one took every label off the
+    // online map (ADR-0187 §1 amendment).
+    // …and which vintage of the OFFLINE archives it is cutting, so a device can tell that the
+    // map it downloaded has been superseded (ADR-0186 §6 amendment).
+    expect(me.map).toEqual({ liveBuild: '20260821', archiveVintage: 'v7' });
   });
 });

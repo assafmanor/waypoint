@@ -75,6 +75,18 @@ const TEXT_SEARCH_FIELD_MASK = [
  */
 const PLACE_SEARCH_KIND_TYPE: Readonly<Record<PlaceSearchKind, string>> = {
   airport: 'airport',
+  // **The two ground kinds** (ADR-0203 §8). The same one-type-per-entry constraint applies
+  // and bites harder here: Google lists `train_station`, `subway_station`,
+  // `light_rail_station`, `bus_station` and `ferry_terminal` as separate Table-A types, so
+  // neither entry can name the whole family. `transit_station` is the generic that a station
+  // of any mode also carries, which is why a bus or a ferry takes it rather than a list.
+  //
+  // The gap that leaves is already handled, and by the mechanism that was written for the
+  // airport case: `PlacesService.searchPlacesText` re-asks unrestricted when a restricted
+  // answer comes back EMPTY. So a rural halt Google does not tag as a station still resolves,
+  // at the cost of one extra call on the path that already found nothing.
+  train_station: 'train_station',
+  transit_station: 'transit_station',
 };
 
 /** Cap on results asked for per Text Search call. N results cost ONE call, so this is

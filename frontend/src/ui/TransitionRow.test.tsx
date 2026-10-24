@@ -223,17 +223,24 @@ describe('a check-in with a window', () => {
     expect(document.querySelector('.wp-settle')).not.toBeNull();
   });
 
-  it('does NOT settle a ceiling or a window — both expire by their own clock', () => {
-    const ceiling: TransitionEntry = {
-      kind: 'transition',
-      event: { ...stay, startWindowEnd: undefined },
-      edge: 'end',
-      atMs: Date.parse(stay.endsAt!),
-      labelKey: 'checkOut',
-    };
+  // **REVERSED BY ADR-0224 §4**, and the old assertion is worth stating because it was
+  // right about the thing it named: a ceiling and a window DO expire by their own clock, so
+  // they leave `נותרו היום` without anybody saying anything (ADR-0171 §6, untouched). What
+  // that never covered is the BOARD — `CHECKOUT_LEAD_MIN` is 180, so a check-out you made at
+  // 08:30 owns the hero until 11:00 — so the gate was a rule about a count applied to a
+  // control. Every edge is settleable now.
+  const ceiling = (): TransitionEntry => ({
+    kind: 'transition',
+    event: { ...stay, startWindowEnd: undefined },
+    edge: 'end',
+    atMs: Date.parse(stay.endsAt!),
+    labelKey: 'checkOut',
+  });
+
+  it('settles a CEILING too, because the board shows one for three hours (ADR-0224 §4)', () => {
     render(
       <TransitionRow
-        entry={ceiling}
+        entry={ceiling()}
         tz="Asia/Jerusalem"
         bookings={[hotel]}
         onOpen={vi.fn()}
@@ -241,11 +248,10 @@ describe('a check-in with a window', () => {
         onSkip={vi.fn()}
       />,
     );
-    expect(document.querySelector('.wp-settle')).toBeNull();
+    expect(document.querySelector('.wp-settle')).not.toBeNull();
     cleanup();
 
-    // The window's start edge is `window`, not `not-before` — ADR-0184 §6's whole point is
-    // that closing the window is what makes it expire.
+    // A window's start edge too — it was excluded by the same gate.
     render(
       <TransitionRow
         entry={{ ...floor(), event: stay }}
@@ -256,7 +262,75 @@ describe('a check-in with a window', () => {
         onSkip={vi.fn()}
       />,
     );
-    expect(document.querySelector('.wp-settle')).toBeNull();
+    expect(document.querySelector('.wp-settle')).not.toBeNull();
+  });
+
+  // **The word is the TRANSITION's** (ADR-0224 §3). `היינו` on a check-out says we were at
+  // the hotel, which is not what was asked; `דילגנו` says we never left, which ADR-0208 made
+  // a load-bearing claim about where the plan may say you are.
+  it('says what the EDGE did, not what a stop did', () => {
+    render(
+      <TransitionRow
+        entry={ceiling()}
+        tz="Asia/Jerusalem"
+        bookings={[hotel]}
+        onOpen={vi.fn()}
+        onDone={vi.fn()}
+        onSkip={vi.fn()}
+      />,
+    );
+    const words = [...document.querySelectorAll('.wp-settle-btn')].map((b) =>
+      b.getAttribute('title'),
+    );
+    expect(words).toEqual(['יצאנו', 'לא קרה']);
+    cleanup();
+
+    render(
+      <TransitionRow
+        entry={floor()}
+        tz="Asia/Jerusalem"
+        bookings={[hotel]}
+        onOpen={vi.fn()}
+        onDone={vi.fn()}
+        onSkip={vi.fn()}
+      />,
+    );
+    expect(document.querySelector('.wp-settle-btn')!.getAttribute('title')).toBe('נכנסנו');
+  });
+
+  // **The row reports ITS OWN edge** (ADR-0224 §1) — the defect the whole ADR is about, in
+  // one assertion: with a single `status` field a check-out row could only ever repeat what
+  // the check-in said.
+  it('shows the check-out as unanswered while the check-in is done, and vice versa', () => {
+    const checkedIn = { ...stay, status: EVENT_STATUS.DONE, startWindowEnd: undefined };
+    render(
+      <TransitionRow
+        entry={{ ...ceiling(), event: checkedIn }}
+        tz="Asia/Jerusalem"
+        bookings={[hotel]}
+        onOpen={vi.fn()}
+        onDone={vi.fn()}
+        onSkip={vi.fn()}
+      />,
+    );
+    // Still the PAIR, not a record: nobody has answered about leaving.
+    expect(document.querySelector('.wp-settle-tag')).toBeNull();
+    expect(document.querySelectorAll('.wp-settle-btn')).toHaveLength(2);
+    cleanup();
+
+    const checkedOut = { ...stay, endStatus: EVENT_STATUS.DONE, startWindowEnd: undefined };
+    render(
+      <TransitionRow
+        entry={{ ...ceiling(), event: checkedOut }}
+        tz="Asia/Jerusalem"
+        bookings={[hotel]}
+        onOpen={vi.fn()}
+        onDone={vi.fn()}
+        onSkip={vi.fn()}
+        onUndo={vi.fn()}
+      />,
+    );
+    expect(document.querySelector('.wp-settle-tag')!.textContent).toContain('יצאנו');
   });
 
   it('renders no control at all in Plan mode, which passes no verbs', () => {

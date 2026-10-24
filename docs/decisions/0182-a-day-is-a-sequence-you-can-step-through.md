@@ -2,6 +2,7 @@
 
 **Status:** Accepted (2026-08-10) — **built 2026-08-11**, §9's prerequisite discharged first in the same change. The real-device pass (peek width, and whether a horizontal snap over a pannable canvas feels right) is still owed.
 **Date:** 2026-08-10
+**Amended 2026-09-27 by [0241](0241-a-finished-trip-plays-back-and-leaves-the-app.md) §1 (built in the epic's 5.1):** §11 holds for a live trip only. A finished trip's all days draws the journey: each day's `buildDayStopSequence`, by date, through what happened (`buildJourney`). It is a line, not a traversal; the card still steps through a day.
 **Session note:** [`planning/2026-08-10-session-240-stepping-through-a-day-of-stops.md`](../planning/2026-08-10-session-240-stepping-through-a-day-of-stops.md)
 **Mockups:** [`map-stop-traversal-v1.html`](../../mockups/map-stop-traversal-v1.html) (§1–§7, the rail) · [`map-stop-traversal-v2.html`](../../mockups/map-stop-traversal-v2.html) (§1–§5, **the peek that replaced it — see the 2026-08-10 amendment**)
 **Backlog:** **J**, from field report **#25 / ADD-04** ([`planning/2026-08-08-…-addendum`](../planning/2026-08-08-session-224-incremental-field-reports-addendum.md) §5). The addendum's **#22–#26** is its own numbering and is unrelated to the Map epic's internal **#1–#23**; this is addendum #25.
@@ -66,6 +67,21 @@ A check-in has a time and no defensible position; a check-out is the same with a
 So the fix is not a new ordering rule. **The order asks the same question the number asks**, and the predicate that answers it is one function with two readers: `knowsMoment`, lifted out of `buildDayStopSequence` where it was a local `knows` with a single caller (root rule 8 — generalise the one-off rather than write a second beside it). `PlaceOrderContext` gains an optional `eventById` in the shape ADR-0171 already uses: absent, every clocked moment counts as known and the order is exactly what it was.
 
 Deliberately **not** generalised: the two `rank` functions. They sort different units — places against moments — and the sequence excludes `ambient` outright, so a shared rank would be half-inert in one caller. The predicate is the shared unit; the ranks stay local.
+
+**AMENDED 2026-08-25 — the ORDER and the NUMBER ask different questions again, and this time on purpose.** The line above ("the order asks the same question the number asks") holds for `comparePlacesBySchedule`, which orders a **list**, and is untouched there. It is reversed inside `buildDayStopSequence`, which since [ADR-0206](0206-a-travel-time-belongs-between-two-points.md) §AB5 also orders the map's **route**.
+
+The unification was sound while a position meant one thing. It does not any more:
+
+|                     | a position is…                               | so a floor…                                     |
+| ------------------- | -------------------------------------------- | ----------------------------------------------- |
+| the list (§3 above) | a claim about the **schedule**               | sinks — it cannot defend the hour it carries    |
+| the sequence        | a claim about **geography**, drawn as a line | sits at its hour — that is where your feet were |
+
+A car collected "from 09:00" and returned "until 18:00" is somewhere you physically go at roughly those times ([ADR-0054](0054-ambient-span-events-off-the-day-schedule.md)'s 2026-08-25 amendment records the owner naming exactly this class). Sunk to the tail it was drawn nowhere at all, because the map's route read `pin.order != null`; interleaved at its instant it is drawn where you were. **The number is what refuses to guess, and it still refuses** — `knowsMoment` is unchanged, one block below the sort, so nothing renumbers and the invariant §3 was written to protect (a stop cannot claim a number it cannot back up) is exactly as strong as it was.
+
+So the sequence sorts on `moment.at`, sinking only the genuinely **clockless**, and then relocates a stay to the day's ends per ADR-0054. The list keeps `knowsMoment` and keeps sinking. Two surfaces, one predicate for the mark, two for the order — which is the shape §3's own table was already describing, read one column further along.
+
+The aside about the two `rank` functions stands, with its reason narrowed: the sequence now admits an `ambient` stay night, but as a **bookend**, which never reaches the sort at all.
 
 ### 4. The gesture: capture on recognition, `pan-y`, and no new arbitration.
 

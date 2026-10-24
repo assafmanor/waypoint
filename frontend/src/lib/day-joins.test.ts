@@ -3,16 +3,32 @@ import {
   BOOKING_TYPE,
   EVENT_KIND,
   EVENT_STATUS,
+  TRAVEL_BUFFER_SECONDS,
+  TRAVEL_FIT,
   type Booking,
   type TripEvent,
 } from '@waypoint/shared';
-import { connectionStops, dayBlocks, joinBetween } from './day-joins';
+import {
+  DAY_JOURNEY_ARM,
+  connectionStops,
+  dayBlocks,
+  dayFeasibility,
+  dayJourney,
+  danglingLegs,
+  dayRun,
+  dayTravelTotal,
+  joinBetween,
+  narrowGapForTravel,
+  reservedSecondsWithin,
+  spannedIntervals,
+} from './day-joins';
 import { bookingWhen } from './booking-journey';
-import { mergeDayEntries } from './day-entries';
+import { groupStartEvent, mergeDayEntries } from './day-entries';
 import { buildTimeTree } from './time';
-import { gapBetween } from './gaps';
+import { gapBetween, type Gap } from './gaps';
 
 const TZ = 'Asia/Tokyo';
+const MIN = 60_000;
 const STAMP = '2026-07-01T00:00:00Z';
 
 const ev = (over: Partial<TripEvent> & { id: string }): TripEvent => ({
@@ -56,10 +72,14 @@ const leg2 = ev({
 const bLeg1 = bk({ id: 'b-leg1', fromPlaceId: 'nrt', toPlaceId: 'dxb' });
 const bLeg2 = bk({ id: 'b-leg2', fromPlaceId: 'dxb', toPlaceId: 'tlv' });
 
+/** **Every row placed, nothing moving** — today's day, which is the shape the join specs below
+ *  were written against; the chain's own specs build their context by hand (ADR-0232). */
+const ALL_PLACED = { placedAt: () => true, movesYou: () => false };
 const ctxFor = (events: TripEvent[], bookings: Booking[] = []) => ({
   bookings,
   when: bookingWhen(events),
   tz: TZ,
+  chain: ALL_PLACED,
 });
 
 describe('joinBetween', () => {
@@ -260,7 +280,7 @@ describe('a flexible edge is transparent to the measurement (ADR-0171 §5)', () 
     startsAt: '2026-07-10T15:00:00+09:00',
     endsAt: at('11:00'),
   });
-  const ctx = { bookings: [], when: bookingWhen([]), tz: TZ };
+  const ctx = { bookings: [], when: bookingWhen([]), tz: TZ, chain: ALL_PLACED };
 
   it('measures ACROSS a check-out instead of being stopped by it', () => {
     const entries = mergeDayEntries(buildTimeTree([morning, evening]), [
@@ -298,5 +318,1435 @@ describe('a flexible edge is transparent to the measurement (ADR-0171 §5)', () 
       .flatMap((b) => b.entries.map((e) => e.join))
       .filter(Boolean);
     expect(joins).toHaveLength(0);
+    // …and the JOURNEY chain ends there too (ADR-0232): a span edge is never a leg's endpoint, so
+    // nothing behind the landing is where the evening's leg leaves from.
+    const evenings = dayRun(entries, ctx)
+      .blocks.flatMap((b) => b.entries)
+      .filter((e) => e.entry.kind === 'event' && e.entry.group !== undefined)
+      .filter((e) => e.entry.kind === 'event' && groupStartEvent(e.entry.group).id === 'e-pm');
+    expect(evenings).toHaveLength(1);
+    expect(evenings[0]!.legFrom).toBeUndefined();
+  });
+});
+
+// ── THE JOURNEY IN A HOLE (ADR-0206 §V1.1 / §V1.3 / §V1.4) ────────────────────────────────
+//
+// The arithmetic only. What the row SAYS is `DayJoinRow.test.tsx`'s and what the screen wires is
+// `screens/DayView.travel.test.tsx`'s — including the failing spec §V1.1 owes as a bug fix.
+describe('dayJourney', () => {
+  /** The mockup's own scenario and the ADR's own example: a 2:40 hole with a 40-minute walk in
+   *  it, leaving 2:00 free. Taken from the drawing rather than invented, so this file and
+   *  `a-travel-time-between-two-points-v2.html` cannot disagree about the case. */
+  const HOLE_START = Date.parse('2026-07-12T05:00:00Z');
+  const HOLE_END = HOLE_START + 160 * MIN;
+  const WALK = 40 * 60;
+  const journey = (over: Parameters<typeof dayJourney>[0] extends infer T ? Partial<T> : never) =>
+    dayJourney({
+      departAfterMs: HOLE_START,
+      arriveByMs: HOLE_END,
+      travelSeconds: WALK,
+      nowMs: HOLE_START,
+      ...over,
+    });
+
+  it('takes the journey out of the free time — the correction §V1.1 leads with', () => {
+    expect(journey({})?.free?.freeSeconds).toBe(120 * 60);
+    expect(journey({})?.free?.availableSeconds).toBe(160 * 60);
+  });
+
+  // §D4, and the direction of the failure is the point: inventing a walk we did not measure
+  // costs somebody their afternoon, where saying nothing costs them a number they never had. The
+  // ROW still stands (§AZ1) — with its distance and no duration — and corrects no free time.
+  it('states no duration and corrects nothing with no estimate', () => {
+    const none = journey({ travelSeconds: null, distanceMeters: 3_000 });
+    expect(none?.arm).toBe(DAY_JOURNEY_ARM.UNMEASURED);
+    expect(none?.travelSeconds).toBeNull();
+    expect(none?.free).toBeNull();
+  });
+
+  // `ROUTE_MIN_CROW_M`'s own absence (ADR-0205 §Z2): two stops that are one place. The ladder
+  // cannot name nought seconds, so the row says the length it has and no time (§AZ1).
+  it('names no duration for a zero-length leg rather than saying `0 דק׳`', () => {
+    expect(journey({ travelSeconds: 0, distanceMeters: 20 })?.arm).toBe(DAY_JOURNEY_ARM.UNTIMED);
+    expect(journey({ travelSeconds: 0, distanceMeters: 20 })?.travelSeconds).toBeNull();
+  });
+
+  // **The leave-by is `heroLeaveBy`'s**, so the board, the hero and this row cannot name three
+  // different minutes for one departure. Asserted against the shared buffer, never a literal.
+  it('derives the leave-by through the shared function, buffer included', () => {
+    expect(journey({})?.leaveByMs).toBe(HOLE_END - (WALK + TRAVEL_BUFFER_SECONDS) * 1000);
+  });
+
+  it('is AHEAD while the leave-by is still to come', () => {
+    expect(journey({})?.arm).toBe(DAY_JOURNEY_ARM.AHEAD);
+  });
+
+  it('is PASSED once the leave-by has gone by', () => {
+    const passed = journey({ nowMs: HOLE_END - 10 * MIN });
+    expect(passed?.arm).toBe(DAY_JOURNEY_ARM.PASSED);
+    expect(passed?.leaveByMs).not.toBeNull();
+  });
+
+  // **The arm the ADR did not name, and the reason it exists.** Every leave-by of a finished day
+  // has gone by, so without this a day read at 22:00 prints `זמן היציאה עבר` on every hole of it
+  // — true, useless, and four wrong nudges before breakfast.
+  it('is PAST once the row below has started, and offers no departure there', () => {
+    const past = journey({ nowMs: HOLE_END + MIN });
+    expect(past?.arm).toBe(DAY_JOURNEY_ARM.PAST);
+    expect(past?.leaveByMs).toBeNull();
+    // …and it keeps the measurement, because the correction is a fact and not advice.
+    expect(past?.free?.freeSeconds).toBe(120 * 60);
+  });
+
+  // PAST is checked FIRST: a leg that ran late is still behind you.
+  it('reads a late hole that is already behind you as PAST, not PASSED', () => {
+    expect(journey({ nowMs: HOLE_END + MIN, travelSeconds: 200 * 60 })?.arm).toBe(
+      DAY_JOURNEY_ARM.PAST,
+    );
+  });
+
+  it('is ON_WAY once somebody says so, whatever the clock says', () => {
+    const moving = journey({ nowMs: HOLE_END - 10 * MIN, onWay: true });
+    expect(moving?.arm).toBe(DAY_JOURNEY_ARM.ON_WAY);
+  });
+
+  // ADR-0207 §6 — what is LEFT, and only on the arm that is about being under way.
+  it('carries the remaining time on ON_WAY and nowhere else', () => {
+    expect(journey({ onWay: true, remainingSeconds: 12 * 60 })?.remainingSeconds).toBe(12 * 60);
+    expect(journey({ remainingSeconds: 12 * 60 })?.remainingSeconds).toBeNull();
+  });
+
+  // ── ADR-0208 §2: a claim needs something to stand on ────────────────────────────────────
+  //
+  // **The measurement survives a denied claim and the advice does not**, and the split is the
+  // whole of this surface's reading of §2: the hole is still the hole and the walk is still in
+  // it, so §V1.1's correction is a fact about the plan rather than a claim about the traveller.
+  // What may not be said is where to be and when.
+  it('withdraws the leave-by on a denied claim and keeps the measurement', () => {
+    const denied = journey({ nowMs: HOLE_END - 10 * MIN, claimDenied: true });
+    expect(denied?.leaveByMs).toBeNull();
+    expect(denied?.arm).toBe(DAY_JOURNEY_ARM.AHEAD);
+    expect(denied?.free?.freeSeconds).toBe(120 * 60);
+    expect(denied?.travelSeconds).toBe(WALK);
+  });
+
+  it('never marks a denied claim late, which is the report ADR-0208 answers', () => {
+    expect(journey({ nowMs: HOLE_END - 10 * MIN, claimDenied: true })?.arm).not.toBe(
+      DAY_JOURNEY_ARM.PASSED,
+    );
+  });
+
+  // A mark is a person's own statement, so it outranks the denial rather than being blocked by it.
+  it('still honours `בדרך` on a denied claim', () => {
+    expect(journey({ claimDenied: true, onWay: true })?.arm).toBe(DAY_JOURNEY_ARM.ON_WAY);
+  });
+
+  // **§AD — the day's first leg, out of the stay you woke in.** An ambient stay has no check-out
+  // instant on a middle night, and the day window's dawn would claim you could have left at 07:00.
+  it('reports no free time where there is no window, and still reports the journey', () => {
+    const bookend = dayJourney({ arriveByMs: HOLE_END, travelSeconds: WALK, nowMs: HOLE_START });
+    expect(bookend?.free).toBeNull();
+    expect(bookend?.travelSeconds).toBe(WALK);
+    expect(bookend?.leaveByMs).toBe(HOLE_END - (WALK + TRAVEL_BUFFER_SECONDS) * 1000);
+  });
+});
+
+describe('narrowGapForTravel', () => {
+  // 14:00 → 16:40 in Tokyo, the zone every test in this file reads. A 40-minute leg out of it
+  // leaves at 15:55: `arriveBy - travel - buffer`, which is the instant the row beside the slot
+  // prints as `יציאה עד`.
+  const HOLE_START = Date.parse('2026-07-12T05:00:00Z');
+  const HOLE_END = HOLE_START + 160 * MIN;
+  const WALK = 40 * 60;
+  const LEAVE_BY = '15:55';
+
+  const gapAt = (startHHMM: string, endHHMM: string, minutes = 160): Gap => ({
+    minutes,
+    fill: { date: '2026-07-12', start: startHHMM, end: endHHMM },
+  });
+  /** A real `DayJourney`, never a fake: what the offer is capped at is this function's own
+   *  `leaveByMs`, so a stub would only assert that the test and the code agree about a literal. */
+  const leg = (over: Partial<Parameters<typeof dayJourney>[0]> = {}) =>
+    dayJourney({
+      departAfterMs: HOLE_START,
+      arriveByMs: HOLE_END,
+      travelSeconds: WALK,
+      nowMs: HOLE_START,
+      ...over,
+    });
+
+  // The common case, and why the offer was only wrong at the margin: the journey sits at the END
+  // of a hole, so a 60-minute block at its start is untouched by a 40-minute walk two hours later.
+  it('leaves a slot alone when the journey does not reach it', () => {
+    const gap = gapAt('14:00', '15:00');
+    expect(narrowGapForTravel(gap, leg(), TZ).fill).toEqual(gap.fill);
+  });
+
+  // **AND IT CORRECTS `minutes` EVEN THEN.** The first draft rewrote only `fill.end`, so a Gap
+  // whose block needed no capping still reported the whole hole — and the free-time strip, which
+  // asks a Gap how long it is, then stated a length a walk had already eaten (ADR-0206 §AH3).
+  //
+  // **115, not 120**, and the five minutes are the 2026-09-01 correction: the buffer is part of
+  // what going costs you, so free time that runs past the stated departure is time the same
+  // surface has already told you to spend moving (`goingCostMinutes`).
+  it('reports what is free, not how long the hole is', () => {
+    expect(narrowGapForTravel(gapAt('14:00', '15:00'), leg(), TZ).minutes).toBe(115);
+  });
+
+  // …and the margin, which is where the control was handing out a slot the walk eats. The window
+  // ends at the DEPARTURE the row above it advises — not at the arrival minus the leg.
+  it('caps the slot at the departure it advises', () => {
+    const narrowed = narrowGapForTravel(gapAt('14:00', '16:40'), leg(), TZ);
+    expect(narrowed.fill.end).toBe(LEAVE_BY);
+    expect(narrowed.fill.start).toBe('14:00');
+    expect(narrowed.minutes).toBe(115);
+  });
+
+  // **THE REPORTED CASE** (owner, 2026-09-01: _"transit row says take off by 08:05, but filling
+  // the gap suggests 07:30–08:30"_). The day's first leg comes out of the bed you woke in, which
+  // has no `departAfterMs` (§AD/§AF3) and therefore no `free` window at all — so the old cap,
+  // which needed `free.freeSeconds`, returned the head slot whole. The leave-by is right there,
+  // and it is a pure ceiling precisely because nothing clamped it.
+  //
+  // The gap is `freeBeforeFirst`-shaped: its fill HUGS the first event (07:30–08:30 on the
+  // reported day) rather than starting where the hole does, which is the second half of the bug —
+  // a length added to `fill.start` capped 30 minutes past the leave-by and read as no cap at all.
+  it('narrows the day head, whose leg out of a bed has no window to measure', () => {
+    const head = gapAt('15:40', '16:40');
+    const bookend = dayJourney({ arriveByMs: HOLE_END, travelSeconds: WALK, nowMs: HOLE_START });
+    expect(bookend?.free).toBeNull();
+    const narrowed = narrowGapForTravel(head, bookend, TZ);
+    expect(narrowed.fill.end).toBe(LEAVE_BY);
+    expect(narrowed.minutes).toBe(115);
+  });
+
+  // **The offer is stated on a five-minute grid, and always DOWN** (owner, 2026-09-01: _"round the
+  // suggestions so that it shows 14:45 instead of 14:47 · down so that it doesn't cross to the
+  // unavailable time"_). A 38-minute leg leaves at 15:57; the slot ends 15:55 and never 16:00,
+  // because up is two minutes of the journey.
+  it('rounds the offer down onto the slot step', () => {
+    const narrowed = narrowGapForTravel(
+      gapAt('14:00', '16:40'),
+      leg({ travelSeconds: 38 * 60 }),
+      TZ,
+    );
+    expect(narrowed.fill.end).toBe('15:55');
+    // The MEASUREMENT is not rounded — a statement is a measurement (ADR-0159 §1), and 117 is what
+    // is free. Only the offer lands on the grid.
+    expect(narrowed.minutes).toBe(117);
+  });
+
+  // A journey that eats the whole hole leaves the position its DEFAULT block, exactly as a seam
+  // gets one (ADR-0161 §3): a zero-length slot is no droppable position at all, and the old cap
+  // produced precisely that.
+  it('keeps the default block where nothing is left to offer', () => {
+    const gap = gapAt('14:00', '15:00');
+    const narrowed = narrowGapForTravel(gap, leg({ travelSeconds: 200 * 60 }), TZ);
+    expect(narrowed.minutes).toBe(0);
+    expect(narrowed.fill).toEqual(gap.fill);
+  });
+
+  // **The clamped arm caps nothing**, and reading it as a ceiling is how a slot would end before
+  // it began: there the instant is the EARLIEST departure that exists (§AJ2), not the last.
+  it('treats a clamped departure as the floor it is', () => {
+    const clamped = leg({ departAfterMs: HOLE_END - 30 * MIN, travelSeconds: 28 * 60 });
+    expect(clamped?.leaveByIsFloor).toBe(true);
+    const gap = gapAt('16:10', '16:40', 30);
+    expect(narrowGapForTravel(gap, clamped, TZ).fill).toEqual(gap.fill);
+  });
+
+  it('leaves the slot alone when there is nothing to narrow against (§D4)', () => {
+    const gap = gapAt('14:00', '15:00');
+    expect(narrowGapForTravel(gap, null, TZ)).toBe(gap);
+  });
+});
+
+// ── THE LEG THAT DOES NOT FIT (ADR-0206 §V1.1's third `fit`) ──────────────────────────────
+//
+// `freeAfterTravel` has answered `overruns` since M2 and **nothing rendered it**, so a 78-minute
+// walk into a 60-minute gap read `פנוי לפני 0 דק׳` — not a small amount of free time, a journey
+// nobody can make. Reported from a real day on both surfaces.
+// **A MODE THE GATE REFUSES IS AN ANSWER, NOT AN ABSENCE** (ADR-0206 §AM10). Field report,
+// 2026-08-27: _"I changed a drive to a walk and the route simply disappeared from the plan day"_.
+// The gate refuses a walk past ⁦15 km⁩, so no estimate is ever coming, so `dayJourney` answered
+// `null` and the hole rendered nothing — including the mode control that had just been used, which
+// made the change irreversible on the surface that made it. Exactly the failure §AA4's `DECLARED`
+// arm was added to prevent, in the sibling case nobody covered.
+describe('dayJourney — the mode chosen cannot cover the leg (§AM10)', () => {
+  const START = Date.parse('2026-07-12T05:00:00Z');
+  const refused = (over: Partial<Parameters<typeof dayJourney>[0]> = {}) =>
+    dayJourney({
+      departAfterMs: START,
+      arriveByMs: START + 160 * MIN,
+      // What the gate leaves behind: no estimate, ever.
+      travelSeconds: null,
+      distanceMeters: 41_000,
+      nowMs: START,
+      tooFarForMode: true,
+      ...over,
+    });
+
+  it('renders a journey rather than nothing, so the mode control survives the choice', () => {
+    expect(refused()).not.toBeNull();
+    expect(refused()?.arm).toBe(DAY_JOURNEY_ARM.TOO_FAR);
+  });
+
+  it('keeps the distance and states no duration — the two facts it does have', () => {
+    expect(refused()?.distanceMeters).toBe(41_000);
+    expect(refused()?.travelSeconds).toBeNull();
+  });
+
+  it('gives no leave-by and corrects no free time: there is nothing measured to correct', () => {
+    expect(refused()?.leaveByMs).toBeNull();
+    expect(refused()?.free).toBeNull();
+  });
+
+  // A declared leg is never asked about, so it can never be refused — and it says something
+  // different (`בלי הערכת זמן` against `רחוק מדי`). The order between them is not arbitrary.
+  it('ranks below the declaration, which is never asked and so never refused', () => {
+    expect(refused({ declared: true })?.arm).toBe(DAY_JOURNEY_ARM.DECLARED);
+  });
+});
+
+/**
+ * **THE ROW HAS TO EXIST WHILE THE NUMBER IS BEING WORKED OUT** (ADR-0206 §AU1).
+ *
+ * The report: two stops added to a day, and the holes into them drew nothing at all — no time, no
+ * distance, and no mode control, because the block that carries it is the thing that did not
+ * render. The estimate was coming; the app simply never said so.
+ */
+describe('dayJourney — the number is still being computed (§AU1)', () => {
+  const START = Date.parse('2026-07-12T05:00:00Z');
+  const computing = (over: Partial<Parameters<typeof dayJourney>[0]> = {}) =>
+    dayJourney({
+      departAfterMs: START,
+      arriveByMs: START + 120 * MIN,
+      // The state this arm is about: asked for, not answered yet.
+      travelSeconds: null,
+      nowMs: START,
+      warming: true,
+      ...over,
+    });
+
+  it('renders a journey rather than nothing, so the row and its mode control appear at once', () => {
+    expect(computing()).not.toBeNull();
+    expect(computing()?.arm).toBe(DAY_JOURNEY_ARM.WARMING);
+  });
+
+  /** **No crow-flies stand-in** — §AM10 already drew this line for the pending case: a number that
+   *  later becomes a routed one is a figure that changes under the reader, and the day's total
+   *  reads these journeys. */
+  it('states no duration and no distance, because it has neither yet', () => {
+    expect(computing()?.travelSeconds).toBeNull();
+    expect(computing({ distanceMeters: 4100 })?.distanceMeters).toBeNull();
+  });
+
+  /** §V1.1's rule: never a pessimistic guess about a journey nobody has measured. */
+  it('gives no leave-by and corrects no free time', () => {
+    expect(computing()?.leaveByMs).toBeNull();
+    expect(computing()?.free).toBeNull();
+  });
+
+  /** Ranked last of the three no-estimate flags, because it is the only temporary one: a declared
+   *  leg is never asked and a refused one is never coming, so either makes this irrelevant. */
+  it('ranks below the declaration and the refusal, which are both permanent', () => {
+    expect(computing({ declared: true })?.arm).toBe(DAY_JOURNEY_ARM.DECLARED);
+    expect(computing({ tooFarForMode: true })?.arm).toBe(DAY_JOURNEY_ARM.TOO_FAR);
+  });
+
+  /** And it contributes nothing to the day's roll-ups, which stay the settled claim they were. */
+  it('is invisible to the day total and to the verdict', () => {
+    const journeys = [computing()];
+    expect(dayTravelTotal(journeys, { unplacedLegs: 0, spanningLegs: 0 })).toEqual({
+      distanceMeters: null,
+      travelSeconds: null,
+      partial: false,
+
+      airMeters: null,
+    });
+    expect(dayFeasibility(journeys).fit).toBe(TRAVEL_FIT.UNKNOWN);
+  });
+});
+
+/**
+ * **A LEG WITH NO LENGTH TO PRINT STILL HOLDS ITS ROW** (ADR-0206 §AW, widened by §AZ1).
+ *
+ * The report: the leg from the ice cave to the supermarket read `הליכה · ~1 דק׳ · ⁦50 מ׳⁩`, was
+ * switched to `נסיעה`, and the whole hole vanished — _"the row disappeared and could not be
+ * returned"_. The same ⁦50 m⁩ answers ⁦12⁩ seconds by car, the 2026-08-26 floor rounds that to nought
+ * minutes and deletes the journey, and the mode control lives on the journey. §AM10 answered this
+ * for the ceiling and §AU1 for the pending number; §AW stated it over the CHOICE, and §AZ1 drops
+ * the choice too — the row's existence is a fact about the plan, never about what we worked out.
+ */
+describe('dayJourney — a leg with no length to print (§AW/§AZ1)', () => {
+  const START = Date.parse('2026-07-12T05:00:00Z');
+  const brief = (over: Partial<Parameters<typeof dayJourney>[0]> = {}) =>
+    dayJourney({
+      departAfterMs: START,
+      arriveByMs: START + 120 * MIN,
+      // The reported leg, by car: routed, answered, and under the rung the ladder starts at.
+      travelSeconds: 12,
+      distanceMeters: 50,
+      nowMs: START,
+      ...over,
+    });
+
+  // **§AZ1 drops the 2026-08-26 floor's remaining half.** A ⁦20 m⁩ hop the app called a walk on
+  // its own used to be deleted for being noise; the four disappearances since say the deletion is
+  // the more expensive noise, and the row it draws is honest about knowing no duration.
+  it('renders a sub-minute hop nobody chose, rather than deleting it', () => {
+    expect(brief()?.arm).toBe(DAY_JOURNEY_ARM.UNTIMED);
+  });
+
+  it('renders a journey whoever picked the mode, so the control survives the pick', () => {
+    expect(brief()).not.toBeNull();
+    expect(brief()?.arm).toBe(DAY_JOURNEY_ARM.UNTIMED);
+  });
+
+  it('keeps the distance and states no duration — the row cannot name ⁦12⁩ seconds', () => {
+    expect(brief()?.distanceMeters).toBe(50);
+    expect(brief()?.travelSeconds).toBeNull();
+  });
+
+  // A departure counted back from twelve seconds is the late mark firing over the time it takes
+  // to cross a car park, and §V1.1 forbids correcting a hole by a number no row shows.
+  it('gives no leave-by and corrects no free time', () => {
+    expect(brief()?.leaveByMs).toBeNull();
+    expect(brief()?.free).toBeNull();
+  });
+
+  // The other road to the same place: the server's own gate refused the mode (`sameClusterOnly`
+  // against a point missing from the cluster set), or the provider answered nothing for it. The
+  // client cannot tell that from the ceiling, and the traveller must still be able to pick again.
+  it('holds the row for a mode that never got an estimate, as long as it has a distance', () => {
+    const nothing = brief({ travelSeconds: null });
+    expect(nothing?.arm).toBe(DAY_JOURNEY_ARM.UNMEASURED);
+    expect(nothing?.travelSeconds).toBeNull();
+    expect(nothing?.distanceMeters).toBe(50);
+  });
+
+  /** **The one silence left** (§AZ1): neither a duration nor a distance is a leg whose ends did
+   *  not both resolve to a placed point — the hole `unplacedLegs` counts, not a gap in what we
+   *  worked out. */
+  it('answers null only where there is nothing at all to say', () => {
+    expect(brief({ travelSeconds: null, distanceMeters: null })).toBeNull();
+    expect(brief({ travelSeconds: null, distanceMeters: undefined })).toBeNull();
+  });
+
+  /** Ranked below all three flags above it, each of which is a more specific statement about the
+   *  same silence: a declaration, a refusal, and a number on its way. */
+  it('yields to the declaration, the refusal and the computation', () => {
+    expect(brief({ declared: true })?.arm).toBe(DAY_JOURNEY_ARM.DECLARED);
+    expect(brief({ tooFarForMode: true })?.arm).toBe(DAY_JOURNEY_ARM.TOO_FAR);
+    expect(brief({ warming: true })?.arm).toBe(DAY_JOURNEY_ARM.WARMING);
+  });
+
+  /** The day's header counts what its list shows (§AP2): the kilometres, because the row prints
+   *  them, and no minutes, because no row accounts for them. */
+  it('counts in the day’s distance as a FLOOR, and not in its duration', () => {
+    const journeys = [brief()];
+    expect(dayTravelTotal(journeys, { unplacedLegs: 0, spanningLegs: 0 })).toEqual({
+      distanceMeters: 50,
+      travelSeconds: null,
+      // §AZ3: no duration means the distance is the crow, and a sum over one is a floor.
+      partial: true,
+      airMeters: null,
+    });
+    expect(dayFeasibility(journeys).fit).toBe(TRAVEL_FIT.UNKNOWN);
+  });
+
+  /** The switch itself, both ways round, which is the report in one assertion: the walk states its
+   *  journey and the drive keeps a row rather than becoming an absence. */
+  it('is the same hole either way — a walk that states a minute, a drive that states none', () => {
+    expect(brief({ travelSeconds: 37 })?.arm).toBe(DAY_JOURNEY_ARM.AHEAD);
+    expect(brief()?.arm).toBe(DAY_JOURNEY_ARM.UNTIMED);
+  });
+});
+
+describe('dayJourney — the journey does not fit (§AG)', () => {
+  const START = Date.parse('2026-07-12T05:00:00Z');
+  const overrunning = (holeMinutes: number, walkMinutes: number) =>
+    dayJourney({
+      departAfterMs: START,
+      arriveByMs: START + holeMinutes * MIN,
+      travelSeconds: walkMinutes * 60,
+      nowMs: START,
+    });
+
+  it('reports OVERRUNS with the shortfall, not zero free time', () => {
+    const journey = overrunning(60, 78);
+    expect(journey?.arm).toBe(DAY_JOURNEY_ARM.OVERRUNS);
+    expect(journey?.overrunSeconds).toBe(18 * 60);
+    // …and it offers no departure, because there was never one to make.
+    expect(journey?.leaveByMs).toBeNull();
+  });
+
+  // **Checked before every clock arm, and that ordering is the decision.** An infeasible leg's
+  // leave-by is behind the previous stop's own end, so `PASSED` fires on it at once and would say
+  // `זמן היציאה עבר` for ever — advice about a departure that was never possible. The shortfall
+  // does not decay, so it is what the row says until somebody moves something.
+  it('outranks a passed leave-by, whose arm would otherwise always win', () => {
+    const journey = dayJourney({
+      departAfterMs: START,
+      arriveByMs: START + 60 * MIN,
+      travelSeconds: 78 * 60,
+      nowMs: START + 59 * MIN,
+    });
+    expect(journey?.arm).toBe(DAY_JOURNEY_ARM.OVERRUNS);
+    expect(journey?.arm).not.toBe(DAY_JOURNEY_ARM.PASSED);
+  });
+
+  // A gap behind you is a record whatever it never was, so `PAST` still leads.
+  it('yields to PAST, because a gap behind you is history', () => {
+    const journey = dayJourney({
+      departAfterMs: START,
+      arriveByMs: START + 60 * MIN,
+      travelSeconds: 78 * 60,
+      nowMs: START + 61 * MIN,
+    });
+    expect(journey?.arm).toBe(DAY_JOURNEY_ARM.PAST);
+  });
+
+  it('is not reached while the journey does fit', () => {
+    expect(overrunning(160, 40)?.arm).toBe(DAY_JOURNEY_ARM.AHEAD);
+    expect(overrunning(160, 40)?.overrunSeconds).toBeNull();
+  });
+
+  // **TWO ROWS THAT TOUCH.** The whole journey is the shortfall, and `availableSeconds` is what a
+  // renderer branches on to say so without repeating the duration it already printed.
+  //
+  // `nowMs` sits INSIDE the earlier event rather than on the boundary, which is the live state
+  // this describes: you are still in the first row and the second begins the moment it ends. On
+  // the boundary itself `PAST` correctly wins — a gap behind you is a record however impossible it
+  // was — and the first draft of this fixture sat exactly there and asserted the wrong arm.
+  it('reports a zero gap as a zero window, with the journey as the whole shortfall', () => {
+    const journey = dayJourney({
+      departAfterMs: START,
+      arriveByMs: START,
+      travelSeconds: 12 * 60,
+      nowMs: START - 10 * MIN,
+    });
+    expect(journey?.arm).toBe(DAY_JOURNEY_ARM.OVERRUNS);
+    expect(journey?.free?.availableSeconds).toBe(0);
+    expect(journey?.overrunSeconds).toBe(12 * 60);
+  });
+
+  // The bookend leg has no window at all (§AF3), so it can never overrun — there is nothing to
+  // overrun. It must not fall into this arm by way of a `null` free.
+  it('never overruns the day’s first leg, which has no window', () => {
+    const bookend = dayJourney({
+      arriveByMs: START + 60 * MIN,
+      travelSeconds: 78 * 60,
+      nowMs: START,
+    });
+    expect(bookend?.arm).not.toBe(DAY_JOURNEY_ARM.OVERRUNS);
+    expect(bookend?.free).toBeNull();
+  });
+});
+
+// ── A HOLE TOO SHORT FOR A `gap` JOIN STILL HAS A JOURNEY (§Z5 §M2) ───────────────────────
+//
+// `gapBetween` is FLOORED by `GAP_MIN_MINUTES`, so a hole under an hour — including a zero-length
+// one, two rows that touch — produces no `gap` join at all. Gating the journey on that join is
+// exactly how the case §Z5 §M2 forbade stayed silent: _"a 45-minute hole holding a 40-minute walk"_.
+describe('dayBlocks — the row above is recorded whether or not a join survived the floor', () => {
+  const at = (hhmm: string) => `2026-07-12T${hhmm}:00+09:00`;
+  // **Both rows carry an END, and the first draft of this omitted the second one's.** A start-only
+  // row landing exactly on the previous row's end is CONTAINED by it (ADR-0041), so the two nest
+  // into one group and there is no adjacency to record at all — a fixture that proved nothing
+  // about the floor it meant to test.
+  const pair = (endsAt: string, nextStartsAt: string, nextEndsAt = at('23:00')) => {
+    const a = ev({ id: 'a', startsAt: at('09:00'), endsAt, placeId: 'pa' });
+    const b = ev({ id: 'b', startsAt: nextStartsAt, endsAt: nextEndsAt, placeId: 'pb' });
+    const entries = mergeDayEntries(buildTimeTree([a, b]), []);
+    return dayBlocks(entries, { bookings: [], when: bookingWhen([]), tz: TZ, chain: ALL_PLACED });
+  };
+  const originsOf = (blocks: ReturnType<typeof dayBlocks>) =>
+    blocks.flatMap((b) => b.entries.map((e) => e.from?.id));
+
+  it('records it for a 45-minute hole, which earns no chip and no join', () => {
+    const blocks = pair(at('11:00'), at('11:45'));
+    expect(
+      gapBetween(ev({ id: 'a', endsAt: at('11:00') }), ev({ id: 'b', startsAt: at('11:45') }), TZ),
+    ).toBeNull();
+    expect(originsOf(blocks)).toEqual([undefined, 'a']);
+  });
+
+  it('records it for two rows that TOUCH, where there is no hole at all', () => {
+    expect(originsOf(pair(at('11:00'), at('11:00')))).toEqual([undefined, 'a']);
+  });
+
+  it('still records it where the hole is long enough to earn a join', () => {
+    expect(originsOf(pair(at('11:00'), at('14:00')))).toEqual([undefined, 'a']);
+  });
+});
+
+// ── A DEPARTURE THE APP MAY STATE (ADR-0206 §AI) ──────────────────────────────────────────
+//
+// Two defects, one rule. The owner read both off ADR-0209's mockup, on shipped code:
+//
+//   §AI1 · `dayJourney` read `arriveByMs` from the destination's `startsAt` unconditionally, so a
+//   check-in WINDOW's opening was used as a deadline — `יציאה 16:18` to arrive the instant the
+//   door opens, with nothing due until 20:00. And withholding the printed clock is not enough:
+//   `arm` still went `PASSED` off that invented deadline, so the row turned `--miss` at 16:19 and
+//   the board would say `באיחור` for being late to nothing.
+//
+//   §AI2 · `leaveBy` has no clamp against `departAfterMs`, so the same block advised leaving at
+//   16:18 from a stop running to 16:40 — a departure from inside an event you are still in.
+//
+// The rule both collapse into: **the app states a departure only when it has a deadline to count
+// back from AND the departure is one you could actually make.** Otherwise it states the ARRIVAL,
+// which is what it can stand behind — and licenses no late mark, because there is nothing to be
+// late for (ADR-0208's own thesis: a claim needs something to stand on).
+describe('dayJourney — a flexible arrival licenses no leave-by (ADR-0206 §AI1)', () => {
+  const AT = (hhmm: string) => Date.parse(`2026-07-12T${hhmm}:00Z`);
+  const leg = (extra: Parameters<typeof dayJourney>[0]) => dayJourney(extra)!;
+
+  /** The mockup's own case: Systrakaffi to 16:40, a 22-minute drive, a window from 17:00. */
+  const WINDOW_CASE = {
+    departAfterMs: AT('16:40'),
+    arriveByMs: AT('17:00'),
+    travelSeconds: 22 * 60,
+    distanceMeters: 18_000,
+  };
+
+  it('states no departure at all, where the destination has no deadline', () => {
+    const j = leg({ ...WINDOW_CASE, nowMs: AT('16:00'), flexibleArrival: true });
+    expect(j.leaveByMs).toBeNull();
+  });
+
+  // **The half that would have shipped broken** (owner). The arm is what paints `--miss` and what
+  // the board reads for `באיחור`, so gating only the sentence leaves the claim standing.
+  it('never turns PASSED off a deadline it invented', () => {
+    // 16:19 is past the leave-by the old arithmetic produced (16:18 = 17:00 − 22min − buffer).
+    const j = leg({ ...WINDOW_CASE, nowMs: AT('16:19'), flexibleArrival: true });
+    expect(j.arm).toBe(DAY_JOURNEY_ARM.AHEAD);
+    expect(j.leaveByMs).toBeNull();
+  });
+
+  it('states the arrival instead, which is what it can stand behind', () => {
+    const j = leg({ ...WINDOW_CASE, nowMs: AT('16:00'), flexibleArrival: true });
+    // When you can leave, plus the leg — not counted back from a floor.
+    expect(j.arriveAtMs).toBe(AT('17:02'));
+    expect(j.arrivesAfterClose).toBe(false);
+  });
+
+  it('says when that arrival lands after the window has shut', () => {
+    const j = leg({
+      ...WINDOW_CASE,
+      departAfterMs: AT('20:10'),
+      arriveByMs: AT('17:00'),
+      nowMs: AT('19:00'),
+      flexibleArrival: true,
+      windowClosesMs: AT('20:00'),
+    });
+    expect(j.arriveAtMs).toBe(AT('20:32'));
+    expect(j.arrivesAfterClose).toBe(true);
+  });
+
+  // §D4 again: an ordinary destination is untouched, which is most of the app.
+  //
+  // **And the hole has to be roomy, which is the point rather than fixture hygiene.** The first
+  // version of this spec reused `WINDOW_CASE` and failed — its leave-by (16:33) is behind its own
+  // origin (16:40), so §AI2 withholds it on an exact arrival too. That is correct behaviour and
+  // the spec was asserting against it: the two halves of the rule are independent, and a tight
+  // hole triggers the second whatever the destination's edge means.
+  // **AMENDED by ADR-0206 §AR1** — this asserted `arriveAtMs === null` on an exact arrival, which
+  // was §AJ2's gate ("the arrival is said only where the app cannot promise the buffer"). Every row
+  // that has an arrival states it now, so what this holds is the half that did not change: an exact
+  // destination still gets a departure, and nothing here can be `after the close` because a
+  // destination with a deadline has no window to shut.
+  it('leaves an exact arrival exactly as it was', () => {
+    const j = leg({
+      departAfterMs: AT('12:00'),
+      arriveByMs: AT('14:40'),
+      travelSeconds: 40 * 60,
+      nowMs: AT('12:10'),
+    });
+    expect(j.leaveByMs).not.toBeNull();
+    expect(j.arrivesAfterClose).toBe(false);
+  });
+});
+
+describe('dayJourney — a leave-by inside the row it leaves from (ADR-0206 §AI2)', () => {
+  const AT = (hhmm: string) => Date.parse(`2026-07-12T${hhmm}:00Z`);
+
+  // The tolerance is what uncovered this: a 20-minute window with a 22-minute drive is a
+  // 2-minute shortfall, inside `TRAVEL_FIT_TOLERANCE_SECONDS`, so the leg reads as fitting — and
+  // the leave-by it hands back is behind its own origin.
+  // **AMENDED 2026-08-26 — it offers the origin's own end instead of saying nothing.** Withholding
+  // ⁦16:33⁩ was right; withholding every departure was not, and the owner read the resulting silence
+  // as an inconsistency with the rows that do state one. The clamp is a departure you could make.
+  it('pulls the departure forward to the earliest one that exists', () => {
+    const j = dayJourney({
+      departAfterMs: AT('16:40'),
+      arriveByMs: AT('17:00'),
+      travelSeconds: 22 * 60,
+      nowMs: AT('16:00'),
+    })!;
+    expect(j.leaveByMs).toBe(AT('16:40'));
+    // …and says the arrival beside it, because the buffer is what it could not promise.
+    expect(j.arriveAtMs).toBe(AT('17:02'));
+    expect(j.arm).toBe(DAY_JOURNEY_ARM.AHEAD);
+  });
+
+  // The whole reason the clock may be printed at all: the mark it licenses is measured against the
+  // CLAMPED instant. Off the buffered ⁦16:33⁩ this row would read `זמן היציאה עבר` from ⁦16:34⁩ — the
+  // `באיחור`-for-nothing §AI2 was written to remove.
+  it('is not late before the clamped departure, and is late after it', () => {
+    const at = (hhmm: string) =>
+      dayJourney({
+        departAfterMs: AT('16:40'),
+        arriveByMs: AT('17:00'),
+        travelSeconds: 22 * 60,
+        nowMs: AT(hhmm),
+      })!.arm;
+    expect(at('16:35')).toBe(DAY_JOURNEY_ARM.AHEAD);
+    expect(at('16:45')).toBe(DAY_JOURNEY_ARM.PASSED);
+  });
+
+  // **AMENDED by ADR-0206 §AR1.** The unclamped case: the buffer fits, so the departure is the
+  // buffered one and NOT the origin's end. It used to say nothing about arriving; it now says the
+  // arrival that departure implies — `13:55 + 40 min`, which is §D5's buffer before the `14:40`
+  // deadline, and the whole point is that a reader can see that arithmetic.
+  it('keeps a departure that sits after the origin ends, and says where it lands', () => {
+    const j = dayJourney({
+      departAfterMs: AT('12:00'),
+      arriveByMs: AT('14:40'),
+      travelSeconds: 40 * 60,
+      nowMs: AT('12:10'),
+    })!;
+    expect(j.leaveByMs).toBe(AT('13:55'));
+    expect(j.arriveAtMs).toBe(AT('14:35'));
+  });
+});
+
+// **AN OPEN FLOOR IS A DEADLINE THE APP DOES NOT HAVE** (ADR-0206 §AJ1).
+//
+// Reported off the §AI deploy, on the day BEFORE the one §AI1 was written for: the last flight of
+// day 1 lands at 23:20 and the hotel checked into that night opens `מ-15:00`, so the fit measured a
+// 1:42 drive against a deadline **eight hours behind its own origin** and said `אין זמן לדרך` about
+// the one leg of the day nobody can be late for.
+//
+// §AI1 got the leave-by right and left the FIT keyed on the opening whenever there was no close.
+// Written down at the time as _"a floor with no close keeps the opening, which is all the app knows
+// about it"_ — and the opening is precisely what a floor says you may arrive AFTER.
+describe('dayJourney — a leg into an open floor has no fit to fail (ADR-0206 §AJ1)', () => {
+  const AT = (hhmm: string) => Date.parse(`2026-09-11T${hhmm}:00Z`);
+  /** The reported shape: land 23:20, hotel open from 15:00, a 1:42 drive to it. */
+  const landingIntoTheHotel = {
+    departAfterMs: AT('23:20'),
+    arriveByMs: AT('15:00'),
+    travelSeconds: 102 * 60,
+    nowMs: AT('09:00'),
+    flexibleArrival: true,
+  };
+
+  it('does not call the drive to tonight’s hotel impossible', () => {
+    const j = dayJourney(landingIntoTheHotel)!;
+    expect(j.arm).not.toBe(DAY_JOURNEY_ARM.OVERRUNS);
+    expect(j.overrunSeconds).toBeNull();
+    // No window to be free inside, so there is no free-time half either — the same structural
+    // absence the day's first leg out of a bed reports (§AF3).
+    expect(j.free).toBeNull();
+  });
+
+  it('says when you will get there instead', () => {
+    const j = dayJourney(landingIntoTheHotel)!;
+    expect(j.leaveByMs).toBeNull();
+    expect(j.arriveAtMs).toBe(AT('23:20') + 102 * 60 * 1000);
+    expect(j.arrivesAfterClose).toBe(false);
+  });
+
+  // The floor's own hour must not retire the row either: at 20:00 you are in the air, and a block
+  // that has gone quiet is a block that has stopped saying when you land.
+  it('is not a record just because the floor’s hour has passed', () => {
+    const j = dayJourney({ ...landingIntoTheHotel, nowMs: AT('20:00') })!;
+    expect(j.arm).toBe(DAY_JOURNEY_ARM.AHEAD);
+    expect(j.arriveAtMs).not.toBeNull();
+  });
+
+  it('is a record once the predicted arrival has gone by', () => {
+    const j = dayJourney({ ...landingIntoTheHotel, nowMs: AT('23:20') + 110 * 60 * 1000 })!;
+    expect(j.arm).toBe(DAY_JOURNEY_ARM.PAST);
+  });
+
+  // A CLOSED window is untouched: it has a real deadline, and §AI1 measures the fit to it.
+  it('still measures the fit on a window that shuts', () => {
+    const j = dayJourney({
+      departAfterMs: AT('16:00'),
+      arriveByMs: AT('17:00'),
+      windowClosesMs: AT('17:30'),
+      travelSeconds: 4 * 60 * 60,
+      nowMs: AT('09:00'),
+      flexibleArrival: true,
+    })!;
+    expect(j.arm).toBe(DAY_JOURNEY_ARM.OVERRUNS);
+    expect(j.arrivesAfterClose).toBe(true);
+  });
+});
+
+// ── THE DAY'S OWN VERDICT (ADR-0206 §V1.7 / §AN) ─────────────────────────────────────────
+//
+// `dayFeasibility` rolls up the ARMS the rows render rather than re-measuring the day's stops,
+// which is the decision §AN records: every rule about whether a leg can be infeasible lives in
+// `dayJourney` and nowhere else, so a verdict built from raw stops calls a day impossible over
+// legs its own rows say are fine. These specs are that guarantee, stated as behaviour.
+describe('dayFeasibility — a day says no only on evidence', () => {
+  /** ⁦08:00⁩ + n minutes, so the fixtures read as a morning rather than as epoch arithmetic. */
+  const AT = (min: number) => Date.parse('2026-07-12T08:00:00Z') + min * MIN;
+  /** A leg with a real window, so it has a `fit` to report. */
+  const leg = (holeMin: number, travelMin: number) =>
+    dayJourney({
+      departAfterMs: AT(0),
+      arriveByMs: AT(holeMin),
+      travelSeconds: travelMin * 60,
+      nowMs: AT(-60),
+    });
+
+  it('overruns, and reports how many legs and their whole shortfall', () => {
+    const v = dayFeasibility([leg(30, 60), leg(120, 40), leg(60, 100)]);
+    expect(v.fit).toBe('overruns');
+    expect(v.legs).toBe(2);
+    // ⁦30⁩ short and ⁦40⁩ short. The tolerance decides whether to speak, never what is said.
+    expect(v.overrunSeconds).toBe((30 + 40) * 60);
+  });
+
+  it('fits when every measured leg fits', () => {
+    const v = dayFeasibility([leg(120, 40), leg(90, 20)]);
+    expect(v.fit).toBe('fits');
+    expect(v.legs).toBe(0);
+    expect(v.overrunSeconds).toBe(0);
+  });
+
+  // §D4's own case, and the reason the answer is a discriminant rather than a boolean: a day
+  // nothing could be measured on is NOT a day that fits, even though both render nothing.
+  it('is UNKNOWN, not FITS, when nothing was measurable', () => {
+    expect(dayFeasibility([null, null]).fit).toBe('unknown');
+    expect(dayFeasibility([]).fit).toBe('unknown');
+  });
+
+  // A leg with a duration but no WINDOW — the day's first leg out of a bed (§AF3) — was never
+  // asked the question, so it cannot answer it either way.
+  it('does not read a leg with no window as a leg that fits', () => {
+    const noWindow = dayJourney({ arriveByMs: AT(120), travelSeconds: 40 * 60, nowMs: AT(-60) });
+    expect(noWindow).not.toBeNull();
+    expect(noWindow!.free).toBeNull();
+    expect(dayFeasibility([noWindow]).fit).toBe('unknown');
+  });
+
+  // **The gate that would have been re-committed by measuring raw stops** (§AJ1): an open
+  // check-in floor is an hour you may arrive AFTER, so nothing can fail to fit inside it. The row
+  // already knows this; the day inherits it by reading the row.
+  it('does not flag a leg into an open floor, however long the drive', () => {
+    const intoAFloor = dayJourney({
+      departAfterMs: AT(0),
+      arriveByMs: AT(30),
+      travelSeconds: 6 * 60 * 60,
+      nowMs: AT(-60),
+      flexibleArrival: true,
+    });
+    expect(dayFeasibility([intoAFloor]).fit).not.toBe('overruns');
+  });
+
+  // And the same for a hole that is behind you: `dayJourney` checks PAST first, so a finished
+  // day is quiet however badly its legs ran — advice nobody can act on is what §D7 exists to
+  // avoid, and the day-level row would be the loudest possible form of it.
+  it('is quiet about a day that has already happened', () => {
+    const behindYou = dayJourney({
+      departAfterMs: AT(0),
+      arriveByMs: AT(30),
+      travelSeconds: 90 * 60,
+      nowMs: AT(600),
+    });
+    expect(behindYou!.arm).toBe(DAY_JOURNEY_ARM.PAST);
+    expect(dayFeasibility([behindYou]).fit).not.toBe('overruns');
+  });
+});
+
+// ── HOW FAR THE DAY GOES (ADR-0206 §V1.9 / §AP) ──────────────────────────────────────────
+//
+// The asymmetry is the whole derivation and a naive build gets it wrong in both directions, so
+// every spec here is about which legs each half counts. `dayTravelTotal` rolls up the SAME
+// journeys the rows drew, for `dayFeasibility`'s reason above.
+describe('dayTravelTotal — the kilometres cover every leg, the minutes only the timed ones', () => {
+  const AT = (min: number) => Date.parse('2026-07-12T08:00:00Z') + min * MIN;
+  /** An ordinary routed leg: a real estimate, so it has both halves. */
+  const routed = (travelMin: number, meters: number | null) =>
+    dayJourney({
+      departAfterMs: AT(0),
+      arriveByMs: AT(travelMin + 60),
+      travelSeconds: travelMin * 60,
+      distanceMeters: meters,
+      nowMs: AT(-60),
+    });
+  /** A leg somebody declared תחב״צ: distance, no duration (§AA4 / §AM6). */
+  const declared = (meters: number) =>
+    dayJourney({
+      departAfterMs: AT(0),
+      arriveByMs: AT(90),
+      travelSeconds: null,
+      distanceMeters: meters,
+      declared: true,
+      nowMs: AT(-60),
+    });
+
+  it('adds every leg up when the whole day is routed', () => {
+    const total = dayTravelTotal([routed(18, 1_400), routed(30, 1_800)], {
+      unplacedLegs: 0,
+      spanningLegs: 0,
+    });
+    expect(total.distanceMeters).toBe(3_200);
+    expect(total.travelSeconds).toBe(48 * 60);
+  });
+
+  // **The crux.** A mixed-mode day is the ordinary one since M8b: the declared leg's kilometres
+  // are counted and its minutes are not — dropping it from both understates a day somebody is
+  // genuinely crossing, and inventing minutes prints the walking number the declaration exists
+  // to suppress.
+  it('counts a declared leg in the distance and not in the duration', () => {
+    const total = dayTravelTotal([routed(18, 1_400), declared(9_000), routed(30, 1_800)], {
+      unplacedLegs: 0,
+      spanningLegs: 0,
+    });
+    expect(total.distanceMeters).toBe(12_200);
+    expect(total.travelSeconds).toBe(48 * 60);
+  });
+
+  // A day of declared legs travels a real distance for no duration this app may state.
+  it('answers a distance with no duration when every leg is declared', () => {
+    const total = dayTravelTotal([declared(2_700), declared(9_000)], {
+      unplacedLegs: 0,
+      spanningLegs: 0,
+    });
+    expect(total.distanceMeters).toBe(11_700);
+    expect(total.travelSeconds).toBeNull();
+  });
+
+  // §D4: absence is silence, never a zero — the reader must not be able to tell "not computed"
+  // from "not computable", and `0 ק״מ` is exactly that tell.
+  it('is null on both halves rather than zero when nothing was measured', () => {
+    expect(dayTravelTotal([null, null], { unplacedLegs: 0, spanningLegs: 0 })).toEqual({
+      distanceMeters: null,
+      travelSeconds: null,
+      partial: false,
+
+      airMeters: null,
+    });
+    expect(dayTravelTotal([], { unplacedLegs: 0, spanningLegs: 0 })).toEqual({
+      distanceMeters: null,
+      travelSeconds: null,
+      partial: false,
+
+      airMeters: null,
+    });
+  });
+
+  // A hole that renders no block contributes nothing, which is what makes the header and the
+  // list describe one day: an estimate the provider refused is a leg neither of them counts.
+  it('ignores a hole that drew no journey', () => {
+    const unrouted = dayJourney({
+      departAfterMs: AT(0),
+      arriveByMs: AT(90),
+      travelSeconds: null,
+      nowMs: AT(-60),
+    });
+    expect(unrouted).toBeNull();
+    expect(
+      dayTravelTotal([unrouted, routed(18, 1_400)], { unplacedLegs: 0, spanningLegs: 0 })
+        .distanceMeters,
+    ).toBe(1_400);
+  });
+
+  // An estimate that carries no distance still carries a duration, and the halves are counted
+  // independently rather than gated on each other.
+  it('counts a duration whose leg reported no distance', () => {
+    const total = dayTravelTotal([routed(18, 1_400), routed(12, null)], {
+      unplacedLegs: 0,
+      spanningLegs: 0,
+    });
+    expect(total.distanceMeters).toBe(1_400);
+    expect(total.travelSeconds).toBe(30 * 60);
+  });
+
+  // ── AND WHAT THE ROLL-UP CANNOT SEE (ADR-0206 §AT2) ────────────────────────────────────
+  //
+  // Reading the journeys is what keeps the header and the list describing one day (§AP2), and
+  // its cost is that a hole with an unplaced end is invisible here — so a day of five hops where
+  // two run through an event nobody gave a place prints the three it could measure AS IF they
+  // were the day. That is not §D4's silence: the line is present and reads complete.
+  it('is a FLOOR when a hole had an end nobody placed', () => {
+    const total = dayTravelTotal([routed(18, 1_400), routed(30, 1_800)], {
+      unplacedLegs: 2,
+      spanningLegs: 0,
+    });
+    expect(total.partial).toBe(true);
+    // The numbers are unchanged — what a floor changes is the claim, not the arithmetic. An
+    // unmeasurable leg has no distance to add, so inventing one here would be §D4's own failure.
+    expect(total.distanceMeters).toBe(3_200);
+    expect(total.travelSeconds).toBe(48 * 60);
+  });
+
+  // The distinction the flag turns on: a leg still WARMING will gain its number and says nothing
+  // (§D4), while a leg with an unplaced end never will. Both draw no block; only one is a
+  // permanent hole in what the total covers, and `unplacedLegs` counts that one alone.
+  it('is not a floor merely because a hole drew no journey', () => {
+    const pending = dayJourney({
+      departAfterMs: AT(0),
+      arriveByMs: AT(90),
+      travelSeconds: null,
+      nowMs: AT(-60),
+    });
+    expect(
+      dayTravelTotal([pending, routed(18, 1_400)], { unplacedLegs: 0, spanningLegs: 0 }).partial,
+    ).toBe(false);
+  });
+
+  // A day nothing could be measured on stays silent whether or not the holes were placeable —
+  // the component renders nothing without a distance, so the flag has nothing to qualify.
+  it('reports the floor even where there is nothing to state', () => {
+    expect(dayTravelTotal([], { unplacedLegs: 3, spanningLegs: 0 })).toEqual({
+      distanceMeters: null,
+      travelSeconds: null,
+      partial: true,
+
+      airMeters: null,
+    });
+  });
+});
+
+// **A STATED DEPARTURE IS NEVER LATER THAN THE ARRIVAL IT IS COUNTED BACK FROM** (ADR-0206 §AQ1).
+//
+// The invariant nothing asserted, written after a field report where the day row advised
+// `יציאה 20:31` into an event that starts at 20:00. It was NOT this derivation — the cause was the
+// ZONE the clock was printed in (§AQ1, and `DayJoinRow.zones.test.tsx` is the spec that would have
+// caught it) — and the guard belongs here anyway, at the level where the number is made: it is
+// cheap, it is the property every arm of this function is supposed to have, and the only reason
+// nobody had written it down is that it had always happened to be true.
+//
+// Swept over the arms rather than asserted once, because the two that state a clock reach it by
+// different routes: the ordinary one counts back from the deadline, and the clamped one is pulled
+// forward to the origin's own end (§AJ2) — which is exactly the arm an off-by-one would land in.
+describe('dayJourney — the departure it states can never be after the arrival (ADR-0206 §AQ1)', () => {
+  const AT = (hhmm: string) => Date.parse(`2026-08-27T${hhmm}:00Z`);
+  /** Every shape in this file that produces a leave-by, plus the reported one. `travelSeconds`
+   *  spans "comfortably fits" to "does not fit at all" so the clamp and the shortfall are both in. */
+  const cases = [
+    {
+      name: 'the reported leg — a 60-minute hole, a 23-minute drive',
+      departAfterMs: AT('19:00'),
+      arriveByMs: AT('20:00'),
+      travelSeconds: 1403,
+    },
+    {
+      name: 'a leg with hours to spare',
+      departAfterMs: AT('12:00'),
+      arriveByMs: AT('16:00'),
+      travelSeconds: 20 * 60,
+    },
+    {
+      name: 'a leg whose buffer does not fit, so the departure is clamped',
+      departAfterMs: AT('16:40'),
+      arriveByMs: AT('17:00'),
+      travelSeconds: 22 * 60,
+    },
+    {
+      name: 'a leg with no origin to clamp against',
+      arriveByMs: AT('20:00'),
+      travelSeconds: 40 * 60,
+    },
+    {
+      name: 'a leg that does not fit its hole',
+      departAfterMs: AT('19:45'),
+      arriveByMs: AT('20:00'),
+      travelSeconds: 23 * 60,
+    },
+  ];
+  for (const { name, ...input } of cases) {
+    it(`holds for ${name}`, () => {
+      // Read across the day rather than at one instant: the arms are keyed on the clock, so a
+      // single `nowMs` would exercise one of them and call the invariant proven.
+      for (const hhmm of ['06:00', '18:00', '19:30', '19:50', '20:30', '23:00']) {
+        const j = dayJourney({ ...input, nowMs: AT(hhmm) });
+        if (!j || j.leaveByMs === null) continue;
+        expect(j.leaveByMs).toBeLessThanOrEqual(input.arriveByMs);
+      }
+    });
+  }
+});
+
+// **THE ARRIVAL IS THE ONE THE STATED DEPARTURE IMPLIES** (ADR-0206 §AR1).
+//
+// Reported off the deploy: _"the transit rows should also display the arrival time (if you take off
+// at the suggested time) so then we immediately know why they tell us to take off at that time."_
+//
+// **The parenthesis is the whole spec.** There are two arrivals a leg can name and they are not the
+// same number: `departAfterMs + travel` is the earliest you could be there, and
+// `leaveByMs + travel` is where the departure the row is advising actually lands. Only the second
+// explains the clock beside it, and the first is what this used to compute — so a spec that merely
+// asserted "an arrival is present" would have passed on the wrong one.
+describe('dayJourney — the arrival explains the departure beside it (ADR-0206 §AR1)', () => {
+  const AT = (hhmm: string) => Date.parse(`2026-08-27T${hhmm}:00Z`);
+
+  it('lands the buffer before the deadline, not the moment the previous row ends', () => {
+    const j = dayJourney({
+      departAfterMs: AT('12:00'),
+      arriveByMs: AT('14:40'),
+      travelSeconds: 40 * 60,
+      nowMs: AT('12:10'),
+    })!;
+    expect(j.leaveByMs).toBe(AT('13:55'));
+    // `13:55 + 40` — the departure it states, carried forward.
+    expect(j.arriveAtMs).toBe(AT('14:35'));
+    // NOT `12:00 + 40`, which is the earliest you could be there and explains nothing.
+    expect(j.arriveAtMs).not.toBe(AT('12:40'));
+  });
+
+  // A flexible destination states no departure, so the earliest you could be there IS the answer —
+  // the behaviour §AI1 shipped, unchanged, and the one case where the old formula was right.
+  it('falls back to the origin’s own end where the app advises no departure', () => {
+    const j = dayJourney({
+      departAfterMs: AT('12:00'),
+      arriveByMs: AT('14:40'),
+      travelSeconds: 40 * 60,
+      nowMs: AT('12:10'),
+      flexibleArrival: true,
+    })!;
+    expect(j.leaveByMs).toBeNull();
+    expect(j.arriveAtMs).toBe(AT('12:40'));
+  });
+
+  // **The one arm that must stay silent** (ADR-0208 §2). The instant is derived from the end of a
+  // stop the group said they did not go to, so stating it would be exactly the claim this arm
+  // withholds — in the confident voice of a prediction.
+  it('says nothing at all where the plan’s claim about where you are has been denied', () => {
+    const j = dayJourney({
+      departAfterMs: AT('12:00'),
+      arriveByMs: AT('14:40'),
+      travelSeconds: 40 * 60,
+      nowMs: AT('12:10'),
+      claimDenied: true,
+    })!;
+    expect(j.leaveByMs).toBeNull();
+    expect(j.arriveAtMs).toBeNull();
+  });
+});
+
+describe('dayBlocks — the join BEFORE a cluster is stated (ADR-0231 §2, F9)', () => {
+  const blocksFor = (events: TripEvent[]) =>
+    dayBlocks(mergeDayEntries(buildTimeTree(events), []), ctxFor(events, []));
+  // The seeded evening the ADR counted on: the free time ends at 19:30, the booking between
+  // it and the bar is cancelled, and the two bar rows overlap into one cluster from 21:30.
+  const free = ev({
+    id: 'free',
+    kind: EVENT_KIND.SOFT,
+    startsAt: '2026-07-12T16:30:00+09:00',
+    endsAt: '2026-07-12T19:30:00+09:00',
+  });
+  const bar = ev({
+    id: 'bar',
+    kind: EVENT_KIND.SOFT,
+    startsAt: '2026-07-12T21:30:00+09:00',
+    endsAt: '2026-07-12T22:30:00+09:00',
+  });
+  const cocktails = ev({
+    id: 'cocktails',
+    kind: EVENT_KIND.SOFT,
+    startsAt: '2026-07-12T22:00:00+09:00',
+    endsAt: '2026-07-12T22:45:00+09:00',
+  });
+  const walk = ev({
+    id: 'walk',
+    kind: EVENT_KIND.SOFT,
+    startsAt: '2026-07-12T23:30:00+09:00',
+    endsAt: '2026-07-12T23:50:00+09:00',
+  });
+
+  it("measures the two free hours from the row above to the cluster's entry member", () => {
+    const blocks = blocksFor([free, bar, cocktails]);
+    const cluster = blocks[1].entries[0];
+    expect(cluster.entry.kind === 'event' && cluster.entry.group.kind).toBe('cluster');
+    expect(cluster.join).toMatchObject({ kind: 'gap', minutes: 120 });
+    expect(cluster.from?.id).toBe('free');
+  });
+
+  it('and still measures the join AFTER it from the exit member, as it always did', () => {
+    const blocks = blocksFor([bar, cocktails, walk]);
+    const after = blocks[1].entries[0];
+    expect(after.entry.kind === 'event' && after.entry.group.kind).toBe('single');
+    // 22:45 → 23:30: under the chip floor, so no gap join, but the row above is named.
+    expect(after.join).toBeUndefined();
+    expect(after.from?.id).toBe('cocktails');
+  });
+});
+
+// ══ A JOURNEY IS BETWEEN TWO PLACED STOPS (ADR-0232) ═══════════════════════════════════════════
+//
+// The owner's day: `Nettó Hofn` 18:15–19:15, an aurora watch 22:45–00:45 with no place, then the
+// hotel. Pairing by adjacent row deleted the leg into the aurora and the leg out of it, and the
+// one drive the traveller was certain to make tonight with them. These specs are the eighteen
+// rows of ADR-0232 §3, the ones a pure derivation can answer.
+describe('dayRun — the journey chain is between placed stops (ADR-0232 R1/R2)', () => {
+  const placedIds = new Set(['netto', 'lunch', 'museum', 'ferry-origin']);
+  /** A row is placed when its id is in the set; a `moving` row is a ferry with a placed origin
+   *  and an unplaced landing — `leaving` unplaced, `arriving` placed. */
+  const chainOf = (placed: Set<string>, moving: Set<string> = new Set()) => ({
+    placedAt: (event: TripEvent, end: 'leaving' | 'arriving') =>
+      moving.has(event.id) ? end === 'arriving' : placed.has(event.id),
+    movesYou: (event: TripEvent) => moving.has(event.id),
+  });
+  const at = (h: string, m = '00', day = '12') => `2026-07-${day}T${h}:${m}:00+09:00`;
+  // In clock order, because `buildTimeTree` sorts: pack 09:00 · lunch 12–13 · call 13:30–14:15 ·
+  // rest 14:30–15:30 · museum 16:30–18 · netto 18:15–19:15 · aurora 22:45–00:45.
+  const pack = ev({ id: 'pack', startsAt: at('09'), endsAt: at('09', '30') });
+  const lunch = ev({ id: 'lunch', startsAt: at('12'), endsAt: at('13') });
+  const call = ev({ id: 'call', startsAt: at('13', '30'), endsAt: at('14', '15') });
+  const rest = ev({ id: 'rest', startsAt: at('14', '30'), endsAt: at('15', '30') });
+  const museum = ev({ id: 'museum', startsAt: at('16', '30'), endsAt: at('18') });
+  const netto = ev({ id: 'netto', startsAt: at('18', '15'), endsAt: at('19', '15') });
+  const aurora = ev({ id: 'aurora', startsAt: at('22', '45'), endsAt: at('00', '45', '13') });
+  const bed = ev({
+    id: 'bed',
+    startsAt: '2026-07-10T15:00:00+09:00',
+    endsAt: at('11', '00', '14'),
+  });
+  const runOf = (events: TripEvent[], chain: ReturnType<typeof chainOf>, from?: TripEvent) =>
+    dayRun(mergeDayEntries(buildTimeTree(events), []), {
+      ...ctxFor(events),
+      chain: from ? { ...chain, from } : chain,
+    });
+  const entriesOf = (run: ReturnType<typeof dayRun>) => run.blocks.flatMap((b) => b.entries);
+
+  it('leaves the join chain adjacent: the hole above a placeless row is still free time', () => {
+    const run = runOf([netto, aurora], chainOf(placedIds));
+    const [, second] = entriesOf(run);
+    expect(second.from?.id).toBe('netto');
+    expect(second.join).toMatchObject({ kind: 'gap' });
+  });
+
+  it('carries the last PLACED row forward across a placeless one (scenario 1)', () => {
+    const run = runOf([lunch, rest, museum], chainOf(placedIds));
+    const [, second, third] = entriesOf(run);
+    // Into the rest: from lunch, spanning nothing — the caller drops it, since the destination is
+    // placeless; the chain itself simply reports where it stands.
+    expect(second.legFrom?.id).toBe('lunch');
+    expect(second.spans).toEqual([]);
+    // Into the museum: from lunch still, ACROSS the rest.
+    expect(third.from?.id).toBe('rest');
+    expect(third.legFrom?.id).toBe('lunch');
+    expect(third.spans?.map((row) => row.id)).toEqual(['rest']);
+  });
+
+  it('spans two placeless rows in a row as one leg (scenario 4)', () => {
+    const run = runOf([lunch, call, rest, museum], chainOf(placedIds));
+    const last = entriesOf(run)[3];
+    expect(last.legFrom?.id).toBe('lunch');
+    expect(last.spans?.map((row) => row.id)).toEqual(['call', 'rest']);
+  });
+
+  it('is seeded with the bed, so the walk out of it spans a placeless first row (scenario 3)', () => {
+    const run = runOf([pack, lunch], chainOf(placedIds), bed);
+    const [first, second] = entriesOf(run);
+    expect(first.from).toBeUndefined();
+    expect(first.legFrom?.id).toBe('bed');
+    expect(second.legFrom?.id).toBe('bed');
+    expect(second.spans?.map((row) => row.id)).toEqual(['pack']);
+  });
+
+  it("reports where the chain stands after the last row — the leg back into tonight's bed (scenario 2)", () => {
+    const run = runOf([netto, aurora], chainOf(placedIds));
+    expect(run.tail?.from.id).toBe('netto');
+    expect(run.tail?.spans.map((row) => row.id)).toEqual(['aurora']);
+  });
+
+  it('stands at the bed on a day with nothing placed, and nowhere with no bed (scenarios 6/7)', () => {
+    expect(runOf([call, rest], chainOf(placedIds), bed).tail?.from.id).toBe('bed');
+    expect(runOf([call, rest], chainOf(placedIds)).tail).toBeNull();
+  });
+
+  // **The e2e that caught the first build** (`day-paints-once.spec.ts`, ADR-0206 §AT2): three placed
+  // rows and a placeless fourth at the end, no bed. The chain attached nothing to that row and the
+  // total read as complete — a smaller claim turned into a confident one, which is the failure §AT2
+  // exists to prevent. The run counts what no leg reaches; the caller adds the trailing run.
+  it('counts a trailing placeless run as a hole where no bed follows it', () => {
+    const run = runOf([lunch, museum, aurora], chainOf(placedIds));
+    expect(run.orphanRuns).toBe(0);
+    expect(danglingLegs(run, undefined)).toBe(1);
+    // With a bed after it, the leg home spans the row instead — measured, and a floor for that.
+    expect(danglingLegs(run, bed)).toBe(0);
+  });
+
+  it('counts a leading placeless run as a hole where no bed seeds the chain', () => {
+    const run = runOf([pack, lunch], chainOf(placedIds));
+    expect(run.orphanRuns).toBe(1);
+    expect(danglingLegs(run, bed)).toBe(1);
+    // Seeded, the same rows are the bed leg's spans and no hole at all.
+    expect(runOf([pack, lunch], chainOf(placedIds), bed).orphanRuns).toBe(0);
+  });
+
+  it('counts a day of nothing placed and no bed once, not per row', () => {
+    const run = runOf([call, rest], chainOf(placedIds));
+    expect(run.orphanRuns).toBe(1);
+    expect(danglingLegs(run, undefined)).toBe(1);
+  });
+
+  it('treats a row that MOVES you with an unplaced end as a seam, not as transparent (scenario 8)', () => {
+    const ferry = ev({ id: 'ferry-origin', startsAt: at('15'), endsAt: at('15', '40') });
+    const run = runOf([lunch, ferry, museum], chainOf(placedIds, new Set(['ferry-origin'])));
+    const [, intoFerry, intoMuseum] = entriesOf(run);
+    // The leg INTO the ferry reaches its placed origin.
+    expect(intoFerry.legFrom?.id).toBe('lunch');
+    // The leg OUT of it leaves from the ferry itself — unplaced, so unmeasurable — never from lunch
+    // across it: a road route beside a sea crossing is the false-path claim §AA4 refuses.
+    expect(intoMuseum.legFrom?.id).toBe('ferry-origin');
+    expect(intoMuseum.spans).toEqual([]);
+  });
+});
+
+describe('dayJourney — a leg across a placeless stop states the measurement and no advice (ADR-0232 R4)', () => {
+  const base = Date.parse('2026-07-12T13:00:00+09:00');
+  const H = 60 * 60 * 1000;
+  /** Lunch ends 13:00, a 45-minute call with no place at 13:30, the hike starts 14:45: a 1:45
+   *  window less 45 minutes is 60 of slack, and a 51-minute drive fits in it — though the hole the
+   *  block is drawn in (14:15–14:45) is 30 minutes long. */
+  const spanning = (over: Partial<Parameters<typeof dayJourney>[0]> = {}) =>
+    dayJourney({
+      departAfterMs: base,
+      arriveByMs: base + 1.75 * H,
+      travelSeconds: 51 * 60,
+      distanceMeters: 65_000,
+      nowMs: base - H,
+      // The call: 13:30–14:15, inside the window.
+      spanned: [{ startMs: base + 0.5 * H, endMs: base + 1.25 * H }],
+      ...over,
+    })!;
+
+  it('keeps the duration, the distance and the mode, and marks itself as spanning', () => {
+    const j = spanning();
+    expect(j.travelSeconds).toBe(51 * 60);
+    expect(j.distanceMeters).toBe(65_000);
+    expect(j.spansPlaceless).toBe(true);
+    expect(j.arm).toBe(DAY_JOURNEY_ARM.AHEAD);
+  });
+
+  it('states no leave-by and no arrival — the plan cannot say which side of the row the drive is on', () => {
+    const j = spanning();
+    expect(j.leaveByMs).toBeNull();
+    expect(j.arriveAtMs).toBeNull();
+  });
+
+  it('is never PASSED: a departure it does not state cannot have gone by', () => {
+    // At 14:40 the buffered leave-by (13:49) would long have passed on an ordinary leg.
+    const j = spanning({ nowMs: base + 1.66 * H });
+    expect(j.arm).toBe(DAY_JOURNEY_ARM.AHEAD);
+    expect(j.leaveByMs).toBeNull();
+  });
+
+  it('measures the fit against the combined slack, not the hole it is drawn in', () => {
+    // 60 minutes of slack hold a 51-minute drive plus the buffer: FITS, where the 30-minute hole
+    // under the block would have said `חסרות 21 דק׳ לדרך`.
+    expect(spanning().free?.fit).toBe(TRAVEL_FIT.FITS);
+    expect(spanning().free?.availableSeconds).toBe(60 * 60);
+  });
+
+  it('…and still says so when even the combined slack does not hold it', () => {
+    // A 70-minute call leaves 35 minutes for a 51-minute drive.
+    const j = spanning({
+      spanned: [{ startMs: base + 0.25 * H, endMs: base + (0.25 + 70 / 60) * H }],
+    });
+    expect(j.arm).toBe(DAY_JOURNEY_ARM.OVERRUNS);
+    expect(j.overrunSeconds).toBeGreaterThan(0);
+    expect(j.leaveByMs).toBeNull();
+  });
+
+  it('is PAST once the destination has started, like any leg', () => {
+    expect(spanning({ nowMs: base + 2 * H }).arm).toBe(DAY_JOURNEY_ARM.PAST);
+  });
+
+  it('honours `בדרך` — a device mark is not a claim the plan makes', () => {
+    expect(spanning({ onWay: true }).arm).toBe(DAY_JOURNEY_ARM.ON_WAY);
+  });
+
+  it('is not spanning by default, so every leg that never had a placeless row is unchanged', () => {
+    expect(spanning({ spanned: undefined }).spansPlaceless).toBe(false);
+    expect(spanning({ spanned: undefined }).leaveByMs).not.toBeNull();
+  });
+
+  // **The owner's second field report, off the first deploy** (2026-09-16): `Nettó Hofn` ends
+  // 19:15, the hotel's check-in closes 20:00, the aurora watch runs 22:45–00:45 — and the leg read
+  // `אין זמן לדרך`, because two hours that happen AFTER the deadline were taken off the 45 minutes
+  // before it. A row cannot eat a window it is not in.
+  it('takes nothing off the slack for a crossed row that happens after the deadline', () => {
+    const j = spanning({
+      // 45 minutes of window, a 22-minute drive, and the crossed row three hours past the close.
+      arriveByMs: base + 0.75 * H,
+      travelSeconds: 22 * 60,
+      spanned: [{ startMs: base + 3.5 * H, endMs: base + 5.5 * H }],
+    });
+    expect(j.free?.availableSeconds).toBe(45 * 60);
+    expect(j.free?.fit).toBe(TRAVEL_FIT.FITS);
+    expect(j.arm).toBe(DAY_JOURNEY_ARM.AHEAD);
+  });
+
+  it('counts only the part of a crossed row that falls inside the window', () => {
+    // The row straddles the deadline: 14:15–15:15 against a 14:45 close takes 30 minutes, not 60.
+    const j = spanning({ spanned: [{ startMs: base + 1.25 * H, endMs: base + 2.25 * H }] });
+    expect(j.free?.availableSeconds).toBe(75 * 60);
+  });
+});
+
+describe('spannedIntervals / reservedSecondsWithin', () => {
+  it('keeps the rows that have both ends and ignores the rest', () => {
+    const rows = [
+      ev({ id: 'a', startsAt: '2026-07-12T13:30:00+09:00', endsAt: '2026-07-12T14:15:00+09:00' }),
+      ev({ id: 'b', startsAt: '2026-07-12T15:00:00+09:00' }),
+    ];
+    const spans = spannedIntervals(rows);
+    expect(spans).toHaveLength(1);
+    expect(spannedIntervals([])).toEqual([]);
+    const from = Date.parse('2026-07-12T13:00:00+09:00');
+    const at = (clock: string) => Date.parse(`2026-07-12T${clock}:00+09:00`);
+    // Whole row inside: 45 minutes. Window closing mid-row: 15. Window before the row: nothing.
+    expect(reservedSecondsWithin(spans, from, at('16:00'))).toBe(45 * 60);
+    expect(reservedSecondsWithin(spans, from, at('13:45'))).toBe(15 * 60);
+    expect(reservedSecondsWithin(spans, from, at('13:20'))).toBe(0);
+  });
+});
+
+describe('a spanning leg leaves the free-time strips raw and the total a floor (ADR-0232 R5)', () => {
+  const TZ_DAY = '2026-07-12';
+  const free: Gap = gapBetween(
+    ev({
+      id: 'x',
+      date: TZ_DAY,
+      startsAt: '2026-07-12T13:00:00+09:00',
+      endsAt: '2026-07-12T13:00:00+09:00',
+    }),
+    ev({ id: 'y', date: TZ_DAY, startsAt: '2026-07-12T16:30:00+09:00' }),
+    TZ,
+  )!;
+  const journey = dayJourney({
+    departAfterMs: Date.parse('2026-07-12T13:00:00+09:00'),
+    arriveByMs: Date.parse('2026-07-12T22:00:00+09:00'),
+    travelSeconds: 51 * 60,
+    distanceMeters: 65_000,
+    nowMs: Date.parse('2026-07-12T09:00:00+09:00'),
+    spanned: [
+      {
+        startMs: Date.parse('2026-07-12T16:30:00+09:00'),
+        endMs: Date.parse('2026-07-12T18:30:00+09:00'),
+      },
+    ],
+  })!;
+
+  it('does not narrow a hole by a journey that may not be in it', () => {
+    expect(narrowGapForTravel(free, journey, TZ)).toEqual(free);
+  });
+
+  it('keeps `לפחות` on the total for a leg that does not count the stop between its ends', () => {
+    const total = dayTravelTotal([journey], { unplacedLegs: 0, spanningLegs: 1 });
+    expect(total.partial).toBe(true);
+    expect(total.distanceMeters).toBe(65_000);
+    expect(dayTravelTotal([journey], { unplacedLegs: 0, spanningLegs: 0 }).partial).toBe(false);
   });
 });

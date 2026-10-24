@@ -1,0 +1,518 @@
+// **The read-through cache in front of the router** (ADR-0205 §4/§6), shaped like
+// `MapService.readyOrWarm`: serve what is stored, start what is missing, never hold a socket open
+// for a third party.
+//
+// Three boundaries this service is built around, each of which is a decision somebody else made:
+//
+//   - **`ChangeService` is not here and must never be.** A route is not data-plane — no `tripId`,
+//     one writer, nothing to undo — so it sits outside the change log rather than being an
+//     exception to it (ADR-0205 §4; `backend/CLAUDE.md` calls that the one hard boundary in this
+//     codebase). Nothing below writes a `Change` row or broadcasts.
+//   - **The gate runs here, before the network** (§3). One crow-flies pair over a mode's ceiling
+//     returns `400` for an entire matrix (§Z4), so the client must never be able to cause that —
+//     which is also why the pre-filter is `@waypoint/shared`'s `routableLegs` and not a rule this
+//     file invents.
+//   - **An absent answer is ordinary** (ADR-0206 §D4). A refused mode, a null cell, a warm that
+//     has not landed and a provider that is down all leave the crow-flies chip standing. There is
+//     no error state in this file's vocabulary, only three buckets: answered, refused, pending.
+import { Inject, Injectable, Logger } from '@nestjs/common';
+import {
+  ROUTE_COORD_DECIMALS,
+  admitsTravelMode,
+  clusterLatLngs,
+  routableLegs,
+  routeLegKey,
+  type LatLng,
+  type RouteBatch,
+  type RouteBatchRequest,
+  type RoutableLeg,
+  type RoutedLeg,
+  type TravelEstimate,
+  type TravelMode,
+} from '@waypoint/shared';
+import { ROUTING_DISABLED } from '../common/env';
+import { MapService } from '../map/map.service';
+import { PrismaService } from '../prisma/prisma.service';
+import { matrixBatchesFor } from './matrix-batches';
+import { PolitenessLimiter } from './politeness.limiter';
+import { ROUTE_PROVIDER, RouteOutOfRangeError, type RouteProvider } from './route-provider';
+
+/** The floor under `Retry-After`, and the number is the provider's own tail: ADR-0205 §Z4
+ *  measured a day matrix at **~560 ms median, ~1 s max**, so a client that re-asks sooner than
+ *  this is asking before the first call could possibly have landed. */
+const RETRY_MIN_SECONDS = 2;
+
+/** The ceiling on it. A warm longer than this is one the client should stop tracking and let the
+ *  next natural read pick up — every leg it eventually writes is still there when anyone asks. */
+const RETRY_MAX_SECONDS = 30;
+
+/**
+ * **How many shape calls one warm pass will make.**
+ *
+ * A duration is one matrix call for a whole day; a **line is one call per leg** (ADR-0205 §6
+ * amendment), so `withShapes` over a 24-stop day in three modes would be 69 upstream calls, paced
+ * at 1/s by a limiter that is right to pace them. ADR-0206 §D8 draws at most one line anyway.
+ *
+ * **Nothing is dropped by this bound** — that is what makes it a pace rather than a silent cap. A
+ * leg whose shape was not reached this pass stays in `pendingModes`, so the client's next ask
+ * starts the next batch of them, and the cache means no work is ever repeated.
+ */
+const SHAPE_CALLS_PER_PASS = 8;
+
+/** The stored row, as much of it as a read needs. */
+interface RouteLegRow {
+  key: string;
+  durationSeconds: number;
+  distanceMeters: number;
+  shapeEncoded: string | null;
+  shapePrecision: number | null;
+  /** Who authored it, which is what makes a row re-askable rather than merely present (§Y6). */
+  provider: string;
+}
+
+/** A row on its way in. Mirrors the Prisma model's writable columns. */
+interface RouteLegWrite {
+  key: string;
+  mode: string;
+  fromLat: number;
+  fromLng: number;
+  toLat: number;
+  toLng: number;
+  durationSeconds: number;
+  distanceMeters: number;
+  shapeEncoded: string | null;
+  shapePrecision: number | null;
+  provider: string;
+  tilesetAt: Date | null;
+}
+
+/**
+ * **What a pending (leg, mode) still owes**, and why it is three states rather than a boolean
+ * (ADR-0206 §BC).
+ *
+ * The boolean it replaces could only say "duration cached, geometry missing". It had no way to
+ * express the case that turned out to matter: **a leg with NOTHING cached, on a request that wants
+ * a line.** That fell into the duration bucket, so the day spent a matrix call and then a `/route`
+ * call on a later pass — two sequential round trips for an answer one `/route` carries whole
+ * (duration, distance AND geometry).
+ */
+type PendingNeed =
+  /** Nothing cached, no line wanted — the matrix, which answers a whole day at once. */
+  | 'duration'
+  /** Duration cached, geometry missing. One `/route`. */
+  | 'geometry'
+  /** Nothing cached and a line is wanted: answerable by ONE `/route`, budget permitting. */
+  | 'both'
+  /**
+   * **A complete row from a degraded provider, to be re-asked whole** (§Y6) — the one need that
+   * is not about something missing.
+   *
+   * It must be a `/route` and never the matrix, which is the whole reason it is its own member:
+   * `runMatrix` writes `shapeEncoded: null` and `store` replaces the row, so refreshing a row
+   * that HOLDS a line through the matrix would delete the line to improve the duration. One
+   * `/route` replaces both together.
+   */
+  | 'replace';
+
+interface PendingItem {
+  fromIndex: number;
+  toIndex: number;
+  mode: TravelMode;
+  need: PendingNeed;
+}
+
+@Injectable()
+export class RoutingService {
+  private readonly logger = new Logger(RoutingService.name);
+
+  /** One warm at a time per upstream request. Two members opening the same day must not each
+   *  spend a matrix call on the identical answer — they await the same promise. `MapService`'s
+   *  `inFlight` exactly (ADR-0205 §6's table names it as the shape to copy). */
+  private readonly inFlight = new Map<string, Promise<void>>();
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly map: MapService,
+    private readonly limiter: PolitenessLimiter,
+    @Inject(ROUTE_PROVIDER) private readonly provider: RouteProvider,
+  ) {}
+
+  /**
+   * **A day's legs, in every mode asked for, in one answer** (ADR-0205 §Y2).
+   *
+   * One request per day and not one per day per mode, because ADR-0206 §Z2 requires a mode switch
+   * to be instant and a per-mode endpoint puts a ~1 s round-trip behind every switch of the
+   * control. The answer is allowed to be partial: `retryAfterSeconds` is set while a warm is
+   * running and absent when there is nothing left to wait for.
+   */
+  async batch(tripId: string, request: RouteBatchRequest): Promise<RouteBatch> {
+    const { stops, modes } = request;
+    // ADR-0186 §4's clustering, reused rather than re-derived — ADR-0205 §3's "one derivation
+    // with two consumers". The TRIP's coordinates and not the day's: single-link membership is
+    // decided by the chain, so a stop that links two others is what makes them one area.
+    const clusters = clusterLatLngs(await this.map.coordinatesFor(tripId));
+    const gated = routableLegs(stops, clusters, modes);
+
+    const cached = await this.readCached(stops, gated);
+    const pending: PendingItem[] = [];
+    /**
+     * **Legs we can already answer and would rather answer better** (§Y6), kept apart from
+     * `pending` because the difference is what the CLIENT is owed.
+     *
+     * A degraded row has an estimate, so nothing about it is missing and nothing about it may
+     * read as loading: it is not in `pendingModes` and it does not earn a `retryAfterSeconds`.
+     * §Y5 took the fallback's number against "no number at all" and that trade was struck about
+     * one request, while `RouteLeg` never expires (§4) — so the row outlived the outage that
+     * justified it, and the read that finds it is the only trigger this repo will add (no
+     * scheduler: ADR-0157 §6, and ADR-0166 §14's read-trigger is the precedent).
+     */
+    const refresh: PendingItem[] = [];
+    const degraded = new Set(this.provider.degradedProviderIds);
+
+    const legs: RoutedLeg[] = gated.map((leg) => {
+      const estimates: TravelEstimate[] = [];
+      const pendingModes: TravelMode[] = [];
+      const from = stops[leg.fromIndex]!;
+      const to = stops[leg.toIndex]!;
+
+      for (const mode of leg.modes) {
+        const row = cached.get(routeLegKey(from, to, mode));
+        if (!row) {
+          pendingModes.push(mode);
+          // **A cold leg on a `withShapes` request owes BOTH, and that is one call** (§BC). It
+          // used to be recorded as owing only a duration, so the matrix answered it and the line
+          // waited for a later pass — two round trips for what one `/route` returns whole.
+          // `warm()` decides whether the budget allows it; the shape of the need is stated here.
+          pending.push({
+            fromIndex: leg.fromIndex,
+            toIndex: leg.toIndex,
+            mode,
+            need: request.withShapes ? 'both' : 'duration',
+          });
+          continue;
+        }
+        estimates.push(toEstimate(row, mode));
+        // A shape we already hold is returned either way; a shape we do not is only owed when
+        // this request asked for one (ADR-0205 §6 amendment).
+        if (request.withShapes && !row.shapeEncoded) {
+          pendingModes.push(mode);
+          pending.push({ fromIndex: leg.fromIndex, toIndex: leg.toIndex, mode, need: 'geometry' });
+          // **A degraded row that owes a line needs nothing extra**, and that is `store`'s
+          // delete-then-create rather than a coincidence: `runShape` rewrites the row whole, so
+          // the geometry call above already replaces the duration and its author.
+        } else if (degraded.has(row.provider)) {
+          refresh.push({
+            fromIndex: leg.fromIndex,
+            toIndex: leg.toIndex,
+            mode,
+            need: row.shapeEncoded ? 'replace' : 'duration',
+          });
+        }
+      }
+
+      return {
+        fromIndex: leg.fromIndex,
+        toIndex: leg.toIndex,
+        estimates,
+        // Everything asked for that the gate did not admit. Never coming, whatever anyone waits
+        // for — the distinction the client needs and the user must never see (§D4).
+        refusedModes: modes.filter((mode) => !leg.modes.includes(mode)),
+        pendingModes,
+      };
+    });
+
+    if (pending.length === 0 && refresh.length === 0) return { legs };
+
+    // **The kill switch stops the outbound call, not the endpoint** (`ROUTING_DISABLED`). Every
+    // stored leg above is still served; what is missing reads as §D4's absence, and no
+    // `retryAfterSeconds` is offered because nothing is coming.
+    //
+    // **The BREAKER is deliberately not read here, and §Y3 read it here as a latch** (§Y4). It
+    // returned early on `limiter.isOpen` before `warm()` below — and `warm()` is the only caller
+    // of `limiter.runQuietly`, so it was the only path that ever reached `run()`. Three failures
+    // therefore stopped `warm()` for good: nothing called `run()`, so nothing called `record()`,
+    // so the count never reset and the half-open probe was unreachable. The breaker latched open
+    // for the life of the process, which is the owner's _"added a new event and it didn't even
+    // try"_ — an outage of our own on top of the provider's.
+    //
+    // The seat is protected one level down, where it always was: `warm()` runs, and the limiter
+    // refuses each suppressed call without spending the seat or its timeout. That is the whole
+    // saving; withholding the promise was never part of it.
+    if (this.isDisabled()) return { legs };
+
+    const plannedCalls = this.warm(stops, clusters, [...pending, ...refresh]);
+    // **A refresh still counts toward the wait it does not itself offer.** The limiter paces one
+    // call a second across all of them, so a client told to come back in `n` has to be told the
+    // truth about the queue in front of it — while a batch whose only work is a refresh promises
+    // nothing, because everything it can answer it already answered.
+    return pending.length > 0 ? { legs, retryAfterSeconds: retryAfterFor(plannedCalls) } : { legs };
+  }
+
+  /**
+   * Await every warm currently in flight.
+   *
+   * Not scaffolding: a warm is a promise nobody holds, so without this there is no way to state
+   * "the matrix landed" — and M4's exit criteria are exactly that a cold call warms and a second
+   * one then makes **no** outbound request. A drain on shutdown wants the same handle.
+   */
+  async settled(): Promise<void> {
+    while (this.inFlight.size > 0) {
+      await Promise.allSettled([...this.inFlight.values()]);
+    }
+  }
+
+  private isDisabled(): boolean {
+    return Boolean(process.env[ROUTING_DISABLED]);
+  }
+
+  /** Every already-answered `(leg, mode)` in one query, keyed the way the client keys it. */
+  private async readCached(
+    stops: readonly LatLng[],
+    gated: readonly RoutableLeg[],
+  ): Promise<Map<string, RouteLegRow>> {
+    const keys = gated.flatMap((leg) =>
+      leg.modes.map((mode) => routeLegKey(stops[leg.fromIndex]!, stops[leg.toIndex]!, mode)),
+    );
+    if (keys.length === 0) return new Map();
+    const rows = await this.prisma.routeLeg.findMany({
+      where: { key: { in: keys } },
+      select: {
+        key: true,
+        durationSeconds: true,
+        distanceMeters: true,
+        shapeEncoded: true,
+        shapePrecision: true,
+        provider: true,
+      },
+    });
+    return new Map(rows.map((row) => [row.key, row]));
+  }
+
+  /**
+   * Start the upstream work and **do not wait for it** (ADR-0187's flow, which `MapService`'s
+   * class comment argues at length: nothing is built on a request path).
+   *
+   * Returns how many upstream calls were started, which is what makes `Retry-After` a derivation
+   * of the limiter's own rate rather than a guess.
+   */
+  private warm(
+    stops: readonly LatLng[],
+    clusters: readonly (readonly LatLng[])[],
+    pending: readonly PendingItem[],
+  ): number {
+    let calls = 0;
+
+    // **Who gets a `/route` this pass, and who waits for the matrix** (ADR-0206 §BC).
+    //
+    // A `both` leg CAN be answered by one `/route` instead of a matrix now plus a `/route` later —
+    // but only while every line this pass owes still fits `SHAPE_CALLS_PER_PASS`. Past that the
+    // divert is a downgrade rather than a saving: the matrix answers a whole day's durations in
+    // ONE call, so on a long day it is what gets numbers onto the screen at all, and trading it
+    // for a per-leg queue would delay every leg past the eighth. The budget draws that line, and
+    // the day that benefits — a two- or three-leg day, which is the ordinary one — is exactly the
+    // day that fits inside it.
+    //
+    // **What the divert costs even when it fits**, recorded because it is invisible: §Z4's matrix
+    // caches every ordered pair among the points it is sent, not just the consecutive ones, so a
+    // reorder later is free. A `/route` pays for one pair. Right for latency on a short day, wrong
+    // at scale — the same line the budget draws.
+    //
+    // **A `replace` is deliberately outside that budget decision and queued after it** (§Y6).
+    // `wantsLine` counts only what the CLIENT is missing, so `divert` is the number it was before
+    // refreshes existed — a degraded cache must not change how a cold leg is answered. Refreshes
+    // then take whatever of the pass is left, and one that does not fit simply stays degraded
+    // until the next read finds it again.
+    const wantsLine = pending.filter((item) => item.need === 'both' || item.need === 'geometry');
+    const divert = wantsLine.length <= SHAPE_CALLS_PER_PASS;
+    const shapeItems = [
+      ...(divert ? wantsLine : pending.filter((item) => item.need === 'geometry')),
+      ...pending.filter((item) => item.need === 'replace'),
+    ];
+
+    // One matrix request per §Z9-safe run of pending legs, per mode.
+    const legsByMode = new Map<TravelMode, number[]>();
+    for (const item of pending) {
+      // A `replace` is never allowed here: the matrix would drop the line this row already holds
+      // (see `PendingNeed`).
+      if (item.need === 'geometry' || item.need === 'replace') continue;
+      // A `both` leg the divert claimed is answered by its `/route` below; asking the matrix too
+      // would spend the very call this exists to save.
+      if (item.need === 'both' && divert) continue;
+      const legs = legsByMode.get(item.mode) ?? [];
+      legs.push(item.fromIndex);
+      legsByMode.set(item.mode, legs);
+    }
+    for (const [mode, legIndexes] of legsByMode) {
+      for (const { stopIndexes } of matrixBatchesFor(stops, legIndexes, mode)) {
+        const points = stopIndexes.map((index) => stops[index]!);
+        calls++;
+        this.once(`matrix:${mode}:${points.map(pointKey).join(';')}`, () =>
+          this.runMatrix(points, clusters, mode),
+        );
+      }
+    }
+
+    // One `/route` call per leg that still owes geometry, up to this pass's pace.
+    for (const item of shapeItems.slice(0, SHAPE_CALLS_PER_PASS)) {
+      const from = stops[item.fromIndex]!;
+      const to = stops[item.toIndex]!;
+      calls++;
+      this.once(`shape:${routeLegKey(from, to, item.mode)}`, () =>
+        this.runShape(from, to, item.mode),
+      );
+    }
+
+    return calls;
+  }
+
+  /** `MapService.readyOrWarm`'s dedupe: one pass per key, and its rejection handled here because
+   *  nobody awaits it. */
+  private once(key: string, work: () => Promise<void>): void {
+    if (this.inFlight.has(key)) return;
+    const started = work().finally(() => this.inFlight.delete(key));
+    this.inFlight.set(key, started);
+    started.catch((error: unknown) => {
+      this.logger.warn(`routing warm failed for ${key}: ${String(error)}`);
+    });
+  }
+
+  /**
+   * **ONE OUTBOUND CALL, AND A PROVIDER REFUSAL IS NOT AN OUTAGE** (§Z9, generalised in §Y4).
+   *
+   * `runMatrix` carried this rule inline and `runShape` did not carry it at all — which stopped
+   * being a cosmetic asymmetry the moment §Y3 put a breaker behind the limiter. The gate admits
+   * on **crow** distance and the provider refuses on **path** distance (§Z9, road/crow 1.23–1.34
+   * for `auto`), so an admitted leg can still come back `RouteOutOfRangeError` — and through
+   * `runShape` that counted as a FAILURE. Three such legs, which is one Iceland ring-road day
+   * asking for its map lines, would have tripped the breaker and suppressed routing for every
+   * trip on the server. A self-inflicted outage out of entirely ordinary data.
+   *
+   * So the rule is stated once, for both callers: the provider stating a limit means the provider
+   * is ALIVE and this pair is answered — never coming, logged once, those legs absent (§D4). Only
+   * a call that did not get an answer at all is a failure the breaker should count.
+   */
+  private async askProvider(label: string, work: () => Promise<void>): Promise<void> {
+    await this.limiter.runQuietly(label, async () => {
+      try {
+        await work();
+      } catch (error) {
+        if (error instanceof RouteOutOfRangeError) {
+          this.logger.log(`provider refused ${label} as out of range: ${error.detail}`);
+          return;
+        }
+        throw error;
+      }
+    });
+  }
+
+  private async runMatrix(
+    points: readonly LatLng[],
+    clusters: readonly (readonly LatLng[])[],
+    mode: TravelMode,
+  ): Promise<void> {
+    await this.askProvider(`matrix ${mode} x${points.length}`, async () => {
+      const { cells, attribution } = await this.provider.matrix(points, mode);
+      const rows: RouteLegWrite[] = [];
+      for (const cell of cells) {
+        const from = points[cell.fromIndex];
+        const to = points[cell.toIndex];
+        if (!from || !to) continue;
+        // **Cache every cell the matrix returned, not just the consecutive pairs** (ADR-0205
+        // §Z4): the others are already paid for, so a reorder or an inserted stop costs nothing
+        // later. Run through the gate first, because a merged run's cross pairs were never gated
+        // — the 10 m floor and the cluster rule still decide what is worth a row.
+        if (!admitsTravelMode(mode, from, to, clusters)) continue;
+        rows.push({
+          key: routeLegKey(from, to, mode),
+          mode,
+          fromLat: from.lat,
+          fromLng: from.lng,
+          toLat: to.lat,
+          toLng: to.lng,
+          durationSeconds: cell.durationSeconds,
+          distanceMeters: cell.distanceMeters,
+          shapeEncoded: null,
+          shapePrecision: null,
+          // **Both stamps come off the ANSWER, never off `this.provider`** (§Y6): under failover
+          // the composed id names two candidates and its vintage was the primary's whoever
+          // replied, so a row could claim Valhalla's tileset date for an OSRM estimate.
+          provider: attribution.providerId,
+          tilesetAt: attribution.tilesetAt,
+        });
+      }
+      await this.store(rows);
+    });
+  }
+
+  private async runShape(from: LatLng, to: LatLng, mode: TravelMode): Promise<void> {
+    await this.askProvider(`shape ${mode}`, async () => {
+      const answer = await this.provider.shape(from, to, mode);
+      if (!answer) return;
+      await this.store([
+        {
+          key: routeLegKey(from, to, mode),
+          mode,
+          fromLat: from.lat,
+          fromLng: from.lng,
+          toLat: to.lat,
+          toLng: to.lng,
+          durationSeconds: answer.durationSeconds,
+          distanceMeters: answer.distanceMeters,
+          shapeEncoded: answer.shape.encoded,
+          shapePrecision: answer.shape.precision,
+          provider: answer.attribution.providerId,
+          tilesetAt: answer.attribution.tilesetAt,
+        },
+      ]);
+    });
+  }
+
+  /**
+   * Delete-then-create over exactly the keys computed, in one transaction.
+   *
+   * Not `createMany({ skipDuplicates })`: a re-computation has to be able to replace a row, or a
+   * leg fetched before a tileset roll would keep both its old duration and its old vintage stamp,
+   * and M12's eviction would then have nothing to find. Not an upsert loop either — a merged
+   * matrix returns hundreds of cells, and that is hundreds of database round-trips for work one
+   * statement pair does.
+   */
+  private async store(rows: readonly RouteLegWrite[]): Promise<void> {
+    if (rows.length === 0) return;
+    // **One row per key.** A matrix over a day that revisits a point (the stay at both ends)
+    // answers every pair through it twice, and a repeated primary key fails the whole
+    // `createMany`, so nothing was ever stored and the day stayed "computing" for good.
+    const unique = [...new Map(rows.map((row) => [row.key, row])).values()];
+    const keys = unique.map((row) => row.key);
+    await this.prisma.$transaction([
+      this.prisma.routeLeg.deleteMany({ where: { key: { in: keys } } }),
+      this.prisma.routeLeg.createMany({ data: unique }),
+    ]);
+  }
+}
+
+/** The stored row as one mode's estimate. A shape is returned whenever we hold one, flag or not:
+ *  stripping a cached field to honour `withShapes: false` would cost a second request to get it
+ *  back (ADR-0205 §6 amendment). */
+function toEstimate(row: RouteLegRow, mode: TravelMode): TravelEstimate {
+  return {
+    mode,
+    durationSeconds: row.durationSeconds,
+    distanceMeters: row.distanceMeters,
+    ...(row.shapeEncoded && row.shapePrecision
+      ? { shape: { encoded: row.shapeEncoded, precision: row.shapePrecision } }
+      : {}),
+  };
+}
+
+/** One second per started upstream call, which is the limiter's own rate, bounded at both ends.
+ *  **Exported for the pack** (ADR-0206 §AO): a warm it starts is paced by the same limiter, so
+ *  the wait it offers has to be the same derivation rather than a second guess at it. */
+export function retryAfterFor(plannedCalls: number): number {
+  return Math.min(RETRY_MAX_SECONDS, Math.max(RETRY_MIN_SECONDS, plannedCalls));
+}
+
+/** Identity of a point inside an in-flight key, at the **cache key's own snap**. Two requests
+ *  whose coordinates differ below ~1 m describe identical ground and would write the same row, so
+ *  they should share one upstream call rather than race to store it twice. */
+const pointKey = (at: LatLng) =>
+  `${at.lat.toFixed(ROUTE_COORD_DECIMALS)},${at.lng.toFixed(ROUTE_COORD_DECIMALS)}`;

@@ -28,12 +28,14 @@ export function SearchOverlay({
   title,
   contextLabel,
   mode,
+  finished,
   query,
   onQueryChange,
   placeholder,
   clearLabel,
   backAria,
   onClose,
+  action,
   children,
 }: {
   /** Compact top-bar label, e.g. "חיפוש הזמנות". */
@@ -42,12 +44,17 @@ export function SearchOverlay({
   contextLabel?: string;
   /** Which mode-tint the top bar wears (`useMode()`) — Trip blue or Plan light. */
   mode: Mode;
+  /** A finished trip's bar wears the archive's band (ADR-0240 §3), as the header does. */
+  finished?: boolean;
   query: string;
   onQueryChange: (query: string) => void;
   placeholder: string;
   clearLabel: string;
   backAria: string;
   onClose: () => void;
+  /** One control at the bar's far end, acting on what the screen shows (the record's list send,
+   *  ADR-0242 §1). Absent leaves the bar as it was. */
+  action?: ReactNode;
   /** The already-filtered, scrollable results list. */
   children: ReactNode;
 }) {
@@ -60,7 +67,11 @@ export function SearchOverlay({
           "one dismissal, one path" rule that governs the back stack itself. */}
       {(close) => (
         <div className="search-overlay">
-          <div className="search-overlay-bar mode-chrome" data-mode={mode}>
+          <div
+            className="search-overlay-bar mode-chrome"
+            data-mode={mode}
+            data-phase={finished ? 'past' : undefined}
+          >
             <button
               type="button"
               className="chrome-ghost-btn"
@@ -73,6 +84,7 @@ export function SearchOverlay({
             {contextLabel && (
               <span className="chrome-chip search-overlay-context">{contextLabel}</span>
             )}
+            {action && <div className="search-overlay-action">{action}</div>}
           </div>
 
           <SearchField

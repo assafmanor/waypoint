@@ -35,7 +35,16 @@
 .vt::after {
   content: '';
   position: absolute;
-  inset: -7px -2px;
+  inset-block: -7px;
+  inset-inline: var(--vt-reach-inline);
+}
+/* **The press must not shrink the target out from under the finger.** `:active` scales the
+   token at touch-down and Chrome hit-tests the tap's click AFTER that, against the scaled box,
+   so the token's ends stopped being the token: a tap 3px inside a full-width date (372px)
+   clicked the line around it. The reach therefore grows by exactly what the press takes,
+   `w·(1−s)/2s` per end, a share of the token's own width, so it follows `--press-scale`. */
+.vt {
+  --vt-reach-inline: calc(-2px - (1 - var(--press-scale)) / var(--press-scale) * 50%);
 }
 
 .vt:active {
@@ -49,11 +58,18 @@
   content: none;
 }
 
-/* Open and focused wear the same mark, because they are the same state to the reader:
-   this is the value the panel on screen belongs to. Amber, since what opens is a
-   picker for a value in a form — matching `.tp-field.open`, which this replaces. */
+/* Open and keyboard-focused wear the same mark, because they are the same state to the
+   reader: this is the value the panel on screen belongs to. Amber, since what opens is a
+   picker for a value in a form — matching `.tp-field.open`, which this replaces.
+
+   `:focus-visible`, NOT `:focus-within`, and the difference is a shipped defect: a tapped
+   button keeps focus after its panel closes, so on a phone the token stayed amber until
+   something else was tapped — the owner's "+2 ימים still looks selected" (2026-09-08), the
+   same latch as a stuck `:hover` wearing a different pseudo-class. `:focus-visible` is
+   matched by neither a click nor a tap (probed in ADR-0195 §4), so only `.open` paints the
+   mark on a phone and a keyboard user keeps it. */
 .vt.open,
-.vt:focus-within {
+.vt:focus-visible {
   border-color: var(--amber);
   background: rgba(233, 166, 60, 0.08);
 }
@@ -93,10 +109,16 @@
   border-radius: 9px;
   padding: 4px 8px;
 }
-.df.vt-date:focus-within {
-  outline: none;
-  border-color: var(--amber);
-  background: rgba(233, 166, 60, 0.08);
+/* A date's control is the native input, which the platform's picker leaves FOCUSED when it
+   closes (`date-field.css`), so an ungated `:focus-within` is the same latch as the button's
+   above. Gated to a fine pointer: there a focused date input is genuinely being edited by
+   keyboard; on a phone the platform's own dialog is the open mark. */
+@media (hover: hover) and (pointer: fine) {
+  .df.vt-date:focus-within {
+    outline: none;
+    border-color: var(--amber);
+    background: rgba(233, 166, 60, 0.08);
+  }
 }
 /* The face is the token's text; its `min-block-size` (there to hold a line for an
    empty native control) would otherwise make a date token taller than its neighbours. */
@@ -109,31 +131,18 @@
   opacity: 0;
 }
 
-/* **A DATE GROWS ITS INPUT, NOT AN OVERLAY** — and getting this wrong made every date
-   in the app unopenable. The `::after` target above is painted after its siblings and
-   takes pointer events, which is harmless over a `<button>` (the button under it is
-   what handles the press anyway) and fatal over a date, whose real control is the
-   native `<input>` INSIDE the token (ADR-0176). The overlay simply swallowed every tap.
-
-   So a date drops the pseudo-element and reaches the same 44px with the input itself:
-   same target, and it is the control rather than a decoration sitting on one. Nothing
-   here can be "cleaned up" into the shared `::after` without breaking the field again. */
+/* **A date's reach is the token's own `::after`**, like every other token's. It once had to
+   be the INPUT grown past the token instead, because the overlay swallowed taps meant for the
+   native input underneath; the token now takes the press itself (`DateField`'s `openPicker`),
+   so the overlay is the target rather than in its way. -8px block reach, not the shared -7px: on
+   a date token -7px measured 43.75px against ADR-0017's 44px floor. */
 .vt-date::after {
-  content: none;
+  inset-block: -8px;
 }
-/* `.df.vt-date`, one class heavier than `date-field.css`'s `.df .df-input { inset: 0 }`,
-   which it must out-specify rather than merely follow: both sheets are lazy chunks and
-   neither's load order is knowable from the source (the same trap that hid App.css's
-   dead mono rule). Written at (0,3,0) the growth holds whichever lands last — and when
-   it did NOT, the click still worked and only the 44px floor quietly went missing, which
-   is exactly the kind of half-failure a measured assertion catches and an eye does not. */
-.df.vt-date .df-input {
-  /* -8px, ADR-0161 §7's own number, so the two reaches are one lineage rather than two
-     guesses. -7px measured 43.75px against ADR-0017's 44px floor — a quarter-pixel short,
-     which is exactly the sort of miss that survives review and fails a measurement. */
-  inset: -8px -2px;
-  inline-size: auto;
-  block-size: auto;
+/* Mid-entry the opaque input takes its own presses (`date-field.css`); the overlay painted
+   over it would take them instead. */
+.vt-date[data-typing]::after {
+  content: none;
 }
 
 /* A value that is a word rather than a figure — a duration ("שעה"), where the app
@@ -152,4 +161,24 @@
 }
 .vt-empty {
   border-style: dashed;
+}
+
+/* **The density that lets a value be edited on the app's one dark surface** (ADR-0222 §7).
+   Every rule above is `--ink` over `--soft-line`, and all four of this primitive's original
+   call sites are light surfaces — so a token on the board read as a hole punched in it.
+
+   The recipe is NOT invented here: it is `.hero-act`'s, one file over (`hero-lift.css`) — a
+   low-alpha fill under a brightened ink with a hairline of the same value — and the move is
+   the one `.wp-tzshift.on-dark` already made for the identical reason. Measured: this and the
+   `.hero-act` chip beside it both render at 34px, so the row reads as one family rather than
+   as a control that wandered in. A density on the existing primitive, never a second control. */
+.vt.on-dark {
+  color: var(--on-dark);
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.07);
+  min-height: 34px;
+}
+.vt.on-dark.vt-empty {
+  color: var(--on-dark-dim);
+  border-color: rgba(255, 255, 255, 0.26);
 }

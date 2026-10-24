@@ -29,24 +29,29 @@ The two modes must be identifiable **at a glance, from any screen**, without rea
 - The status bar and header always follow the mode — the mode is readable from the chrome alone, before any content.
 - Mode is signaled by **at least two channels** (chrome color + mode pill + texture), never color alone.
 
+### A finished trip: the archive posture ([ADR-0240](../decisions/0240-the-archive-is-rose.md); chrome, day list, Index and /trips built, the memory Home not yet)
+
+A finished trip is neither mode's posture. It wears **archive rose** (`--memory`): a rose chrome band through the same `--chrome-bg` contract (`--chrome-bg-memory`), no texture (the drafting grid is for drafting), the selected day in rose, no day pill dimmed, and the header anchor saying the trip's age (`לפני · 4 ימים`). Its two channels are the band's hue and the anchor's words; on the Home, the cover is a third. Inside it the semantic hues keep their meanings: `--ok` marks a settled record, teal a place, amber a clock. Nothing on it is washed out: a wash says "less", and this is the page people come back to.
+
 ## Color palette
 
-| Token                  | Hex                   | Role                                                                                                        |
-| ---------------------- | --------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `--ink`                | `#16233D`             | Primary text                                                                                                |
-| `--indigo`             | `#1B2A4A`             | Base / chrome (header, status bar)                                                                          |
-| `--board`              | `#0E1729`             | Departure-board background                                                                                  |
-| `--board-2`            | `#152137`             | Board gradient top                                                                                          |
-| `--screen`             | `#E7EAEF`             | App background ("cool paper")                                                                               |
-| `--card`               | `#FFFFFF`             | Card surface                                                                                                |
-| `--paper`              | `#F3EFE6`             | Badge / warm paper accents                                                                                  |
-| **`--amber`**          | **`#E9A63C`**         | **Time & commitment — this color only**                                                                     |
-| `--amber-deep`         | `#915E1E`             | Amber's **paper** variant — mono times and labels on a card (ADR-0158 §6)                                   |
-| **`--teal`**           | **`#2C9C90`**         | **Location / map — this color only**                                                                        |
-| `--muted`              | `#61687A`             | Secondary text — and **all persistent hint text** (ADR-0158 §7)                                             |
-| **`--plan`**           | **`#6E59D6`**         | **Plan mode — this color only** (`--plan-deep` `#5747B4`, `--plan-tint`)                                    |
-| `--cta` / `--cta-text` | `--ink` / `#FFF`      | Neutral primary button (semantic colors are never CTAs)                                                     |
-| `--ok` / `--miss`      | `#3C9A6B` / `#C2584E` | Status mini-palette (positive/negative). As **text** use `--miss-deep` `#9B463E` — the fill fails AA as ink |
+| Token                  | Hex                   | Role                                                                                                                                             |
+| ---------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `--ink`                | `#16233D`             | Primary text                                                                                                                                     |
+| `--indigo`             | `#1B2A4A`             | Base / chrome (header, status bar)                                                                                                               |
+| `--board`              | `#0E1729`             | Departure-board background                                                                                                                       |
+| `--board-2`            | `#152137`             | Board gradient top                                                                                                                               |
+| `--screen`             | `#E7EAEF`             | App background ("cool paper")                                                                                                                    |
+| `--card`               | `#FFFFFF`             | Card surface                                                                                                                                     |
+| `--paper`              | `#F3EFE6`             | Badge / warm paper accents                                                                                                                       |
+| **`--amber`**          | **`#E9A63C`**         | **Time & commitment — this color only**                                                                                                          |
+| `--amber-deep`         | `#915E1E`             | Amber's **paper** variant — mono times and labels on a card (ADR-0158 §6)                                                                        |
+| **`--teal`**           | **`#2C9C90`**         | **Location / map — this color only**                                                                                                             |
+| `--muted`              | `#61687A`             | Secondary text — and **all persistent hint text** (ADR-0158 §7)                                                                                  |
+| **`--plan`**           | **`#6E59D6`**         | **Plan mode — this color only** (`--plan-deep` `#5747B4`, `--plan-tint`)                                                                         |
+| **`--memory`**         | **`#A9507F`**         | **A finished trip — this color only** (`--memory-deep` `#86395F`, `--memory-tint`, band `--chrome-bg-memory` `#EFD9E2`; ADR-0240)                |
+| `--cta` / `--cta-text` | `--ink` / `#FFF`      | Neutral primary button (semantic colors are never CTAs)                                                                                          |
+| `--ok` / `--miss`      | `#3C9A6B` / `#C2584E` | Status mini-palette (positive/negative). As **text** use `--miss-deep` `#9B463E` and `--ok-deep` `#2B7050` (ADR-0240) — the fills fail AA as ink |
 
 **The ink ramp has three steps and the third one is narrow** (ADR-0158 §7).
 `--ink` for content, `--muted` for secondary **and every persistent hint**, and
@@ -64,6 +69,7 @@ Color carries meaning so the eye can parse a screen **without reading**. Each se
 - **Amber = the clock & the commitment.** Now, countdowns, the live blip, the `🔒 קשיח` lock, ripple suggestions, the selected "today". One coherent family: _things bound to time._ Nothing else uses amber.
 - **Teal = the place.** Map, navigation, location affordances, "near me". Nothing else.
 - **Violet (`--plan`) = the plan.** Plan-mode chrome, readiness, builder and scheduling affordances. Nothing else.
+- **Rose (`--memory`) = the finished trip** ([ADR-0240](../decisions/0240-the-archive-is-rose.md)). The archive's chrome band, its selected day and tab, its banner, the memory Home's accents and the anniversary card. Never a CTA, a status or decoration outside a finished trip. It is the last wide gap on the hue wheel: its nearest meaning is `--miss` at 19.5 ΔE00, where the tightest pair the app already ships is teal against `--ok` at 11.6.
 - **`--ok` / `--miss` = status.** Positive/negative states (FX ▲/▼, budget health, checklist ✓/✗) are _statuses_, not places — they never borrow teal.
   - **A refused field is `--miss`** (ADR-0150): outline + a 20% halo on the control, the label with it, and a caption below — plus one 240ms nudge, because a mark already on screen says nothing new when you press save a second time. One attribute, `data-invalid`, carries all of it, and it out-ranks the teal focus border, since a refusal focuses the field it names.
 - **Per-entity sync = the `--sync-*` tokens.** The `SyncBadge` is a **cloud glyph** — `cloud-check` (saved) / `cloud-up` (pending) / `cloud-bang` (failed) — on a booking, document, event, or any syncable, wired via `EntitySyncBadge`. It's an **exception indicator: silent when synced**, shown only for pending/failed, the same on lists and the timeline. Shape carries the state (legible without color); color comes only from `--sync-synced`/`--sync-pending`/`--sync-failed` (which track `--ok`/`--muted`/`--miss`), never amber. A **pending** item also reads as _provisional_ — the whole row/card **dims (~0.6 opacity)** until the write lands, so "not saved yet" is felt, not only badged; a **failed** item stays full-opacity so it keeps calling for action (ADR-0092). Distinct from the day-view **done ✓** (a green circle, a completion record). See ADR-0080 / ADR-0091 / ADR-0092.
@@ -88,6 +94,7 @@ The dark departure-board surface means **"the trip is speaking."** It keeps its 
 - **Max one board surface per screen.**
 - Trip dashboard: the Now/Next hero. Lobby: the single active-trip card. Join/link: the trip-preview card. Never two on one screen.
 - The pre-login landing teaser is the one marketing exception.
+- **The eve's flap clock is the one Plan-mode exception, and it is cells, not a surface** ([ADR-0221](../decisions/0221-the-countdown-climbs-to-tomorrow-and-the-first-morning-lights-up.md) §3): the day before departure the prep hero's headline is `HH:MM:SS` in split-flap cells with the board's amber countdown ink — no dark ground under the card, no glow, no pulse, no `עכשיו`. The board's flaps warming up one day early, on the plan hero, and nothing more of the board.
 - Everything else — lists, settings, forms — stays on paper (`--card` / `--screen`).
 
 The scarcity is on the **board surface + its live grammar** (dark `--board`, amber glow, pulse, Now/Next), not on the chrome color itself. Prominent chrome-`--indigo` elements are fine where hierarchy needs them — e.g. the all-trips live-trip hero (ADR-0033 revision): loud, indigo, but glowless and pulseless, so it reads as a nav card, not the board.
@@ -118,16 +125,17 @@ New screens must pick from these ramps instead of inventing values.
 
 **Type ramp** (Assistant unless noted):
 
-| Step      | Size  | Use                           |
-| --------- | ----- | ----------------------------- |
-| display   | 34    | Landing hero (Secular One)    |
-| h1        | 26    | Screen titles (Secular One)   |
-| h2        | 21    | Board now-title (Secular One) |
-| h3        | 17–18 | Card titles (Secular One)     |
-| body      | 14.5  | Default text                  |
-| secondary | 12–13 | Meta, descriptions            |
-| caption   | 11    | Labels, hints                 |
-| micro     | 10.5  | Tags, badges                  |
+| Step      | Size  | Use                                                               |
+| --------- | ----- | ----------------------------------------------------------------- |
+| display   | 34    | Landing hero (Secular One)                                        |
+| h1        | 26    | Screen titles (Secular One)                                       |
+| h2        | 21    | Board now-title (Secular One)                                     |
+| h3        | 17–18 | Card titles (Secular One)                                         |
+| reading   | 16    | Prose on a surface that holds nothing else (a note's full screen) |
+| body      | 14.5  | Default text                                                      |
+| secondary | 12–13 | Meta, descriptions                                                |
+| caption   | 11    | Labels, hints                                                     |
+| micro     | 10.5  | Tags, badges                                                      |
 
 JetBrains Mono is reserved for **times, dates, codes, and money** — never prose. And only for **Latin/numeric runs**: the face has no Hebrew glyphs, so Hebrew text must never sit inside a mono element (it silently falls back to a generic monospace and reads foreign). Mixed lines — e.g. the day progress's `07:00 · עכשיו · 23:00` — set the row in Assistant and wrap only the numeric runs in mono + `dir="auto"` (ADR-0118: `auto` resolves LTR for a numeral exactly as `ltr` did, and stays correct if Hebrew ever lands in that span).
 
@@ -165,12 +173,13 @@ Boot (full screen) · snapshot (chrome-preserving) · upload row (inline) read a
 - **Departure-board hero** — live pill ("עכשיו"), clock, now-title, next-row with countdown chip, day progress bar with knob.
 - **Quick-access grid** — **real shortcuts into data/surfaces we have**, not concierge fixtures (ADR-0045). It ships **four**: next confirmation code (→ index), WiFi copy, **navigate-to-next** (a Maps directions deep-link), documents (→ index). Navigate-to-next was 3-up-deferred until events carried real place data; with picked places it is a **coordinate** deep-link, never the fuzzy title-search one ADR-0045 refused, so it follows the derived-tile rule — **absent** when nothing upcoming has a mappable location, and the grid reflows (ADR-0045 session-104 amendment / ADR-0106 §6). The original "nearby ATM" is gone (needs live location — ADR-0006).
 - **Day-at-a-glance card** — the Trip-Home glance, **derived 100% from `events`** (ADR-0045): a **proportional time rail** + a lead **"נותרו"** count + the next hard anchor + a free-until / end-of-day line. Offline-safe, no fixtures. The rail is a true timeline (block width = duration, gaps = free time) with an amber **now-marker** at the true clock position (past = filled, future = hollow); window = 07:00/earliest → 23:00/latest, stretching to an overnight end (ADR-0037, `+1`, never padded to 07:00). Honesty rules: counts are **phase-derived** (a passed-but-unmarked event drops out of "נותרו"), and the rail runs on **top-level containment-forest roots, not raw events** (ADR-0041) — any cluster/envelope collapses to one block + a layered cue + count (`×N` / `כולל N`), so the day never looks busier than it is and detail stays in the day view. **Skipped** shown struck, uncounted. **Empty day** = a calm teach state ("היום עוד פתוח"), never a hidden card or a 0/0 rail; no amber. It **replaces** the old weather / FX / today's-budget glance row (fixtures for unbuilt pipes; budget deferred — ADR-0014 amendment). Weather/FX return as their own cards when the pipes land (ADR-0004). Impl: `lib/glance.ts`.
-- **Itinerary item** — tap to expand into quick-verb actions; hard items show an edit warning; `now` item gets an amber ring.
+- **Itinerary item** — tap to expand into quick-verb actions; hard items show an edit warning; `now` item gets an amber ring. Its **badge is the thumbnail's frame** ([ADR-0167](../decisions/0167-the-badge-is-the-thumbnails-frame.md) §1, extended to both day surfaces by [ADR-0219](../decisions/0219-a-day-is-a-place-you-can-see.md) §1): a fetched photograph fills the 40px square at 0px of layout cost, and a glyph a human PICKED — on the event or on the place — beats it. No category ring on a day row: those badges were always `--paper`.
+- **Day head** — the head of a day on all three surfaces that have one ([ADR-0219](../decisions/0219-a-day-is-a-place-you-can-see.md) §2/§3, the Component lexicon's `DayHead`): the day's photograph when a stop clears the gate, a date tile (day of month · weekday · amber `עכשיו` on today, in both modes) beside the day's derived name, and a footer band with the day's facts and its one action. It replaced a 12px muted `.sec-title` heading and the teal ambient strip under it; measured at 124px, or 240px with the shot, at 360. **A day with a picture hangs it off the day strip** — no gap, no top corners — where a day without one keeps the inset card: the photograph is what bleeds, not the head. The side gutters stay either way, so the head and every row under it share one inset.
 - **Ripple bar** — amber suggestion strip after moving an event.
 - **"Maybe" shelf** — horizontal scroll of dashed cards to schedule onto a day.
 - **Map** (designed in ADR-0109, refining the `trip-dashboard-v2.html` sketch) — a **quiet neutral base, loud category pins**: a warm-paper canvas against cool water, with a low-chroma land-cover vocabulary (forest / shrub / crops / ice / sand) so cities read differently from nature, and Google's own sights re-enabled as **achromatic** grey pins so "exists" never looks like "on your trip" (redesigned in [ADR-0125](../decisions/0125-map-canvas-terrain-vocabulary.md), which replaced the original desaturated cool-paper canvas after it measured as one hue in a four-point lightness band); **pin fill = the category** (the 5-hue pastel palette, ADR-0038 §2 / the decorative palette above — `food`/`lodging`/`transit`/`leisure`/`services`, "never amber or teal"). Category comes from the referencing entity (`Event.category` etc. — events carry it independently of bookings, chosen via an explicit selector per ADR-0038's 2026-07-23 amendment, not from the icon), most-committed reference wins on ties, uncategorised → neutral `leisure`. **Commitment is the hard/soft grammar, not a colour** (solid + 🔒 hard / dashed maybe / muted ambient base / hollow-dashed coordless "Place-lite"). Two form factors: in the **list** a rounded category **badge**; on the embedded map a category **teardrop, tip pointing down**. **Teal** stays for location _affordances_ (near-me, distance chips, the "נווט" button) — and, since [ADR-0168](../decisions/0168-the-search-answers-on-the-canvas.md) §2, for the one MARK on the canvas that is purely a location: an unsaved Google search result. It carries no day, no time, no commitment and no category (the field mask does not buy place types, ADR-0115 §2), and the rule immediately above — the category palette is never amber or teal — is exactly what makes teal safe for it, since a sixth category can never arrive and collide. It replaced a `--card`/`--ink` ring that was, unnoticed, the day style's own POI palette (`#c9ccd4`/`#4b5568`/`#ffffff`), so our result mark read as part of the basemap; **amber** for time (route ETA + a single amber ring on the next committed stop). The blue "me" dot is an OS-map convention outside the budget. Day scope = the **shared header day strip** (focus-in-place) + a map-local "all days" chip; the filter chips (**type · maybes**) **reuse the Index chip/search/mode-accent grammar** (ADR-0098/0100), not a second copy. Cached Google **rating** shows as a small `★` meta tag (ADR-0109 §9). "Near me now" (Phase 4) is a list re-sort + teal distance chips, not a spatial dot, until the embedded map (Phase 6) lands. Offline: desaturated backdrop + "last saved locations" banner + "distance unavailable" labels.
 - **Index** — booking cards tagged by type (`tag-type` chip: flight/lodging/restaurant/train), a reusable `badge-offline` pill on section headers, normalized source tags (Gmail-import vs. manually-added, same chip shape), and a documents list with an "add document" affordance.
-- **Bottom nav** — 4 tabs, blurred translucent bar. **Their glyphs became `Icon` SVGs in [ADR-0138](../decisions/0138-the-row-menu-is-one-surface-and-icons-are-ui.md) §4** (`home` · `map` · `cards` · `calendar`, replacing 🏠 🗺️ 📇 📅). Navigation is the case "icons are UI" names first, and this is the app's most-seen surface — the one place a platform's emoji font showed through loudest. The active tab **thickens its stroke** as well as taking the pill, so shape carries state alongside colour. `map` is deliberately a folded map and not `Icon`'s `pin`, which already means "our marker" (ADR-0121 §8); `cards` carries two content rules, because a bare pair of offset rectangles is the universal COPY mark and the Index is a directory. The active ("you are here") tab carries a **tinted pill** behind its icon plus a bold accent label; the marker **follows mode identity** — chrome indigo in Trip mode, `--plan` violet in Plan mode (`--nav-accent`/`--nav-tint`, scoped by `[data-mode]`). It never borrows amber (time) or teal (location). Every icon reserves the pill box so filling only the active one causes no layout shift. **Selecting a tab settles its icon + label a few px down** (a `transform`, so no reflow — the deselected tab rides back up); disabled under `prefers-reduced-motion`. Options studied in `mockups/nav-active-states-v1.html`.
+- **Bottom nav** — 4 tabs, blurred translucent bar. **The order is a rule** ([ADR-0233](../decisions/0233-the-tab-bar-groups-the-day-surfaces-and-the-drawer-sits-at-the-end.md)): right to left, **בית · יום-יום · מפה · אינדקס** — the three day-anchored surfaces first, in narrowing order (today → a day's sequence → that day's ground), and the trip-wide Index at the far end. The Index is the only tab the header's day strip singles out no pill on (`tabShowsSelectedDay`), so putting it anywhere but an end makes the strip change meaning twice as you walk the bar. A fifth tab joins the group whose question it answers; it never splits the day block. **Their glyphs became `Icon` SVGs in [ADR-0138](../decisions/0138-the-row-menu-is-one-surface-and-icons-are-ui.md) §4** (`home` · `map` · `cards` · `calendar`, replacing 🏠 🗺️ 📇 📅). Navigation is the case "icons are UI" names first, and this is the app's most-seen surface — the one place a platform's emoji font showed through loudest. The active tab **thickens its stroke** as well as taking the pill, so shape carries state alongside colour. `map` is deliberately a folded map and not `Icon`'s `pin`, which already means "our marker" (ADR-0121 §8); `cards` carries two content rules, because a bare pair of offset rectangles is the universal COPY mark and the Index is a directory. The active ("you are here") tab carries a **tinted pill** behind its icon plus a bold accent label; the marker **follows mode identity** — chrome indigo in Trip mode, `--plan` violet in Plan mode (`--nav-accent`/`--nav-tint`, scoped by `[data-mode]`). It never borrows amber (time) or teal (location). Every icon reserves the pill box so filling only the active one causes no layout shift. **Selecting a tab settles its icon + label a few px down** (a `transform`, so no reflow — the deselected tab rides back up); disabled under `prefers-reduced-motion`. Options studied in `mockups/nav-active-states-v1.html`.
 - **Toast** — dark pill for lightweight confirmations.
 
 ## Plan-mode components (from `mockups/plan-mode-v1.html`)
@@ -191,7 +200,9 @@ Plan mode reuses the same tokens/grammar as Trip mode, adding builder/entry comp
 
 Canonical names, for docs / code / tickets — one vocabulary end to end:
 
-`Board` (Now/Next hero) · `CountdownChip` · `VerbRow` (tap-to-expand actions) · `RippleBar` · `MaybeShelf` · `GapChip` · `ReadinessBar` · `BoardingPass` (link-invite card) · `PermRow` (permission toggle row) · `ModePill` · `DayStrip` · `GlanceCard` · `RateCard` · `Toast`.
+`Board` (Now/Next hero) · `CountdownChip` · `VerbRow` (tap-to-expand actions) · `RippleBar` · `MaybeShelf` · `GapChip` · `ReadinessBar` · `BoardingPass` (link-invite card) · `PermRow` (permission toggle row) · `ModePill` · `DayStrip` · `DayHead` · `GlanceCard` · `RateCard` · `Toast`.
+
+**`DayHead`** ([ADR-0219](../decisions/0219-a-day-is-a-place-you-can-see.md) §2/§3) is the head of a day on all three surfaces that have one — both day surfaces and the public reader's day card. Three bands in one frame: the day's photograph when a stop clears `dayPhoto`'s gate, then a grid of the date tile (day of month, weekday, amber `עכשיו` on today) beside the day's name, then a footer band carrying the day's facts and its one action. Lifted out of the reader's own sheet rather than twinned; a host supplies the copy-column lines (the reader's stay) or the footer facts (the app's total and verdict), never both.
 
 **Two of those names are a trap for each other.** `GlanceCard` was repurposed by [ADR-0045](../decisions/0045-trip-home-real-data-only.md) to mean the derived **day-at-a-glance time rail** and nothing else — so the FX card that ADR-0045 §4 promised would "return as its own glance card" cannot be called one. It is **`RateCard`** ([ADR-0180](../decisions/0180-currency-is-derived-and-a-rate-is-a-glance-card.md) §3): the first real tenant of the restored `מבט מהיר` section, neutral chrome, one `<button>` that opens the converter sheet. Weather is the second tenant of the same row, and it will want its own name too.
 
@@ -213,6 +224,56 @@ In mockups emoji do both jobs; in the build they split:
 **The line moved once more (2026-08-01 amendment).** The first pass filed the Index/Home tile markers as content, and the code disproved it: Home's quick-action row shipped as three emoji beside one SVG compass, four sibling buttons rendering two ways. So the test is now sharper than "is it a control" — **if a glyph has a sibling control already drawing an icon, it is a control.** `GLYPH` is down to a single entry (`5 👥`, a unit inside a sentence). And note the corollary: **a mark baked into a copy string can only ever be an emoji**, so a string that wants one is split and the call site renders the icon.
 
 **And once more, dropping a carve-out (2026-08-02 amendment).** The line above used to end "…and empty-state _illustrations_". `Map.tsx` disproved that in the same commit: four `EmptyState`s in one ternary, two drawing `<Icon name="search" />` and two drawing 🗺️/🗓️ — the sibling test again, one file over. **An empty state is chrome the app draws, not content it holds**, so its mark is an icon. What stays emoji is per-entity badges, trip identity, and the warmth in copy. An empty state that owns a whole region passes `size="pane"` to `EmptyState`, which grows the icon (and only the icon) to fill it.
+
+**A third move, and the first one that is about COLOUR (2026-09-02 amendment).** The daylight widget shipped with 🌅 🌇 ✨ ☀️ 🌑 on its foot, filed as content. The owner reversed that — _"the app forbids using emojis as ui, they're content"_ — and the test above already decided it: **a mark the app COMPUTES is chrome.** Nothing stands behind a sunrise glyph; the app derived it from a latitude and a date, the same way it derives an empty state. The 2026-08-01 corollary applied too, and is worth restating because it is the half people forget: _a mark baked into a copy string can only ever be an emoji_, so `polarDay`/`polarNight` gave theirs up and the call site draws them.
+
+What is new is the second half of the request — _"I also like the colourfulness"_ — which forced the rule to say what it had always meant:
+
+- **The rule is not "an icon is monochrome".** It is that **a control** inherits text colour, so it looks like the text around it. `ui/Icon.tsx` is one `<path>`, `fill: none`, `currentColor`, and that is the right shape for everything a finger aims at.
+- **An illustration's marks are not controls**, so they may carry colour — but only **their own surface's** colour. `ui/domain/SunGlyph.tsx` is the first of these: five circular tiles painted from `sun-widget.css`'s four sky rungs over its `--card` ground, so each mark is literally a slice of the gradient above it. It lives beside its surface in `ui/domain/`, never in `Icon`, whose contract it would have to break.
+- **The bound is chroma, and it is measured, not asserted.** The first version was drawn in literal saturated hex and rendered beautifully; composited over `--card` it measured **58.7-62.3** against `--amber`'s **63.6**, where the decorative palettes sit at **18.3-24.9** and that card's own sky at **10.4-21.5**. A mark cannot be licensed as illustration at a chroma that reads as a semantic hue — that is the "chroma, not hue angle" rule above, applied to a glyph. Repainting from the surface's ramp puts it inside the budget **by construction**, which is why "draw from the surface, not from a new palette" is the rule rather than "keep it under N".
+
+The cost is real and was accepted rather than hidden: muting a pair costs separation, so `SunGlyph`'s two crossings lean on different ramp rungs and on the sun's height against the horizon to buy it back.
+
+## Voice and register (Hebrew UI copy)
+
+**Three voices, each with a job, and no gendered singular.** Adopted 2026-08-17, and it
+[amends ADR-0138](../decisions/0138-the-row-menu-is-one-surface-and-icons-are-ui.md)'s §6, which had made row-menu copy an imperative:
+
+| where                    | register    | example                               |
+| ------------------------ | ----------- | ------------------------------------- |
+| a control                | verbal noun | `עריכה` · `מחיקה` · `שמירה` · `ניקוי` |
+| a dialog title           | infinitive  | `למחוק את הפתק?` · `לצאת בלי לשמור?`  |
+| a sentence to the reader | plural      | `נסו שוב` · `בדקו את החיבור`          |
+
+Two reasons, and the second is the one no consistency argument covers. `he.ts` had drifted into a
+near 50/50 split — ~60 singular-masculine imperatives against ~46 plural ones, colliding on the
+same screens (`הוסף מסמך` beside `העלו`; `שמור` beside the canonical `שמירה`; one clear action
+spelled three ways). And **a Hebrew imperative singular picks a gender**, so every `ערוך` and
+`שמור` addressed one member of a mixed group of five as masculine. The repair is therefore not
+plural imperatives (`ערכו`/`מחקו` read stiffer than what they replace) but a register carrying no
+grammatical person at all.
+
+Two carve-outs, deliberate — do not "finish" them:
+
+- **A disclosure toggle keeps `הצג`/`הסתר`** — one matched pair for one job (owner, 2026-08-16);
+  `הצגה`/`הסתרה` on a caret row reads like a setting rather than a switch.
+- **A stepper keeps its imperative** (`דחה 15 דק׳`): `דחייה 15 דק׳` is not a thing anyone says.
+- **An act on someone else's state takes the infinitive** (`להפוך למנהל`): the noun forms of
+  those verbs are the formal register, and `מינוי כמנהל` was rejected on exactly that.
+
+**The app's own nouns are fixed too, because seven words for one thing is its own defect.** The
+group is `החבר'ה`; the people in it are `נוסעים` — `משתתפים` reads like a webinar, not a trip. And
+an **invitation is a `לינק`, never a bare `הזמנה`**: that word is a _booking_ everywhere in the
+Index, so the join screen's `טוען הזמנה…` read as "loading booking".
+
+**The one gendered verb left is the change feed**, and the narration forces it: it reports what a
+_named_ person did, so Hebrew demands a grammatical subject. A verbal noun drops the actor and so
+does the passive. Masculine by convention, documented at `changeFeed` in `he.ts`.
+
+The full rule, with the counts that motivated it, is at the top of `frontend/src/i18n/he.ts` —
+which is where a copy change is actually read. Also non-negotiable there, from the root
+`CLAUDE.md`: **no em dashes in UI copy**, ever.
 
 ## Device targets & responsive strategy
 
@@ -244,7 +305,7 @@ New motion picks from a small ramp instead of inventing values — the same disc
 | `--t-quick`         | 140ms                          | Nav settle, toggles, hovers, focus                                                  |
 | `--t-base`          | 240ms                          | Tab cross-fade, toast, ripple bar, sheets                                           |
 | `--t-deliberate`    | 400ms                          | Return-gesture slide (ADR-0035); Trip→Plan stand-down                               |
-| `--t-cinematic`     | 600ms                          | Plan→Trip going-live — **the only cinematic moment**                                |
+| `--t-cinematic`     | 600ms                          | Plan→Trip going-live, and coming home (ADR-0241 §3): **one per end of a trip**      |
 | `--ease-standard`   | `cubic-bezier(.2,0,0,1)`       | Default / entrances / hue melts                                                     |
 | `--ease-exit`       | `cubic-bezier(.4,0,1,1)`       | Exits — toast out, glow extinguishing                                               |
 | `--ease-emphasized` | `cubic-bezier(.16,1,.3,1)`     | The glow ignite                                                                     |
@@ -259,7 +320,7 @@ The three original easings are all monotone, which is why `--ease-arrive` was ad
 
 **Timing an animation from JS reads the token, never a literal** — `lib/motion.ts`'s `motionDurationMs`, which answers **0** both under reduced motion and when the token is unreadable. Any state that exists only _during_ an animation has to resolve when there is no animation, or it outlives its reason (ADR-0140 §5).
 
-**Budget rule:** exactly one `--t-cinematic` moment exists in the product — the Plan→Trip switch. Spending "cinematic" elsewhere devalues it, same discipline as amber / teal / violet. Motion mirrors "one loud element": everything else stays quick and quiet.
+**Budget rule:** one `--t-cinematic` moment at each end of a trip, and nowhere else: the Plan→Trip switch (going live) and the coming-home beat's settle into the memory Home ([ADR-0241](../decisions/0241-a-finished-trip-plays-back-and-leaves-the-app.md) §3). Both play once per trip per install, which is what the rule protects. Spending "cinematic" elsewhere devalues it, same discipline as amber / teal / violet. Motion mirrors "one loud element": everything else stays quick and quiet.
 
 ### The mode switch — temperature & energy, not luminance
 
@@ -273,7 +334,7 @@ The Plan⇄Trip switch is the product's most meaningful moment. Crucially it is 
 - **Plan→Trip (going live), `--t-cinematic` 600ms:** the chrome warms violet→indigo and the drafting grid dissolves, **then** the board's amber glow ignites and the pulse starts — the climax lands on the "live" energy, not on brightness.
 - **Trip→Plan (stand-down), `--t-deliberate` 400ms:** the quieter return — the chrome cools to violet and the drafting grid re-draws (the board leaves with the hero swap). No fanfare; you're back at the desk.
 - The transition is **armed only during a switch** (`data-switching` on `.app`, set by the Shell for the animation's duration) so steady-state hovers keep their own timing, and is **fully disabled under `prefers-reduced-motion`** (mode identity still flips, instantly). The board power-on mirrors the zero-state's dormant board — one surface, off → on.
-- The **automatic** date-driven switch (ADR-0016) should use a gentler, non-staged version — a flip the user didn't ask for shouldn't perform. _(Currently the same transition serves both; a softened auto variant is a follow-up.)_
+- The **automatic** date-driven switch (ADR-0016) happens at trip-local midnight, when the app is almost never open — so for a real trip the going-live beat had never once been on screen. **The countdown's zero plays it** ([ADR-0221](../decisions/0221-the-countdown-climbs-to-tomorrow-and-the-first-morning-lights-up.md) §3/§4): the eve's flap clock counts to that midnight, and if the app is open when it lands on `00:00:00` the switch plays live after a 1200ms breath; otherwise the first open of a live trip plays it — the install remembers the mode each trip was last _seen_ in, mounts in plan chrome showing `היציאה היום` over the zeros, holds 400ms, then arms the same switch — and on Trip Home the prep hero's face fades and shrinks into the board, which ignites and blooms. Once per trip per install, one tap skips it, nothing under reduced motion. A flip that happens _while_ the app is open still performs no more than the switch itself; a first open on departure day is a moment the user comes to, and the only time the automatic switch can be seen at all.
 
 ### Filtering a list is a reveal (ADR-0120)
 
@@ -306,6 +367,10 @@ action.
 
 Note the distinction from press feedback: a press answers the **tap**, a settle answers the
 **outcome**. A control can be pressed without its answer changing.
+
+**A settle can be asymmetric, and usually should be** (ADR-0195). A task's tick is completed with a beat — `BEAT.TICK`, the ink squashing in, overshooting and settling while the ✓ is drawn — and **un-ticked with nothing but a 140ms drain on `--ease-exit`**. Finishing something is an achievement; taking it back is a correction, and a mechanism that plays the same motion both ways says they are the same event. Express it by declaring the quiet half's `transition` on the **destination** state — that is what makes the asymmetry one rule instead of a flag, and it leaves the beat a pure entrance.
+
+**And two numbers worth knowing before reaching for an easing on something small:** `--ease-arrive` overshoots **0.073px on a 26px disc**, and a stroke drawn under `--ease-standard` is **61% complete at 60ms of 240**. The ramp's curves were tuned on sheets and cards; at control size, liveliness has to be written as keyframes with interior stops (and then `linear`, so the offsets _are_ the timing). Measured in `mockups/a-tick-that-is-seen-v1.html`, whose filmstrip freezes a beat at sampled times — the technique to reuse when a motion decision needs to be _looked at_ rather than described.
 
 ### A shell route arrives with a direction (ADR-0140)
 
@@ -428,24 +493,27 @@ rendered at L\* 68, the brightest surface in the app, in the calm mode.
 
 **Dark remap table** (as wired in `tokens.css`):
 
-| Token                       | Light                 | Dark                                                                                       |
-| --------------------------- | --------------------- | ------------------------------------------------------------------------------------------ |
-| `--ink`                     | `#16233D`             | `#E7EAF2`                                                                                  |
-| `--screen`                  | `#E7EAEF`             | `#0F1726`                                                                                  |
-| `--card`                    | `#FFFFFF`             | `#1A2740`                                                                                  |
-| `--paper`                   | `#F3EFE6`             | `#2E2A20`                                                                                  |
-| `--indigo`                  | `#1B2A4A`             | `#131F38`                                                                                  |
-| `--board` / `--board-2`     | `#0E1729` / `#152137` | `#0A1120` / `#101B30`                                                                      |
-| `--amber` / `--amber-deep`  | `#E9A63C` / `#C9822A` | `#F0B254` / `#D89440`                                                                      |
-| `--amber-ink`               | `#7A5A1E`             | `#F0B254` (dark-amber text on a light amber _tint_; the tint darkens, so the ink lightens) |
-| `--teal`                    | `#2C9C90`             | `#3FB3A5`                                                                                  |
-| `--plan` / `--plan-deep`    | `#6E59D6` / `#5747B4` | `#8B79E8` / `#A99AF2` (deep is used as _text_, so lighter)                                 |
-| `--muted`                   | `#6C7488`             | `#93A0B8`                                                                                  |
-| `--faint`                   | `#98A0B0`             | `#8592AB` (faint hint/placeholder text, one step past `--muted`)                           |
-| `--line` / `--soft-line`    | ink @ .10/.28         | light @ .10/.30                                                                            |
-| `--cta` / `--cta-text`      | `#16233D` / `#FFF`    | `#E7EAF2` / `#12203A`                                                                      |
-| `--ok` / `--miss`           | `#3C9A6B` / `#C2584E` | `#4CBF85` / `#E07A6E`                                                                      |
-| `--miss-deep` (miss as ink) | `#9B463E`             | `#E3877D`                                                                                  |
+| Token                        | Light                 | Dark                                                                                       |
+| ---------------------------- | --------------------- | ------------------------------------------------------------------------------------------ |
+| `--ink`                      | `#16233D`             | `#E7EAF2`                                                                                  |
+| `--screen`                   | `#E7EAEF`             | `#0F1726`                                                                                  |
+| `--card`                     | `#FFFFFF`             | `#1A2740`                                                                                  |
+| `--paper`                    | `#F3EFE6`             | `#2E2A20`                                                                                  |
+| `--indigo`                   | `#1B2A4A`             | `#131F38`                                                                                  |
+| `--board` / `--board-2`      | `#0E1729` / `#152137` | `#0A1120` / `#101B30`                                                                      |
+| `--amber` / `--amber-deep`   | `#E9A63C` / `#C9822A` | `#F0B254` / `#D89440`                                                                      |
+| `--amber-ink`                | `#7A5A1E`             | `#F0B254` (dark-amber text on a light amber _tint_; the tint darkens, so the ink lightens) |
+| `--teal`                     | `#2C9C90`             | `#3FB3A5`                                                                                  |
+| `--plan` / `--plan-deep`     | `#6E59D6` / `#5747B4` | `#8B79E8` / `#A99AF2` (deep is used as _text_, so lighter)                                 |
+| `--muted`                    | `#6C7488`             | `#93A0B8`                                                                                  |
+| `--faint`                    | `#98A0B0`             | `#8592AB` (faint hint/placeholder text, one step past `--muted`)                           |
+| `--line` / `--soft-line`     | ink @ .10/.28         | light @ .10/.30                                                                            |
+| `--cta` / `--cta-text`       | `#16233D` / `#FFF`    | `#E7EAF2` / `#12203A`                                                                      |
+| `--ok` / `--miss`            | `#3C9A6B` / `#C2584E` | `#4CBF85` / `#E07A6E`                                                                      |
+| `--miss-deep` (miss as ink)  | `#9B463E`             | `#E3877D`                                                                                  |
+| `--ok-deep` (ok as ink)      | `#2B7050`             | `#6FD49F` (ADR-0240)                                                                       |
+| `--memory` / `--memory-deep` | `#A9507F` / `#86395F` | `#DC8AB5` / `#EBA5C9` (ADR-0240)                                                           |
+| `--chrome-bg-memory`         | `#EFD9E2`             | `#33202B`, a literal: rose mixed off the blue `--card` lands on violet's angle             |
 
 **Status — designed, not built.** ADR-0158 §10 phases it: (1) on-fill ink,
 (2) the `--on-dark-*` ramp, (3) surface + chrome tokens, (4) the theme itself —

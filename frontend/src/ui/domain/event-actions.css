@@ -1,0 +1,76 @@
+/* The day card's quick-action row (ADR-0228) — the geometry that used to live in
+   `event-card.css`, moved beside the component that owns it (`EventActions.tsx`) so
+   the row's look and the row's order sit in one place. The selectors are unchanged:
+   `.wp-event-act*` is still the card's namespace, because the row is still the card's
+   only host. */
+
+/* ONE WRAPPING BOX AGAIN (ADR-0228's 2026-09-15 amendment). It was split in two so the
+   `⋯` could be pinned to the trailing edge while the verbs wrapped beside it; the `⋯` has
+   left for the card face, so the split has nothing left to hold apart. `flex-wrap` stays
+   as the safety net — the amendment's cap is that the band fits one line at 360px, and a
+   longer translation should soften rather than clip. */
+.wp-event-act-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  padding: var(--space-3) 14px;
+}
+.wp-event-act {
+  font: inherit;
+  font-size: var(--text-secondary);
+  font-weight: 600;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+  border-radius: 9px;
+  padding: 7px 11px;
+  cursor: pointer;
+  transition:
+    background var(--t-quick),
+    color var(--t-quick);
+}
+@media (hover: hover) and (pointer: fine) {
+  .wp-event-act:hover {
+    background: var(--cta);
+    color: var(--cta-text);
+    border-color: var(--ink);
+  }
+}
+.wp-event-act.go {
+  border-color: var(--teal);
+  color: var(--teal);
+}
+@media (hover: hover) and (pointer: fine) {
+  .wp-event-act.go:hover {
+    background: var(--teal);
+    color: var(--on-fill);
+  }
+}
+.wp-event-act:focus-visible {
+  outline: 2.5px solid var(--teal);
+  outline-offset: 2px;
+}
+.wp-event-act.stepper {
+  display: flex;
+  align-items: stretch;
+  padding: 0;
+}
+.wp-event-act.stepper .step {
+  font: inherit;
+  font-size: var(--text-body);
+  font-weight: 700;
+  line-height: 1;
+  border: none;
+  background: transparent;
+  color: inherit;
+  padding: 7px 10px;
+  cursor: pointer;
+}
+.wp-event-act.stepper .step-label {
+  display: flex;
+  align-items: center;
+  padding: 7px 6px;
+  border-inline: 1px solid var(--line);
+  color: var(--muted);
+  font-size: var(--text-caption);
+}

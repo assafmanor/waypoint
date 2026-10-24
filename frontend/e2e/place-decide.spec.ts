@@ -58,6 +58,11 @@ const KNOWN = {
   },
 };
 
+/** The same place, described in one line — the majority case, and the one the expand control
+ *  must NOT appear on. Only the extract differs, so the difference the spec reads is the clamp's
+ *  and not the fixture's. */
+const SHORT = { ...KNOWN, summary: { en: { ...KNOWN.summary.en, value: 'A tower in Tokyo.' } } };
+
 /** Requests the app made for a candidate's enrichment — the trigger is "on tap only", so how many
  *  there are is part of what this spec asserts. */
 type Asked = { url: string; body: unknown }[];
@@ -150,6 +155,9 @@ async function measure(page: Page) {
       // The row's two controls have to survive the blocks arriving under them (ADR-0017).
       add: round(add.getBoundingClientRect()),
       out: round(out.getBoundingClientRect()),
+      /** The way out of the clamp — absent, by design, on an extract the clamp is not hiding. */
+      knowMore: block.querySelector('.map-know-more')?.textContent ?? null,
+      knowExpanded: block.querySelector('.map-know-more')?.getAttribute('aria-expanded') ?? null,
     };
   });
 }
@@ -224,6 +232,51 @@ for (const width of WIDTHS) {
     });
   });
 }
+
+// **THE CLAMP HAS A WAY OUT** (ADR-0219 §6's 2026-09-05 amendment; owner: _"the place's details
+// are truncated, there should be an option to expand to read all the text (it should look
+// subtle)"_). The deciding card ships clamped to three lines and, until now, with nothing to open
+// into: on the Map the row's `עוד בגוגל` was the way to the rest, and the event read — the second
+// host §6 gave this block — has no such exit at all. Only a browser can see this: the control
+// appears exactly when the text does not fit the box it is given, and jsdom reports both metrics
+// as zero.
+test('opens a clamped extract in place, and puts it back @390', async ({ page }) => {
+  await boot(page, 390);
+  await findAndTap(page);
+  await expect(page.locator('.map-hero')).toBeVisible();
+
+  const closed = await measure(page);
+  expect(closed.clamped).toBe(true);
+  expect(closed.knowExpanded).toBe('false');
+
+  await page.locator('[data-result="g-sky"] .map-know-more').click();
+  const open = await measure(page);
+  // The whole extract, and nothing hidden — which is the only thing the report asked for.
+  expect(open.clamped).toBe(false);
+  expect(open.lineClamp).toBe('none');
+  expect(open.prose.h).toBeGreaterThan(closed.prose.h);
+  expect(open.knowExpanded).toBe('true');
+  expect(open.knowMore).not.toBe(closed.knowMore);
+
+  // …and back, because the control is a toggle rather than a one-way door.
+  await page.locator('[data-result="g-sky"] .map-know-more').click();
+  const again = await measure(page);
+  expect(again.lineClamp).toBe('3');
+  expect(again.prose.h).toBe(closed.prose.h);
+});
+
+// **Subtle means ABSENT when there is nothing to reveal.** A control offering to open an extract
+// that already fits is worse than no control — it is the noise the report's "(it should look
+// subtle)" is guarding against, on the majority of places (measured extracts start at 86
+// characters, ADR-0166 §11).
+test('offers nothing to open when the extract already fits @390', async ({ page }) => {
+  await boot(page, 390, SHORT);
+  await findAndTap(page);
+  await expect(page.locator('.map-hero')).toBeVisible();
+  const m = await measure(page);
+  expect(m.clamped).toBe(false);
+  expect(m.knowMore).toBeNull();
+});
 
 // **One tap, one ask** (the owner's trigger). A search returns several candidates and most of them
 // nobody keeps, so the list is not enriched — and asking twice about the same place is the way a

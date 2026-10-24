@@ -8,11 +8,13 @@ import {
   EVENT_KIND,
   EVENT_SOURCE,
   EVENT_STATUS,
+  edgeStatusOf,
   type Booking,
   type CreateBookingInput,
   type CreateEventInput,
   type DocumentAttachment,
   type EventCategory,
+  type EventEdge,
   type Note,
   type NoteHostKey,
   NOTE_HOST_KEYS,
@@ -54,13 +56,16 @@ import {
   type OutboxOp,
 } from '../lib/outbox';
 import { generateId } from '../lib/id';
+import { clearOnWay, markOnWay } from '../lib/on-way';
 import { getNow } from '../lib/useClock';
 import { eventDisplayZones } from '../lib/places';
+import { ideaCategory, ideaGlyph } from '../lib/shelf';
 import { soleIdeaFor, type PlaceLink } from '../lib/place-refs';
 import { attachmentsForHost } from '../lib/attachments';
 import { coerceClearedFields } from '../lib/cache';
 import { isoToTimeInput, zonedIso } from '../lib/time';
 import { planSwap } from '../lib/reorder';
+import { lateShift } from '../lib/late-shift';
 import {
   DEFAULT_MAYBE_ICON,
   DELAY_STEP_MINUTES,
@@ -83,7 +88,10 @@ export interface AddMaybeOptions {
 }
 
 type UndoDescriptor =
-  | { kind: 'status'; id: string; previous: TripEvent['status'] }
+  /** `edge` absent = the opening edge (ADR-0224 §1). It rides the descriptor because the
+   *  undo has to put back the column that moved: without it, withdrawing a check-out mark
+   *  would write `status` and claim something about the check-in instead. */
+  | { kind: 'status'; id: string; previous: TripEvent['status']; edge?: EventEdge }
   | { kind: 'move'; id: string; previous: { date: string; startsAt?: string }; isHard: boolean }
   /** An event this action created. `maybeId` is the shelf idea it CONSUMED, when the create
    *  was a schedule (ADR-0027 §2) — reversing has to put that idea back on the shelf
@@ -338,18 +346,28 @@ const slotOf = (e: TripEvent): UpdateEventInput => ({
   sortOrder: e.sortOrder,
 });
 
+/** **Settle ONE edge** (ADR-0224 §1). `edge` is absent for a stop and for a span's opening
+ *  edge — `status`, exactly as before — and `'end'` writes `endStatus`. The previous value
+ *  the undo restores is read off the SAME edge (`edgeStatusOf`), which is the half a second
+ *  field quietly breaks. */
 export async function applySetStatus(
   deps: VerbDeps,
   event: TripEvent,
   status: TripEvent['status'],
+  edge?: EventEdge,
 ): Promise<void> {
-  deps.dispatch({ type: TRIP_ACTION.SET_STATUS, id: event.id, status });
-  deps.lastAction.current = { kind: 'status', id: event.id, previous: event.status };
+  deps.dispatch({ type: TRIP_ACTION.SET_STATUS, id: event.id, status, edge });
+  deps.lastAction.current = {
+    kind: 'status',
+    id: event.id,
+    previous: edgeStatusOf(event, edge ?? 'start'),
+    edge,
+  };
   try {
     const canonical = await restOrQueue(
       deps.tripId,
-      { verb: OUTBOX_VERB.SET_STATUS, eventId: event.id, status },
-      () => setEventStatus(deps.tripId, event.id, status),
+      { verb: OUTBOX_VERB.SET_STATUS, eventId: event.id, status, ...(edge ? { edge } : {}) },
+      () => setEventStatus(deps.tripId, event.id, status, edge),
     );
     if (canonical) deps.dispatch({ type: TRIP_ACTION.RECONCILE_EVENT, event: canonical });
   } catch (err) {
@@ -358,12 +376,35 @@ export async function applySetStatus(
   }
 }
 
-export async function applyDelay(deps: VerbDeps, event: TripEvent, minutes: number): Promise<void> {
+/**
+ * **Resolves to whether the nudge stuck** (ADR-0208 §3), which is the whole of a reported
+ * defect: this used to swallow its own failure and resolve normally, so the caller posted
+ * `נדחה ב-30 דקות` over the error toast that had just said why it could not. A confirmation
+ * that outlives the write is worse than no confirmation — the app was the last thing telling
+ * the truth about the plan.
+ *
+ * **And the target is checked here, before anything is dispatched or queued.** The server
+ * refuses a move into the past (`MOVE_INTO_PAST`) and that is the refusal the owner actually
+ * hit — a stop that had already started, nudged by a step that landed behind the clock anyway.
+ * Asking first is not a duplicated rule so much as the only way to state it offline: without
+ * this, `restOrQueue` queues the move, the optimistic shift stands, and the refusal arrives on
+ * a flush nobody is watching.
+ */
+export async function applyDelay(
+  deps: VerbDeps,
+  event: TripEvent,
+  minutes: number,
+): Promise<boolean> {
+  const target = event.startsAt ? shiftForMove(event.startsAt, minutes) : undefined;
+  if (target !== undefined && Date.parse(target) <= getNow()) {
+    deps.toast(CONTROL_ICON.warn, t.toast.moveIntoPast);
+    return false;
+  }
   const previous = { date: event.date, startsAt: event.startsAt };
   const isHard = event.kind === EVENT_KIND.HARD;
   deps.dispatch({ type: TRIP_ACTION.DELAY, id: event.id, minutes });
   deps.lastAction.current = { kind: 'move', id: event.id, previous, isHard };
-  const input = { startsAt: event.startsAt ? shiftForMove(event.startsAt, minutes) : undefined };
+  const input = { startsAt: target };
   try {
     const result = await restOrQueue<MoveEventResult>(
       deps.tripId,
@@ -374,9 +415,11 @@ export async function applyDelay(deps: VerbDeps, event: TripEvent, minutes: numb
       deps.dispatch({ type: TRIP_ACTION.RECONCILE_EVENT, event: result.event });
       deps.dispatch({ type: TRIP_ACTION.SET_RIPPLE, ripple: result.rippleSuggestion ?? null });
     }
+    return true;
   } catch (err) {
     deps.dispatch({ type: TRIP_ACTION.UNDO });
     writeErrorToast(deps.toast, err);
+    return false;
   }
 }
 
@@ -399,8 +442,7 @@ export async function applyGuardedDelay(
     const confirmed = await deps.confirmHardEdit(event);
     if (!confirmed) return false;
   }
-  await applyDelay(deps, event, minutes);
-  return true;
+  return applyDelay(deps, event, minutes);
 }
 
 export interface ScheduleFields {
@@ -993,8 +1035,13 @@ async function reverseRest(deps: VerbDeps, desc: UndoDescriptor): Promise<void> 
     case 'status':
       await restOrQueue(
         tripId,
-        { verb: OUTBOX_VERB.SET_STATUS, eventId: desc.id, status: desc.previous },
-        () => setEventStatus(tripId, desc.id, desc.previous),
+        {
+          verb: OUTBOX_VERB.SET_STATUS,
+          eventId: desc.id,
+          status: desc.previous,
+          ...(desc.edge ? { edge: desc.edge } : {}),
+        },
+        () => setEventStatus(tripId, desc.id, desc.previous, desc.edge),
       );
       return;
     case 'move': {
@@ -1211,6 +1258,7 @@ export function useVerbs() {
     trip,
     events,
     maybeItems,
+    places,
     ripple,
     activeDate,
     setActiveDate,
@@ -1285,6 +1333,19 @@ export function useVerbs() {
   const authorId = me?.user.id ?? trip.updatedBy;
   const undo = () => void applyUndo(deps);
 
+  /** **The idea as it READS, for the two verbs that turn one into an event** (2026-08-20).
+   *  `buildScheduleEvent` copies the idea's glyph and category onto the event, and an idea
+   *  added from the map carries neither: the pills are on the PLACE (ADR-0165), so a `food`
+   *  place became a `💡`, uncategorised event on the day. Resolved here, once, so the event
+   *  inherits exactly what the shelf tile was showing (`ideaGlyph`/`ideaCategory`) — and
+   *  `buildScheduleEvent` stays the pure builder it is, with `fields` (the form's answer)
+   *  still outranking both. */
+  const asScheduled = (m: MaybeItem): MaybeItem => ({
+    ...m,
+    icon: ideaGlyph(m, places),
+    category: ideaCategory(m, places),
+  });
+
   /** **The idea an event becomes when it leaves the day.** Two verbs make one now — `park`
    *  and `החלף` (ADR-0161 §6) — and a parked event is the same thing either way, so the
    *  shape is here rather than twice at the call sites. `targetDate` overrides the day it
@@ -1312,16 +1373,20 @@ export function useVerbs() {
   };
 
   return {
-    done: (e: TripEvent) => {
-      void applySetStatus(deps, e, EVENT_STATUS.DONE);
+    // **The three settle verbs take an EDGE** (ADR-0224 §1), absent everywhere it was absent
+    // before — a stop and a span's opening edge are unchanged. The toasts do not vary by
+    // edge: `סומן כבוצע` is as true of a check-out as of a stop, and a per-edge toast would
+    // be a second vocabulary beside the one `SettleControl` already renders.
+    done: (e: TripEvent, edge?: EventEdge) => {
+      void applySetStatus(deps, e, EVENT_STATUS.DONE, edge);
       toast(CONTROL_ICON.done, t.toast.markedDone, undo);
     },
-    skip: (e: TripEvent) => {
-      void applySetStatus(deps, e, EVENT_STATUS.SKIPPED);
+    skip: (e: TripEvent, edge?: EventEdge) => {
+      void applySetStatus(deps, e, EVENT_STATUS.SKIPPED, edge);
       toast(CONTROL_ICON.trash, t.toast.removed, undo);
     },
-    restore: (e: TripEvent) => {
-      void applySetStatus(deps, e, EVENT_STATUS.PLANNED);
+    restore: (e: TripEvent, edge?: EventEdge) => {
+      void applySetStatus(deps, e, EVENT_STATUS.PLANNED, edge);
       toast(CONTROL_ICON.restore, t.toast.restored, undo);
     },
     // `swap` used to live here and it did not swap: it SKIPPED the event and posted a toast
@@ -1334,22 +1399,51 @@ export function useVerbs() {
         else toast(CONTROL_ICON.delay, t.toast.softDelayed(DELAY_STEP_MINUTES), undo);
       });
     },
+    // Same rule as `delay` above, and it was missing the check entirely: pulling an event
+    // earlier is the direction that lands in the past most easily, so the toast has to wait
+    // for the write (ADR-0208 §3).
+    //
+    // **And it goes through the GUARD now** (ADR-0228 §4), which is the half of ADR-0011's
+    // hard gate this verb never had: `applyGuardedDelay` is described in its own comment as
+    // "the single choke point", and `earlier` was calling straight past it to `applyDelay`.
+    // Harmless while the ±stepper was soft-only, and a hole the moment one row offers both
+    // directions to both kinds — a commitment would have moved with no confirm at all.
     earlier: (e: TripEvent) => {
-      void applyDelay(deps, e, -DELAY_STEP_MINUTES);
-      toast(CONTROL_ICON.delay, t.toast.softEarlier(DELAY_STEP_MINUTES), undo);
+      void applyGuardedDelay(deps, e, -DELAY_STEP_MINUTES).then((applied) => {
+        if (!applied) return;
+        if (e.kind === EVENT_KIND.HARD) toast(CONTROL_ICON.warn, t.toast.hardEarlier, undo);
+        else toast(CONTROL_ICON.delay, t.toast.softEarlier(DELAY_STEP_MINUTES), undo);
+      });
     },
     // `moveBy` lived here — an arbitrary minute delta, for the `הזז` overlap-resolve's two
     // hand-built options (ADR-0041). It is gone with them: a position is named, not offset,
     // so the resolve sheet writes through `update` with the slot the picker handed back —
     // the same write a drop on that position performs (ADR-0161 §4). `delay`/`earlier` above
     // keep their fixed step, which is a nudge rather than a move to somewhere.
-    onWay: (_e: TripEvent) => toast(CONTROL_ICON.share, t.toast.onWayShared),
+    // **`בדרך` writes now** (ADR-0206 §Z5 §M4, built by M6b). It was a toast claiming
+    // `שותף לקבוצה` and no write at all, which made it the one verb in the app whose
+    // confirmation was false. §V1.4's late mark is its first consumer with a reason to be
+    // state: the mark says the leave-by has passed, and the only honest way to withdraw it is
+    // for a person to say they are moving — a settle mark is not a sensor, and own-device
+    // position wants its own ADR before this surface reads it.
+    //
+    // **A DEVICE mark, and the toast now says so.** The group-visible answer is a stored field
+    // plus a migration plus a cache mirror (backlogged); this is the whole of what the mark
+    // needs and it claims nothing the app does not do.
+    //
+    // **And it is reversible** (ADR-0207 §7), which it was not: the first build wrote a mark with
+    // no way back, reported by the owner. The undo is this verb's own rather than `applyUndo` —
+    // that one reverses the last OUTBOX write, and a device mark never enters the outbox.
+    onWay: (e: TripEvent) => {
+      markOnWay(trip.id, e.id);
+      toast(CONTROL_ICON.navigate, t.toast.onWayMarked, () => clearOnWay(trip.id, e.id));
+    },
     // Place a shelf idea onto a day. With `fields` (from the builder's
     // EventForm picker) the user chose the day/time/kind; without them it's the
     // Trip-mode one-tap quick-schedule onto today at a default slot (Tier-1).
     schedule: (m: MaybeItem, fields?: ScheduleFields) => {
       const now = new Date(getNow()).toISOString();
-      const event = buildScheduleEvent(trip, activeDate, m, now, authorId, fields);
+      const event = buildScheduleEvent(trip, activeDate, asScheduled(m), now, authorId, fields);
       // Resolves to the event it built — the same reason `create` returns its promise: a
       // caller writing notes on the way has to queue them BEHIND their host (ADR-0152 §6b).
       const done = applySchedule(deps, event, m.id).then(() => event);
@@ -1441,7 +1535,7 @@ export function useVerbs() {
      *  decision — see `applyReplace`. */
     replace: (displaced: TripEvent, m: MaybeItem) => {
       const now = new Date(getNow()).toISOString();
-      const event = buildScheduleEvent(trip, displaced.date, m, now, authorId, {
+      const event = buildScheduleEvent(trip, displaced.date, asScheduled(m), now, authorId, {
         date: displaced.date,
         title: m.title,
         // Soft, always: what a replacement inherits is the SLOT, not the commitment. A hard
@@ -1498,6 +1592,16 @@ export function useVerbs() {
       void applyDeletePlace(deps, place, soleIdeaFor(place.id, maybeItems)).then((applied) => {
         if (applied) toast(CONTROL_ICON.trash, t.toast.placeDeleted, undo);
       });
+    },
+    /** **The day takes a delay** (ADR-0231 §5): every planned soft row ahead of now, up to the
+     *  hard anchor the delay reaches, moves by `minutes` — `lateShift`'s set, which is the server
+     *  ripple's own rule — through the one multi-event write, so N moves are one undo. Soft only by
+     *  construction, so no gate; the toast counts what moved. */
+    delayDay: (dayEvents: TripEvent[], nowMs: number, minutes: number) => {
+      const shift = lateShift(dayEvents, nowMs, minutes);
+      if (shift.patches.length === 0) return;
+      void applyEventPatches(deps, shift.patches, dayEvents);
+      toast(CONTROL_ICON.delay, t.toast.dayDelayed(minutes, shift.patches.length), undo);
     },
     // Plan-mode builder: two soft events **trade positions**, each keeping its own
     // length (ADR-0161 §1/§2). Hard events are pinned and never in the patch set.

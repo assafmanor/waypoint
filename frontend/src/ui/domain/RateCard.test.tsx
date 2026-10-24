@@ -83,12 +83,27 @@ describe('RateCard — absence is keyed on existence, not age (§4)', () => {
 });
 
 describe('RateCard — the whole card is the target (§3)', () => {
-  it('is one button and holds no link of its own', () => {
+  it('is still ONE button, and the source link is its sibling rather than its child', () => {
+    // **This assertion replaces "holds no link of its own", which encoded the rule ADR-0218's
+    // 2026-09-03 amendment §A retired.** ADR-0180 §3's decision survives in substance — one
+    // target for the whole card, still opening the converter — and what changed is that the
+    // skin and the press stopped being the same element. That is the entire point: an `<a>`
+    // inside a `<button>` is invalid markup, so the split is what lets the credit the source's
+    // terms require sit INSIDE the card, which is where it was asked for.
     const container = card();
     expect(container.querySelectorAll('button')).toHaveLength(1);
-    // §9's attribution is the host's line, deliberately outside this component:
-    // an `<a>` inside a `<button>` is invalid markup before it is a second target.
-    expect(container.querySelector('a')).toBeNull();
+    const link = container.querySelector('a');
+    expect(link).not.toBeNull();
+    expect(link?.closest('button')).toBeNull();
+  });
+
+  it('carries the provider’s own credit, verbatim and linked', () => {
+    const container = card();
+    const link = container.querySelector('.card-src-link');
+    // Never translated: the wording is the source's, carried on the data (ADR-0180 §7), so a
+    // second provider is credited correctly with no change here.
+    expect(link?.textContent).toBe(FX.provider);
+    expect(link?.getAttribute('href')).toBe(FX.providerUrl);
   });
 
   it('opens the converter on a press', () => {

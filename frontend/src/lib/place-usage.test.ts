@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { TripPhase } from './mode';
 import {
   BOOKING_SOURCE,
   BOOKING_TYPE,
@@ -162,12 +163,87 @@ describe('a route endpoint owns its own end of the span, not all of it', () => {
   });
 });
 
+// ── THE FLIGHT HOME LANDS ON A DAY THE MAP HAS NO CHIP FOR (owner, 2026-09-20) ────────
+// Reported from the device: on the trip's last day the map drew the departure airport and
+// nothing else — _"it shows only one leg of the flight"_. The arrival's day facet was the
+// day AFTER the trip ends, so the destination fell out of every day scope the strip offers
+// and rendered as a ghost. ADR-0236 §4's hosting rule, asked of a pin.
+describe('a route endpoint the trip has no day for is hosted by its last day', () => {
+  const TRIP = { startDate: '2026-01-21', endDate: '2026-01-25' };
+  const home = booking({
+    id: 'fl',
+    type: BOOKING_TYPE.FLIGHT,
+    fromPlaceId: 'fco',
+    toPlaceId: 'tlv',
+  });
+  // Rome 22:10 on the trip's last day, Tel Aviv 02:30 the morning after it ends.
+  const redEye = event({
+    id: 'e-home',
+    bookingId: 'fl',
+    kind: EVENT_KIND.HARD,
+    date: '2026-01-25',
+    endDate: '2026-01-26',
+    startsAt: '2026-01-25T21:10:00Z',
+    endsAt: '2026-01-26T00:30:00Z',
+  });
+  const index = (range?: { startDate: string; endDate: string }) =>
+    buildPlaceUsageIndex([redEye], [home], [], [place('fco'), place('tlv')], range);
+
+  it("puts the DESTINATION on the trip's last day, at the arrival", () => {
+    const days = index(TRIP).get('tlv')!.days;
+    expect(days.map((d) => d.date)).toEqual(['2026-01-25']);
+    expect(days[0].edge).toBe('end');
+    expect(days[0].at).toBe(Date.parse('2026-01-26T00:30:00Z'));
+  });
+
+  it('leaves the ORIGIN exactly where it was', () => {
+    const days = index(TRIP).get('fco')!.days;
+    expect(days.map((d) => d.date)).toEqual(['2026-01-25']);
+    expect(days[0].edge).toBe('start');
+  });
+
+  // The rule is the trip's, not the calendar's: with no range nothing is hosted, which is
+  // what every caller that is not day-scoped wants.
+  it('hosts nothing without a range', () => {
+    expect(
+      index()
+        .get('tlv')!
+        .days.map((d) => d.date),
+    ).toEqual(['2026-01-26']);
+  });
+
+  // A red-eye INSIDE the trip is untouched: it really does land on a day the strip has.
+  it('leaves a within-trip red-eye on its own arrival day', () => {
+    const inside = event({
+      ...redEye,
+      date: '2026-01-22',
+      endDate: '2026-01-23',
+      startsAt: '2026-01-22T21:10:00Z',
+      endsAt: '2026-01-23T00:30:00Z',
+    });
+    const days = buildPlaceUsageIndex([inside], [home], [], [place('fco'), place('tlv')], TRIP).get(
+      'tlv',
+    )!.days;
+    expect(days.map((d) => d.date)).toEqual(['2026-01-23']);
+  });
+
+  // …and a leg shrunk ENTIRELY out of the trip is hosted nowhere (ADR-0236 §6): hosting it
+  // would put the landing on a day that does not exist either.
+  it('hosts nothing when the departure is outside the trip too', () => {
+    const days = index({ startDate: '2026-01-21', endDate: '2026-01-24' }).get('tlv')!.days;
+    expect(days).toEqual([]);
+  });
+});
+
 // ── WHAT A HUMAN HAS CLOSED CANNOT HOLD A PLACE AHEAD (ADR-0117 §2, 2026-08-06) ───────
 // `isDayUsagePast` honoured "a human outranks the clock" only when EVERY reference on the
 // day was settled, so one tick on one reference kept the whole place ahead of you.
 describe('a settled reference holds nothing open', () => {
   const NOW = Date.parse('2026-08-06T12:11:00Z');
-  const dayOf = (status: TripEvent['status']) => {
+  // **Both ends, because the hire is collected and returned at the same counter** (ADR-0224
+  // §1). It used to take one status and stamp it on the whole span, which is exactly the
+  // conflation that made a check-out inherit its check-in's tick; the return is `endStatus` now.
+  const dayOf = (status: TripEvent['status'], endStatus: TripEvent['status'] = status) => {
     const hire = booking({
       id: 'car',
       type: BOOKING_TYPE.CAR,
@@ -197,6 +273,7 @@ describe('a settled reference holds nothing open', () => {
         startsAt: '2026-08-06T15:00:00Z',
         endsAt: '2026-08-06T15:00:00Z',
         status,
+        endStatus,
       }),
     ];
     const idx = buildPlaceUsageIndex(events, [flight, hire], [], [place('fra'), place('tlv')]);
@@ -216,6 +293,16 @@ describe('a settled reference holds nothing open', () => {
   // UNSETTLED thing later today still holds the place ahead.
   it('but an unanswered one still does hold it ahead', () => {
     expect(isDayUsagePast(dayOf(EVENT_STATUS.PLANNED), NOW, '2026-08-06')).toBe(false);
+  });
+
+  // **AND ONE END DOES NOT ANSWER FOR THE OTHER** (ADR-0224 §1, 2026-09-16). The hire is
+  // collected and returned at the same counter, so both ends reference this place — and the
+  // span's one `status` used to close both. Saying `אספנו` at the counter this morning cannot
+  // make the 18:00 return behind you.
+  it('and collecting the car does not return it', () => {
+    expect(isDayUsagePast(dayOf(EVENT_STATUS.DONE, EVENT_STATUS.PLANNED), NOW, '2026-08-06')).toBe(
+      false,
+    );
   });
 });
 
@@ -471,7 +558,9 @@ describe('buildPlaceUsageIndex', () => {
     expect(withEvent()).toMatchObject({ eventId: 'e' });
   });
 
-  it('a skipped SOFT event is parked on the shelf; a skipped hard one is not', () => {
+  // Both kinds since ADR-0228's 2026-09-16 amendment: the shelf parks a skipped booking too,
+  // and this flag is the Map's mirror of what the shelf renders, so it moved with it.
+  it('a skipped event is parked on the shelf, whatever its kind; a planned one is not', () => {
     const idx = buildPlaceUsageIndex(
       [
         event({ id: 'e1', placeId: 'pl-skipped', status: EVENT_STATUS.SKIPPED }),
@@ -489,7 +578,7 @@ describe('buildPlaceUsageIndex', () => {
     );
     expect(idx.get('pl-skipped')?.isParked).toBe(true);
     expect(isOnShelf(idx.get('pl-skipped')!)).toBe(true);
-    expect(idx.get('pl-hard')?.isParked).toBe(false);
+    expect(idx.get('pl-hard')?.isParked).toBe(true);
     expect(idx.get('pl-planned')?.isParked).toBe(false);
     // …and it is not an idea: the event still owns its date and slot.
     expect(idx.get('pl-skipped')?.isMaybe).toBe(false);
@@ -1088,6 +1177,61 @@ describe('comparePlacesBySchedule (the list reads in trip order)', () => {
       [place('later'), place('earlier')],
     );
     expect(order(idx)).toEqual(['earlier', 'later']);
+  });
+
+  describe('a finished trip is one block, day 1 first (ADR-0239 §2)', () => {
+    // Three days, all behind the clock, plus a hotel that spans two of them and an idea
+    // nobody scheduled.
+    const trip = () =>
+      buildPlaceUsageIndex(
+        [
+          event({
+            id: 'd1',
+            placeId: 'day-1',
+            date: '2026-07-05',
+            startsAt: '2026-07-05T09:00:00Z',
+          }),
+          event({
+            id: 'd2',
+            placeId: 'day-2',
+            date: '2026-07-06',
+            startsAt: '2026-07-06T09:00:00Z',
+          }),
+          event({ id: 'd3', placeId: 'day-3', date: DAY, startsAt: at('09:00') }),
+          event({
+            id: 'h',
+            placeId: 'hotel',
+            date: '2026-07-06',
+            endDate: DAY,
+            startsAt: '2026-07-06T15:00:00Z',
+            endsAt: at('11:00'),
+          }),
+        ],
+        [],
+        [maybe({ id: 'm', placeId: 'someday' })],
+        [place('day-1'), place('day-2'), place('day-3'), place('hotel'), place('someday')],
+      );
+    const AFTER = Date.parse('2026-07-11T12:00:00Z');
+    const ctx = (phase: TripPhase) => ({ nameOf, nowMs: AFTER, today: '2026-07-11', phase });
+    const ordered = (phase: TripPhase) =>
+      [...trip().values()]
+        .sort((a, b) => comparePlacesBySchedule(a, b, ctx(phase)))
+        .map((u) => u.placeId);
+
+    it('orders day 1 first, each place by its first day, the undated idea last', () => {
+      expect(ordered('past')).toEqual(['day-1', 'day-2', 'hotel', 'day-3', 'someday']);
+    });
+
+    it('puts nothing behind you, so `מה נשאר` has nothing to hide', () => {
+      for (const usage of trip().values()) {
+        expect(placeBlock(usage, ctx('past'))).not.toBe(PLACE_BLOCK.behind);
+        expect(isPlaceLeft(usage, ctx('past'))).toBe(true);
+      }
+    });
+
+    it('leaves a live trip at the same clock unchanged: newest first, below the idea', () => {
+      expect(ordered('live')).toEqual(['someday', 'hotel', 'day-3', 'day-2', 'day-1']);
+    });
   });
 });
 

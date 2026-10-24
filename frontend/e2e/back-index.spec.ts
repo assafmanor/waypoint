@@ -11,6 +11,7 @@
 //     repeatable layer registered after it handles a back, closing that gap.
 import { test, expect, type Page } from '@playwright/test';
 import { bootIntoTrip, TWO_TYPE_BOOKINGS } from './boot';
+import { t } from '../src/i18n/he';
 
 // Fire the platform system-back the way the OS does — a history traversal —
 // rather than page.goBack(), whose navigation-commit wait fights the
@@ -34,7 +35,9 @@ test.beforeEach(async ({ page }) => {
 
 test('Documents subview: one system back returns to the Index landing', async ({ page }) => {
   await page.locator('nav.nav button', { hasText: 'אינדקס' }).click();
-  await page.locator('.wp-idx-tile').nth(1).click(); // documents tile (landing peer 2)
+  // By NAME, not by position: the landing's tile order is an owner decision that has
+  // already moved once, and an index here breaks silently by opening the wrong screen.
+  await page.locator('.wp-idx-tile', { hasText: 'מסמכים' }).click();
   await expect(page.locator('.idx-screen')).toBeVisible();
 
   await systemBack(page);
@@ -48,8 +51,8 @@ test('bookings filter: the first system back resets the category, staying on the
   page,
 }) => {
   await openBookingsScreen(page);
-  await page.getByRole('radio', { name: 'טיסה' }).click(); // pick the flight category
-  await expect(page.getByRole('radio', { name: 'טיסה' })).toBeChecked();
+  await page.getByRole('radio', { name: t.index.bookingType.flight }).click(); // pick the flight category
+  await expect(page.getByRole('radio', { name: t.index.bookingType.flight })).toBeChecked();
 
   await systemBack(page);
   // Correct today: the filter peels back to "all" and the bookings screen stays
@@ -104,8 +107,8 @@ test('bookings filter: after the reset, the next system back returns to the land
   // the repeatable filter layer stays registered after the reset, so this back
   // peels to the Index landing as expected.
   await openBookingsScreen(page);
-  await page.getByRole('radio', { name: 'טיסה' }).click();
-  await expect(page.getByRole('radio', { name: 'טיסה' })).toBeChecked();
+  await page.getByRole('radio', { name: t.index.bookingType.flight }).click();
+  await expect(page.getByRole('radio', { name: t.index.bookingType.flight })).toBeChecked();
 
   await systemBack(page); // resets the filter (screen stays)
   await expect(page.getByRole('radio', { name: 'הכל' })).toBeChecked();

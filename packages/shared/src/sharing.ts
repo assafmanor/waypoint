@@ -1,0 +1,1241 @@
+// **The public face of a trip** (ADR-0213), and the contract both renderers read.
+//
+// Sharing has two audiences and two media: a live page read on a phone, and a fixed A4
+// PDF. Each renders independently, but neither decides what is IN the itinerary — the
+// server projects it once, into the shapes below, and both consume that. That is the
+// whole privacy argument: a field the projection never carries cannot be revealed by a
+// rendering bug, a client-side `hidden` class, or a future model prompt.
+//
+// So every object here is STRICT. An unknown key is a parse failure rather than a
+// silently-passed-through field, in both directions: the server's own response is
+// validated on the way out (`ZodSerializerDto`, ADR-0023), so a `select` that starts
+// returning `googlePlaceId` fails the request instead of publishing it.
+//
+// **Times are pre-formatted here, deliberately.** `startLabel` is `HH:MM` already
+// resolved in the event's display zone, not an instant — because the zone derivation is
+// ADR-0107's and belongs in one place. Two renderers formatting two instants is exactly
+// how a PDF prints an hour the app never showed. Labels that are *language* (weekday
+// names, daypart words) are NOT here — those stay each renderer's own copy, since this
+// package holds no UI strings (see this package's CLAUDE.md).
+import { z } from 'zod';
+import { entityIdSchema, isoDateTimeSchema, dateOnlySchema, timezoneSchema } from './schemas';
+import { bookingTypeSchema, eventCategorySchema, type EventKind } from './entities';
+import { EVENT_KIND, LEG_TRAVEL_MODES } from './constants';
+import { autoIsolate, ltrIsolate } from './bidi';
+import type { DeliveredImageValue, TripEnrichments } from './enrichment';
+import { TIME_MEANINGS } from './icons';
+import { addDays } from './trip-dates';
+import { todayInTz } from './zones';
+
+/** How much of the trip a link reveals. Three intents, not three amounts (ADR-0213 §1). */
+export const SHARE_DETAIL_LEVEL = {
+  /** Inspiration: identity, route, narrative, event titles. No exact facts. */
+  SUMMARY: 'summary',
+  /** Orientation: adds times, places, addresses, map links, travel legs. */
+  FULL: 'full',
+  /** Operation: Full plus the sensitive families the owner explicitly enabled. */
+  EVERYTHING: 'everything',
+} as const;
+export type ShareDetailLevel = (typeof SHARE_DETAIL_LEVEL)[keyof typeof SHARE_DETAIL_LEVEL];
+
+/**
+ * The part of the day an event belongs to.
+ *
+ * A section heading over real events, never a decorative rail — the v2 mockup's
+ * sunrise/sun/sunset/moon strip was rejected precisely because it labelled a day without
+ * organizing anything in it. An empty daypart is not rendered, so these are groups, not
+ * a fixed spine.
+ */
+export const SHARE_DAYPART = {
+  MORNING: 'morning',
+  NOON: 'noon',
+  AFTERNOON: 'afternoon',
+  EVENING: 'evening',
+  NIGHT: 'night',
+  /** No start time at all — an idea pinned to the day rather than to an hour. */
+  FLEXIBLE: 'flexible',
+} as const;
+export type ShareDaypart = (typeof SHARE_DAYPART)[keyof typeof SHARE_DAYPART];
+
+/** Rendering order. Flexible sits last: it is the day's unplaced remainder, not its night. */
+export const SHARE_DAYPART_ORDER: readonly ShareDaypart[] = [
+  SHARE_DAYPART.MORNING,
+  SHARE_DAYPART.NOON,
+  SHARE_DAYPART.AFTERNOON,
+  SHARE_DAYPART.EVENING,
+  SHARE_DAYPART.NIGHT,
+  SHARE_DAYPART.FLEXIBLE,
+];
+
+/**
+ * Where each daypart starts, as a local hour (ADR-0213 §1). Presentation policy, not
+ * stored data — nothing on an `Event` records which part of the day it is in, and nothing
+ * should: re-tuning these must not need a migration.
+ *
+ * Night wraps midnight, which is why it is the fallthrough rather than a range.
+ */
+export const SHARE_DAYPART_START_HOUR = {
+  [SHARE_DAYPART.MORNING]: 5,
+  [SHARE_DAYPART.NOON]: 12,
+  [SHARE_DAYPART.AFTERNOON]: 14,
+  [SHARE_DAYPART.EVENING]: 18,
+  [SHARE_DAYPART.NIGHT]: 22,
+} as const;
+
+/**
+ * The local hour an instant reads as in a named zone, 0-23.
+ *
+ * `formatToParts` rather than `format`: a bare `format` with only `hour` set is free to
+ * return `"09"`, `"9"`, or `"09時"` depending on the locale's ICU data, and `Number()` of
+ * the last one is `NaN`. The part is the number regardless.
+ */
+function localHour(instant: Date, timeZone: string): number {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone,
+    hour: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(instant);
+  return Number(parts.find((part) => part.type === 'hour')?.value ?? NaN);
+}
+
+/**
+ * The daypart an event's displayed start falls in — the one derivation the public page
+ * and the PDF share.
+ *
+ * @param startsAt the event's start instant, or null for an event with no time
+ * @param displayTimezone the zone the app SHOWS this event in (ADR-0107 §4's resolver),
+ *   not the trip's primary zone and not the viewer's — a shared page reads the same wall
+ *   clock the travellers do.
+ */
+export function shareDaypart(
+  startsAt: string | Date | null,
+  displayTimezone: string,
+): ShareDaypart {
+  if (!startsAt) return SHARE_DAYPART.FLEXIBLE;
+  const hour = localHour(startsAt instanceof Date ? startsAt : new Date(startsAt), displayTimezone);
+  if (!Number.isFinite(hour)) return SHARE_DAYPART.FLEXIBLE;
+  if (hour >= SHARE_DAYPART_START_HOUR.night) return SHARE_DAYPART.NIGHT;
+  if (hour >= SHARE_DAYPART_START_HOUR.evening) return SHARE_DAYPART.EVENING;
+  if (hour >= SHARE_DAYPART_START_HOUR.afternoon) return SHARE_DAYPART.AFTERNOON;
+  if (hour >= SHARE_DAYPART_START_HOUR.noon) return SHARE_DAYPART.NOON;
+  if (hour >= SHARE_DAYPART_START_HOUR.morning) return SHARE_DAYPART.MORNING;
+  return SHARE_DAYPART.NIGHT;
+}
+
+/**
+ * **The share's day starts at dawn, and the grouping has to agree with the sections.**
+ *
+ * `shareDaypart` already says so — `night` is the FALLTHROUGH below hour 5, which is the
+ * same statement as "05:00 begins the day". The day grouping did not honour it, so a
+ * landing at 00:30 was filed on its own calendar date and, because `night` renders last,
+ * printed at the BOTTOM of that card, under an evening that happened nineteen hours later
+ * (owner, 2026-08-30: _"The night part gets folded at the end of the wrong day. I think
+ * that up until some late point it should still count the night of the previous day"_).
+ *
+ * Note that this is a **share-only** rule and does not contradict the app's own day
+ * surfaces: those sort by `startsAt`, so the same event already reads first in its day
+ * there. It is grouping by daypart that turns a pre-dawn hour into a trailing one, so it is
+ * grouping by daypart that owes the correction.
+ *
+ * Presentation policy like the hours themselves — nothing stored moves, and `Event.date`
+ * remains what the traveller authored.
+ */
+export function sharePreviousNight(
+  startsAt: string | Date | null,
+  displayTimezone: string,
+): boolean {
+  if (!startsAt) return false;
+  const hour = localHour(startsAt instanceof Date ? startsAt : new Date(startsAt), displayTimezone);
+  return Number.isFinite(hour) && hour < SHARE_DAYPART_START_HOUR.morning;
+}
+
+/**
+ * **Which day the share is ON, by the share's own day boundary** — and the other half of
+ * {@link sharePreviousNight}.
+ *
+ * `todayInTz` answers the CALENDAR day, which is right for every app surface and wrong here
+ * for the same reason `sharePreviousNight` exists: this projection files a 01:00 landing on
+ * the night of the day BEFORE, so at 01:48 the calendar has rolled over while the share's day
+ * has not. Reading the two differently is not a rounding error, it is a page that marks
+ * tomorrow as "now" and then, because a pre-dawn hour sorts last, draws the marker for it at
+ * the bottom of a day nothing has happened in yet. Found by opening the real page at 01:48
+ * Tokyo time, which no fixture had covered.
+ *
+ * So: the calendar day, minus one before 05:00. One boundary, used by the grouping and by
+ * whoever asks what day it is.
+ *
+ * Pure in its arguments (see this package's `CLAUDE.md` on `Intl` with an explicit zone) —
+ * the caller owns the clock, exactly as `todayInTz` requires.
+ */
+export function shareToday(at: Date, timeZone: string): string {
+  const calendarDay = todayInTz(timeZone, at);
+  return sharePreviousNight(at, timeZone) ? addDays(calendarDay, -1) : calendarDay;
+}
+
+/** `HH:MM` in a named zone — the only time formatting the projection does. */
+export function shareTimeLabel(instant: string | Date, displayTimezone: string): string {
+  const date = instant instanceof Date ? instant : new Date(instant);
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: displayTimezone,
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).format(date);
+}
+
+/**
+ * **The punctuation a composed public line is made of** — not copy, and that distinction is
+ * what lets it live in this package (see this package's `CLAUDE.md`). A separator and an
+ * arrow carry no language; the words around them are each renderer's own.
+ *
+ * `ROUTE_ARROW` is wrapped in an LRI/PDI pair so its rendered direction is a **constant**.
+ * Chromium leaves `←` unmirrored at either base direction, but mirroring an arrow inside an
+ * RTL run is something the bidi algorithm permits, and the whole point of this line is that
+ * the same route renders the same way on the page and on the paper (ADR-0118).
+ *
+ * They are here rather than in the backend's narrative module because **both renderers now
+ * compose the route themselves**: the projection ships a day's two endpoints and a kind, so
+ * the words can differ per renderer while the punctuation between them cannot.
+ */
+export const NARRATIVE_SEPARATOR = ' · ';
+const LEFT_TO_RIGHT_ISOLATE = '\u2066';
+const POP_DIRECTIONAL_ISOLATE = '\u2069';
+export const ROUTE_ARROW = `${LEFT_TO_RIGHT_ISOLATE} ← ${POP_DIRECTIONAL_ISOLATE}`;
+
+/**
+ * **What a day's headline SAYS, as a kind plus its values — never as a sentence.**
+ *
+ * The projection used to ship `title` already joined (`נתב״ג ← קפלוויק`), which is why no
+ * renderer could ever say _"טסים לאיסלנד"_: a server that holds no UI copy can only join
+ * data with punctuation, so every day of every trip got the same shape of line however
+ * little it said (owner, 2026-08-30: _"Some day titles could also be derived (flying to
+ * Iceland, flying back…)"_).
+ *
+ * The repair is the one `journey.mode` already made one field over — **ship the
+ * discriminant**. Each renderer keys its own words off the kind and isolates the values
+ * with its own bidi helper, so the page and the PDF say the same thing in the same words
+ * from one derivation, and a second locale is a second word table rather than a second
+ * derivation.
+ */
+export const SHARE_DAY_KIND = {
+  /** The trip's outbound flight day. `to` is where the trip is going. */
+  FLIGHT_OUT: 'flightOut',
+  /** The trip's returning flight day. Carries no value — "home" is not a place we know. */
+  FLIGHT_HOME: 'flightHome',
+  /** Any other flight day. `to` is where it lands. */
+  FLIGHT: 'flight',
+  /** Moved between two stops that are not the same. */
+  ROUTE: 'route',
+  /** Spent somewhere. */
+  PLACE: 'place',
+  /** **The region the day's stops share** (`P131`) — the best name a day can have, because
+   *  it is where you WERE rather than what you happened to stop at. */
+  REGION: 'region',
+  /** **What the day's stops ARE** (`P31`), when a clear majority agree. Four waterfalls is
+   *  a day of waterfalls. Below `region`: where beats what. */
+  KIND: 'kind',
+  /** Prose from a generator, which has no kind to key off (ADR-0213 §2). */
+  TEXT: 'text',
+  /** Nothing true to say. The renderer falls back to the date — inventing a title here is
+   *  exactly the mandatory day title the owner rejected. */
+  NONE: 'none',
+} as const;
+export type ShareDayKind = (typeof SHARE_DAY_KIND)[keyof typeof SHARE_DAY_KIND];
+
+export const sharedDayTitleSchema = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal(SHARE_DAY_KIND.FLIGHT_OUT), to: z.string() }),
+  z.strictObject({ kind: z.literal(SHARE_DAY_KIND.FLIGHT_HOME) }),
+  z.strictObject({ kind: z.literal(SHARE_DAY_KIND.FLIGHT), to: z.string() }),
+  z.strictObject({ kind: z.literal(SHARE_DAY_KIND.ROUTE), from: z.string(), to: z.string() }),
+  z.strictObject({ kind: z.literal(SHARE_DAY_KIND.PLACE), at: z.string() }),
+  /** **The region the day's stops share** — Wikidata `P131`, resolved for each place and
+   *  taken when a clear majority of the day agrees. A day whose eleven stops are all in
+   *  Skútustaðahreppur is `מיוואטן`, not two of its waterfalls' names. */
+  z.strictObject({ kind: z.literal(SHARE_DAY_KIND.REGION), at: z.string() }),
+  /** **What the day's stops ARE, when they agree** — Wikidata `P31`, resolved to a class
+   *  noun. Four waterfalls in one day is a day of waterfalls, and that is a better name
+   *  than any two of them. Below `region` because where you were beats what you saw. */
+  z.strictObject({ kind: z.literal(SHARE_DAY_KIND.KIND), of: z.string() }),
+  z.strictObject({ kind: z.literal(SHARE_DAY_KIND.TEXT), text: z.string() }),
+  z.strictObject({ kind: z.literal(SHARE_DAY_KIND.NONE) }),
+]);
+export type SharedDayTitle = z.infer<typeof sharedDayTitleSchema>;
+
+/**
+ * **A day's second line, and it must not repeat the first.**
+ *
+ * It shipped as the first two event titles joined, which on a flight day printed two
+ * airport names under a headline made of the same two airport names.
+ *
+ * **It then answered `where they sleep`, and that rung is gone** (ADR-0238 §1). The rung
+ * existed because the day had nowhere else to name a bed; the day now has two — `wokeIn` and
+ * `sleeps`, each with a position in the schedule — so a `stay` summary could only restate the
+ * frame directly above and below it. The second line is back to what the day held.
+ */
+export const SHARE_DAY_SUMMARY_KIND = {
+  /** `titles` are event titles, already filtered of anything the headline said. */
+  EVENTS: 'events',
+  TEXT: 'text',
+  NONE: 'none',
+} as const;
+export type ShareDaySummaryKind =
+  (typeof SHARE_DAY_SUMMARY_KIND)[keyof typeof SHARE_DAY_SUMMARY_KIND];
+
+export const sharedDaySummarySchema = z.discriminatedUnion('kind', [
+  z.strictObject({
+    kind: z.literal(SHARE_DAY_SUMMARY_KIND.EVENTS),
+    titles: z.array(z.string()).min(1),
+  }),
+  z.strictObject({ kind: z.literal(SHARE_DAY_SUMMARY_KIND.TEXT), text: z.string() }),
+  z.strictObject({ kind: z.literal(SHARE_DAY_SUMMARY_KIND.NONE) }),
+]);
+export type SharedDaySummary = z.infer<typeof sharedDaySummarySchema>;
+
+// ── Owner-side configuration ────────────────────────────────────────────────────────
+
+export const shareDetailLevelSchema = z.enum([
+  SHARE_DETAIL_LEVEL.SUMMARY,
+  SHARE_DETAIL_LEVEL.FULL,
+  SHARE_DETAIL_LEVEL.EVERYTHING,
+]);
+
+export const shareDaypartSchema = z.enum([
+  SHARE_DAYPART.MORNING,
+  SHARE_DAYPART.NOON,
+  SHARE_DAYPART.AFTERNOON,
+  SHARE_DAYPART.EVENING,
+  SHARE_DAYPART.NIGHT,
+  SHARE_DAYPART.FLEXIBLE,
+]);
+
+/**
+ * The four sensitive families, each independently chosen and each off by default.
+ *
+ * Files are not here because a file is chosen one at a time (`documentIds`), not as a
+ * family — "share my documents" is a promise nobody can check, and the mockup's per-file
+ * checkboxes are the approved control. Financial data has no member at all in v1: no
+ * approved control exposes it, so the safe default is that the shape cannot express it.
+ */
+export const shareSensitiveFieldsSchema = z.strictObject({
+  /** Confirmation codes, room/unit numbers, WiFi — a `Booking`'s operational secrets. */
+  bookingSecrets: z.boolean(),
+  /** Notes and tasks attached to shared itinerary rows. */
+  notesAndTasks: z.boolean(),
+  /** Traveller display names. Never email, ever — there is no toggle that reveals one. */
+  travelerIdentity: z.boolean(),
+});
+export type ShareSensitiveFields = z.infer<typeof shareSensitiveFieldsSchema>;
+
+export const NO_SENSITIVE_FIELDS: ShareSensitiveFields = {
+  bookingSecrets: false,
+  notesAndTasks: false,
+  travelerIdentity: false,
+};
+
+const anySensitiveEnabled = (fields: ShareSensitiveFields): boolean =>
+  Object.values(fields).some(Boolean);
+
+/**
+ * What the owner sends to configure the one link.
+ *
+ * The cross-field refusal is the point: a client cannot enable a sensitive family while
+ * asking for Summary or Full and hope the server sorts it out later. Below Everything the
+ * only accepted value is off, so the level and the exposure can never disagree — and the
+ * stored row can be trusted by the projection without re-deriving the rule.
+ */
+/** **A list, not the trip** (ADR-0242 §3): one kind of what the trip did. A kind and nothing
+ *  else, because free text in a policy is a link nobody can name in the sheet's link list. */
+export const shareScopeSchema = z.strictObject({ category: eventCategorySchema });
+export type ShareScope = z.infer<typeof shareScopeSchema>;
+
+export const upsertTripShareSchema = z
+  .strictObject({
+    detailLevel: shareDetailLevelSchema,
+    sensitive: shareSensitiveFieldsSchema,
+    documentIds: z.array(entityIdSchema).max(50),
+    scope: shareScopeSchema.optional(),
+  })
+  .refine(
+    (input) =>
+      input.detailLevel === SHARE_DETAIL_LEVEL.EVERYTHING ||
+      (!anySensitiveEnabled(input.sensitive) && input.documentIds.length === 0),
+    { message: 'sensitive fields require the everything detail level' },
+  )
+  .refine((input) => !input.scope || input.detailLevel === SHARE_DETAIL_LEVEL.SUMMARY, {
+    message: 'a list is a summary share',
+  });
+export type UpsertTripShareInput = z.infer<typeof upsertTripShareSchema>;
+
+/** A root-relative public path, never an origin: the client owns which host it is on
+ *  (`lib/invite-link.ts`), exactly as the invite link already does (ADR-0067). */
+const publicSharePathSchema = z
+  .string()
+  .regex(/^\/s\/[1-9A-HJ-NP-Za-km-z]{8}$/, 'expected a root-relative /s/<code> path');
+
+export const tripShareConfigSchema = z.strictObject({
+  code: z.string().regex(/^[1-9A-HJ-NP-Za-km-z]{8}$/),
+  shareUrl: publicSharePathSchema,
+  detailLevel: shareDetailLevelSchema,
+  sensitive: shareSensitiveFieldsSchema,
+  documentIds: z.array(entityIdSchema),
+  /** Present on a list's link, which is no level's link (ADR-0242 §2). */
+  scope: shareScopeSchema.optional(),
+  updatedAt: isoDateTimeSchema,
+});
+export type TripShareConfig = z.infer<typeof tripShareConfigSchema>;
+
+// ── The public projection ───────────────────────────────────────────────────────────
+
+/**
+ * **How a trip MOVES, which is a different question from where it goes** (owner,
+ * 2026-08-30, reading the reference render's `רייקיאוויק ← סנייפלסנס`: _"it is actually a
+ * circumnavigation (טיול מתגלגל maybe), where you switch locations every day … Then
+ * there's טיול כוכב where you stay at one place"_).
+ *
+ * Two trips with identical destinations and day counts are read completely differently
+ * depending on this, and the page was saying nothing about it — worse, it was printing a
+ * ROUTE for both, which on a star trip is actively false: every day of one starts and ends
+ * at the same base, so `base ← somewhere` describes the commute rather than the day.
+ *
+ * **Derived from the run-length encoding of `day.sleeps`, and nothing else.** Consecutive
+ * nights in one place are one base; the number of bases and whether the last is the first
+ * are the whole classification. No new column, no heuristic over distances, and it is
+ * `unknown` for a trip that records no nights at all — which is a real state (a day trip,
+ * or a trip whose lodging was never entered) and not a failure.
+ *
+ * **It reads `sleeps` because that is now a per-night answer** (ADR-0238 §1). It was written
+ * against `day.stay`, which existed only on the day a span was FILED — so the encoding it
+ * describes was never running: an eleven-night trip handed it one entry, and a star trip and
+ * a rolling trip produced the same array. Nothing here changed; the input became what this
+ * comment always claimed.
+ */
+export const SHARE_TRIP_SHAPE = {
+  /** One base for the whole trip; you go out and come back to the same bed. */
+  BASE: 'base',
+  /** Several bases, ending where it started — a ring road, a circuit. */
+  LOOP: 'loop',
+  /** Several bases, ending somewhere else — a one-way traverse. */
+  LINE: 'line',
+  /** No nights recorded. Says so rather than guessing. */
+  UNKNOWN: 'unknown',
+} as const;
+export type ShareTripShape = (typeof SHARE_TRIP_SHAPE)[keyof typeof SHARE_TRIP_SHAPE];
+export const shareTripShapeSchema = z.enum([
+  SHARE_TRIP_SHAPE.BASE,
+  SHARE_TRIP_SHAPE.LOOP,
+  SHARE_TRIP_SHAPE.LINE,
+  SHARE_TRIP_SHAPE.UNKNOWN,
+]);
+
+/**
+ * The bases a trip sleeps at, in order, with consecutive repeats collapsed — and the shape
+ * that follows from them. One function so the projection, a renderer and a test cannot
+ * disagree about what a base is.
+ */
+export function tripShapeOf(stays: readonly (string | undefined)[]): {
+  shape: ShareTripShape;
+  baseCount: number;
+} {
+  const bases: string[] = [];
+  for (const stay of stays) {
+    const value = stay?.trim();
+    if (!value) continue;
+    if (bases[bases.length - 1] === value) continue;
+    bases.push(value);
+  }
+  if (bases.length === 0) return { shape: SHARE_TRIP_SHAPE.UNKNOWN, baseCount: 0 };
+  if (bases.length === 1) return { shape: SHARE_TRIP_SHAPE.BASE, baseCount: 1 };
+  // **The count is of DISTINCT bases, not of runs.** A trip that leaves Reykjavík, tours
+  // the ring and comes home sleeps there twice — calling that seven bases would say it
+  // stayed somewhere it did not.
+  const distinct = new Set(bases).size;
+  return {
+    shape: bases[0] === bases[bases.length - 1] ? SHARE_TRIP_SHAPE.LOOP : SHARE_TRIP_SHAPE.LINE,
+    baseCount: distinct,
+  };
+}
+
+/**
+ * **One operational fact, attached to the row it belongs to** (ADR-0213's 2026-08-30
+ * amendment, reversing §4's appendix).
+ *
+ * §4 grouped this material at the foot of the document "so a reader can see exactly what
+ * was published". The owner's verdict on the shipped result was that _"nothing is linked
+ * to the events"_ — and the grouping was never a privacy requirement, only a missing
+ * join: `Note.eventId|bookingId|placeId|documentId` is a closed union present since the
+ * first migration, `DocumentAttachment` binds a file to an event or a booking, and
+ * `Event.bookingId` is `@unique`. What §4 actually wanted — the owner being able to see
+ * what a level publishes — is answered by the share sheet, which is where the owner is.
+ *
+ * Still governed entirely by the sensitive-field toggles: an op only exists here when its
+ * family is switched on, which is the same gate the appendix had.
+ */
+/** **No `TASK`, on purpose** (owner, 2026-08-30: _"tasks should be taken out, they're
+ *  irrelevant for viewers"_). A task is the group's own chore list — who is buying the
+ *  adapter — and a person reading a shared itinerary is not the person doing it. The
+ *  `includeNotesAndTasks` toggle keeps its column name (it is a migration to rename) but now
+ *  governs notes alone; the sheet's own copy says so. */
+export const SHARE_OP_KIND = { CODE: 'code', NOTE: 'note', FILE: 'file' } as const;
+export type ShareOpKind = (typeof SHARE_OP_KIND)[keyof typeof SHARE_OP_KIND];
+
+const sharedNoteOpSchema = z.strictObject({
+  kind: z.literal(SHARE_OP_KIND.NOTE),
+  title: z.string().optional(),
+  body: z.string().optional(),
+});
+export type SharedNoteOp = z.infer<typeof sharedNoteOpSchema>;
+
+export const sharedOpSchema = z.discriminatedUnion('kind', [
+  /** A booking reference. `provider` and `code` stay separate values rather than one
+   *  composed string, for the reason the day title had to stop being one: a renderer
+   *  that wants to make the code copyable needs to know which half is the code. */
+  z.strictObject({
+    kind: z.literal(SHARE_OP_KIND.CODE),
+    code: z.string(),
+    provider: z.string().optional(),
+  }),
+  sharedNoteOpSchema,
+  z.strictObject({
+    kind: z.literal(SHARE_OP_KIND.FILE),
+    /** The bearer download handle under the share's own code — §1's single exception,
+     *  unchanged by the move out of the appendix. */
+    handle: z.string(),
+    title: z.string(),
+    mimeType: z.string(),
+  }),
+]);
+export type SharedOp = z.infer<typeof sharedOpSchema>;
+
+/**
+ * **One leg of a journey that has several** (ADR-0213's 2026-08-30 amendment; owner:
+ * _"Layovers must be represented … Flights should be clumped together, not split by
+ * days"_).
+ *
+ * Nothing about this is stored. Legs chain exactly when the previous one's `toPlaceId` is
+ * this one's `fromPlaceId`, and the wait is the gap between the previous `endsAt` and this
+ * `startsAt` — both derivable today, which is why the half-built `connectsToPrevious`
+ * columns written for this were reverted rather than migrated.
+ */
+export const sharedLegSchema = z.strictObject({
+  title: z.string(),
+  /** `TLV → VIE`, where there is room for it. ADR-0166 §18 keeps the IATA code off
+   *  row-shaped surfaces because it doubles their width; inside a journey block there is a
+   *  second line for it, and a code is what you check against a boarding pass. */
+  code: z.string().optional(),
+  startLabel: z.string().optional(),
+  endLabel: z.string().optional(),
+  /** The wait **before** this leg. Absent on the first leg, which nothing precedes. */
+  layoverMinutes: z.number().int().positive().optional(),
+  /** **How long this leg is in the air**, in whole minutes ([ADR-0213](../../../docs/decisions/0213-a-shared-trip-changes-emphasis-and-print-is-its-own-rendering.md)'s
+   *  ninth amendment §2). Removed for one round that morning and asked for back the same day
+   *  — the owner's _"doesn't show journey leg durations (flights)"_. Removing it was the
+   *  wrong axis: what made a connecting flight confusing is that its frame was the same
+   *  ELEMENT as an ordinary event row, so three route strings read as three peers. The
+   *  container fixes that; the number was never the problem.
+   *
+   *  **`zoneShiftMinutes` deliberately did NOT come back.** The shift a traveller acts on is
+   *  origin-to-destination, and three signed numbers on one journey describe one clock
+   *  change — so the journey keeps the shift and a leg keeps its own flight time. */
+  durationMinutes: z.number().int().positive().optional(),
+  /** **Where that wait happens**, which is one place and not a route. The renderers composed
+   *  this line from `title` and so printed `המתנה בוינה ← קפלאוויק` — the leg you are about
+   *  to fly, not the airport you are sitting in (owner, 2026-08-30). It is the previous
+   *  leg's arrival, which is this leg's departure; absent when neither resolves a label. */
+  layoverPlace: z.string().optional(),
+});
+export type SharedLeg = z.infer<typeof sharedLegSchema>;
+
+/**
+ * **A CLOCK, AND WHAT IT MEANS** (owner, 2026-08-31: _"whenever there's a time range, we
+ * should display it. That also includes flexible times like starting from.. Or until..."_).
+ *
+ * Sharing printed a start and withheld the rest, gated on `event.hard` — a rule that was
+ * about COMMITMENT (ADR-0011) answering a question about MEANING. ADR-0184's `edgeMeaning`
+ * is the derivation that actually answers it, and the app's own rows have asked it since it
+ * was written; this is sharing asking the same one.
+ *
+ * - `exact` — the instant IS the commitment. `13:00`, or `09:20–14:05` with an `endLabel`.
+ * - `not-before` — a floor. A room from 15:00, a hire counter at 10:00 → `מ-10:00`.
+ * - `not-after` — a deadline. Out by 11:00, the car back by 18:00 → `עד 11:00`.
+ * - `window` — both bounds authored (ADR-0184 §1). `17:00–21:00`.
+ *
+ * **One object rather than four flat fields.** A renderer needs ONE string per row, so four
+ * fields would make every renderer re-derive the same choice — and §1 of the amendment is
+ * the record of what happens then: the two of them already disagreed, with the live page
+ * printing a soft event's range and paper withholding it. The values are here and the words
+ * stay each renderer's own, which is this file's standing rule.
+ *
+ * `startLabel`/`endLabel` on the event survive alongside it: a journey's header and its legs
+ * are `exact` by nature (a flight departs and lands), and they read those.
+ */
+export const sharedTimeSchema = z.strictObject({
+  /** The clock the row leads with — the floor on `not-before`, the deadline on `not-after`,
+   *  the start on the other two. `HH:MM` in the event's own display zone (ADR-0107). */
+  label: z.string(),
+  /** The other end, where printing one is right: an exact span's arrival, or a window's
+   *  ceiling. Absent on a floor and on a deadline, whose other bound is open by definition —
+   *  and absent on a `held` span, whose far end belongs to a different day. */
+  endLabel: z.string().optional(),
+  meaning: z.enum(TIME_MEANINGS),
+});
+export type SharedTime = z.infer<typeof sharedTimeSchema>;
+
+/**
+ * **The leg INTO something**, read from the route cache and never computed (ADR-0205).
+ *
+ * Named and lifted out of `sharedEventSchema` when the day's evening bed became its second
+ * host (ADR-0238 §2): the bed at the end of a day is reached by exactly the kind of journey
+ * every other row on the page is reached by, and a second inline copy of these three fields
+ * is how the two would start disagreeing about what a leg reports.
+ */
+export const sharedJourneySchema = z.strictObject({
+  /** **The enum, not a free string** — a reader keys both a word and an icon off it,
+   *  which is the definition of a discriminant (`packages/shared/CLAUDE.md`). It was
+   *  `z.string()`, and both renderers answered by dropping the mode entirely: a 121-min
+   *  walk and a 67-min drive printed as the same shape of line (owner, 2026-08-30). */
+  mode: z.enum(LEG_TRAVEL_MODES),
+  minutes: z.number().int().nonnegative(),
+  km: z.number().nonnegative(),
+  /** **Where this leg leaves from, named — said only where the row above it is not its
+   *  origin** (ADR-0238 §1's 2026-09-21 correction, borrowing ADR-0232 R3's rule and its
+   *  words). A journey line otherwise reads as a drive FROM the row above it, which on the
+   *  day's first row would be a drive out of nothing.
+   *
+   *  It is set on exactly one leg: the walk out of the bed, on a day whose two ends are the
+   *  same stay and which therefore draws that bed once, at its foot. Absent everywhere else,
+   *  because everywhere else the row above the line IS where the leg starts. */
+  from: z.string().optional(),
+});
+export type SharedJourney = z.infer<typeof sharedJourneySchema>;
+
+/**
+ * One event as the public sees it.
+ *
+ * Everything optional is absent at Summary — absent, not empty-string or null, so a
+ * renderer that forgets to branch shows nothing rather than a stray colon. There is no
+ * id, no `placeId`, no coordinates and no `googlePlaceId`: the map link is a URL built
+ * server-side from the public display name, so the reader can open a map without the
+ * projection carrying a location the owner did not publish.
+ */
+export const sharedEventSchema = z.strictObject({
+  title: z.string(),
+  icon: z.string().nullish(),
+  /** **The enum, not a free string**, for the reason `journey.mode` is one: a renderer
+   *  keys a word off it. It was `z.string()` while nothing read it. */
+  category: eventCategorySchema.nullish(),
+  /** **What this row IS, when a booking says so** (owner, 2026-08-30: _"hotels and other
+   *  derivable stuff texts should be enhanced … and that also includes bookings"_). The
+   *  type, never the booking — a `hotel` here lets a renderer print `לינה` beside the
+   *  hotel's own name, and carries none of the booking's operational content, which stays
+   *  behind the Everything appendix. Absent on an event no booking backs, so a renderer
+   *  captions nothing it cannot name. */
+  bookingType: bookingTypeSchema.optional(),
+  daypart: shareDaypartSchema,
+  /** True for a real commitment (ADR-0011) — a flight, a reservation. Renders firmer. */
+  hard: z.boolean().optional(),
+  /** Full and above. `HH:MM` in the event's own display zone.
+   *
+   *  **Read by the journey header and its legs, not by an ordinary row** — see `time` below,
+   *  which is what a row prints. These two remain the raw pair because a journey's ends are
+   *  two moments (a departure and an arrival) rather than one edge with a meaning. */
+  startLabel: z.string().optional(),
+  endLabel: z.string().optional(),
+  /** **What this row's clock IS** — see {@link sharedTimeSchema}. Full and above, and absent
+   *  on an event with no clock at all, which is what the `flexible` daypart is for. */
+  time: sharedTimeSchema.optional(),
+  /** **How long it takes, and what the clock does** — the same two facts the app puts on
+   *  every event row (ADR-0107's zone pill, `lib/duration.ts`'s ladder), which a shared
+   *  flight was missing (owner, 2026-08-31: _"Flights and stuff like that should also show
+   *  duration and timezone changes, like in the app"_). Numbers, not phrases: the projection
+   *  ships values and each renderer owns its words. */
+  durationMinutes: z.number().int().positive().optional(),
+  zoneShiftMinutes: z.number().int().optional(),
+  placeName: z.string().optional(),
+  address: z.string().optional(),
+  mapUrl: z.string().url().optional(),
+  /** **What this place IS, in one line** (owner, 2026-08-30, choosing every level: a
+   *  stop's description is public knowledge about a public place and reveals nothing about
+   *  the trip). From the stored Wikipedia `summary` enrichment, `he` then `en` — so it is
+   *  absent for a car park and present for a waterfall, which is the right asymmetry. */
+  caption: z.string().optional(),
+  /** **The legs, when this row is a journey rather than a stop.** At least two, or it is
+   *  not a journey. A renderer that ignores this still draws one correct row: the title is
+   *  the whole journey and `startLabel`/`endLabel` are its first departure and last
+   *  arrival, so the degradation is a summary rather than a hole. */
+  legs: z.array(sharedLegSchema).min(2).optional(),
+  /** **The operational material that belongs to THIS row**, at Everything and only for the
+   *  families the owner switched on. Absent, not empty, when there is none. */
+  ops: z.array(sharedOpSchema).optional(),
+  /** The journey INTO this event, when one is already stored (ADR-0205). Full and above. */
+  journey: sharedJourneySchema.optional(),
+  /** **Where a chained journey ENDS**, for the container's header (ADR-0213's ninth
+   *  amendment §1). `title` stays the whole route, which is what a single-leg row needs and
+   *  what paper's index reads; the header of a `legs` block names the DESTINATION instead,
+   *  because the route is already spelled out by the legs underneath it — `נתב"ג ← קפלאוויק`
+   *  over `נתב"ג ← וינה` and `וינה ← קפלאוויק` is the same two airports three times, and
+   *  that repetition is what read as three peer flights.
+   *
+   *  Sent only alongside `legs`, and derived from the same place label chain the day titles
+   *  use — not parsed back out of `title`, which carries bidi isolates. */
+  journeyTo: z.string().optional(),
+});
+export type SharedEvent = z.infer<typeof sharedEventSchema>;
+
+export const sharedDaypartSectionSchema = z.strictObject({
+  daypart: shareDaypartSchema,
+  events: z.array(sharedEventSchema).min(1), // an empty section is never projected
+});
+
+/** **A photo of the day's most significant stop, or nothing at all** (owner, 2026-08-30,
+ *  reversing ADR-0213 §3's refusal of imagery).
+ *
+ *  §3 refused "stock photography, generated imagery" and a cover upload, and none of those
+ *  describe this: a Commons photo resolved through Wikidata `P18` is already in the store,
+ *  already licensed, already credited, and already rendered elsewhere in the app. What §3
+ *  was protecting against was a new media dependency, and there is not one.
+ *
+ *  **The absence is part of the design.** A day whose stops clear no confidence gate gets
+ *  no photo — not a gradient, not a map tile, not the trip's own image repeated. Nine days
+ *  with photos and three without reads as honest; three days showing the wrong mountain
+ *  destroys trust in the other nine. */
+export const sharedPhotoSchema = z.strictObject({
+  /** **Root-relative, like every other path this contract carries** (`shareUrl`, a
+   *  document's download path). `deliveredImageValueSchema` says why: the server has no
+   *  reliable view of its own public origin, so it never writes one. A `z.string().url()`
+   *  here rejected every real value — caught by the first test that fed the projection a
+   *  real delivered image rather than a hand-written fixture. */
+  url: z.string().regex(/^\/[^\s]*$/, 'must be a root-relative path'),
+  /** The subject, for the alt text and the caption. Which stop this is a picture OF is a
+   *  fact the reader needs — an unlabelled photo of a waterfall on a day with four of them
+   *  says nothing. */
+  of: z.string(),
+  /** Required, never optional: 27 of the 32 Commons files ADR-0166 §12.2 surveyed demand
+   *  attribution, so a credit that a renderer could forget is a licensing breach waiting. */
+  credit: z.string(),
+});
+export type SharedPhoto = z.infer<typeof sharedPhotoSchema>;
+
+/**
+ * **Photographer · license, as one RTL-safe line** (ADR-0167 §4, completed by ADR-0219 §6).
+ *
+ * Two rules, both of which have already cost something:
+ *
+ *  - **The license string is rendered verbatim.** Nine distinct strings appeared across the 32
+ *    Commons files ADR-0166 §12.2 surveyed (`CC BY-SA 3.0 de`, `CC BY-SA 2.5`, CC0, PD…), which
+ *    is why §4 stores the string rather than an enum and why nothing here maps it to a label.
+ *  - **Each run is isolated and the element stays RTL** (ADR-0167 §8.2). `dir="auto"` on a Latin
+ *    credit turns the WHOLE element left-to-right: correct internal order, then aligned to the
+ *    opposite edge from every other line beside it, visually detached from the image it credits.
+ *    That is the mirror image of the bug ADR-0118 was written for, and its lint guard cannot see
+ *    it — the guard reads `dir` attributes, and here the defect is a missing isolate.
+ *
+ * Absent attribution is normal, not an error: 5 of those 32 files owe no credit at all, and the
+ * license alone is then the whole line.
+ *
+ * **Composed once, and that is the point of it being here.** There were two compositions and
+ * they disagreed about ORDER: the app isolated each run, so the photographer led at the start
+ * edge; this projection joined the two raw strings, so the same credit displayed the other way
+ * round on the reader (ADR-0219 Context §4 — a defect only visible with both surfaces open at
+ * once). It lives beside `NARRATIVE_SEPARATOR` because that is the separator it has always
+ * used, and beside `dayPhoto`, which is its first caller.
+ */
+export function placeCredit(image: Pick<DeliveredImageValue, 'attribution' | 'license'>): string {
+  const license = ltrIsolate(image.license);
+  return image.attribution
+    ? `${autoIsolate(image.attribution)}${NARRATIVE_SEPARATOR}${license}`
+    : license;
+}
+
+/**
+ * **A photo needs the name to have AGREED, not merely to have matched** (ADR-0213's
+ * 2026-08-30 amendment, reversing §3's refusal of imagery).
+ *
+ * Enrichment at all clears `MATCH_CONFIDENCE_THRESHOLD` (0.6). A photo asks for more,
+ * because a wrong photo is visibly wrong in a way a wrong opening-hours line is not — and
+ * `MATCH_METHOD_CONFIDENCE` already grades the routes: `wikidata_tag` and `settled_id` are
+ * 1.0, `name_proximity` is 0.9, `geosearch` 0.8, full-text below. 0.9 is exactly "the name
+ * agreed, or the id was settled", which is the bar a picture deserves. A second threshold
+ * on a number already stored per value, not a new mechanism.
+ */
+export const PHOTO_CONFIDENCE_FLOOR = 0.9;
+
+/** How the ranking weighs its four terms. Named because the numbers are a balance and not
+ *  a scale: 90 minutes' worth of "somebody booked this", 30 per decade of ratings, and a
+ *  human mark worth a quarter-hour of dwell — see `dayPhoto` for what each one is for. */
+const PHOTO_RANK = { committed: 90, ratingsDecade: 30, humanMark: 15 } as const;
+
+/** One event, as far as picturing a day is concerned. The shared shapes, not a Prisma row:
+ *  `startsAt`/`endsAt` are ISO strings here, and a `Date` sitting in one would silently
+ *  score every stop at zero dwell (this package's CLAUDE.md, "a Prisma row is not one of
+ *  these shapes"). */
+export interface DayPhotoEvent {
+  placeId?: string;
+  startsAt?: string;
+  endsAt?: string;
+  bookingId?: string;
+  kind?: EventKind;
+  title: string;
+}
+
+/** What the ranking asks about a place. Deliberately narrow: `userRatingsTotal` is the
+ *  world's opinion and `nickname`/`icon` are this group's. */
+export interface DayPhotoPlace {
+  id: string;
+  nickname?: string;
+  icon?: string;
+  userRatingsTotal?: number;
+}
+
+/**
+ * **Which stop a day is a picture of** — a gate, then a rank.
+ *
+ * The gate is `PHOTO_CONFIDENCE_FLOOR` plus a credit we can print: a photo we cannot credit
+ * is a photo we do not publish, since the licence is not ours to drop. The rank, among
+ * survivors, in order:
+ *
+ *  1. **Dwell time.** The strongest signal and it is the traveller's own: four hours at
+ *     Landmannalaugar beats fifteen minutes at Öxarárfoss, and the day genuinely WAS
+ *     Landmannalaugar.
+ *  2. **Booked or hard** (ADR-0011). Something paid for and planned around.
+ *  3. **`userRatingsTotal`, log-scaled** — the COUNT, never `rating`, which is 4.5-4.8 for
+ *     everything scenic and separates nothing. Log-scaled or it swamps the other terms.
+ *  4. **A human mark** — a nickname or a chosen icon. The weakest term and the only one
+ *     about THIS group rather than about the world, so it breaks ties in the right way.
+ *
+ * Deliberately NOT ranked on: Wikidata sitelink count (the provider filters sitelinks to
+ * `hewiki|enwiki` because a big item has hundreds, so counting them would make every entity
+ * read heavier for a tiebreak `userRatingsTotal` gives free); `rating` alone; and position
+ * in the day, which is the rule that produced `Stuðlagil Canyon ← Baugur Bjólfs`.
+ *
+ * **Returns `undefined` freely, and that is the design.** A day whose stops clear no gate
+ * gets no photo — not a gradient, not a map tile, not the trip's own image repeated. Nine
+ * days with photos and three without reads as honest; three days showing the wrong mountain
+ * destroys trust in the other nine. ADR-0219 §3 keeps that rule in the app: the day head
+ * stands alone rather than reserving a placeholder band.
+ */
+export function dayPhoto(
+  dayEvents: readonly DayPhotoEvent[],
+  places: ReadonlyMap<string, DayPhotoPlace>,
+  enrichments: TripEnrichments,
+  placeLabel: (place: DayPhotoPlace) => string | undefined,
+): SharedPhoto | undefined {
+  let best: { score: number; photo: SharedPhoto } | undefined;
+  for (const event of dayEvents) {
+    const place = event.placeId ? places.get(event.placeId) : undefined;
+    if (!place) continue;
+    const image = enrichments[place.id]?.image;
+    if (!image || image.confidence < PHOTO_CONFIDENCE_FLOOR) continue;
+    // Required by 27 of the 32 Commons files ADR-0166 §12.2 surveyed, so a photo we cannot
+    // credit is a photo we do not publish — the licence is not ours to drop.
+    if (!image.attribution && !image.license) continue;
+    const credit = placeCredit(image);
+
+    const minutes =
+      event.startsAt && event.endsAt
+        ? Math.max(0, (Date.parse(event.endsAt) - Date.parse(event.startsAt)) / 60_000)
+        : 0;
+    const score =
+      minutes +
+      (event.bookingId || event.kind === EVENT_KIND.HARD ? PHOTO_RANK.committed : 0) +
+      Math.log10(1 + (place.userRatingsTotal ?? 0)) * PHOTO_RANK.ratingsDecade +
+      (place.nickname?.trim() || place.icon ? PHOTO_RANK.humanMark : 0);
+
+    if (!best || score > best.score) {
+      best = {
+        score,
+        photo: { url: image.url, of: placeLabel(place) ?? event.title, credit },
+      };
+    }
+  }
+  return best?.photo;
+}
+
+/**
+ * **One end of a day: the bed you woke in, or the bed you sleep in** (ADR-0238 §1).
+ *
+ * The app's own answer, carried to the two shared renderers. [ADR-0209](../../../docs/decisions/0209-a-stay-is-named-once-in-the-day-it-belongs-to.md)
+ * §1 splits a stay into two facts and gives only one of them a position: **where the day
+ * starts and ends is certain**, and **when you check out or in is a bound that positions
+ * nothing**. So a bed carries its place, and its own constraint quietly beside it.
+ *
+ * On a middle night both ends are the same stay and the day names it twice, which is what
+ * `DayView` has done since 2026-08-26 — the repetition is what gives the two legs an origin
+ * and a destination on the page, and without them there is no reason to draw it.
+ */
+export const sharedDayBedSchema = z.strictObject({
+  /** The place, as the day's frame names it — the linked place's label where there is one,
+   *  the booking's own title otherwise (`settledLabel`'s chain, ADR-0048). */
+  name: z.string().min(1),
+  /** **The stay's own bound, and it positions nothing** — a check-out ceiling on the morning
+   *  bed (`עד 11:00`), a check-in floor or window on the evening one (`מ-15:00`,
+   *  `17:00–21:00`). The same `SharedTime` every row's clock uses, so `edgeMeaning`'s answer
+   *  is stated rather than re-derived per renderer. Absent below Full with every other clock,
+   *  and absent on a middle night, which is the ordinary case: neither end happens today. */
+  time: sharedTimeSchema.optional(),
+  /** **The leg INTO this bed** (ADR-0238 §2), where the route cache already holds one.
+   *
+   *  Only the EVENING bed has one. The morning bed's leg is the journey on the day's first
+   *  scheduled row, because `SharedEvent.journey` already means "the leg into this row" and
+   *  that is exactly what the walk out of the hotel is — a second place to say it would be a
+   *  second way to say one thing. */
+  journey: sharedJourneySchema.optional(),
+});
+export type SharedDayBed = z.infer<typeof sharedDayBedSchema>;
+
+export const sharedDaySchema = z.strictObject({
+  ordinal: z.number().int().positive(),
+  date: dateOnlySchema,
+  /**
+   * **THE ZONE THIS DAY IS LIVED IN** — `dayAmbientZone`, the app's own per-day answer
+   * (ADR-0107 session-100), and the second input on this contract rather than a formatted
+   * answer (see `trip.timezone`, which it now supersedes for every question about _now_).
+   *
+   * The eleventh amendment §6 shipped `trip.timezone` and said the reader "runs `todayInTz`,
+   * the same function every day surface in the app runs". `todayInTz` was the same function;
+   * the ZONE handed to it was not. Every day surface in the app runs it over the zone the
+   * itinerary puts you in, so the shared page was the one surface asking what day it is in
+   * the destination's clock — which on a trip's first morning is a clock nobody on the trip
+   * is reading, and on any day away from the primary zone marks the wrong card `עכשיו` and
+   * prints the marker hours off the labels beside it.
+   *
+   * Per DAY rather than per moment, because that is the resolution the page needs and the
+   * one it can state: a card is a day, and on every day the marker is drawn this zone is the
+   * zone the card's own labels were resolved in (`shareNowLine` refuses a day that crosses
+   * one). It leaks nothing the route strip does not already imply.
+   *
+   * The PDF ignores it, with everything else about now — paper keeps printing dates.
+   */
+  timezone: timezoneSchema,
+  /**
+   * **The last calendar day this card covers**, when a journey swallowed the days after it
+   * (owner, 2026-08-31: _"the return flight still folded to the day before the last entirely,
+   * then last day appears totally empty … maybe for long journeys like these the days should
+   * be combined to one"_).
+   *
+   * A journey renders on the day its first leg DEPARTS, and a 02:00 departure belongs to the
+   * night before — so a return that leaves Iceland at 02:00 and lands in Tel Aviv at 15:25
+   * the next afternoon put every row on one card and left the following one blank. Capping
+   * the layover only moved the seam; the honest answer is that the card covers both days,
+   * because the journey does.
+   *
+   * Absent for an ordinary day, which is every day that does not end mid-air.
+   */
+  endDate: dateOnlySchema.optional(),
+  title: sharedDayTitleSchema,
+  summary: sharedDaySummarySchema,
+  /**
+   * **THE BED THIS DAY STARTS IN, AND THE ONE IT ENDS IN** (ADR-0238 §1).
+   *
+   * `wokeIn` is the stay whose span began before today; `sleeps` is the one whose span runs
+   * past tonight. Two independent questions, which is why there is no ambient case: a
+   * check-in day answers only `sleeps`, a check-out day only `woke`, **a middle night
+   * answers both with the same stay**, and a day you change hotels answers each from its own
+   * span. They are `dayBookendStays`' two comparisons (`frontend/src/lib/glance.ts`) asked of
+   * the projection's spans, so the shared page and the two day surfaces cannot disagree about
+   * which bed a night is.
+   *
+   * **They replace `stay` + `checkIn` + `checkOut`**, which were one name in the day's header
+   * plus two clocks beside it. That shape was right about the ordering defect it fixed
+   * (ADR-0213's fourth amendment: a lodging row sorted into the afternoon by its check-in hour
+   * and printed `15:00–11:00` across midnight) and wrong about two things it could not see.
+   * It was derived from the one day bucket the span was FILED in, so a four-night stay framed
+   * its first night and none of the other three — and `checkOut`, asking "did last night
+   * happen somewhere else", answered yes on the second morning and printed a check-out four
+   * days early. And a name in a header is not a position, so the two legs a day is most
+   * certain to contain — out of one bed, into the other — had nothing to hang on.
+   *
+   * A bed is **not** a schedule row either way: it sorts into no daypart section and opens no
+   * heading (ADR-0209 §2 / ADR-0054 §2). It is the frame, now with a place in the reading
+   * order rather than only in the header.
+   */
+  wokeIn: sharedDayBedSchema.optional(),
+  sleeps: sharedDayBedSchema.optional(),
+  //
+  // **A STAY IS NAMED ONCE A DAY** (owner, 2026-09-21, on the built page: _"make it read once
+  // on a middle night"_). Where both ends are the SAME stay — every middle night, which on a
+  // long stay is most of them — only `sleeps` is published: the end the day reaches, and the
+  // one the drive home lands on. `wokeIn` is absent there, and it loses nothing by being: a
+  // middle night is neither edge of its stay, so that frame carried a name `sleeps` already
+  // carries and no bound at all.
+  //
+  // The leg out of it is not lost with it. It rides the day's first scheduled row as always,
+  // and takes `journey.from` — the origin named — so the one thing the head row was for
+  // (ADR-0206 §AD: a leg drawn out of an origin nobody can see is a journey with an invisible
+  // start) survives the subtraction that the repetition did not.
+  photo: sharedPhotoSchema.optional(),
+  sections: z.array(sharedDaypartSectionSchema),
+  /**
+   * **The record's two extras** (ADR-0241 §6), set only by a projection of the record (what
+   * happened, for the trip book) and never on the live link. `skipped` is the titles of the
+   * day's rows marked skipped, for `דילגנו · …`. `notes` is the notes written on the day's
+   * rows, in the order they were written (the memory Home's journal order), moved off the rows
+   * so the book can print them as the day's `מה כתבנו`; Everything with notes only.
+   */
+  skipped: z.array(z.string()).optional(),
+  notes: z.array(sharedNoteOpSchema).optional(),
+});
+export type SharedDay = z.infer<typeof sharedDaySchema>;
+
+/** Where the narrative on the page came from. Shown to nobody; it exists so a failed
+ *  model reads as a fallback in the logs rather than as missing trip data. */
+export const NARRATIVE_SOURCE = { DETERMINISTIC: 'deterministic', GENERATED: 'generated' } as const;
+export type NarrativeSource = (typeof NARRATIVE_SOURCE)[keyof typeof NARRATIVE_SOURCE];
+
+/**
+ * **Which way the narrative looks** (ADR-0241, 6A.1). `planned` writes a trip still ahead; a
+ * `retrospective` one is told in the past tense, over the rows that happened (`recapHappened`).
+ * One port and one allowlist for both: the tense is an input the generator writes to, never a
+ * second pipe.
+ */
+export const NARRATIVE_TENSE = { PLANNED: 'planned', RETROSPECTIVE: 'retrospective' } as const;
+export type NarrativeTense = (typeof NARRATIVE_TENSE)[keyof typeof NARRATIVE_TENSE];
+
+/**
+ * **The trip's fixed points, five lines above the seventy-nine** (owner, 2026-08-30:
+ * _"Maybe these sharings should have sections for important stuff, like flights,
+ * reservations etc."_).
+ *
+ * Not a tab — ADR-0004 forbids one and the day spine stays the spine — and not a second
+ * schedule. It is the answer to what a reader looks for first and what they screenshot:
+ * the flights, the car, the nights, the booked tours. Derived, never authored: a row is
+ * here exactly when its event is hard (ADR-0011) or a booking backs it.
+ *
+ * **At every level, including Summary.** These are the facts a Summary reader most needs
+ * and they carry no address, no code and no exact clock — a date and what the thing is.
+ */
+export const sharedCommitmentSchema = z.strictObject({
+  bookingType: bookingTypeSchema,
+  title: z.string(),
+  /** The second line — a route's waypoint, a stay's town. Absent where there is nothing
+   *  true to add; a guess in this slot is worse than a gap. */
+  detail: z.string().optional(),
+  date: dateOnlySchema,
+  /** A stay spans nights, so it names both ends. Absent for a point in time. */
+  endDate: dateOnlySchema.optional(),
+  /** Which day to jump to. An ordinal rather than a date because the reader page's anchors
+   *  are ordinals, and a date would make the renderer look the day up to find out. */
+  dayOrdinal: z.number().int().positive(),
+  /** **The operational material of a commitment that has no row of its own** — which is
+   *  every stay, since a stay became the day's frame rather than an event in its afternoon.
+   *  Its confirmation code and the note about which gate to use would otherwise have been
+   *  lifted out of the schedule with it and dropped, and this block is where a reader looks
+   *  for a hotel anyway. Same toggles, same gate. */
+  ops: z.array(sharedOpSchema).optional(),
+});
+export type SharedCommitment = z.infer<typeof sharedCommitmentSchema>;
+
+/**
+ * **What is attached to nothing** — and, since ADR-0213's 2026-08-30 amendment, only that.
+ *
+ * This used to carry every booking, note, task and file in the trip as four flat lists at
+ * the foot of the document. Everything with a host now travels on its host (`SharedOp`),
+ * so what is left here is the material that genuinely belongs to the trip rather than to
+ * any one moment in it: the packing list, the group's own reminders, a document nobody
+ * attached. That is a real category and it deserves a real name in each renderer —
+ * `לקראת הנסיעה`, not `פרטים נוספים`.
+ *
+ * **`notesAndTasks` is also where a privacy defect lived.** The share sheet promises
+ * `רק תוכן שמחובר למסלול` and `buildAppendix` queried `where: { tripId }` with no linkage
+ * filter, so a trip's every note was published under a control that said it would not be.
+ * Splitting attached from unattached is what makes that promise true rather than a caption.
+ */
+export const sharedAppendixSchema = z.strictObject({
+  /**
+   * **The ops with no host** — the same `SharedOp` union the rows carry, so a note here and
+   * a note on a row are one shape rendered by one component.
+   *
+   * It replaced three parallel per-family shapes, and their existence was the bug: the
+   * projection built the rows' ops from a linkage-aware pass and then built this block from
+   * a SECOND, unfiltered set of queries, so every note in the trip was published under a
+   * toggle promising otherwise and every attached note was printed twice. One source or the
+   * other had to go, and the one that knows about linkage is the one that stays (ADR-0096).
+   */
+  ops: z.array(sharedOpSchema).optional(),
+});
+export type SharedAppendix = z.infer<typeof sharedAppendixSchema>;
+
+export const sharedItinerarySchema = z.strictObject({
+  status: z.literal('live'),
+  detailLevel: shareDetailLevelSchema,
+  generatedAt: isoDateTimeSchema,
+  shareUrl: publicSharePathSchema,
+  trip: z.strictObject({
+    name: z.string(),
+    destination: z.string(),
+    icon: z.string().nullish(),
+    startDate: dateOnlySchema,
+    endDate: dateOnlySchema,
+    /**
+     * **The trip's primary zone** (ADR-0213's eleventh amendment §6) — an INPUT rather than
+     * an answer, and since 2026-09-03 no longer the input any question about _now_ reads:
+     * that is `SharedDay.timezone`, per day, from the day's own events. This stays as what the
+     * primary zone means; the hours before day one read `homeZone` below.
+     *
+     * Everything else about time here is pre-formatted, for the reason the header states: two
+     * renderers formatting one instant is how a PDF prints an hour the app never showed. But
+     * "which calendar day is it" cannot be pre-formatted — a stamped `today` is stale the
+     * minute after it is sent, on a page that holds a projection in React memory for as long
+     * as the tab is open. So a zone travels and the reader's own device runs `todayInTz`.
+     *
+     * The reader's zone is deliberately NOT used: a relative in Tel Aviv following a group in
+     * Iceland wants the day the group is having. Neither of these zones is a secret — both
+     * are implied by the destinations the masthead and the route strip already print.
+     *
+     * The PDF ignores it. A printed page that says `עכשיו` is lying by tomorrow, and unlike
+     * the live page it cannot correct itself.
+     */
+    timezone: timezoneSchema,
+    /**
+     * **Where the group is BEFORE the trip** — the first zone crossing's origin, else the
+     * primary (ADR-0213, 2026-09-10 amendment). The page needs a clock for the hours no card
+     * claims before day one, and the eighteenth amendment gave it the primary's: for a
+     * westward trip that is a clock a day behind the travellers, and at 00:50 at home on the
+     * morning of day one the masthead still read `מתחילים מחר`. This is the same answer the
+     * app's `liveZone` gives for any instant before the outbound flight (ADR-0107's 2026-09-10
+     * correction). Not the reader's zone, for the reason `timezone` above states.
+     */
+    homeZone: timezoneSchema,
+    dayCount: z.number().int().positive(),
+    eventCount: z.number().int().nonnegative(),
+    /** Ordered destination labels — the compact route strip, built from real stops
+     *  rather than a cover photo or a static map (ADR-0213 §3). Capped, so it is what the
+     *  strip DRAWS and never how many places the trip visits. */
+    routeLabels: z.array(z.string()),
+    /** **How many stops the route actually has.** `routeLabels.length` was being printed
+     *  as the trip's `אזורים` count, and it is the capped strip: a twenty-stop trip
+     *  reported eight (owner, 2026-08-30, reading the PDF masthead). */
+    routeStopCount: z.number().int().nonnegative(),
+    /** **How the trip moves** — see `tripShapeOf`. A renderer keys a word off it, which is
+     *  what makes it an enum and not a boolean pair. */
+    shape: shareTripShapeSchema,
+    /** **Who is going**, when the travellers toggle is on — beside the trip's own identity
+     *  rather than in a block at the foot (owner, 2026-08-30: _"the travelers shouldn't have
+     *  a section, they should just appear on top if they're on the permission list"_). Names
+     *  only; no toggle anywhere reveals an email. */
+    travelers: z.array(z.string()).optional(),
+    /** How many distinct places the trip sleeps at. `0` when no nights are recorded. */
+    baseCount: z.number().int().nonnegative(),
+  }),
+  narrative: z.strictObject({
+    source: z.enum([NARRATIVE_SOURCE.DETERMINISTIC, NARRATIVE_SOURCE.GENERATED]),
+    title: z.string(),
+    summary: z.string(),
+  }),
+  days: z.array(sharedDaySchema),
+  /** Empty for a trip with nothing booked, which is a real state and not an error — a
+   *  renderer draws no block rather than an empty one. */
+  commitments: z.array(sharedCommitmentSchema),
+  appendix: sharedAppendixSchema.optional(),
+});
+export type SharedItinerary = z.infer<typeof sharedItinerarySchema>;
+
+/**
+ * **A list's row** (ADR-0242 §4): the place facts a friend needs to go there, and none of what
+ * the trip did around it. No clock, no address line, no booking, no ops, no journey, no day.
+ */
+export const sharedListRowSchema = sharedEventSchema.pick({
+  title: true,
+  icon: true,
+  category: true,
+  placeName: true,
+  caption: true,
+  mapUrl: true,
+});
+export type SharedListRow = z.infer<typeof sharedListRowSchema>;
+
+/** A city's rows, in the order they were visited. `region` is absent when the list has one
+ *  region (the masthead names it) and on the last group of rows whose region is unknown. */
+export const sharedListGroupSchema = z.strictObject({
+  region: z.string().optional(),
+  rows: z.array(sharedListRowSchema).min(1),
+});
+export type SharedListGroup = z.infer<typeof sharedListGroupSchema>;
+
+/** **What a list's code answers** (ADR-0242 §4): the record's rows of one kind. */
+export const sharedListSchema = z.strictObject({
+  status: z.literal('list'),
+  generatedAt: isoDateTimeSchema,
+  shareUrl: publicSharePathSchema,
+  trip: z.strictObject({
+    name: z.string(),
+    destination: z.string(),
+    icon: z.string().nullish(),
+    startDate: dateOnlySchema,
+    endDate: dateOnlySchema,
+  }),
+  category: eventCategorySchema,
+  groups: z.array(sharedListGroupSchema),
+});
+export type SharedList = z.infer<typeof sharedListSchema>;
+
+/** Everything a public code can answer: the trip, or one list of it. */
+export const sharedPageSchema = z.discriminatedUnion('status', [
+  sharedItinerarySchema,
+  sharedListSchema,
+]);
+export type SharedPage = z.infer<typeof sharedPageSchema>;
+
+// ── The model boundary ──────────────────────────────────────────────────────────────
+
+/** Length ceilings on generated prose. A model that returns an essay is not returning a
+ *  day title, and a page that grows without bound is a layout the mockups never measured. */
+export const NARRATIVE_LIMIT = {
+  TITLE: 60,
+  SUMMARY: 240,
+} as const;
+
+/** No URL may appear in generated text: it is the one payload that turns a narrative into
+ *  a delivery mechanism, and the reader has no way to tell a model's link from ours. */
+const NO_URL = /(https?:\/\/|www\.|\b[a-z0-9-]+\.(com|net|org|io|app|co)\b)/i;
+const noUrl = (value: string) => !NO_URL.test(value);
+
+/**
+ * **Everything a future generator is allowed to see** — built server-side, from Summary-
+ * public text only, and INDEPENDENTLY of the selected share level, so no Everything toggle
+ * can widen it (ADR-0213 §2).
+ *
+ * Strict at every level, which is what makes that claim checkable rather than a promise:
+ * a builder that starts passing `travelerNames` fails the parse before the dispatch.
+ *
+ * **`placeName` was here and is gone** (ADR-0213's tenth amendment §6). The docblock above
+ * has always claimed level-independence and this field quietly broke it: the builder reads
+ * already-projected days, and the projection sets a place label only AFTER its Summary
+ * early return — so one trip generated a different narrative depending on which level
+ * happened to open it. Removing the field is what makes the claim true, and it removes
+ * rather than adds something crossing the boundary, which is the direction this ADR
+ * argues in everywhere else. The trip's principal stops still travel, in `routeLabels`.
+ */
+export const summaryNarrativeInputSchema = z.strictObject({
+  locale: z.string().max(8),
+  /** Present only on a retrospective input. Absent means planned, so every planned input
+   *  hashes exactly as it did before the tense existed and no stored narrative goes stale. */
+  tense: z.literal(NARRATIVE_TENSE.RETROSPECTIVE).optional(),
+  routeLabels: z.array(z.string()),
+  days: z.array(
+    z.strictObject({
+      ordinal: z.number().int().positive(),
+      events: z.array(
+        z.strictObject({
+          title: z.string(),
+          daypart: shareDaypartSchema,
+          icon: z.string().optional(),
+          category: eventCategorySchema.optional(),
+        }),
+      ),
+    }),
+  ),
+});
+export type SummaryNarrativeInput = z.infer<typeof summaryNarrativeInputSchema>;
+
+export const itineraryNarrativeOutputSchema = z.strictObject({
+  title: z.string().min(1).max(NARRATIVE_LIMIT.TITLE).refine(noUrl, 'narrative may not link'),
+  summary: z.string().max(NARRATIVE_LIMIT.SUMMARY).refine(noUrl, 'narrative may not link'),
+  days: z.array(
+    z.strictObject({
+      ordinal: z.number().int().positive(),
+      title: z.string().min(1).max(NARRATIVE_LIMIT.TITLE).refine(noUrl, 'narrative may not link'),
+      summary: z.string().max(NARRATIVE_LIMIT.SUMMARY).refine(noUrl, 'narrative may not link'),
+    }),
+  ),
+});
+export type ItineraryNarrativeOutput = z.infer<typeof itineraryNarrativeOutputSchema>;

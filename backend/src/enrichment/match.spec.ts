@@ -703,3 +703,82 @@ describe('descriptorAwareSimilarity — the word that names what the candidate I
     expect(scored.confidence).toBe(0);
   });
 });
+
+describe('the Pantheon — Hebrew article and a title that says where it is (2026-09-28)', () => {
+  const PANTHEON = { name: 'הפנתאון', lat: 41.8986108, lng: 12.4768729 };
+  const ITEM = { lat: 41.8986, lng: 12.4769 };
+  const ROME = ['רומא', 'Rome', 'Roma', 'Italy', 'איטליה'];
+
+  it('folds the Hebrew definite article, on either side', () => {
+    expect(nameSimilarity('הפנתאון', 'פנתאון')).toBe(1);
+    expect(nameSimilarity('פנתאון', 'הפנתאון')).toBe(1);
+    // A short word is never reduced to a fragment.
+    expect(nameSimilarity('הר', 'ר')).toBe(0);
+  });
+
+  it("drops the candidate's location qualifier when the item says it is there", () => {
+    const scored = nameProximityConfidence(PANTHEON, {
+      name: 'הפנתאון ברומא',
+      placeNouns: ROME,
+      ...ITEM,
+    });
+    expect(scored.nameSimilarity).toBe(1);
+    expect(scored.confidence).toBe(0.9);
+    expect(
+      nameProximityConfidence(
+        { name: 'Pantheon', ...ITEM },
+        {
+          name: 'Pantheon, Rome',
+          placeNouns: ROME,
+          ...ITEM,
+        },
+      ).nameSimilarity,
+    ).toBe(1);
+  });
+
+  it('does not drop it on the word of the title alone — the item has to be there', () => {
+    const scored = nameProximityConfidence(PANTHEON, { name: 'הפנתאון ברומא', ...ITEM });
+    expect(isMatchConfident(scored.confidence)).toBe(false);
+    // Paris's Pantheon is not in Rome, so its qualifier stays and it still refuses.
+    expect(nameSimilarity('הפנתאון', 'הפנתאון של פריז') < MATCH_MIN_NAME_SIMILARITY).toBe(true);
+  });
+
+  it('lets the coordinate route see the name agree instead of veto', () => {
+    expect(
+      geoProximityConfidence(PANTHEON, { name: 'הפנתאון ברומא', placeNouns: ROME, ...ITEM })
+        .confidence,
+    ).toBe(0.9);
+  });
+
+  it('never strips what is not a place the candidate is in — §16 still refuses', () => {
+    // The station's extra words are not its location, however they are phrased.
+    const station = nameProximityConfidence(
+      { name: 'Piccadilly Circus', lat: 51.51, lng: -0.1348 },
+      {
+        name: 'Piccadilly Circus tube station',
+        placeNouns: ['London', 'City of Westminster', 'United Kingdom'],
+        lat: 51.51,
+        lng: -0.1348,
+      },
+    );
+    expect(isMatchConfident(station.confidence)).toBe(false);
+    // `בית` begins with the letter but is a word, not "in ית".
+    expect(
+      descriptorAwareSimilarity('מוזיאון', 'מוזיאון בית אנה', undefined, ['אנה']) <
+        MATCH_MIN_NAME_SIMILARITY,
+    ).toBe(true);
+  });
+});
+
+describe('an inflected word corroborates like a respelt one', () => {
+  it('matches a construct plural against the singular in a multi-word name', () => {
+    // `מפלי דטיפוס` (Google) against `מפל דטיפוס` (Wikipedia), 823m apart in production.
+    expect(nameSimilarity('מפלי דטיפוס', 'מפל דטיפוס')).toBeGreaterThanOrEqual(
+      MATCH_MIN_NAME_SIMILARITY,
+    );
+  });
+
+  it('never carries a one-word name on its own', () => {
+    expect(nameSimilarity('Bari', 'Bar')).toBeLessThan(MATCH_MIN_NAME_SIMILARITY);
+  });
+});

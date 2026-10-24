@@ -7,11 +7,20 @@
 // two rows that touch — the same slot is a drag-only seam. The `free*` functions answer
 // without a threshold and the `gap*` wrappers apply it, so a gap and a seam cannot
 // disagree about what free time IS or about what a drop into it lands on.
-import { typicalMinutesFor, type EventCategory, type TripEvent } from '@waypoint/shared';
-import { DAY_WINDOW } from '../constants';
+import {
+  EVENT_STATUS,
+  typicalMinutesFor,
+  type EventCategory,
+  type TripEvent,
+  type UpdateEventInput,
+} from '@waypoint/shared';
+import { DAY_WINDOW, MS_PER_MINUTE } from '../constants';
 import { isoToTimeInput, toHHMM, toMin, zonedIso } from './time';
 
 const LAST_MINUTE_OF_DAY = 23 * 60 + 59; // 23:59 — the prefill slot stays same-day
+/** The day's last minute as an instant — the ceiling a hole with nothing after it runs to. */
+export const dayLastMinuteMs = (date: string, tz: string): number =>
+  localMidnight(date, tz) + LAST_MINUTE_OF_DAY * MS_PER_MINUTE;
 
 /** Minutes since the day's own local midnight. An overnight end (02:00 the next
  *  morning, ADR-0037) reads as ≥ 1440 rather than as an early-morning slot. */
@@ -34,12 +43,64 @@ export const GAP_MIN_MINUTES = 60;
  *  extend it. Capped at the gap itself so a small gap fills exactly. */
 export const GAP_FILL_MINUTES = 60;
 
+/**
+ * **The grain a suggested slot's end is stated on, and it is always rounded DOWN** (owner,
+ * 2026-09-01: _"round the suggestions so that it shows 14:45 instead of 14:47 · down so that it
+ * doesn't cross to the unavailable time"_).
+ *
+ * The end of an offer is a departure counted backwards (`arriveBy - travel - buffer`), so it lands
+ * on whatever minute the router happened to answer. `14:47` is arithmetically exact and reads as
+ * false precision on a control you are about to plan lunch inside — nobody picks a time that way.
+ *
+ * **Down, never to the nearest.** Rounding up would spend two minutes of the journey, which is the
+ * one thing the narrowing exists to prevent: the whole point is that the slot stops before the
+ * road starts. The couple of minutes given away instead are the cheapest possible reading of
+ * `TRAVEL_BUFFER_SECONDS`' own argument about what an estimate may claim.
+ */
+export const SLOT_STEP_MINUTES = 5;
+
+/** An instant floored onto {@link SLOT_STEP_MINUTES}. No zone is threaded because none is needed:
+ *  every real UTC offset is a whole number of five minutes (⁦+05:45⁩ included), so the grid lands on
+ *  the same wall clock in every one of them. */
+export const flooredSlotEnd = (ms: number): number => {
+  const step = SLOT_STEP_MINUTES * MS_PER_MINUTE;
+  return Math.floor(ms / step) * step;
+};
+
+/** **The start of the next slot on or after an instant** — `flooredSlotEnd`'s mirror, and a pair
+ *  for its reason: a window narrowed at BOTH ends has to round inward at both, or the slot it
+ *  offers begins on a minute its own bound has already ruled out. */
+export const ceiledSlotStart = (ms: number): number => {
+  const step = SLOT_STEP_MINUTES * MS_PER_MINUTE;
+  return Math.ceil(ms / step) * step;
+};
+
 /** Prefill for a new/scheduled event dropped into the gap: the gap's own slot. */
 export type GapDefaults = { date: string; start: string; end: string };
 
 /** Free time, and the slot a drop into it lands on. `minutes` can be **zero**: back-to-back
  *  rows still have a position between them, which is what a seam is (ADR-0161 §2). */
-export type Gap = { minutes: number; fill: GapDefaults };
+export type Gap = {
+  minutes: number;
+  fill: GapDefaults;
+  /**
+   * **THE LAST MOMENT ANYTHING PUT HERE MAY RUN TO**, as a wall clock in `fill`'s own zone —
+   * the departure the day advises (`narrowGapForTravel`), and absent on a slot with no journey
+   * after it, which is most of them.
+   *
+   * It exists because `minutes` and `fill.start` do not always measure from the same instant, so
+   * neither of them can express this. `freeBeforeFirst`'s block HUGS the first event
+   * (`max(floor, first - 60)`), so on the reported day the hole's free time ran 07:00–08:05 while
+   * the block sat at 07:30 — and `blockFor`, capping a length against `minutes`, gave a 60-minute
+   * idea 07:30–08:30 and drove it straight through the 08:05 departure. Capping against the
+   * `fill` window instead would fix that one case and break the ordinary one, where `fill.end` is
+   * the DEFAULT block rather than a ceiling and a three-hour hike is entitled to the whole hole.
+   *
+   * Two fields because they are two facts: `fill` is where a drop lands, this is what it may not
+   * cross.
+   */
+  until?: string;
+};
 
 /** **The one place the chip threshold is applied.** Above it the free time is worth a
  *  `שבץ` chip; below it — including zero — the same slot is a drag-only seam.
@@ -47,7 +108,37 @@ export type Gap = { minutes: number; fill: GapDefaults };
  *  Exported because the RENDERER needs the same answer, and asking it twice is how the
  *  two densities would drift: `PlanDay` reads this rather than comparing against
  *  `GAP_MIN_MINUTES` itself, so "is this a chip or a seam" has exactly one definition. */
-export const earnsChip = (free: Gap): boolean => free.minutes >= GAP_MIN_MINUTES;
+export const earnsChip = (free: Gap): boolean => earnsChipAt(free.minutes);
+
+/** **The same threshold, asked of a MINUTE COUNT** — because since ADR-0206 §V1.1 the number that
+ *  decides is not always the hole's own. A hole with a journey in it earns its chip on what is
+ *  FREE, not on how long the hole is: `where-a-route-shows-up-v1.html` §2 drew `if (left >= 60)`
+ *  and said in as many words that below it "there is simply no chip — exactly as today". A
+ *  45-minute chip over a hole a 40-minute walk eats is an offer nobody can take.
+ *
+ *  Both forms read one constant, so the two callers cannot drift. */
+export const earnsChipAt = (minutes: number): boolean => minutes >= GAP_MIN_MINUTES;
+
+/** **Below this, free time is not free time — it is the transition** (owner, 2026-08-26:
+ *  _"a gap below say 15 minutes is not really free time"_).
+ *
+ *  A SECOND threshold and not a re-tune of the one above, because they answer different
+ *  questions: `GAP_MIN_MINUTES` asks whether a hole is worth **offering** as a slot (can you put
+ *  something in it), and this asks whether it is worth **stating** as free (can you spend it).
+ *  Sixty for the offer and fifteen for the statement is not a contradiction — it is the range
+ *  where the day says "you have a bit of time" without pretending you could schedule anything.
+ *
+ *  **It exists because M6a regressed the silence.** A 45-minute hole earns no `gap` join at all,
+ *  so before the journey block Trip mode said nothing about it; the block ignores that floor on
+ *  purpose (§Z5 §M2 — a 40-minute walk in a 45-minute hole is the one thing the day must not be
+ *  quiet about) and carried the free-time run in with it, so the same hole started reporting
+ *  `5 דק׳ פנויות`. The walk is still stated. The five minutes are not. */
+export const FREE_TIME_MIN_MINUTES = 15;
+
+/** **Is this worth calling free time at all.** Asked rather than compared, for `earnsChipAt`'s own
+ *  reason: the moment two surfaces compare against the constant themselves is the moment one of
+ *  them uses `>` and the other `>=`. */
+export const statesFreeTime = (minutes: number): boolean => minutes >= FREE_TIME_MIN_MINUTES;
 
 const floored = (free: Gap | null): Gap | null => (free && earnsChip(free) ? free : null);
 
@@ -160,6 +251,59 @@ export function gapAfterLast(dayEvents: TripEvent[], date: string, tz: string): 
 }
 
 /**
+ * **WHAT A HOLE STILL OFFERS, AT THE MOMENT IT IS READ** (ADR-0217's 2026-09-05 amendment) —
+ * `narrowGapForTravel`'s mirror at the other end, and the second correction one hole can need.
+ *
+ * That one caps the window at the departure the day advises; this one moves its START to the
+ * clock, because the two halves of a hole you are standing in were both stale. Reported with a
+ * screenshot at ⁦16:10⁩ of an ⁦08:00–16:46⁩ window: the strip still said `8:46 שע׳ פנויות` — the
+ * length the hole had when nobody was in it — and the `＋` beside it opened a sheet headed
+ * `08:00 – 09:00`, offering eight hours that had already happened.
+ *
+ * **One narrowed object rather than a corrected label**, for the reason §V1.1 records about the
+ * other end: `minutes` is what the strip states AND what caps a block, `fill` is where a drop
+ * lands, and correcting the words while the offer stayed whole is exactly the contradiction that
+ * fix was written about. So the sheet's header, the feasibility floor a pick is measured against
+ * (`shelfForSlot`), the block a pick writes (`ideaBlock`) and a fresh event's prefill all follow
+ * from this one value.
+ *
+ * **`null` once nothing is left**, which is the caller's signal to draw no strip at all: a hole
+ * whose free time is spent is not a hole with `0 דק׳ פנויות` in it. `endsMs` is the window's own
+ * end — `holeDepartsMs` where a journey takes the hole over, else the row below — and it is the
+ * caller's to pass precisely so the strip and the now-marker cannot disagree about when that is.
+ *
+ * **Unchanged wherever the moment is not INSIDE the window**, which is what keeps it a no-op on
+ * every other day and on today's earlier holes. That is deliberate rather than incidental: a hole
+ * behind you is still where you record the lunch you had at ⁦12:00⁩, and clamping it would take
+ * backfilling away to fix a slot nobody was standing in.
+ */
+export function narrowGapToNow(free: Gap, nowMs: number, endsMs: number, tz: string): Gap | null {
+  if (!Number.isFinite(nowMs) || !Number.isFinite(endsMs)) return free;
+  const opensMs = Date.parse(zonedIso(free.fill.date, free.fill.start, tz));
+  if (!Number.isFinite(opensMs) || nowMs <= opensMs) return free;
+  // Rounded, so the statement and the strip's own `freeTimePhrase` count the same minutes.
+  const minutes = Math.round((endsMs - nowMs) / MS_PER_MINUTE);
+  if (minutes <= 0) return null;
+  /** The last moment anything dropped here may run to: the ceiling this hole already carried
+   *  (the advised departure), or this window's own end on the same grid every slot bound uses. */
+  const capped = free.until ? Date.parse(zonedIso(free.fill.date, free.until, tz)) : NaN;
+  const ceilingMs = Number.isFinite(capped) ? capped : flooredSlotEnd(endsMs);
+  const until = isoToTimeInput(new Date(ceilingMs).toISOString(), tz);
+  const start = isoToTimeInput(
+    new Date(Math.min(ceiledSlotStart(nowMs), ceilingMs)).toISOString(),
+    tz,
+  );
+  // The position's default block, from here — capped by the ceiling like `blockFor`'s, and
+  // start-only where there is no longer a block's worth of room (`freeBetween`'s own shape).
+  const endMin = Math.min(toMin(start) + GAP_FILL_MINUTES, toMin(until));
+  return {
+    minutes,
+    until,
+    fill: { ...free.fill, start, end: endMin > toMin(start) ? toHHMM(endMin) : '' },
+  };
+}
+
+/**
  * **The block a CREATE gets at a position** (ADR-0161 §5): the position's own start, and the
  * length asked for — capped by the room actually there, so nothing is ever created longer
  * than the hole it went into.
@@ -176,7 +320,11 @@ export function gapAfterLast(dayEvents: TripEvent[], date: string, tz: string): 
 export function blockFor(free: Gap, minutes: number): GapDefaults {
   const startMin = toMin(free.fill.start);
   const wanted = free.minutes > 0 ? Math.min(minutes, free.minutes) : minutes;
-  const endMin = Math.min(startMin + wanted, LAST_MINUTE_OF_DAY);
+  // …and never past the moment the day says to leave (`Gap.until`), which is a CEILING and not a
+  // length: the free minutes are measured over the hole, and the block starts wherever the
+  // position put it.
+  const ceiling = free.until ? toMin(free.until) : LAST_MINUTE_OF_DAY;
+  const endMin = Math.min(startMin + wanted, ceiling, LAST_MINUTE_OF_DAY);
   return { ...free.fill, end: endMin > startMin ? toHHMM(endMin) : '' };
 }
 
@@ -239,4 +387,72 @@ export function nextSlot(dayEvents: TripEvent[], date: string, tz: string): GapD
     start: toHHMM(startMin),
     end: endMin > startMin ? toHHMM(endMin) : '',
   };
+}
+
+/**
+ * **The slot a quick add lands on: now** (ADR-0231 §3, fork F4). The start is the moment,
+ * ceiled to the slot grid; the length is the default block, capped by the room to the next
+ * planned row ahead — so a café added at ⁦13:51⁩ with a stop at ⁦14:30⁩ is ⁦13:55–14:30⁩, and
+ * one added into an open afternoon is the full hour.
+ *
+ * Not `firstPositionFitting`: "the first hole with room" is the right opening offer for an
+ * idea being PLACED and the wrong one for a thing you are standing in front of — and a done
+ * event whose end is still ahead holds its slot in every gap derivation (fork F8), so the
+ * first fitting hole is frequently not where you are. The clock is.
+ *
+ * Same-day, like every prefill here: a start past the day's last minute clamps to it, and
+ * the end drops when there is no block's worth of room left (`nextSlot`'s own shape).
+ */
+export function quickAddSlot(
+  dayEvents: TripEvent[],
+  date: string,
+  tz: string,
+  nowMs: number,
+): GapDefaults {
+  return nowGap(dayEvents, date, tz, nowMs).fill;
+}
+
+/**
+ * **The hole you are standing in, opened at now** — `minutes` is the room to the next planned
+ * row ahead (or to the day's last minute), `fill` the default block from now, capped by it.
+ * `quickAddSlot` is its fill; the picker's `עכשיו` row (ADR-0231 §1) is the whole thing, so it
+ * can say how much is free the way every other position does. Inside an event the room is
+ * measured to the NEXT row's start regardless — `עכשיו` while inside a row is ADR-0161 §3's
+ * honest overlap, not a refusal.
+ */
+export function nowGap(dayEvents: TripEvent[], date: string, tz: string, nowMs: number): Gap {
+  const dayStartMs = localMidnight(date, tz);
+  const startMin = Math.min(
+    Math.max(0, minutesInto(new Date(ceiledSlotStart(nowMs)).toISOString(), dayStartMs)),
+    LAST_MINUTE_OF_DAY,
+  );
+  const startMs = dayStartMs + startMin * MS_PER_MINUTE;
+  const nextStarts = dayEvents
+    .filter((e) => e.status === EVENT_STATUS.PLANNED && e.startsAt)
+    .map((e) => Date.parse(e.startsAt!))
+    .filter((ms) => ms > startMs);
+  const room = nextStarts.length
+    ? Math.round((Math.min(...nextStarts) - startMs) / MS_PER_MINUTE)
+    : LAST_MINUTE_OF_DAY - startMin;
+  const free: Gap = { minutes: room, fill: { date, start: toHHMM(startMin), end: '' } };
+  return { ...free, fill: blockFor(free, GAP_FILL_MINUTES) };
+}
+
+/**
+ * **An EXISTING event, put at a slot, keeping its own length** (ADR-0161 §1). It starts where
+ * the slot starts; an untimed event has no length to keep, so it takes the slot's block.
+ *
+ * Written once in `PlanDay` as `slotFor` while the builder was the only surface that moved a
+ * row into a position; the Trip card's time button (ADR-0231 §1) is the second, and two copies
+ * of "start here, keep your length" is the parallel copy rule 8 exists to prevent.
+ */
+export function eventAtSlot(event: TripEvent, fill: GapDefaults, tz: string): UpdateEventInput {
+  const startsAt = zonedIso(fill.date, fill.start, tz);
+  if (!event.startsAt)
+    return { startsAt, ...(fill.end ? { endsAt: zonedIso(fill.date, fill.end, tz) } : {}) };
+  if (!event.endsAt) return { startsAt };
+  const durationMs = Date.parse(event.endsAt) - Date.parse(event.startsAt);
+  // Absolute ms, so an event long enough to run past midnight keeps its length instead of
+  // needing the date arithmetic ADR-0037 already settled.
+  return { startsAt, endsAt: new Date(Date.parse(startsAt) + durationMs).toISOString() };
 }

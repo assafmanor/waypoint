@@ -17,12 +17,19 @@
 //
 // The picker the button OPENS is `ui/domain/DaySlotPicker` with `lib/day-positions.ts`'s
 // options; both are tested where they live. This is about the row.
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { EVENT_KIND, EVENT_STATUS, type TripEvent } from '@waypoint/shared';
+import { useMemo, type ReactElement } from 'react';
 import { BuilderRow } from './PlanDay';
 import { wrapNav } from '../test/nav-harness';
+import { useHoldToDrag } from '../lib/useHoldToDrag';
+import { BEAT, playBeat } from '../lib/one-shot';
+import { DRAG_HOLD_MS } from '../constants';
 import { t } from '../i18n/he';
+// jsdom implements neither PointerEvent nor pointer capture, and the hold's arbitration is
+// entirely about `pointerType` and coordinates.
+import '../test/pointer-events';
 
 const NOW = '2026-07-01T00:00:00Z';
 const ev = (
@@ -59,6 +66,7 @@ function row(
     onPark?: () => void;
     readOnly?: boolean;
     onOpen?: () => void;
+    photoUrl?: string;
   } = {},
 ) {
   return render(
@@ -66,6 +74,7 @@ function row(
       <BuilderRow
         event={event}
         tz={TZ}
+        photoUrl={opts.photoUrl}
         onOpen={opts.onOpen ?? vi.fn()}
         onEdit={vi.fn()}
         onDelete={vi.fn()}
@@ -191,6 +200,53 @@ describe('BuilderRow — the row opens a read', () => {
     fireEvent.click(main);
     expect(onOpen).toHaveBeenCalledTimes(1);
   });
+
+  // …and **the WHOLE card is that tap** (owner report, 2026-08-24): the button is one cell
+  // of the row's grid, so the padding, the badge's column and the width beside the when line
+  // used to answer nothing. What a real finger hits there is `.bld` itself — measured in
+  // `e2e/plan-row-tap.spec.ts`, which is where the geometry half of this lives; these pin
+  // the arbitration, which is the half that can be got wrong in jsdom.
+  it('opens the read from the card itself, not only from the title', () => {
+    const onOpen = vi.fn();
+    const { container } = row(A, { onOpen });
+    fireEvent.click(container.querySelector('.bld')!);
+    expect(onOpen).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens it ONCE when the title inside the card is tapped', () => {
+    const onOpen = vi.fn();
+    const { container } = row(A, { onOpen });
+    fireEvent.click(container.querySelector('.bld-ttl')!);
+    expect(onOpen).toHaveBeenCalledTimes(1);
+  });
+
+  // A control on the card answers first, or the card would open on every press.
+  it('leaves the read shut when a control on the card is tapped', () => {
+    const onOpen = vi.fn();
+    const onPickTime = vi.fn();
+    // Scoped to this render's own container: the describe block above keeps its rows
+    // mounted, so a page-wide query would find several of each control.
+    const { container } = row(A, { onOpen, onPickTime });
+
+    fireEvent.click(container.querySelector('button.bld-time')!);
+    expect(onPickTime).toHaveBeenCalledTimes(1);
+    fireEvent.click(container.querySelector('.bld-icon')!);
+
+    expect(onOpen).not.toHaveBeenCalled();
+  });
+
+  // The row's own sheets are rendered INSIDE the row and portal out, and a React portal
+  // bubbles to its react parent — so without the containment check, dismissing the ⋯ sheet
+  // would open the read behind it.
+  it('ignores what its own sheet sends it — a backdrop dismiss is not a tap on the card', () => {
+    const onOpen = vi.fn();
+    const { container } = row(A, { onOpen });
+    fireEvent.click(container.querySelector('.bld-icon')!);
+
+    fireEvent.click(document.querySelector('.modal-overlay')!);
+
+    expect(onOpen).not.toHaveBeenCalled();
+  });
 });
 
 // **ONE LOCK, BESIDE THE THING IT LOCKS** (ADR-0178 §4). Hard/soft used to be drawn three
@@ -222,5 +278,171 @@ describe('BuilderRow — the hard mark is drawn once, on the when line', () => {
     expect(container.querySelector('.bld')!.classList.contains('soft')).toBe(true);
     expect(container.querySelector('.tag-soft')).toBeNull();
     expect(container.querySelector('.hard-lock')).toBeNull();
+  });
+});
+
+// ADR-0199 §1/§2. A hard row never drags — it is a pinned anchor (ADR-0011) — and until
+// this it got no hold props at all, so the thing that answered a press-and-hold on a
+// commitment was the platform's text-selection UI. These pin the wiring: the row takes the
+// refusing hold, the beat lands ON the row, and the row still does not claim to be
+// draggable.
+describe('a hard row answers the hold it cannot obey (ADR-0199)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    Element.prototype.setPointerCapture = vi.fn();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    cleanup();
+  });
+
+  /** The screen's own wiring, reproduced: one refusing props object shared by every hard
+   *  row, playing `BEAT.PINNED` on whichever element was held. */
+  function Host({ event }: { event: TripEvent }) {
+    const holdToDrag = useHoldToDrag();
+    const refuseProps = useMemo(
+      () => holdToDrag({ onRefuse: (el) => playBeat(el, BEAT.PINNED) }),
+      [holdToDrag],
+    );
+    return (
+      <BuilderRow
+        event={event}
+        tz={TZ}
+        onOpen={vi.fn()}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        onPickTime={vi.fn()}
+        refuseProps={refuseProps}
+      />
+    );
+  }
+
+  /** Scoped to THIS render's container, never `document`: an earlier describe in this file
+   *  leaves its own `.bld` behind, and a document-wide query silently answered with that
+   *  row instead — a green-looking assertion about the wrong element. */
+  let container: HTMLElement;
+  const mount = (ui: ReactElement) => {
+    container = render(wrapNav(ui)).container;
+  };
+  const rowEl = () => container.querySelector('.bld') as HTMLElement;
+  const press = () =>
+    fireEvent.pointerDown(rowEl(), {
+      clientX: 50,
+      clientY: 50,
+      pointerType: 'touch',
+      pointerId: 1,
+    });
+  const hold = () => {
+    press();
+    vi.advanceTimersByTime(DRAG_HOLD_MS);
+  };
+
+  it('plays the pinned beat on the row itself', () => {
+    mount(<Host event={HARD} />);
+    expect(rowEl().classList.contains(BEAT.PINNED)).toBe(false);
+    hold();
+    expect(rowEl().classList.contains(BEAT.PINNED)).toBe(true);
+  });
+
+  it('says nothing before the hold completes — a tap is still a tap', () => {
+    mount(<Host event={HARD} />);
+    press();
+    vi.advanceTimersByTime(DRAG_HOLD_MS - 50);
+    expect(rowEl().classList.contains(BEAT.PINNED)).toBe(false);
+  });
+
+  // The beat must be replayable: pressing the same row again is the case a plain class
+  // toggle gets wrong, and it is the whole reason `playBeat` forces a reflow.
+  it('answers a second hold on the same row', () => {
+    mount(<Host event={HARD} />);
+    hold();
+    fireEvent.pointerUp(rowEl());
+    // Drain the beat's removal and the click swallow's expiry, so the row is back at rest
+    // and the next hold timer is the only thing pending.
+    vi.runAllTimers();
+    expect(rowEl().classList.contains(BEAT.PINNED)).toBe(false);
+
+    hold();
+    expect(rowEl().classList.contains(BEAT.PINNED)).toBe(true);
+  });
+
+  // `.draggable` carries the grab cursor and, before ADR-0199 §4, the selection rule. A
+  // refusing row must not wear it: it is answering the gesture, not offering it.
+  it('does not claim to be draggable', () => {
+    mount(<Host event={HARD} />);
+    expect(rowEl().classList.contains('draggable')).toBe(false);
+  });
+
+  it('a row given neither props answers nothing at all', () => {
+    container = row(HARD).container;
+    press();
+    vi.advanceTimersByTime(DRAG_HOLD_MS);
+    expect(rowEl().classList.contains(BEAT.PINNED)).toBe(false);
+  });
+});
+
+// **THE BUILDER ROW'S BADGE TAKES THE PHOTO TOO** (ADR-0219 §1). Plan and Trip render the
+// same rows off the same derivation, so the two assertions here are `EventCard`'s own — a
+// difference between them would be a difference about a fact (ADR-0159 §1).
+describe('the badge photo (ADR-0219 §1)', () => {
+  afterEach(() => cleanup());
+
+  const photoImg = (c: HTMLElement) =>
+    c.querySelector('.bld-bd .wp-placebadge-photo img') as HTMLImageElement | null;
+
+  it('fills the badge with the photo it is given', () => {
+    const { container } = row(A, { photoUrl: '/enrichment/images/enr_1' });
+    expect(photoImg(container)?.getAttribute('src')).toBe('/enrichment/images/enr_1');
+    expect(container.querySelector('.bld-bd')!.hasAttribute('data-photo')).toBe(true);
+  });
+
+  it('renders the glyph and no image without one — most rows, unchanged', () => {
+    const { container } = row(A);
+    expect(photoImg(container)).toBeNull();
+    expect(container.querySelector('.bld-bd')!.hasAttribute('data-photo')).toBe(false);
+  });
+});
+
+// **THE ARCHIVE ROW IS A RECORD** (ADR-0240 §5). A done row carried the `היינו ✓` chip AND a
+// filled ✓ circle; the chip is the mark and the undo now, as on Trip's card (ADR-0230 §1), and
+// the slot keeps only what is still a question or an action.
+describe('the finished-trip settle record (ADR-0240 §5)', () => {
+  afterEach(() => cleanup());
+
+  const settled = (status: TripEvent['status']) => {
+    const verbs = { onDone: vi.fn(), onSkip: vi.fn(), onRestore: vi.fn() };
+    const { container } = render(
+      wrapNav(
+        <BuilderRow
+          event={{ ...A, status }}
+          tz={TZ}
+          onOpen={vi.fn()}
+          onEdit={vi.fn()}
+          onDelete={vi.fn()}
+          readOnly
+          settle={{ status, ...verbs }}
+        />,
+      ),
+    );
+    return { container, verbs };
+  };
+
+  it('marks a done row once, with the chip, and the chip takes it back', () => {
+    const { container, verbs } = settled(EVENT_STATUS.DONE);
+    expect(container.querySelector('.bld-settle')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: t.actions.undoDone }));
+    expect(verbs.onRestore).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the slot for a skipped row, which restores', () => {
+    const { container, verbs } = settled(EVENT_STATUS.SKIPPED);
+    expect(container.querySelector('.bld.is-skip')).not.toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: t.actions.restore }));
+    expect(verbs.onRestore).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the slot for an unresolved row, which asks', () => {
+    const { container } = settled(EVENT_STATUS.PLANNED);
+    expect(container.querySelector('.bld-settle.ghost')).not.toBeNull();
   });
 });

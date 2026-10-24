@@ -15,6 +15,10 @@ import type { Revealed } from '../../lib/filter-reveal';
 import { FLIP_KEY_ATTR, useFlipRows } from '../../lib/useFlipRows';
 import './reveal-list.css';
 
+/** The class every row wrapper carries. Named because `reveal-list.css` and the collapse it
+ *  describes are one fact in two files, and a second string literal for it is how they drift. */
+const REVEAL_ROW_CLASS = 'wp-reveal';
+
 export function RevealRow({
   visible,
   delayMs,
@@ -32,7 +36,7 @@ export function RevealRow({
 }) {
   return (
     <div
-      className={'wp-reveal' + (visible ? '' : ' hidden') + (className ? ' ' + className : '')}
+      className={REVEAL_ROW_CLASS + (visible ? '' : ' hidden') + (className ? ' ' + className : '')}
       style={{ transitionDelay: `${delayMs}ms` }}
       inert={!visible}
       {...(visible && flipKey ? { [FLIP_KEY_ATTR]: flipKey } : {})}

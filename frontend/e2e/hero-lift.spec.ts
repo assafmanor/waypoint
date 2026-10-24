@@ -13,6 +13,7 @@
 // boards on screen at once — so the first test here is a count, not a measurement.
 import { test, expect, type Page } from '@playwright/test';
 import { bootIntoTrip, shortLiveTripDates, todayAt, TRIP_ID } from './boot';
+import { t } from '../src/i18n/he';
 
 const PHONE = { width: 390, height: 844 };
 const NOW = () => todayAt('15:00');
@@ -316,48 +317,176 @@ test.describe('the lifted hero (ADR-0160)', () => {
     expect(radius).toBeGreaterThan(8);
   });
 
-  // **Plan's hero is the other half of the same decision** (ADR-0160 §H): it does not lift,
-  // because its depth is the checklist rendered directly beneath it — but a tap that
-  // produces nothing at all reads as a dead surface, so it answers with the rebuff.
+  // **PLAN'S HERO LIFTS TOO NOW** (ADR-0193 §4), and this test replaces the one that
+  // asserted the opposite. ADR-0160 §H had this hero answer a tap with a rebuff because it
+  // opened nothing — its depth was the checklist rendered directly beneath it. §H also wrote
+  // its own revisit condition ("when Plan's hero summarises something it does not show
+  // inline"), and ADR-0193 §3 creates it by folding the far and undated tasks behind one
+  // row. So a press with a run-up opens it, and the rebuff is what answers a press WITHOUT
+  // one — the ready trip, restored 2026-08-17 and covered by `PlanHome.lift.test.tsx`; the
+  // beat's keyframes are proven running by the Trip-board test below, which plays the same
+  // shared rule.
   //
-  // This is in a browser for the reason the board taught in phase 4: a beat can be written
-  // correctly, applied correctly, and still never run because some other rule owns the
-  // `animation` property. Only a real engine can say the keyframes fired.
-  test('Plan mode: the prep hero rebuffs instead of lifting', async ({ page }) => {
-    await boot(page);
-    await page.getByRole('button', { name: 'תכנון', exact: true }).click();
-    await expect(page.locator('.app')).toHaveAttribute('data-mode', 'plan');
-    // Wait for `.prep-dates`, not for `.prep`. `PlanHome` is lazy-loaded and
-    // `HomeSkeleton` renders its own placeholder `.prep` in the meantime — which has no
-    // handler, so a spec that clicks the first `.prep` it sees clicks the skeleton and
-    // reports the beat as broken. It cost a round of diagnosis; the real hero is the one
-    // with the trip's dates in it.
-    const hero = page.locator('.prep:has(.prep-dates)');
-    await expect(hero).toBeVisible();
-
-    // Not a control: it opens nothing, so it announces nothing.
-    expect(await hero.evaluate((el) => el.tagName)).toBe('DIV');
-
-    const beat = await page.evaluate(async () => {
-      const el = document.querySelector('.prep:has(.prep-dates)') as HTMLElement;
-      el.click();
-      await new Promise((r) => requestAnimationFrame(() => r(null)));
-      const running = el.getAnimations();
-      return {
-        names: running.map((a) => a.animationName),
-        duration: running[0]?.effect?.getTiming().duration,
-        easing: running[0]?.effect?.getTiming().easing,
-        className: el.className,
-      };
+  // In a browser for the reason §4 is in a browser at all: **the no-nested-control rule is
+  // a claim about Chrome's PARSER**, and jsdom does not reproduce it. A `<button>` inside a
+  // `<button>` is not merely invalid markup — Chrome closes the outer element at the nested
+  // one and reparents every following sibling out of it, so the readiness bar and the task
+  // readout would silently leave the hero while still existing on the page. A unit test
+  // asserting "the pieces render" passes through that defect; only this can catch it.
+  test('Plan mode: the prep hero lifts, and the parser leaves it intact', async ({ page }) => {
+    // A task in the fixture on purpose, and not for the rows: it is what makes the hero
+    // render its `.prep-tasks` readout, so the parser guard below has the FULL set of
+    // children to prove it still owns. With no task the readout is correctly absent
+    // (ADR-0045 — there is no "0 משימות פתוחות" state), and the guard would be weaker
+    // against exactly the reparenting it exists to catch.
+    await page.setViewportSize(PHONE);
+    await bootIntoTrip(page, {
+      events: [lunch],
+      places: [market],
+      now: NOW(),
+      dates: shortLiveTripDates(),
+      tasks: [
+        {
+          id: 'tk-plan',
+          tripId: TRIP_ID,
+          title: 'לקנות מתאם חשמל',
+          status: 'open',
+          dueHasTime: false,
+          important: false,
+          createdBy: 'u1',
+          ...stamps,
+        },
+      ],
     });
-    // `wp-rebuff`, not the retired `prep-rebuff`: the beat is one shared rule now that the
-    // Trip board plays it too (ADR-0160 §Q, `styles/beats.css`).
-    expect(beat.names).toContain('wp-rebuff');
-    expect(beat.duration).toBe(240);
-    // `linear`, because in a beat the keyframe offsets ARE the timing (ADR-0140 §7).
-    expect(beat.easing).toBe('linear');
-    // …and nothing lifted.
-    await expect(page.locator(HERO)).toHaveCount(0);
+    await page.goto('/');
+    await page.getByRole('button', { name: t.mode.plan, exact: true }).click();
+    await expect(page.locator('.app')).toHaveAttribute('data-mode', 'plan');
+    // `.prep-dates`, not `.prep`. `PlanHome` is lazy-loaded and `HomeSkeleton` renders its
+    // own placeholder `.prep` in the meantime — which has no handler, so a spec that clicks
+    // the first `.prep` it sees clicks the skeleton. It cost a round of diagnosis once; the
+    // real hero is the one with the trip's dates in it.
+    // `.prep.is-tappable`, and the reason is the promotion itself: once lifted, the card is
+    // ALSO a `.prep` with a `.prep-dates` in it — being the same object is the whole claim —
+    // so a locator keyed on those two matches both elevations and trips strict mode. The
+    // collapsed one is the one that is a control.
+    const hero = page.locator('.prep.is-tappable');
+    await expect(hero).toBeVisible();
+    // Still guard against the lazy-loaded skeleton, which renders its own placeholder
+    // `.prep` with no handler — a spec that clicks the first `.prep` it sees clicks that one.
+    await expect(hero.locator('.prep-dates')).toBeVisible();
+
+    // A control, because it now opens something.
+    expect(await hero.evaluate((el) => el.tagName)).toBe('BUTTON');
+
+    // THE PARSER GUARD (ADR-0160 §4). Both halves matter and the second is the one a
+    // reasonable person forgets: the pieces DO still exist after a reparent — they are just
+    // not inside the hero any more.
+    const parsed = await hero.evaluate((el) => ({
+      controls: el.querySelectorAll('button, a, input, select, textarea').length,
+      ownsReadiness: !!el.querySelector('.prep-ready'),
+      ownsDates: !!el.querySelector('.prep-dates'),
+      ownsTasks: !!el.querySelector('.prep-tasks'),
+    }));
+    expect(parsed.controls).toBe(0);
+    expect(parsed.ownsReadiness).toBe(true);
+    expect(parsed.ownsDates).toBe(true);
+    expect(parsed.ownsTasks).toBe(true);
+
+    // …and the press opens the run-up, with the collapsed hero hidden behind it — the same
+    // one-object-at-a-time rule the board's own first test asserts.
+    await hero.click();
+    const lifted = page.locator('.prep-lifted');
+    await expect(lifted).toBeVisible();
+    expect(await hero.evaluate((el) => getComputedStyle(el).visibility)).toBe('hidden');
+
+    // The bands are a READ: nothing in them is pressable (ADR-0160 §U, ADR-0193 §4).
+    expect(
+      await lifted.evaluate(
+        (el) => el.querySelector('.prep-lift-body')!.querySelectorAll('button, a, input').length,
+      ),
+    ).toBe(0);
+
+    // A bounded card (ADR-0148 §1): it stops at the screen and its body absorbs the rest.
+    const bounded = await lifted.evaluate((el) => ({
+      cardH: el.getBoundingClientRect().height,
+      viewportH: window.innerHeight,
+    }));
+    expect(bounded.cardH).toBeLessThanOrEqual(bounded.viewportH);
+
+    // **EVERY INK IN THE CARD CLEARS AA, swept rather than listed** (ADR-0193 §5). The lifted
+    // plan hero is a violet RAMP, so a rung tuned for the board does not survive it — and the
+    // rungs are easy to leak in by omission rather than by choice: `.hero-task-more` shipped
+    // at `--on-dark-faint` and measured 3.89:1, because the band labels that had carried the
+    // override were deleted and took it with them. Listing rungs is how the next one is
+    // missed, so this walks every text-bearing node, composites the ink over the gradient AT
+    // THAT NODE'S OWN HEIGHT (the ground is position-dependent by design) and asserts the
+    // floor. jsdom can compute none of this.
+    const contrast = await lifted.evaluate((card) => {
+      const rgb = (s: string) => (s.match(/[\d.]+/g) ?? ['0', '0', '0']).slice(0, 3).map(Number);
+      const lum = (c: number[]) =>
+        c
+          .map((v) => v / 255)
+          .map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4))
+          .reduce((a, v, i) => a + v * [0.2126, 0.7152, 0.0722][i], 0);
+      const over = (f: number[], b: number[], a: number) => f.map((v, i) => v * a + b[i] * (1 - a));
+      const box = card.getBoundingClientRect();
+      const stops = [
+        ...getComputedStyle(card).backgroundImage.matchAll(
+          /(rgba?\([^)]+\))(?:\s+([\d.]+)(px|%))?/g,
+        ),
+      ].map((m) => ({ c: rgb(m[1]), v: m[2] == null ? null : Number(m[2]), unit: m[3] }));
+      if (stops[0].v == null) {
+        stops[0].v = 0;
+        stops[0].unit = 'px';
+      }
+      const last = stops[stops.length - 1];
+      if (last.v == null) {
+        last.v = 100;
+        last.unit = '%';
+      }
+      const P = stops.map((s) => (s.unit === '%' ? (s.v! / 100) * box.height : s.v!));
+      const groundAt = (y: number) => {
+        for (let i = 1; i < stops.length; i++) {
+          if (y > P[i]) continue;
+          const t = P[i] === P[i - 1] ? 0 : (y - P[i - 1]) / (P[i] - P[i - 1]);
+          return stops[i - 1].c.map((v, k) => v + (stops[i].c[k] - v) * t);
+        }
+        return stops[stops.length - 1].c;
+      };
+      const worst: { text: string; ratio: number }[] = [];
+      card.querySelectorAll('*').forEach((el) => {
+        // Only nodes that render text OF THEIR OWN — a wrapper inherits its children's ink
+        // and would be measured at whatever box it happens to span.
+        const own = [...el.childNodes].some(
+          (n) => n.nodeType === 3 && (n.textContent ?? '').trim().length > 0,
+        );
+        if (!own) return;
+        const r = el.getBoundingClientRect();
+        if (r.height === 0) return;
+        const g = groundAt(r.top + r.height / 2 - box.top);
+        const m = getComputedStyle(el).color.match(/[\d.]+/g) ?? ['0', '0', '0'];
+        const a = m.length > 3 ? Number(m[3]) : 1;
+        const fg =
+          a === 1 ? rgb(getComputedStyle(el).color) : over(rgb(getComputedStyle(el).color), g, a);
+        const L1 = lum(fg);
+        const L2 = lum(g);
+        const ratio =
+          Math.round(((Math.max(L1, L2) + 0.05) / (Math.min(L1, L2) + 0.05)) * 100) / 100;
+        worst.push({ text: (el.textContent ?? '').trim().slice(0, 30), ratio });
+      });
+      return worst.sort((a, b) => a.ratio - b.ratio);
+    });
+    expect(contrast.length).toBeGreaterThan(3);
+    expect(
+      contrast[0],
+      `worst ink in the lifted plan hero: ${JSON.stringify(contrast[0])}`,
+    ).toHaveProperty('ratio');
+    expect(contrast[0].ratio).toBeGreaterThanOrEqual(4.5);
+
+    // It is a `Modal`, so back peels it — the contract ADR-0103/0090 give it no exemption from.
+    await page.goBack();
+    await expect(page.locator('.prep-lifted')).toHaveCount(0);
+    await expect(hero).toBeVisible();
   });
 
   // **The same answer on the Trip board** (ADR-0160 §Q, reversing §A's silence): with nothing
@@ -409,5 +538,133 @@ test.describe('the lifted hero (ADR-0160)', () => {
     ).toEqual({ position: '', animations: 0 });
     // The content is there, which is the part that must never depend on the motion.
     await expect(page.locator(HERO)).toContainText('Mercato di Porta Nolana');
+  });
+
+  // ── משימה, the fourth content block (ADR-0160 §U) ─────────────────────────
+  //
+  // Two claims, and neither is checkable in jsdom: where the two blocks' text lines START,
+  // and what colour the deadline actually paints. The first is the exact number ADR-0191 §5
+  // got wrong on a device (40px, on a rule it had written down as deliberate); the second is
+  // a token that measures 2.44:1 on this ground in light mode and looked fine in dark.
+  const noteAndTask = {
+    notes: [
+      {
+        id: 'nt-1',
+        tripId: TRIP_ID,
+        body: 'שמרו מקום ליד החלון',
+        eventId: 'ev-lunch',
+        source: 'member',
+        createdBy: 'u1',
+        ...stamps,
+      },
+    ],
+    tasks: [
+      {
+        id: 'tk-1',
+        tripId: TRIP_ID,
+        title: 'להזמין מקומות מראש',
+        eventId: 'ev-lunch',
+        // Before `NOW()`, so this one is late and takes the `--miss` ink.
+        dueAt: `${today()}T13:00:00.000Z`,
+        dueHasTime: true,
+        important: true,
+        status: 'open',
+        createdBy: 'u1',
+        ...stamps,
+      },
+    ],
+  };
+
+  test('the task block starts where the note block starts', async ({ page }) => {
+    await page.setViewportSize(PHONE);
+    await bootIntoTrip(page, {
+      events: [lunch],
+      places: [market],
+      now: NOW(),
+      dates: shortLiveTripDates(),
+      ...noteAndTask,
+    });
+    await page.goto('/');
+    await page.locator(BOARD).click();
+    await expect(page.locator('.hero-task')).toBeVisible();
+    // **Wait for the flight to LAND before reading any x.** §5's swing is a `rotateX`, and a
+    // 3D rotation under perspective projects x as a function of y — so mid-flight two blocks
+    // at different heights sit at different horizontal offsets and this assertion measures the
+    // animation rather than the layout. Measured at 1.24px of false drift before this wait.
+    await page.waitForFunction(
+      () => document.querySelector('.hero-lifted')?.getAnimations().length === 0,
+    );
+
+    // The START edge in this RTL app is the RIGHT edge. Comparing `x` would compare where
+    // the two lines happen to END, which is a function of their content.
+    const edges = await page.evaluate(() => {
+      const right = (sel) => document.querySelector(sel)!.getBoundingClientRect().right;
+      return { note: right('.hero-note-tx'), task: right('.hero-task-hd') };
+    });
+    expect(Math.abs(edges.note - edges.task)).toBeLessThan(0.5);
+  });
+
+  // **Reported from a device: "tick alignment is bad".** An `.icon` inside a block is an
+  // inline box on a BASELINE, and a baseline is not a centre — so both glyphs hung below the
+  // first line of their own text (the clipboard by 1.4px, the checkbox by 2.4px, measured).
+  // Invisible to the unit suite, which answers zero for every rect, and invisible in review,
+  // because the markup is right and only the optical result is wrong.
+  test('both content glyphs sit ON their line, not below it', async ({ page }) => {
+    await page.setViewportSize(PHONE);
+    await bootIntoTrip(page, {
+      events: [lunch],
+      places: [market],
+      now: NOW(),
+      dates: shortLiveTripDates(),
+      ...noteAndTask,
+    });
+    await page.goto('/');
+    await page.locator(BOARD).click();
+    await expect(page.locator('.hero-task')).toBeVisible();
+    await page.waitForFunction(
+      () => document.querySelector('.hero-lifted')?.getAnimations().length === 0,
+    );
+
+    const sag = await page.evaluate(() => {
+      const mid = (sel) => {
+        const r = document.querySelector(sel)!.getBoundingClientRect();
+        return (r.top + r.bottom) / 2;
+      };
+      return {
+        note: mid('.hero-note-ic .icon') - mid('.hero-note-tx'),
+        task: mid('.hero-task-ic .icon') - mid('.hero-task-hd'),
+        // The one the report was actually about: the tick against the star beside it.
+        tickVsStar: mid('.hero-task-ic .icon') - mid('.hero-task-star .icon'),
+      };
+    });
+    for (const v of Object.values(sag)) expect(Math.abs(v)).toBeLessThan(0.5);
+  });
+
+  // Asserted as an EQUALITY against the board's own control rather than as a colour literal —
+  // §P's precedent. What must stay true is that the deadline paints in the ink this surface
+  // already uses for the same meaning, not what that ink currently is.
+  test('a passed deadline takes the board’s --miss ink, not the paper one', async ({ page }) => {
+    await page.setViewportSize(PHONE);
+    await bootIntoTrip(page, {
+      events: [lunch],
+      places: [market],
+      now: NOW(),
+      dates: shortLiveTripDates(),
+      ...noteAndTask,
+    });
+    await page.goto('/');
+    await page.locator(BOARD).click();
+    await expect(page.locator('.hero-task-due.late')).toBeVisible();
+
+    const inks = await page.evaluate(() => {
+      const colour = (sel) => getComputedStyle(document.querySelector(sel)!).color;
+      return {
+        due: colour('.hero-task-due.late'),
+        boardMiss: colour('.wp-settle.board .wp-settle-btn.skip'),
+        paperMiss: getComputedStyle(document.documentElement).getPropertyValue('--miss-deep'),
+      };
+    });
+    expect(inks.due).toBe(inks.boardMiss);
+    expect(inks.due).not.toBe(inks.paperMiss.trim());
   });
 });

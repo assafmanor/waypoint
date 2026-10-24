@@ -18,11 +18,17 @@ vi.mock('../state/active-trip-id', () => ({ useActiveTripId: () => ({ setTripId:
 vi.mock('../lib/api', () => ({ createTrip: vi.fn(), createInvite: vi.fn() }));
 
 // One button per fixture, so a test picks a destination in one click. `JP` is a recognised
-// destination (it has a flag to suggest); `Narnia` is a "use as typed" pick with none.
+// destination (it has a flag to suggest); Kigali is a CITY-level pick whose name is in no
+// curated list, so only its resolved country can answer; `Narnia` is a "use as typed" pick
+// that resolved nothing at all.
 vi.mock('../ui/DestinationPicker', () => ({
   DestinationPicker: ({ onPick }: { onPick: (d: unknown) => void }) => (
     <>
-      <button data-testid="pick-japan" onClick={() => onPick({ name: 'יפן', country: 'JP' })} />
+      <button data-testid="pick-japan" onClick={() => onPick({ name: 'יפן', countryCode: 'JP' })} />
+      <button
+        data-testid="pick-kigali"
+        onClick={() => onPick({ name: 'קיגאלי', countryCode: 'RW' })}
+      />
       <button data-testid="pick-narnia" onClick={() => onPick({ name: 'נარניה' })} />
     </>
   ),
@@ -93,6 +99,14 @@ describe('CreateTrip — the auto-suggested name and flag (ADR-0032/ADR-0038)', 
 
     fireEvent.click(screen.getByTestId('pick-narnia'));
     expect((nameInput() as HTMLInputElement).value).toBe(suggestTripName('נარניה', ''));
+  });
+
+  // The owner-reported miss (a city pick showed the suitcase, and קפריסין showed 🇨🇳): the
+  // pick resolves a country (ADR-0113), and that answer beats reading the destination's words.
+  it('flags a city-level pick from its resolved country, not from its name', () => {
+    render(wrapNav(<CreateTrip />));
+    fireEvent.click(screen.getByTestId('pick-kigali'));
+    expect(icon()?.textContent).toContain('🇷🇼');
   });
 
   // An unrecognised destination has no flag, so the glyph falls back rather than going blank.

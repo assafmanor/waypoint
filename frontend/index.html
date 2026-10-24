@@ -7,17 +7,26 @@
       content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content"
     />
     <script>
-      // ADR-0062: zoom disabled app-wide, except inside the image preview (.doc-viewer).
-      // CSS touch-action:manipulation kills double-tap; the viewport meta above is ignored
-      // by iOS Safari, so pinch is suppressed here — iOS fires gesture* events, other
-      // browsers a multi-touch touchmove. The viewer subtree is excluded so its
-      // hand-rolled pinch/pan is untouched.
+      // ADR-0062: zoom disabled app-wide, except inside the image preview (.doc-viewer)
+      // and on the public shared itinerary. CSS touch-action:manipulation kills double-tap;
+      // the viewport meta above is ignored by iOS Safari, so pinch is suppressed here — iOS
+      // fires gesture* events, other browsers a multi-touch touchmove. The viewer subtree is
+      // excluded so its hand-rolled pinch/pan is untouched.
+      //
+      // **The shared reader is excluded too, and it is a different KIND of exclusion**
+      // (owner, 2026-08-31: _"the live share should not inherit some of the app's quirks: it
+      // should be able to refresh, zoom in/out"_). ADR-0062 turned zoom off to make the app
+      // feel native; `/s/<code>` is not the app, it is a document a stranger opens in a
+      // browser tab, and a document you cannot enlarge is a document some people cannot
+      // read. The screen sets `data-public-reader` on <html> while it is mounted
+      // (`lib/public-reader-chrome.ts`), which this reads and `tokens.css` keys off.
       (function () {
-        var inViewer = function (target) {
+        var exempt = function (target) {
+          if (document.documentElement.hasAttribute('data-public-reader')) return true;
           return target && target.closest && target.closest('.doc-viewer');
         };
         var blockGesture = function (e) {
-          if (!inViewer(e.target)) e.preventDefault();
+          if (!exempt(e.target)) e.preventDefault();
         };
         document.addEventListener('gesturestart', blockGesture, { passive: false });
         document.addEventListener('gesturechange', blockGesture, { passive: false });
@@ -25,7 +34,7 @@
         document.addEventListener(
           'touchmove',
           function (e) {
-            if (e.touches.length > 1 && !inViewer(e.target)) e.preventDefault();
+            if (e.touches.length > 1 && !exempt(e.target)) e.preventDefault();
           },
           { passive: false },
         );
@@ -65,6 +74,21 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <title>%APP_TITLE%</title>
+    <!-- **The link preview's meta tags go here, and the server writes them** (ADR-0220).
+         `backend/src/spa/spa-shell.service.ts` replaces this exact marker per request, so a
+         pasted link carries `og:title`/`og:description`/`og:image` for the URL it actually
+         is: the homepage, an invitation (`/join/<code>`) or a live itinerary (`/s/<code>`).
+
+         **It cannot be done from the app.** A preview crawler fetches the document, reads
+         `<head>`, and leaves without running a line of JavaScript — so tags written after
+         mount are written for nobody, and there is no React version of this.
+
+         Left as a bare comment on purpose: a build served by anything other than our own
+         Node process (or `pnpm dev`) is then merely preview-less, never broken. Do not
+         rename it without changing `MARKER` in that service — it logs an error at boot if
+         the marker is missing, which is the only thing standing between a rename here and
+         every preview in production disappearing silently. -->
+    <!--%SOCIAL_META%-->
     <!-- Fonts are self-hosted (F-11): src/styles/fonts.css, imported by main.tsx.
          There is deliberately no Google Fonts <link> here — an external origin the
          service worker cannot precache is a fallback font on an offline first paint,

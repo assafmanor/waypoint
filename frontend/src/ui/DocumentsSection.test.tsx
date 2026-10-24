@@ -52,13 +52,30 @@ const note = (id: string, documentId: string): Note =>
   }) as Note;
 
 let tripDocuments: DocumentSummary[] = [];
+/** Empty: a trip with no dates, which is never finished. */
+let tripWindow: { startDate?: string; endDate?: string } = {};
 let tripNotes: Note[] = [];
 
 vi.mock('../state/trip-state', () => ({
   useTrip: () => ({
-    trip: { id: 't1', name: 'יפן · אביב', timezone: 'Asia/Tokyo' },
+    zoneCrossings: [],
+    users: [],
+    // Tasks ride the same snapshot since phase 1; the mark and the sections read them.
+    tasks: [],
+    taskVerbs: {
+      createTask: async () => undefined,
+      updateTask: async () => {},
+      deleteTask: async () => {},
+      tickTask: async () => {},
+    },
+    trip: { id: 't1', name: 'יפן · אביב', timezone: 'Asia/Tokyo', ...tripWindow },
     documents: tripDocuments,
     notes: tripNotes,
+    // What the ⋯ sheet's task and note sections resolve their host through.
+    events: [],
+    bookings: [],
+    hostContexts: buildHostContextIndex([], []),
+    noteHosts: new Map(),
   }),
 }));
 vi.mock('../lib/outbox', async (importOriginal) => {
@@ -67,6 +84,8 @@ vi.mock('../lib/outbox', async (importOriginal) => {
 });
 
 import { DocumentsSection } from './DocumentsSection';
+import { setSimulatedNow } from '../lib/useClock';
+import { buildHostContextIndex } from '../lib/host-context';
 import { DOCUMENT_TYPE_ALL, type DocumentTypeFilter } from '../lib/documents';
 import { t } from '../i18n/he';
 
@@ -140,7 +159,7 @@ describe('DocumentsSection — the type chips and the search (ADR-0052 §7)', ()
   it('renders one worded chip per type that HAS a document, led by הכל with the total', () => {
     show();
     // Worded, not `compact` — the brief asked for the row "where category titles are also
-    // shown", which is the bookings density and not the notes one (ADR-0122 §2).
+    // shown", which is the bookings density. `compact` is the Map's alone now (ADR-0122 §2).
     expect(chips()[0].textContent).toContain(t.docs.filter.all);
     expect(chips()[0].textContent).toContain('4');
     const labels = chips()
@@ -227,5 +246,51 @@ describe('DocumentsSection — the type chips and the search (ADR-0052 §7)', ()
       expect(screen.getByText(t.docs.search.noResults)).toBeTruthy();
       expect(visibleRowTitles()).toEqual([]);
     });
+  });
+});
+
+// A FINISHED TRIP'S DOCUMENTS STILL OPEN (ADR-0049 §2), and nothing uploads, renames or deletes
+// one (ADR-0239 §4). The ⋯ stays: it is where a document's notes are read (ADR-0153 §8).
+describe('DocumentsSection — a finished trip', () => {
+  beforeEach(() => {
+    setSimulatedNow(Date.parse(NOW));
+    tripDocuments = [doc('d1', 'דרכון של דנה'), doc('d2', 'פוליסה', DOCUMENT_TYPE.INSURANCE)];
+    tripNotes = [];
+  });
+  afterEach(() => {
+    cleanup();
+    setSimulatedNow(null);
+    tripWindow = {};
+  });
+  const show = () => render(wrapNav(<DocumentsSection />, { mode: true }));
+  const actions = () =>
+    [...document.querySelectorAll('.wp-row-action')].map((b) => b.textContent?.trim());
+
+  it('offers upload, and edit and delete in the ⋯, on a live trip', () => {
+    show();
+    expect(document.querySelector('.addbtn')).not.toBeNull();
+    fireEvent.click(document.querySelector('.wp-listrow-kebab')!);
+    expect(actions()).toEqual([t.docs.manage.edit, t.docs.manage.delete]);
+    expect(document.querySelectorAll('.note-sec .add')).toHaveLength(2);
+  });
+
+  it('lists every document with no upload, and a ⋯ that only reads', () => {
+    tripWindow = { startDate: '2026-07-01', endDate: '2026-07-10' };
+    show();
+    expect(document.querySelector('.addbtn')).toBeNull();
+    expect(screen.getByText('דרכון של דנה')).toBeTruthy();
+    expect(screen.getByText('פוליסה')).toBeTruthy();
+    fireEvent.click(document.querySelector('.wp-listrow-kebab')!);
+    expect(actions()).toEqual([]);
+    expect(document.querySelector('.note-sec')).not.toBeNull();
+    expect(document.querySelectorAll('.note-sec .add')).toHaveLength(0);
+  });
+
+  it('offers no upload from the empty section', () => {
+    tripWindow = { startDate: '2026-07-01', endDate: '2026-07-10' };
+    tripDocuments = [];
+    show();
+    expect(screen.getByText(t.docs.emptyTitle)).toBeTruthy();
+    expect(document.querySelector('.empty-card .ea')).toBeNull();
   });
 });

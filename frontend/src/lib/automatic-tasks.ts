@@ -1,0 +1,247 @@
+// **An automatic task is a readiness check wearing a task row** (tasks brief §3/§4,
+// ADR-0188 §4, decisions in ADR-0190). `computeReadiness` is untouched: it keeps returning
+// its five derived checks, and this module is the overlay that turns each into a row.
+//
+// **The whole model is one sentence, and it is the predicate below:** `status` is the
+// derivation's answer **unless** the row says `dismissed`. Human dismissal wins because a
+// dismissal cannot be derived — it has to survive a reload and reach the other four people —
+// and done-ness stays derived because a stored copy of it would go stale the moment someone
+// books the hotel.
+//
+// A check nobody has touched has **no `Task` row at all**. The moment someone dismisses,
+// assigns or flags it, a row carrying `derivedKey` is written: same entity, same sync
+// channel, same appliers, nothing net-new.
+//
+// **Why the copy lives here and not on a screen.** It was `PlanHome`'s private `rowFor`
+// closure, and phase 2 gives it a second host (the tasks screen). Two hosts rendering one
+// vocabulary from two copies is the pile root rule 8 exists to stop, so the one-off was
+// generalised here rather than copied there. What stays with each host is the ACTION —
+// `PlanHome` can seed its own booking sheet, the Index has to navigate — which is why this
+// returns an action *id* rather than a closure.
+import type { Task, TaskDerivedKey, TaskStatus } from '@waypoint/shared';
+import { TASK_STATUS } from '@waypoint/shared';
+import type { ReadinessCheck } from '@waypoint/shared';
+import { t } from '../i18n/he';
+import { tripDayNumber } from './time';
+import type { TripPhase } from './mode';
+
+/** **The one verb that resolves each check** (ADR-0061 §1: the CTA does the thing). An id
+ *  rather than a callback, because the two hosts reach the same destination differently —
+ *  Plan Home opens its own seeded sheet, the Index has to leave for it (ADR-0190 §3). */
+export const AUTOMATIC_TASK_ACTION = {
+  ADD_FLIGHT: 'add-flight',
+  ADD_LODGING: 'add-lodging',
+  BUILD_DAY: 'build-day',
+  UPLOAD_DOCS: 'upload-docs',
+  INVITE: 'invite',
+} as const;
+export type AutomaticTaskAction =
+  (typeof AUTOMATIC_TASK_ACTION)[keyof typeof AUTOMATIC_TASK_ACTION];
+
+/** One check, resolved against its overlay row. */
+export interface AutomaticTask {
+  key: TaskDerivedKey;
+  title: string;
+  meta: string;
+  /** The derivation's answer, which a stored value may not override. */
+  done: boolean;
+  /** The one thing a human CAN say about a derived check, and the only stored state here. */
+  dismissed: boolean;
+  action: AutomaticTaskAction;
+  /** Which leg a flights check is missing, so a host can seed the right direction. */
+  missingLeg?: 'outbound' | 'return';
+  /** The overlay row, when someone has dismissed, assigned or flagged this check. Absent
+   *  means the check is a pure derivation and there is nothing stored about it at all. */
+  task?: Task;
+}
+
+/** Everything the copy needs that a `ReadinessCheck` does not carry. */
+export interface AutomaticTaskContext {
+  emptyDates: string[];
+  tripStartDate: string;
+  travelerCount: number;
+  /** `useMode().phase`. A finished trip has no readiness left to check (ADR-0239 §3). */
+  phase: TripPhase;
+}
+
+/** A check's words and its verb. Lifted from `PlanHome.rowFor` unchanged in wording — the
+ *  copy keys are the same `t.planHome.checklist` entries, so nothing re-translates. */
+function copyFor(
+  check: ReadinessCheck,
+  ctx: AutomaticTaskContext,
+): Pick<AutomaticTask, 'title' | 'meta' | 'action' | 'missingLeg'> {
+  const c = t.planHome.checklist;
+  switch (check.id) {
+    case 'flights':
+      return {
+        title: c.flightsTitle,
+        meta: check.done
+          ? c.flightsDoneMeta
+          : !check.hasOutbound && !check.hasReturn
+            ? c.flightsMissingBothMeta
+            : check.hasOutbound
+              ? c.flightsMissingReturnMeta
+              : c.flightsMissingOutboundMeta,
+        action: AUTOMATIC_TASK_ACTION.ADD_FLIGHT,
+        missingLeg: check.hasOutbound ? 'return' : 'outbound',
+      };
+    case 'lodging':
+      return {
+        title: c.lodgingTitle,
+        meta: check.done
+          ? c.lodgingDoneMeta
+          : c.lodgingMissingMeta(check.count ?? 0, check.total ?? 0),
+        action: AUTOMATIC_TASK_ACTION.ADD_LODGING,
+      };
+    case 'itinerary':
+      return {
+        title: check.done ? c.itineraryDoneTitle : c.itineraryTitle(check.count ?? 0),
+        meta: check.done
+          ? c.itineraryDoneMeta
+          : c.itineraryMeta(
+              ctx.emptyDates.map((d) => tripDayNumber(d, ctx.tripStartDate)).join(', '),
+            ),
+        action: AUTOMATIC_TASK_ACTION.BUILD_DAY,
+      };
+    case 'documents':
+      return {
+        title: c.documentsTitle,
+        // The per-traveller pips (`.chk-ppl`) retire with the rest of `.chk-*` and are NOT
+        // replaced (ADR-0190 §5, owner's call): this line already says the same thing in
+        // words, and the dots only ever appeared on one row of five.
+        meta: check.done
+          ? c.documentsDoneMeta
+          : c.documentsMissingMeta(check.count ?? 0, check.total ?? 0),
+        action: AUTOMATIC_TASK_ACTION.UPLOAD_DOCS,
+      };
+    case 'group':
+      return {
+        title: check.done ? c.groupTitle : c.groupMissingTitle,
+        meta: check.done ? c.groupDoneMeta(ctx.travelerCount) : c.groupMissingMeta,
+        action: AUTOMATIC_TASK_ACTION.INVITE,
+      };
+  }
+}
+
+/** **The predicate the whole feature turns on: A HUMAN ANSWER WINS, AND UNTIL THERE IS ONE
+ *  THE DERIVATION ANSWERS.**
+ *
+ *  **Amended 2026-08-16 by the owner, and it reverses ADR-0188 §4's premise.** That section
+ *  gave an automatic task the derivation's badge instead of a tick, because a derived row's
+ *  done-ness could not be pressed — "three inert circles out of five", which reads as a bug.
+ *  The owner's answer is the other way out of the same corner: _"you could complete/uncomplete
+ *  automatic tasks as well"_. Make the circle work and there is nothing inert to explain, and
+ *  a task is one noun with one control everywhere — which is what brief §2 wanted all along.
+ *
+ *  So the resolution is symmetrical and has no special cases:
+ *
+ *  | overlay row | what the row shows |
+ *  | --- | --- |
+ *  | none | the derivation's answer |
+ *  | `done` | done — a person said so, even if the data has not caught up |
+ *  | `open` | not done — a person un-ticked it, even if the data says otherwise |
+ *  | `dismissed` | settled, and out of the open list |
+ *
+ *  **What this costs, stated because brief §4 chose the opposite on purpose:** a stored
+ *  `done` CAN go stale. Tick "book a hotel" without booking one and the row says done while
+ *  no bed is covered. That was the whole argument for deriving it — and it is now a trade
+ *  the owner has taken knowingly, in exchange for one control that behaves the same on every
+ *  row. The staleness is bounded and visible: `resolvedReadinessPct` reads this same
+ *  resolution, so the prep hero's percentage and the list can never disagree with each other,
+ *  and un-ticking puts the derivation back in charge. */
+export function automaticTasks(
+  checks: ReadinessCheck[],
+  tasks: Task[],
+  ctx: AutomaticTaskContext,
+): AutomaticTask[] {
+  if (ctx.phase === 'past') return [];
+  const overlay = new Map<string, Task>();
+  for (const task of tasks) if (task.derivedKey) overlay.set(task.derivedKey, task);
+  return checks.map((check) => {
+    const task = overlay.get(check.id);
+    return {
+      key: check.id,
+      ...copyFor(check, ctx),
+      // A human answer, once given, wins in BOTH directions. `undefined` — nobody has
+      // touched this check — is what hands the question back to the data.
+      done: task ? task.status === TASK_STATUS.DONE : check.done,
+      dismissed: task?.status === TASK_STATUS.DISMISSED,
+      task,
+    };
+  });
+}
+
+/** **The readiness percentage, read off the same resolution the rows are.**
+ *
+ *  `computeReadiness` stays pure and derived (brief §3 is untouched — it is still the thing
+ *  that knows whether a bed is covered). What changed is that the PERCENTAGE is no longer
+ *  read straight off it: a check a person has ticked counts as done here too, because the
+ *  alternative is a prep hero saying 60% directly above a list where every row is ticked.
+ *  Two numbers about one thing, disagreeing on screen, is worse than either answer alone. */
+export function resolvedReadinessPct(automatic: AutomaticTask[]): number {
+  if (automatic.length === 0) return 0;
+  const done = automatic.filter((auto) => auto.done).length;
+  return Math.round((done / automatic.length) * 100);
+}
+
+/** The status a tick moves a check to — open ⇄ done, exactly as `tickedStatus` does for a
+ *  task somebody wrote. `dismissed` is not on this path: it stays the `⋯`'s rare escape. */
+export const tickedAutomaticStatus = (auto: AutomaticTask): TaskStatus =>
+  auto.done ? TASK_STATUS.OPEN : TASK_STATUS.DONE;
+
+/** **What "still missing" means for a derived check**, and it is the only thing either
+ *  surface lists: not already satisfied by the data, and not waved off by a person.
+ *
+ *  **An automatic task therefore appears under `הכל` and under no other facet** (ADR-0190
+ *  §1, owner's call). The two other chips read a `Task` row, and an untouched check has
+ *  none — `שלי` is `assigneeUserId === meId` and `הושלמו` is `status`, so a pure derivation
+ *  can satisfy neither by construction. Rather than invent a second meaning for each chip,
+ *  the checks sit out of both: `שלי` stays "what I personally owe" and `הושלמו` stays "what
+ *  I am finished with", and both keep answering about things people wrote.
+ *
+ *  A DONE check drops out for the same reason a done task does — the list is what is still
+ *  missing, and Plan Home's own section title says so. */
+export const isLive = (auto: AutomaticTask): boolean => !auto.done && !auto.dismissed;
+
+/** **The other side of the same line, and a check reaches it two ways** (owner, 2026-08-16,
+ *  amending ADR-0190 §1). A check is finished when the DATA satisfies it — the flights are
+ *  booked, the group has joined — or when a person waved it off. Both are "I am done with
+ *  this", which is what the `הושלמו` chip asks, so both belong behind it.
+ *
+ *  Note which one is derived: `done` is the derivation's answer and can go back to false the
+ *  moment a booking is deleted, so a check can LEAVE the settled facet on its own. A manual
+ *  task never does that, and it is the honest behaviour rather than a wrinkle — the whole
+ *  point of not storing done-ness is that it cannot go stale. */
+export const isAutomaticSettled = (auto: AutomaticTask): boolean => auto.done || auto.dismissed;
+
+/** **The `⋯` sheet's subject for a check nobody has touched yet.** The sheet takes a `Task`
+ *  and an untouched check has none — but opening a MENU must not write anything: brief §4 is
+ *  explicit that the row is minted the moment someone *dismisses, assigns or flags*, which
+ *  is a verb, not a read. So the sheet is handed a Task-shaped value that has never been
+ *  written, and `isUnwritten` is what tells the verb handlers to create instead of patch. */
+export function draftOverlay(auto: AutomaticTask, tripId: string): Task {
+  return {
+    id: UNWRITTEN_ID,
+    tripId,
+    title: auto.title,
+    dueHasTime: false,
+    important: false,
+    status: TASK_STATUS.OPEN,
+    derivedKey: auto.key,
+    createdBy: '',
+    createdAt: '',
+    updatedAt: '',
+    updatedBy: '',
+  };
+}
+
+/** An id no row can have, because the server assigns real ones and the client generates
+ *  uuids. Empty is the honest spelling of "this has never been written". */
+const UNWRITTEN_ID = '';
+export const isUnwritten = (task: Task): boolean => task.id === UNWRITTEN_ID;
+
+/** **Is this a task a person wrote?** The Index tile counts these and the facet axis filters
+ *  them, so an untouched check cannot inflate either (ADR-0190 §1) — a brand-new trip must
+ *  not read "5 משימות פתוחות" before anyone has written one. A row carrying `derivedKey` is
+ *  the derivation's overlay however much a human has since said about it. */
+export const isManual = (task: Task): boolean => task.derivedKey === undefined;

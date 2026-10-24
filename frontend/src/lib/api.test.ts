@@ -46,6 +46,7 @@ const snapshotBody = {
   maybeItems: [],
   places: [],
   notes: [],
+  tasks: [],
   documentAttachments: [],
   enrichments: {},
   latestSeq: '0',

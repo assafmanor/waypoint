@@ -22,16 +22,34 @@
 
 ## Auth (detail in auth-and-google.md)
 
-| Method | Path                    | Purpose                                                                                                                                                                                                                                                                                                                                                                                                 |
-| ------ | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/auth/google`          | Begin Google OAuth                                                                                                                                                                                                                                                                                                                                                                                      |
-| GET    | `/auth/google/callback` | OAuth callback → issue session JWT                                                                                                                                                                                                                                                                                                                                                                      |
-| POST   | `/auth/refresh`         | Refresh session                                                                                                                                                                                                                                                                                                                                                                                         |
-| POST   | `/auth/logout`          | Invalidate session                                                                                                                                                                                                                                                                                                                                                                                      |
-| GET    | `/me`                   | Current user + memberships                                                                                                                                                                                                                                                                                                                                                                              |
-| PATCH  | `/me`                   | `updateMeSchema` (`{ displayName?, avatarChoice?, avatarHue? }`) → `Me`. Your own row only, so authorization is implicit and total (ADR-0133). Partial + LWW; `avatarHue: null` **clears** the pick and hands the hue back to the derivation. Deliberately **not** on the data plane: a `Change` is per-trip while a user spans many, so co-members see a new name at their next snapshot (ADR-0133 §8) |
-| POST   | `/me/avatar`            | `multipart/form-data`, one `file` part → `Me`. Stores the bytes and sets `avatarChoice: 'upload'`. The type is **sniffed from the bytes** (JPEG/PNG/WebP only) rather than trusted from the part header, and `MAX_AVATAR_SIZE_BYTES` is enforced by the interceptor's stream limit → 413 (ADR-0133 §12)                                                                                                 |
-| DELETE | `/me/avatar`            | → `Me`. Deletes the blob and lands on the Google photo if there still is one, else `initials` — so the caller never guesses which happened (ADR-0133 §6)                                                                                                                                                                                                                                                |
+| Method | Path                    | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| ------ | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/auth/google`          | Begin Google OAuth                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| GET    | `/auth/google/callback` | OAuth callback → issue session JWT                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| POST   | `/auth/refresh`         | Refresh session                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| POST   | `/auth/logout`          | Invalidate session                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| GET    | `/me`                   | Current user + memberships + `push: { vapidPublicKey }` (the server's Web Push capability, `null` when unconfigured — ADR-0197 §7) + `notify: { tasks, obligations }` (the category preferences, ADR-0198 §6) + `map: { liveBuild, archiveVintage }` (which upstream planet build the live map source is serving, and which 30-day vintage of the OFFLINE archives is being cut — ADR-0187 §1 and ADR-0186 §6 amendments). **`notify` is on `Me` and not on `user`**, because `user` is also every co-member's roster row and a preference is nobody else's business                                                                                                                               |
+| PATCH  | `/me`                   | `updateMeSchema` (`{ displayName?, avatarChoice?, avatarHue?, preferredCurrency?, notifyTasks?, notifyObligations?, notifyMemories? }`) → `Me`. The three `notify*` flags are plain booleans with no null: unlike a currency there is no "never chosen" to clear back to, because the device's own permission is the opt-in and this only narrows it (ADR-0198 §6). Your own row only, so authorization is implicit and total (ADR-0133). Partial + LWW; `avatarHue: null` **clears** the pick and hands the hue back to the derivation. Deliberately **not** on the data plane: a `Change` is per-trip while a user spans many, so co-members see a new name at their next snapshot (ADR-0133 §8) |
+| POST   | `/me/avatar`            | `multipart/form-data`, one `file` part → `Me`. Stores the bytes and sets `avatarChoice: 'upload'`. The type is **sniffed from the bytes** (JPEG/PNG/WebP only) rather than trusted from the part header, and `MAX_AVATAR_SIZE_BYTES` is enforced by the interceptor's stream limit → 413 (ADR-0133 §12)                                                                                                                                                                                                                                                                                                                                                                                            |
+| DELETE | `/me/avatar`            | → `Me`. Deletes the blob and lands on the Google photo if there still is one, else `initials` — so the caller never guesses which happened (ADR-0133 §6)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+
+### Notifications (ADR-0197)
+
+Control plane, beside `/me` rather than under a trip: a subscription belongs to a **person and a device**, and one device is reached about every trip that person is in. Every route needs a Bearer token (the global guard) and nothing accepts a `userId` from the caller.
+
+| Method | Path                               | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| ------ | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| POST   | `/notifications/subscription`      | `createPushSubscriptionSchema` (`{ endpoint, p256dh, auth, userAgent? }`) → `{ id }`. **Upserts on `endpoint`**, which is the row's identity — including `userId`, so the same browser signed in as somebody else _claims_ the row rather than leaving the previous person reachable on it (ADR-0197 §2.3). Returns the row **id**, which the client stores so the device list can mark "this device" without an endpoint ever appearing in a list response |
+| GET    | `/notifications/subscriptions`     | → `pushDeviceSchema[]` (`{ id, label, lastSentAt, createdAt }`), newest first. **Carries neither the endpoint nor the raw user-agent**: the first is a bearer capability, the second is noise a screen does not want, and `label` is derived server-side (`deviceLabel` → `iPhone · Safari`). The `select` in `listDevices` is the boundary, so a field added to the model is not added to this response by accident                                        |
+| DELETE | `/notifications/subscriptions/:id` | → `204`. Revoke a device by id — "I lost that phone". **An id in a path is fine where an endpoint was not**: it is ours, opaque, and useless without the caller's access token. Scoped to the caller's own rows, so a guessed id deletes nothing                                                                                                                                                                                                            |
+| DELETE | `/notifications/subscription`      | `deletePushSubscriptionSchema` (`{ endpoint }`) → `204`. **A body, not a path segment**: an endpoint is a URL and a bearer capability, so it has no business in an access log. Scoped to the caller's own rows, and a no-match is a success — the desired state already holds                                                                                                                                                                               |
+| POST   | `/notifications/test`              | → `{ attempted, sent }`. **Dev-only**, gated on `isDevAuthEnabled()` (403 otherwise) — the same predicate `validateConfig` refuses to let be true in production. Sends a real push to every device the caller has registered; the only send that exists before the sweep (ADR-0197 §3)                                                                                                                                                                      |
+
+`GET /me` also answers **what this server can do about push**: `push: { vapidPublicKey }`, `null` when no keypair is configured. It rides `/me` rather than a `VITE_` copy so the two halves of the keypair cannot drift, and so a client has the answer before the first gesture that needs it (ADR-0197 §7). Beside it, `notify: { tasks }` carries the category preferences (ADR-0198 §6) — deliberately a sibling of `push` rather than a field on `user`, since that shape is shared with the roster. Both are optional in the schema so a cached `/me` from an older build still parses; an absent `notify` reads as ON, matching the column default.
+
+Beside them, `map: { liveBuild }` answers **which upstream planet build the live map source is serving** (ADR-0187 §1's 2026-08-21 amendment). It is on `/me` rather than in the client bundle because the id names an object upstream deletes after about a week: a pinned one expired and took every label, road and border off the online map while the coarse world layer kept painting. The client builds `GET /map/planet-<build>.pmtiles` from this answer; `null` (no resolvable build, or a `/me` cached before this field) means it draws the coarse world archive as its detail source instead.
+
+`archiveVintage` beside it answers the offline half: **which 30-day vintage of `world.pmtiles` and the trip extracts this server is cutting** (ADR-0186 §6 amendment). A device compares it with the vintage it stored and replaces its copy when it is a vintage behind _and_ older than the window — without it, the first archive a device downloads is the map it keeps forever. The archive URLs are unchanged: the vintage lives in the server's storage key and in the device's metadata, never in the path, so a refresh is the same request and the old bytes answer every read until the new ones are stored.
 
 ### Avatar bytes
 
@@ -149,6 +167,45 @@ The URL is built by `enrichmentImageContentPath` in `@waypoint/shared`. `enrichm
 
 **No Google-sourced image can ever appear here.** A Google photo name may not be cached at all (§1), so Google's provider policy declares `storable: false` and one guard enforces it (`enrichment.policy.ts`). A GFDL-only Commons file is likewise treated as no image (§12.2) — its attribution terms are heavier than a thumbnail caption can discharge.
 
+## Routes & travel time (ADR-0205)
+
+How long it takes to get from one of a day's stops to the next, held in the **global** `RouteLeg`
+table — no `tripId`, keyed on rounded coordinates and mode, one writer (us), never mutated by a
+client. Like enrichment above, **it deliberately does not go through `ChangeService`** (§4): a
+route is not derived from our data, it is an answer from outside that we would otherwise have to
+re-ask, so there is no LWW to arbitrate and no undo to offer. **There is no write endpoint.**
+
+| Method | Path                    | Body → Response                                                    |
+| ------ | ----------------------- | ------------------------------------------------------------------ |
+| POST   | `/trips/:tripId/routes` | `RouteBatchRequest` → `RouteBatch` (200, or **202** while warming) |
+
+- **A POST, and 200 rather than 201.** A day's coordinates and its modes are a document, not a
+  query string, and asking starts a warm — a question with a side effect. Nothing is created that
+  the caller can address.
+- **Batch-shaped, and it carries a SET of modes** (§6, amended by §Y2). One request per day, not
+  one per day per mode: a per-leg endpoint turns one ~1 s matrix call into five and makes the gate
+  a client concern, and a **per-mode** endpoint puts a round-trip behind every press of the mode
+  control, which ADR-0206 §Z2 forbids by name. `stops` is the day's ordered coordinates (2 to
+  `ROUTE_BATCH_MAX_STOPS`), `modes` is every mode wanted for them, `withShapes` asks for geometry.
+- **Each leg answers in three buckets, and they cover every mode asked for**: `estimates` (we can
+  answer now), `refusedModes` (the gate refused — never coming), `pendingModes` (admitted, not
+  computed yet). The **user** must never be able to tell "not computed" from "not computable"
+  (ADR-0206 §D4), which is exactly why the **client** must: without the split it either polls
+  forever for a refused pair or gives up on a warming one.
+- **`202` with `Retry-After` while anything is warming**, ADR-0187's flow, which
+  `map-archive-cache.ts` already parses. The body is the same shape either way and always usable:
+  a client that ignores the status renders a correct day with fewer numbers in it. Nothing is ever
+  built on the request path.
+- **The gate runs server-side, before the network** (§3), on `@waypoint/shared`'s `routableLegs`.
+  It is not an optimisation: one crow-flies pair over a mode's ceiling returns `400` for an
+  **entire** matrix (§Z4), so a client must never be able to cause that. A refusal costs no
+  upstream request at all.
+- **An absent leg is never an error.** Out of range, out of cluster, still warming, provider down,
+  kill switch on — every one of them leaves `formatDistance`'s crow-flies chip standing
+  (ADR-0206 §D4). This route has no failure the UI is meant to render.
+- **`MembershipGuard`**, like every trip-scoped route. The `tripId` is not decoration: the gate
+  needs the trip's own download clusters (ADR-0186 §4) to decide what may be walked.
+
 ## Destinations (trip creation)
 
 Trip-agnostic destination lookup for **trip creation** (ADR-0113): there's no trip yet, so these are distinct from the trip-scoped place proxy above — authed by the global `JwtAuthGuard`, **per-user** rate-limited (the shared throttler keys on the actor when there's no `tripId`), and **stateless** (nothing is persisted). Reuse the same `GooglePlacesClient` + `geo-tz`.
@@ -185,6 +242,52 @@ The shelf is read via the trip snapshot (`maybeItems`), not a standalone list. S
 | GET    | `/trips/:tripId/documents`             | List document metadata                            |
 | POST   | `/trips/:tripId/documents`             | Upload (multipart) → encrypted at rest (ADR-0015) |
 | GET    | `/trips/:tripId/documents/:id/content` | Decrypted stream to an authorized member          |
+
+## Itinerary sharing (ADR-0213)
+
+One reconfigurable public link per trip. **Two prefixes, one flow**: `/s/<code>` is a frontend
+SPA route (the service worker must keep answering it with the app shell), and
+`shared-itineraries` is the backend prefix the page then fetches from. Both are in
+`SERVER_ROUTE_PREFIXES` terms exactly once — only the second one is.
+
+| Method | Path                                          | Body → Response                                                                                                                                                 |
+| ------ | --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/trips/:tripId/share`                        | → `TripShareConfig` (any member; `404` when not shared — **a read never creates a share**)                                                                      |
+| PUT    | `/trips/:tripId/share`                        | `upsertTripShareSchema` → `TripShareConfig` (**admin-only**, idempotent: same input, same code; an optional `scope.category` at Summary makes a list, ADR-0242) |
+| POST   | `/trips/:tripId/share/rotate`                 | → `TripShareConfig` (**admin-only**; the previously shared code stops resolving at once)                                                                        |
+| GET    | `/trips/:tripId/share/card`                   | → `image/png`, the group-chat card (any member; `204` when there is nothing to draw; 5/min; ADR-0241 §5)                                                        |
+| DELETE | `/trips/:tripId/share`                        | → `204` (**admin-only**; the row and its configuration survive, the code stops resolving)                                                                       |
+| GET    | `/shared-itineraries/:code`                   | **public** → `SharedItinerary`, or `SharedList` (`status: 'list'`) for a list's code (20/min per IP; `404` for missing, revoked and rotated alike)              |
+| GET    | `/shared-itineraries/:code/pdf`               | **public** → `application/pdf`, attachment (`404` for a list; 5/min per IP; `503` + `Retry-After` when the render queue is saturated)                           |
+| GET    | `/shared-itineraries/:code/book`              | **public** → the trip book, `application/pdf` attachment: the record at this link's policy (ADR-0241 §6; as `/pdf`, `404` for a list)                           |
+| GET    | `/shared-itineraries/:code/documents/:handle` | **public** → the file's bytes, attachment (only a document explicitly selected for THIS active share)                                                           |
+
+**The code is the credential** — the same durable-row technique as the invite (ADR-0067), so
+the URL carries no trip id and nothing to verify, and rotating it is one write. The tight
+per-IP caps are what stand between an 8-character keyspace and enumeration.
+
+**Authority is asymmetric on purpose.** Every current member may read the configuration,
+share the link and request the PDF; only an admin may create, reconfigure, rotate or revoke.
+Sharing an itinerary is what the group does; changing what the world can see is not.
+
+**Every public response carries `Cache-Control: private, no-store`, `Referrer-Policy:
+no-referrer` and `X-Robots-Tag: noindex, nofollow, noarchive`** — including the app shell
+served for a `/s/<code>` navigation, because the code is in the URL being requested. Each
+closes a specific hole: a cache that outlives revocation, a `Referer` handing the credential
+to whatever map link the reader taps, and a crawler indexing a trip somebody passed to one
+person. Public reads are never written to Dexie or Cache Storage.
+
+**Detail is a server projection, never a client concern.** The level decides what is
+_queried_ (`backend/src/sharing/sharing.select.ts`), so a column added to `Event` next year
+is invisible until somebody names it, and the strict response schema turns naming it wrongly
+into a failed request rather than a disclosure. Summary carries no time, address, map link,
+travel leg or appendix at all; Full adds those; Everything adds only the sensitive families
+explicitly enabled, in a separate appendix rather than inline with the schedule.
+
+**The narrative port takes `SummaryNarrativeInput` and nothing else** — built from
+already-projected Summary days, independently of the share level, so no Everything toggle can
+widen it. No external model ships; the deterministic fallback is complete, and a public read
+never waits on generation.
 
 ## Snapshot & change feed (ADR-0019)
 

@@ -8,7 +8,6 @@ import {
   useNavigate,
   useParams,
 } from 'react-router-dom';
-import type { Trip } from '@waypoint/shared';
 import { TripProvider, useTrip } from './state/trip-state';
 import { ModeProvider, useMode } from './state/mode-state';
 import { MapScopeProvider, useMapScope, useSelectDay } from './state/map-scope-state';
@@ -36,7 +35,7 @@ import {
   usePendingChangeCount,
   useSyncFailures,
 } from './lib/outbox';
-import { loadTripList } from './lib/cache';
+import { useTripList } from './lib/useTripList';
 import { retainMapArchives } from './lib/map-archive-cache';
 import { resolveLanding } from './lib/active-trip';
 import { consumeIntent, hasIntent, saveIntent } from './lib/intent';
@@ -54,6 +53,8 @@ import { mapPaneAvailable } from './lib/map-config';
 import { BootScreen, HomeSkeleton, LoadingState } from './ui/feedback';
 import { SyncReviewSheet } from './ui/SyncReviewSheet';
 import { AppUpdateNotice } from './ui/AppUpdateNotice';
+import { InstallAskBanner } from './ui/InstallAskBanner';
+import { startInstallCapture } from './lib/install';
 import { Icon } from './ui/Icon';
 import { NavArrow } from './ui/NavArrow';
 import { DayStrip } from './ui/domain/DayStrip';
@@ -84,26 +85,30 @@ const CreateTrip = lazyRoute(() =>
 const JoinTrip = lazyRoute(() =>
   import('./screens/JoinTrip').then((m) => ({ default: m.JoinTrip })),
 );
+const SharedItinerary = lazyRoute(() =>
+  import('./screens/SharedItinerary').then((m) => ({ default: m.SharedItinerary })),
+);
 const TripSettings = lazyRoute(() =>
   import('./screens/TripSettings').then((m) => ({ default: m.TripSettings })),
 );
 import { DevTimeTravel } from './dev/DevTimeTravel';
-import { useClock } from './lib/useClock';
+import { getNow, useClock } from './lib/useClock';
+import { useTripRoutePack } from './lib/route-pack';
 import { lazyRoute } from './lib/lazy-chunk';
 import { observeVisibility } from './lib/visibility';
 import { useShrinkToFit } from './lib/useShrinkToFit';
 import {
   DEFAULT_TRIP_ICON,
-  MS_PER_DAY,
+  MINUTES_PER_DAY,
   OUTBOX_RETRY_MS,
   PEOPLE_STACK_CAP,
   TABS,
   TRIP_NAME_FIT,
   type TabId,
 } from './constants';
-import { type Mode } from './lib/mode';
-import { monthLabelFor, tripDates, weekdayLetter } from './lib/time';
-import { liveToday } from './lib/places';
+import { daysSinceEnd, tripToday, type Mode } from './lib/mode';
+import { formatDuration } from './lib/duration';
+import { monthLabelFor, tripDates, tripDayNumber, weekdayLetter } from './lib/time';
 import { t } from './i18n/he';
 import './App.css';
 import './screens.css';
@@ -114,8 +119,12 @@ import './ui/primitives/form-errors.css';
 // The rebuff beat, shared by Plan's prep hero and the Trip board (ADR-0160 §Q) — global
 // for the same reason: two surfaces play it and neither owns it.
 import './styles/beats.css';
+// The strip-edge fade, shared by the pills row, the maybe shelf and the Map's facet strip
+// (ADR-0100 §6, one mechanism since 2026-08-21) — global for the same reason.
+import './styles/edge-fade.css';
 import { Avatar } from './ui/primitives/Avatar';
 import { RosterSheet } from './ui/RosterSheet';
+import { useShareSheet } from './ui/useShareSheet';
 import { ltrIsolate } from './lib/bidi';
 import { readDurationMs } from './lib/motion';
 import { memberCluster } from './lib/member-cluster';
@@ -207,6 +216,7 @@ export function Header({
   onOpenSwitcher,
   onOpenPeople,
   onOpenSettings,
+  onShare,
   allDays,
   otherTripCount = 0,
 }: {
@@ -214,6 +224,10 @@ export function Header({
   onOpenSwitcher: () => void;
   onOpenPeople: () => void;
   onOpenSettings: () => void;
+  /** Opens the trip's share sheet (ADR-0213). One of the feature's two visible entries —
+   *  the other is on every All Trips card — and both drive the SAME sheet instance the
+   *  shell owns, rather than each surface mounting its own. */
+  onShare: () => void;
   /** The Map's all-days scope is on (ADR-0110 §4) — screen-local state the shell
    *  hands down, since the app tracks exactly one active date. Whether the strip
    *  then singles out a day is this header's own call (see `unscoped` below). */
@@ -227,7 +241,9 @@ export function Header({
 }) {
   const { trip, users, zoneEvidence, activeDate, usingCachedSnapshot, events } = useTrip();
   const { me } = useAuth();
-  const { mode } = useMode();
+  // The chrome paints `chromeMode`: it differs from `mode` only during the first morning's
+  // hold (ADR-0221 §4), when the header is still violet over a trip that is already live.
+  const { chromeMode: mode, phase, isFinished } = useMode();
   // **Which surface is asking** decides whether the strip singles out a day at all
   // (field report #39). The remembered day is the `?day=` param wherever you are
   // (ADR-0035 §4 — one copy, nothing to sync), but it is only shown as selected on a
@@ -284,8 +300,7 @@ export function Header({
   const [syncReviewOpen, setSyncReviewOpen] = useState(false);
   const dates = tripDates(trip.startDate, trip.endDate);
   const total = dates.length;
-  const dayNumber =
-    Math.round((Date.parse(activeDate) - Date.parse(trip.startDate)) / MS_PER_DAY) + 1;
+  const dayNumber = tripDayNumber(activeDate, trip.startDate);
   let prevDate: string | undefined;
   const days = dates.map((date) => {
     const monthLabel = monthLabelFor(date, prevDate);
@@ -308,11 +323,16 @@ export function Header({
   // session-102 amendment) — the same answer in BOTH modes. What time it is is a
   // fact about the trip and the clock, not about which surface you're looking at:
   // switching to Plan mode to do some building must not change "now".
-  const today = liveToday(now.getTime(), zoneEvidence);
+  // The trip's own today (ADR-0236 §1) — clamped while a commitment that began inside the
+  // trip is still running, so the day strip and `offToday` do not step past the last day
+  // while the flight home is in the air.
+  const today = tripToday(trip, now, zoneEvidence, events);
   // The anchor slot's two states (ADR-0149 §5, replacing ADR-0029/0043's ribbon):
   // on today it reads the trip's progress, off it becomes the way back. Only in
   // Trip mode — Plan mode has no "now" to return to.
   const offToday = mode === 'trip' && activeDate !== today;
+  // `null` on the last date itself, which the anchor reads as `הסתיים · היום`.
+  const agoPhrase = isFinished ? formatDuration(daysSinceEnd(trip, today) * MINUTES_PER_DAY) : null;
   // Offline and pending resolve by themselves, so they stay a passive mark on the
   // glyph (an exception indicator, silent when synced — ADR-0092). `failed` is the
   // one sync state a person can act on and ADR-0080 requires a path to the
@@ -320,7 +340,7 @@ export function Header({
   // chip navigates away, which means the badge cannot be that path.
   const passiveSync = offline ? 'offline' : pendingCount > 0 ? 'pending' : null;
   return (
-    <header className="header mode-chrome" data-mode={mode}>
+    <header className="header mode-chrome" data-mode={mode} data-phase={phase}>
       <div className="hdr-top">
         <button
           ref={tripChipRef}
@@ -373,6 +393,13 @@ export function Header({
             <Icon name="warn" />
           </button>
         )}
+        <button
+          className="chrome-ghost-btn share-header-btn"
+          onClick={onShare}
+          aria-label={t.share.entry}
+        >
+          <Icon name="share" />
+        </button>
         <button className="gear-btn" onClick={onOpenSettings} aria-label={t.shell.stub.settings}>
           <Icon name="settings" />
         </button>
@@ -448,16 +475,27 @@ export function Header({
           </button>
         ) : (
           /* Not a control on today, and not labelled as one: `יום` over `3/10` is
-             what it says, and that reads correctly on its own. */
+             what it says, and that reads correctly on its own. A finished trip reads no
+             progress through it (ADR-0239 §3); it says how long ago the trip was, on the
+             app's one elapsed ladder (ADR-0240 §3, ADR-0114). */
           <div className="hdr-anchor">
-            <span className="anchor-progress">
-              <span className="cap">{t.header.dayCap}</span>
-              <span className="num">{ltrIsolate(t.header.dayProgress(dayNumber, total))}</span>
-            </span>
-            <span className="anchor-back" aria-hidden="true" data-off>
-              <NavArrow variant="back" />
-              {t.header.todayShort}
-            </span>
+            {isFinished ? (
+              <span className="anchor-progress">
+                <span className="cap">{agoPhrase ? t.header.agoCap : t.header.endedCap}</span>
+                <span className="num is-words">{agoPhrase ?? t.header.endedToday}</span>
+              </span>
+            ) : (
+              <>
+                <span className="anchor-progress">
+                  <span className="cap">{t.header.dayCap}</span>
+                  <span className="num">{ltrIsolate(t.header.dayProgress(dayNumber, total))}</span>
+                </span>
+                <span className="anchor-back" aria-hidden="true" data-off>
+                  <NavArrow variant="back" />
+                  {t.header.todayShort}
+                </span>
+              </>
+            )}
           </div>
         )}
         <div className="hdr-strip-wrap">
@@ -470,6 +508,7 @@ export function Header({
             unscoped={unscoped}
             dragging={dragging}
             overDate={overDate}
+            finished={isFinished}
           />
         </div>
         <ModeToggle />
@@ -509,6 +548,7 @@ function Shell({ otherTripCount }: { otherTripCount: number }) {
   // strip reads it again for its own drop targets.
   const { dragging } = useDragState();
   const [rosterOpen, setRosterOpen] = useState(false);
+  const share = useShareSheet();
   // The roster's own data. The header already renders the cluster from `users`; the
   // sheet needs the memberships too, for each person's role and joined date.
   const { members, users } = useTrip();
@@ -517,7 +557,7 @@ function Shell({ otherTripCount }: { otherTripCount: number }) {
   // Give Android's OS back an in-app entry to traverse into (ADR-0090) so a cold
   // launch straight into the trip can't let a system-back slip out of the app.
   useTripBackGuard();
-  const { mode } = useMode();
+  const { mode, phase, isFinished, chromeMode, goingLive } = useMode();
   const { trip, tripDeleted, usingCachedSnapshot } = useTrip();
   const navigate = useNavigate();
   const closeAllOverlays = useCloseAllOverlays();
@@ -565,11 +605,16 @@ function Shell({ otherTripCount }: { otherTripCount: number }) {
   // animation is intermittently skipped. So derive it during render (set-state-in-
   // render) rather than post-paint. Not armed on first mount; reduced-motion still
   // flips instantly (the CSS is inert under it).
-  const [prevMode, setPrevMode] = useState(mode);
+  //
+  // Keyed on `chromeMode`, not `mode` (ADR-0221 §4): on the first open of a live trip the
+  // chrome holds at plan for a beat and then flips, and THAT flip is the one this arms — the
+  // automatic midnight switch had never once been on screen to arm it. A first morning
+  // ended by a tap flips quietly instead.
+  const [prevMode, setPrevMode] = useState(chromeMode);
   const [switching, setSwitching] = useState<'to-trip' | 'to-plan' | null>(null);
-  if (mode !== prevMode) {
-    setPrevMode(mode);
-    setSwitching(mode === 'trip' ? 'to-trip' : 'to-plan');
+  if (chromeMode !== prevMode) {
+    setPrevMode(chromeMode);
+    setSwitching(goingLive?.quiet ? null : chromeMode === 'trip' ? 'to-trip' : 'to-plan');
   }
   // Disarm once the animation has settled. The duration is read from the CSS
   // token (not hardcoded) so JS and CSS can't drift — changing --t-cinematic in
@@ -614,7 +659,8 @@ function Shell({ otherTripCount }: { otherTripCount: number }) {
 
   return (
     <AppShell
-      mode={mode}
+      mode={chromeMode}
+      phase={phase}
       switching={switching ?? undefined}
       bodyKey={tab}
       bodyClassName={fullBleed ? BODY_FULLBLEED : undefined}
@@ -629,23 +675,27 @@ function Shell({ otherTripCount }: { otherTripCount: number }) {
           onOpenSwitcher={() => navigate('/trips')}
           onOpenPeople={() => setRosterOpen(true)}
           onOpenSettings={() => navigate(`/trip/${trip.id}/settings`)}
+          onShare={() => share.open(trip, isFinished)}
           allDays={allDays}
           otherTripCount={otherTripCount}
         />
       }
       overlay={
-        rosterOpen && (
-          <RosterSheet
-            members={members}
-            users={users}
-            myUserId={me?.user.id}
-            onOpenAccount={() => {
-              setRosterOpen(false);
-              navigate(settingsPath(SETTINGS_FROM.HOME));
-            }}
-            onClose={() => setRosterOpen(false)}
-          />
-        )
+        <>
+          {share.sheet}
+          {rosterOpen && (
+            <RosterSheet
+              members={members}
+              users={users}
+              myUserId={me?.user.id}
+              onOpenAccount={() => {
+                setRosterOpen(false);
+                navigate(settingsPath(SETTINGS_FROM.HOME));
+              }}
+              onClose={() => setRosterOpen(false)}
+            />
+          )}
+        </>
       }
       nav={
         <nav className="nav">
@@ -697,7 +747,16 @@ function ZeroStateRoute() {
 
 function AllTripsRoute() {
   const navigate = useNavigate();
-  return <AllTrips onOpenAccount={() => navigate(settingsPath(SETTINGS_FROM.TRIPS))} />;
+  const share = useShareSheet();
+  return (
+    <>
+      <AllTrips
+        onOpenAccount={() => navigate(settingsPath(SETTINGS_FROM.TRIPS))}
+        onShare={share.open}
+      />
+      {share.sheet}
+    </>
+  );
 }
 
 // Settings is a full-page route outside the mode Shell (ADR-0039: mode-neutral),
@@ -718,21 +777,41 @@ function TripSettingsRoute() {
   );
 }
 
+/** `InstallAskBanner` wants the trip and `useTrip` is a hook, so this is the one-line
+ *  component that reads it — the same shape as `ZeroStateRoute`/`AllTripsRoute` above. */
+function InstallAsk() {
+  const { trip, zoneEvidence } = useTrip();
+  return <InstallAskBanner trip={trip} zoneEvidence={zoneEvidence} />;
+}
+
+/**
+ * **THE TRIP'S TRAVEL TIMES, FETCHED ONCE AND PUT WHERE THE DAY READS THEM** (ADR-0206 §AZ5).
+ *
+ * Renders nothing; it is here for the same reason `InstallAsk` is a component — the work needs
+ * the trip and `useTrip` is a hook. **At the shell and not on a day surface**, because a pack
+ * covers every day of the trip and the point of it is the day you have NOT opened: hanging it off
+ * `DayView` would fetch it on the one day that least needs it.
+ */
+function TripRoutePack() {
+  const { trip } = useTrip();
+  const offline = useIsOffline();
+  // The clock is read rather than subscribed to: whether a trip has finished is a fact that
+  // changes once, and this component renders nothing that a tick would move.
+  useTripRoutePack({
+    tripId: trip?.id,
+    offline,
+    ended: !!trip?.endDate && Date.parse(`${trip.endDate}T23:59:59.999Z`) < getNow(),
+    archiveVintage: useAuth().me?.map?.archiveVintage ?? null,
+  });
+  return null;
+}
+
 function RootSurface() {
-  const [trips, setTrips] = useState<Trip[] | null>(null);
+  // Offline-aware (sync-and-offline.md "Read"): reads the cached trip list when the fetch
+  // fails AND when it is merely too slow, so a cold reopen on a bad connection resolves the
+  // active trip instead of holding the boot screen or collapsing to ZeroState.
+  const trips = useTripList();
   const { tripId: storedTripId, pickedThisSession } = useActiveTripId();
-  useEffect(() => {
-    let cancelled = false;
-    // Offline-aware (sync-and-offline.md "Read"): falls back to the cached trip
-    // list when the fetch fails, so a cold reopen with no network resolves the
-    // active trip instead of collapsing to ZeroState.
-    loadTripList().then(({ trips: list }) => {
-      if (!cancelled) setTrips(list);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
   useEffect(() => {
     if (trips) void retainMapArchives({ trips, currentTripId: storedTripId ?? undefined });
   }, [storedTripId, trips]);
@@ -750,6 +829,13 @@ function RootSurface() {
 
   return (
     <TripProvider tripId={landing.tripId} knownTrip={knownTrip}>
+      {/* Inside TripProvider, unlike `AppUpdateNotice` at the root, and for the mirror of
+          that component's reason: a build swap is not a fact about any trip, and both of
+          the install asks ARE facts about this one (ADR-0204 §2) — you just joined it, or
+          it starts in three days. It still paints on `.app-update`, which is a mount and
+          not a second banner. */}
+      <InstallAsk />
+      <TripRoutePack />
       <ModeProvider>
         <MapScopeProvider>
           <DragProvider>
@@ -772,11 +858,19 @@ function RootSurface() {
 // its preview is a public endpoint and must render before any auth check —
 // the screen's own "Continue with Google" CTA is what saves the intent and
 // starts sign-in, not this eager gate.
+//
+// `/s/<code>` is exempt for a stronger reason (ADR-0213): its reader has no account and
+// never will. Sending them to /login would not defer the screen, it would replace it.
+/** **Paths that must render for somebody with no account.** One predicate rather than a
+ *  growing `startsWith` chain inside the gate: /join defers sign-in, /s never asks for it. */
+export const publicAppPath = (pathname: string): boolean =>
+  pathname === '/login' || pathname.startsWith('/join/') || pathname.startsWith('/s/');
+
 export function AuthGate() {
   const { status } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
-  const isJoinRoute = location.pathname.startsWith('/join/');
+  const isPublicRoute = publicAppPath(location.pathname);
   // Whether a saved deep-link intent is still waiting to be resolved. Kept in
   // React state (not a bare hasIntent() read at render time) so that *consuming*
   // an intent always triggers a re-render that lifts this gate — even when the
@@ -789,7 +883,7 @@ export function AuthGate() {
   useEffect(() => {
     if (status === 'loading') return;
     if (status === 'anon') {
-      if (location.pathname !== '/login' && !isJoinRoute) {
+      if (location.pathname !== '/login' && !isPublicRoute) {
         saveIntent(location.pathname);
         setIntentPending(true);
         navigate('/login', { replace: true });
@@ -803,11 +897,11 @@ export function AuthGate() {
       navigate('/', { replace: true });
     }
     setIntentPending(false);
-  }, [status, location.pathname, navigate, isJoinRoute]);
+  }, [status, location.pathname, navigate, isPublicRoute]);
 
   if (status === 'loading') return <BootScreen />;
   if (status === 'anon') {
-    return location.pathname === '/login' || isJoinRoute ? <Outlet /> : <BootScreen />;
+    return location.pathname === '/login' || isPublicRoute ? <Outlet /> : <BootScreen />;
   }
   // A pending deep-link intent (e.g. mid-join after OAuth's redirect to "/")
   // must not let RootSurface mount even for one render — its fetchTrips()
@@ -840,6 +934,10 @@ function AppRoutes() {
             <Route path="trips" element={<AllTripsRoute />} />
             <Route path="new" element={<CreateTrip />} />
             <Route path="join/:token" element={<JoinTrip />} />
+            {/* The anonymous itinerary reader (ADR-0213). Inside the gate, which lets it
+              through unauthenticated, so a signed-in owner opening their own link sees the
+              same page a stranger does. */}
+            <Route path="s/:code" element={<SharedItinerary />} />
             <Route path="trip/:id/settings" element={<TripSettingsRoute />} />
             {/* Your own settings + its picture page (ADR-0133). User-scoped, so
               deliberately NOT nested under a trip — the thing they edit is you, and
@@ -916,6 +1014,15 @@ function OutboxAutoFlush() {
   return null;
 }
 
+/** `beforeinstallprompt` fires ONCE, early, and is gone if nothing catches it — which is
+ *  why this is at the root on first load and not inside the surface that offers the install
+ *  (ADR-0204 §4). Catching it is also what suppresses Chrome's own mini-infobar, so the app
+ *  picks the moment rather than the browser. */
+function InstallCapture() {
+  useEffect(() => startInstallCapture(), []);
+  return null;
+}
+
 export function App() {
   return (
     <AuthProvider>
@@ -924,6 +1031,7 @@ export function App() {
           <NavProvider>
             <ConfirmProvider>
               <OutboxAutoFlush />
+              <InstallCapture />
               <AppRoutes />
               {/* Also outside AppRoutes, and for the same shape of reason: a service
                   worker swapping the build under an open tab is not a fact about the

@@ -7,15 +7,58 @@ import {
   titlesFromRoute,
   eventDurationUnit,
   isAmbient,
+  isJourney,
   type Booking,
   type MaybeItem,
   type Place,
   type PlacePrediction,
   type TripEvent,
+  haversineMeters,
+  type LatLng,
 } from '@waypoint/shared';
+
+// Imported for this file's own use AND re-exported below: a bare `export … from` would not
+// bring them into scope here, and several derivations in this file read them.
+import {
+  bookingEndZones,
+  bookingZoneOverrides,
+  currentZone,
+  dayAmbientZone,
+  eventDisplayZones,
+  eventKnownZone,
+  eventsOnDate,
+  placeTimezone,
+  segmentBoundsAt,
+  segmentZoneAt,
+  tripZoneCrossings,
+  zoneConsensus,
+  zoneReachedAt,
+  type ZoneCrossing,
+  type ZoneEvidence,
+} from '@waypoint/shared';
+
+export {
+  bookingEndZones,
+  bookingZoneOverrides,
+  currentZone,
+  dayAmbientZone,
+  eventDisplayZones,
+  eventKnownZone,
+  eventsOnDate,
+  placeTimezone,
+  segmentBoundsAt,
+  segmentZoneAt,
+  tripZoneCrossings,
+  zoneConsensus,
+  zoneReachedAt,
+  type ZoneCrossing,
+  type ZoneEvidence,
+};
 import { ltrIsolate } from './bidi';
 import type { PlaceLabels } from './place-label';
 import {
+  byPeer,
+  clusterAround,
   deriveNow,
   eventPhase,
   isCalendarDay,
@@ -25,6 +68,9 @@ import {
 } from './time';
 import { DAY_NOON, LIVE_ZONE_WINDOW_MS } from '../constants';
 import { formatDuration } from './duration';
+import { formatDistance } from './distance';
+import { carriedBookingMeters, coordOf } from './day-travel';
+import { DAY_ANCHOR_AGREE_M } from '../constants';
 
 /** Whether a booking carries a route rather than a single place — one call into the
  *  shared profile (ADR-0154 §2), which is where that question now lives for both
@@ -219,179 +265,193 @@ export function bookingRoute(
 // zone naturally lives). Pure + clock-free — callers own `now`. The now/next
 // engine and stored instants are untouched; this is display/authoring only.
 
-/** A zone-crossing transport event: the timeline splits into zone segments at
- *  its departure instant. Only transport whose origin and destination zones are
- *  both known **and differ** makes a crossing — a same-zone or coordless hop
- *  doesn't reorient anything. */
-export interface ZoneCrossing {
-  at: number; // departure instant (ms) — the boundary between the two segments
-  fromZone: string;
-  toZone: string;
-}
+// ── THE ZONE MODEL MOVED TO `@waypoint/shared` (ADR-0197 §5, phase 2) ──────────────────
+//
+// `ZoneCrossing`, `placeTimezone`, `bookingZoneOverrides`, `bookingEndZones`,
+// `tripZoneCrossings`, `segmentZoneAt` and `currentZone` are now `shared/src/zones.ts`,
+// because the notification sweep asks the same question from the server and the answer has
+// to come from the same code — a send time and a printed time that disagree is the 03:00
+// notification.
+//
+// **And `eventDisplayZones` followed them on 2026-09-01, which the first sweep should have
+// done.** Moving the primitives and leaving the composer here meant the server had the parts
+// and not the answer, so it used `currentZone` — a different question — and the shared page
+// printed every departure in the destination's zone. A promotion that stops at the primitives
+// leaves the door it was closing open.
+//
+// **And `ZoneEvidence`, `eventKnownZone`, `eventsOnDate` and `dayAmbientZone` followed on
+// 2026-09-03, closing the same door one rung higher.** With the composer shared, the server
+// could say what an event's clock means and still not say which zone a DAY is lived in — so
+// the shared itinerary marked "now" on the card the destination's clock was on, and printed
+// its marker in that zone, on a page whose every other time is resolved per event. What is
+// left here is only what no server asks: `liveZone` (where you are standing this second) and
+// `authoringZone` (what a form's typed time means).
+//
+// **Re-exported here, and this file is not a second definition.** Every consumer keeps
+// importing from `lib/places`, which is where they have always looked; `zones.ts` is the
+// one implementation. When you need to change the behaviour, change it there.
 
-/** IANA zone cached on a place row (undefined for a coordless Place-lite). The
- *  public name for form authoring, where a time field is entered in its
- *  endpoint's own zone (ADR-0107 §2): a departure in `fromPlace`, an arrival in
- *  `toPlace`, a single-place booking/event in its place. */
-export function placeTimezone(places: Place[], placeId?: string): string | undefined {
-  if (!placeId) return undefined;
-  return places.find((p) => p.id === placeId)?.timezone;
-}
+/**
+ * **WHERE THIS DAY IS LIVED, IN COORDINATES** — the sibling of
+ * {@link dayAmbientZone}, and the one derivation the daylight feature adds.
+ *
+ * A sun time is a function of latitude and longitude, so "when does the sun
+ * catch us" needs the same question `dayAmbientZone` already answers, asked in
+ * degrees instead of zone ids. It therefore reads the SAME `ZoneEvidence`
+ * bundle, on the same date, and inherits the rule that makes that bundle
+ * evidence rather than a circular vote:
+ *
+ *   1. **The day's own placed events, when they agree.** `eventsOnDate`
+ *      includes a multi-day stay on its middle nights, so the hotel votes on
+ *      every day it covers — which is why an arrival day resolves to the bed
+ *      without needing a separate rule for it: the flight abstains (below) and
+ *      the destination hotel is the only voter left.
+ *   2. **The trip's destination**, which ADR-0113 already stores from the
+ *      creation pick.
+ *
+ * **A zone-crossing booking does not vote**, exactly as in `eventKnownZone`, and
+ * for the identical reason: it is the thing that moves you between two places,
+ * so it cannot testify about where the day sits. Here that means a booking whose
+ * two ends are different places abstains entirely.
+ *
+ * `undefined` is a first-class answer — a trip with no destination coordinates
+ * and no placed events gets no daylight at all rather than a wrong sunrise,
+ * which is the same "a miss degrades, never a wrong answer" contract
+ * `crossRate` and `COUNTRY_CURRENCY` carry.
+ *
+ * **The zone and the coordinate must be resolved from one evidence on one
+ * date.** They are two derivations feeding one printed time — the instant comes
+ * from here, the wall clock from `dayZoneContext` — so resolving them from
+ * different days is how an app prints a sunrise at 21:40 and nobody notices.
+ */
+export function dayAnchorCoord(
+  date: string,
+  evidence: ZoneEvidence,
+  destination?: LatLng,
+): LatLng | undefined {
+  const { events, bookings, places } = evidence;
+  const voters = eventsOnDate(events, date)
+    .map((event) => eventKnownCoord(event, bookings, places))
+    .filter((at): at is LatLng => at != null);
 
-/** A booking's per-end zone overrides, resolved by the same authority rule as its
- *  place fields (ADR-0107 §6-7 session-99 amendment): transport pins its origin's
- *  zone on `start` and its destination's on `end`; a single-place booking uses only
- *  `start`, which then drives both ends. Undefined = nothing pinned. */
-export function bookingZoneOverrides(booking: Booking | undefined): {
-  start?: string;
-  end?: string;
-} {
-  if (!booking) return {};
-  const start = booking.startDisplayTimezone;
-  const end = isTransport(booking) ? booking.endDisplayTimezone : start;
-  return { start, end };
-}
-
-/** What zone each end of a booking is in **as far as we know**: the user's pinned
- *  override, else the endpoint place's cached zone, else undefined (a coordless
- *  Place-lite with nothing pinned — the caller falls back to the segment/primary).
- *  The one answer both the crossing detection and the event resolver read, so a
- *  pinned zone partitions the itinerary exactly like a real place does. */
-export function bookingEndZones(booking: Booking, places: Place[]): { from?: string; to?: string } {
-  const pinned = bookingZoneOverrides(booking);
-  return isTransport(booking)
-    ? {
-        from: pinned.start ?? placeTimezone(places, booking.fromPlaceId),
-        to: pinned.end ?? placeTimezone(places, booking.toPlaceId),
-      }
-    : (() => {
-        const zone = pinned.start ?? placeTimezone(places, booking.placeId);
-        return { from: zone, to: zone };
-      })();
-}
-
-/** The trip's zone-crossings in departure order (ADR-0107 §3). Everything before
- *  the first crossing sits in its origin zone (the home zone, known once the
- *  outbound flight's `fromPlace` is entered); each later segment takes the
- *  preceding crossing's destination zone. */
-export function tripZoneCrossings(
-  events: TripEvent[],
-  bookings: Booking[],
-  places: Place[],
-): ZoneCrossing[] {
-  const crossings: ZoneCrossing[] = [];
-  for (const event of events) {
-    if (!event.bookingId || !event.startsAt) continue;
-    const booking = bookings.find((b) => b.id === event.bookingId);
-    if (!booking || !isTransport(booking)) continue;
-    const { from: fromZone, to: toZone } = bookingEndZones(booking, places);
-    if (!fromZone || !toZone || fromZone === toZone) continue;
-    crossings.push({ at: Date.parse(event.startsAt), fromZone, toZone });
+  if (voters.length > 0) {
+    // Same cell = same weather model grid square and the same sun to well under
+    // a minute, so "agree" is a distance rather than an equality — two stops in
+    // one city must not read as a mixed day.
+    const first = voters[0];
+    if (voters.every((at) => haversineMeters(first, at) <= DAY_ANCHOR_AGREE_M)) return first;
   }
-  return crossings.sort((a, b) => a.at - b.at);
+
+  return destination;
 }
 
-/** The itinerary-segment zone at an instant (ADR-0107 §3 step 2), or undefined
- *  when no transport anchors the timeline (caller falls back to the trip primary
- *  zone). Before the first crossing → its origin zone; at/after a crossing's
- *  departure → its destination zone (so a mid-flight instant reads the
- *  destination, ADR-0107 §8). */
-export function segmentZoneAt(instantMs: number, crossings: ZoneCrossing[]): string | undefined {
-  if (crossings.length === 0) return undefined;
-  if (instantMs < crossings[0].at) return crossings[0].fromZone;
-  let zone = crossings[0].toZone;
-  for (const crossing of crossings) {
-    if (instantMs >= crossing.at) zone = crossing.toZone;
-    else break;
-  }
-  return zone;
-}
-
-/** The zone the live "now" sits in (ADR-0107 §4): the itinerary segment holding
- *  `nowMs`, falling back to the trip primary zone when no crossing anchors the
- *  timeline. Trip mode reads the clock, the now-line and "today" through this, so
- *  they track which side of a crossing you're on — via the itinerary, never GPS.
- *  Plan mode deliberately does NOT use it: planning is framed in the trip primary
- *  zone (§4). */
-export function currentZone(nowMs: number, crossings: ZoneCrossing[], primaryZone: string): string {
-  return segmentZoneAt(nowMs, crossings) ?? primaryZone;
-}
-
-/** Everything the zone questions resolve against. Bundled because "which zone is
- *  this day in" now reads the day's own events, not only the transport crossings
- *  (ADR-0107 session-100 amendment) — five arguments at four call sites otherwise. */
-export interface ZoneEvidence {
-  events: TripEvent[];
-  bookings: Booking[];
-  places: Place[];
-  crossings: ZoneCrossing[];
-  primaryZone: string;
-}
-
-/** An event's zone **only when something actually says so** — a manual pin or a
- *  place with coordinates — and `undefined` when it would fall back to the
- *  itinerary segment or the trip primary. This is what makes the day-consensus
- *  below evidence rather than a circular vote: a placeless event's zone *is* the
- *  segment zone, so letting it vote would only ever confirm the segment.
- *  Zone-crossing transport is excluded too: it is the thing that moves you between
- *  zones, so it can't testify about where a day sits. */
-function eventKnownZone(
+/** An event's coordinate **only when something actually says so** — the mirror
+ *  of `eventKnownZone`, including its abstention: a booking whose two ends are
+ *  different places is transport between them and testifies about neither. */
+function eventKnownCoord(
   event: TripEvent,
   bookings: Booking[],
   places: Place[],
-): string | undefined {
-  if (event.displayTimezone) return event.displayTimezone;
+): LatLng | undefined {
   const booking = event.bookingId ? bookings.find((b) => b.id === event.bookingId) : undefined;
   if (booking) {
-    const { from, to } = bookingEndZones(booking, places);
-    if (from && to && from !== to) return undefined; // a crossing doesn't vote
-    return from ?? to;
+    const from = coordOf(places, booking.fromPlaceId ?? undefined);
+    const to = coordOf(places, booking.toPlaceId ?? undefined);
+    if (from && to && haversineMeters(from, to) > DAY_ANCHOR_AGREE_M) return undefined;
+    return coordOf(places, bookingPlaceId(booking)) ?? from ?? to;
   }
-  return placeTimezone(places, event.placeId);
+  return coordOf(places, event.placeId ?? undefined);
 }
 
-/** Events that sit on `date` — including a multi-day stay on its middle nights,
- *  which is strong evidence about where you are (ADR-0054's ambient span). */
-function eventsOnDate(events: TripEvent[], date: string): TripEvent[] {
-  return events.filter(
-    (e) => e.date === date || (e.endDate != null && e.date <= date && date <= e.endDate),
-  );
-}
-
-/** The **day's** ambient zone: the zone that day is lived in. This is what a day
- *  surface measures an event's shift against (a pill shows only when an event
- *  differs from its day), and what decides whether a day is over for editing
- *  (ADR-0029 amendment) — as opposed to `currentZone`, the segment primitive.
+/**
+ * **WHERE YOU ARE RIGHT NOW, IN COORDINATES** — the coordinate twin of
+ * {@link liveZone}, exactly as {@link dayAnchorCoord} is the twin of
+ * `dayAmbientZone` (ADR-0218's 2026-09-03 amendment; owner: _"today's weather
+ * should update based on where we are right now or where we're headed, not the
+ * start of the day"_).
  *
- *  Resolution (ADR-0107 session-100 amendment):
- *    1. **The day's own events**, when the ones with a *known* zone agree on a UTC
- *       offset — a day whose bookings are all in Cyprus is a Cyprus day, whatever
- *       the last flight was. Sessions 89-90 keyed this to the crossing-derived
- *       segment alone, which framed every day after an outbound flight in the
- *       destination's zone forever: two same-offset events then each drew a shift
- *       pill against a zone neither of them was in.
- *    2. The **itinerary segment** at the day's noon — the honest answer for a real
- *       travel day, whose events genuinely span two zones (so step 1 abstains).
- *    3. The **trip primary** zone.
+ * **Why `dayAnchorCoord` could not answer this, since it looks like it should.**
+ * That function is a WHOLE-DAY consensus by construction — it was built for
+ * daylight, where one sunrise serves the day and asking "which half of the day"
+ * is meaningless. A forecast is the opposite: its whole value is the next few
+ * hours (the brief's §3.1). So this is a second question, not a bug in the first,
+ * and both stay.
  *
- *  Noon is sampled in `primaryZone`: only which calendar day it lands in matters,
- *  and every zone agrees about noon-ish. */
-export function dayAmbientZone(date: string, evidence: ZoneEvidence): string {
-  const { events, bookings, places, crossings, primaryZone } = evidence;
-  const noonMs = Date.parse(zonedIso(date, DAY_NOON, primaryZone));
-  const noon = new Date(noonMs);
+ * It mirrors `liveZone`'s three rules, on the same evidence and the same window:
+ *
+ *   1. An event **in progress** — you are there.
+ *   2. The **nearest** placed event within `LIVE_ZONE_WINDOW_MS` either side. This
+ *      is the half the owner called _"or where we're headed"_: an hour before the
+ *      drive, the next place is already the answer.
+ *   3. The day's own anchor, which is `dayAnchorCoord`'s consensus, else the
+ *      destination.
+ *
+ * **One rule is INVERTED against `dayAnchorCoord`, and it is the easy thing to
+ * miss.** `eventKnownCoord` abstains on a zone-crossing booking, because a thing
+ * that moves you between two places cannot testify about where the DAY sits. Live,
+ * the opposite is right: mid-transit belongs to the **destination**, which is
+ * ADR-0107 §8's standing rule and what `liveZone` already does with zones. So a
+ * crossing in progress resolves to its `to` end rather than abstaining.
+ *
+ * **And it no longer mirrors `liveZone` exactly, deliberately** (ADR-0107's 2026-09-11
+ * amendment): the clock now rejects evidence from outside the leg you are on, and from any
+ * zone the itinerary says you reach later. Rung 2 here is the half the owner called _"or
+ * where we're headed"_, which is the opposite instinct — a forecast an hour before the drive
+ * is allowed to be about the destination; a clock has to say what time it is where you are.
+ *
+ * `undefined` is a first-class answer, inherited unchanged: no placed events and
+ * no destination means no forecast at all rather than a wrong one.
+ */
+export function liveAnchorCoord(
+  nowMs: number,
+  evidence: ZoneEvidence,
+  destination?: LatLng,
+): LatLng | undefined {
+  const { events, bookings, places } = evidence;
+  const timed = events.filter((e) => e.startsAt);
 
-  const known = eventsOnDate(events, date)
-    .map((e) => eventKnownZone(e, bookings, places))
-    .filter((zone): zone is string => zone != null);
-  if (known.length > 0) {
-    const offset = zoneOffsetMinutes(noon, known[0]);
-    // Offsets, not zone ids: Nicosia and Jerusalem are different zones that agree
-    // about what time it is, and a day split between them is not a mixed day.
-    if (known.every((zone) => zoneOffsetMinutes(noon, zone) === offset)) return known[0];
+  const inProgress = timed.find((e) => {
+    const start = Date.parse(e.startsAt!);
+    const end = e.endsAt ? Date.parse(e.endsAt) : start;
+    return start <= nowMs && nowMs < end;
+  });
+  if (inProgress) {
+    const at = liveEventCoord(inProgress, bookings, places);
+    if (at) return at;
   }
 
-  return segmentZoneAt(noonMs, crossings) ?? primaryZone;
+  let nearest: { at: LatLng; distance: number } | undefined;
+  for (const e of timed) {
+    const at = liveEventCoord(e, bookings, places);
+    if (!at) continue;
+    const start = Date.parse(e.startsAt!);
+    const end = e.endsAt ? Date.parse(e.endsAt) : start;
+    const distance = nowMs < start ? start - nowMs : nowMs > end ? nowMs - end : 0;
+    if (distance > LIVE_ZONE_WINDOW_MS) continue;
+    if (!nearest || distance < nearest.distance) nearest = { at, distance };
+  }
+  if (nearest) return nearest.at;
+
+  return dayAnchorCoord(liveToday(nowMs, evidence), evidence, destination) ?? destination;
+}
+
+/** An event's coordinate for the LIVE question — `eventKnownCoord` with its one
+ *  abstention inverted: a crossing booking reads its destination instead of
+ *  declining, because mid-transit belongs to where you are heading (ADR-0107 §8).
+ *  Everything else is the same answer, so the two cannot disagree about a stay. */
+function liveEventCoord(
+  event: TripEvent,
+  bookings: Booking[],
+  places: Place[],
+): LatLng | undefined {
+  const booking = event.bookingId ? bookings.find((b) => b.id === event.bookingId) : undefined;
+  if (booking) {
+    const from = coordOf(places, booking.fromPlaceId ?? undefined);
+    const to = coordOf(places, booking.toPlaceId ?? undefined);
+    if (from && to && haversineMeters(from, to) > DAY_ANCHOR_AGREE_M) return to;
+    return coordOf(places, bookingPlaceId(booking)) ?? from ?? to;
+  }
+  return coordOf(places, event.placeId ?? undefined);
 }
 
 /** The zone the live "now" is in, for Trip mode's clock / now-line / "today"
@@ -405,8 +465,18 @@ export function dayAmbientZone(date: string, evidence: ZoneEvidence): string {
  *    2. The **nearest** known-zone event within `LIVE_ZONE_WINDOW_MS` on either
  *       side. A booking half an hour ago or an hour ahead places you; one five days
  *       out says nothing about now, which is what the window is for.
- *    3. Otherwise the ambient zone of the day the segment puts you in — which is
- *       itself the day's own consensus, else the segment, else the trip primary.
+ *    3. The **consensus of the live day's** own known-zone events, else the
+ *       itinerary segment at this instant, else the trip primary.
+ *
+ *  **Every rung is filtered to evidence that is about THIS leg** (ADR-0107's
+ *  2026-09-11 amendment) — `segmentBoundsAt` for when, `zoneReachedAt` for where:
+ *  an event outside the current segment's window, or in a zone the itinerary says
+ *  you reach later, does not get to move the clock. Without those two filters a
+ *  Reykjavík hotel whose door opens at 15:00 put the clock in Iceland at 09:44 on
+ *  the departure morning in Tel Aviv, and again through the Vienna layover
+ *  (owner's device, 2026-09-11). The pre-first-crossing special case the 2026-09-10
+ *  correction added is gone with them: "before the outbound flight you are at home"
+ *  is what these rules now say on their own, for every leg and not just the first.
  *
  *  Why not the segment alone (the old rule): after a single outbound flight every
  *  later instant reads the destination's clock forever, so a traveler whose plan has
@@ -414,11 +484,31 @@ export function dayAmbientZone(date: string, evidence: ZoneEvidence): string {
  *  driven by the itinerary, never GPS (§4). Plan mode deliberately does not use it. */
 export function liveZone(nowMs: number, evidence: ZoneEvidence): string {
   const { events, bookings, places, crossings, primaryZone } = evidence;
+  const segment = segmentBoundsAt(nowMs, crossings);
+  const reached = zoneReachedAt(nowMs, crossings);
+  const spanOf = (event: TripEvent) => {
+    const start = Date.parse(event.startsAt!);
+    return { start, end: event.endsAt ? Date.parse(event.endsAt) : start };
+  };
+
+  /** Can this event say where you are standing? Only if it belongs to the leg you
+   *  are on — its span overlaps the current segment's window — **and** its zone is
+   *  one the itinerary has already taken you to. Both clauses are a real wrong
+   *  clock: a Tel Aviv breakfast still eight hours inside the window once you are in
+   *  Vienna, and a destination hotel or a trip-long car rental whose local time
+   *  starts before the flight that gets you there. An untimed event has no span to
+   *  place against a crossing, so only the second clause can speak for it. */
+  const testifies = (event: TripEvent, zone: string): boolean => {
+    if (!reached(zone)) return false;
+    if (!event.startsAt) return true;
+    const { start, end } = spanOf(event);
+    return end >= segment.from && start < segment.to;
+  };
+
   const timed = events.filter((e) => e.startsAt);
 
   const inProgress = timed.find((e) => {
-    const start = Date.parse(e.startsAt!);
-    const end = e.endsAt ? Date.parse(e.endsAt) : start;
+    const { start, end } = spanOf(e);
     return start <= nowMs && nowMs < end;
   });
   if (inProgress) {
@@ -431,67 +521,48 @@ export function liveZone(nowMs: number, evidence: ZoneEvidence): string {
       crossing && crossing.from !== crossing.to
         ? crossing.to
         : eventKnownZone(inProgress, bookings, places);
-    if (zone) return zone;
+    if (zone && testifies(inProgress, zone)) return zone;
   }
 
   let nearest: { zone: string; distance: number } | undefined;
   for (const e of timed) {
     const zone = eventKnownZone(e, bookings, places);
-    if (!zone) continue;
-    const start = Date.parse(e.startsAt!);
-    const end = e.endsAt ? Date.parse(e.endsAt) : start;
+    if (!zone || !testifies(e, zone)) continue;
+    const { start, end } = spanOf(e);
     const distance = nowMs < start ? start - nowMs : nowMs > end ? nowMs - end : 0;
     if (distance > LIVE_ZONE_WINDOW_MS) continue;
     if (!nearest || distance < nearest.distance) nearest = { zone, distance };
   }
   if (nearest) return nearest.zone;
 
-  const segment = currentZone(nowMs, crossings, primaryZone);
-  return dayAmbientZone(todayInTz(segment, new Date(nowMs)), evidence);
+  // The day's own consensus, on the same evidence rule — `dayAmbientZone` cannot answer this
+  // rung: it samples the segment at NOON, and on a travel day noon is on the wrong side of
+  // the crossing you are standing on (home midnight of day 1 read Reykjavík, and Trip mode
+  // opened three hours late — ADR-0107's 2026-09-10 correction, generalised here).
+  const liveDay = todayInTz(segmentZoneAt(nowMs, crossings) ?? primaryZone, new Date(nowMs));
+  const voters = eventsOnDate(events, liveDay)
+    .map((event) => ({ event, zone: eventKnownZone(event, bookings, places) }))
+    .filter((vote) => vote.zone != null && testifies(vote.event, vote.zone))
+    .map((vote) => vote.zone!);
+  return zoneConsensus(voters, new Date(nowMs)) ?? segmentZoneAt(nowMs, crossings) ?? primaryZone;
 }
 
-/** The resolved display zones for an event's start and end (they differ only for
- *  zone-crossing transport). Priority (ADR-0107 §3/§6, ADR-0110 §94-99):
- *    1. The event's `displayTimezone` manual override — both ends. (The chip on a
- *       standalone event; a booking-linked event is pinned per-end instead, below.)
- *    2. The **booking's** per-end override — the chip in the booking form, which is
- *       what a zone-crossing pair needs: one override per end, not one for both.
- *    3. Attached place — transport renders start in `fromPlace`, end in `toPlace`;
- *       any other place drives both ends.
- *    4. Placeless (or a coordless place) — the itinerary segment's zone.
- *    5. Nothing anchors it — the trip primary zone.
+/**
+ * **Re-exported from `@waypoint/shared`, where it now lives** (2026-09-01).
  *
- *  Steps 2-3 are per-end, so a flight can take its origin from a pinned zone and
- *  its destination from a real place, or vice versa. */
-export function eventDisplayZones(
-  event: TripEvent,
-  opts: { bookings: Booking[]; places: Place[]; crossings: ZoneCrossing[]; primaryZone: string },
-): { start: string; end: string } {
-  const { bookings, places, crossings, primaryZone } = opts;
-  if (event.displayTimezone) {
-    return { start: event.displayTimezone, end: event.displayTimezone };
-  }
-
-  const zoneForInstant = (iso: string | undefined): string =>
-    (iso ? segmentZoneAt(Date.parse(iso), crossings) : undefined) ?? primaryZone;
-
-  const booking = event.bookingId ? bookings.find((b) => b.id === event.bookingId) : undefined;
-  if (booking && isTransport(booking)) {
-    const known = bookingEndZones(booking, places);
-    return {
-      start: known.from ?? zoneForInstant(event.startsAt),
-      end: known.to ?? zoneForInstant(event.endsAt ?? event.startsAt),
-    };
-  }
-
-  const single = booking
-    ? bookingEndZones(booking, places).from
-    : placeTimezone(places, eventPlaceId(event, booking));
-  if (single) return { start: single, end: single };
-
-  const zone = zoneForInstant(event.startsAt);
-  return { start: zone, end: zone };
-}
+ * It was defined here, and the server answered the same question with `currentZone` alone —
+ * so the shared page and the PDF printed every flight departure in the destination's zone and
+ * an Iceland hotel's check-in in Vienna. ADR-0197 §5's sweep had already moved the zone
+ * primitives into `shared/zones.ts` for exactly this reason and left this composer behind;
+ * `zones.ts` now carries both, and its docblock is the one to read.
+ *
+ * Kept as a named re-export rather than asking ~10 call sites to change their import: this
+ * module is the frontend's zone door, and the point of the move is that there is one
+ * implementation, not that everyone learns a new path.
+ */
+/* Re-exported in the block at the top of this file, beside the primitives it composes —
+   this module is the frontend's zone door, and the point of the move is that there is one
+   implementation, not that ~10 call sites learn a new import path. */
 
 /** The zone a **form** interprets a typed wall-clock in (ADR-0107 §2) — the same
  *  answer `eventDisplayZones` will give the day view once the draft is saved, so a
@@ -684,6 +755,34 @@ export function eventEdgeZone(
   return { zone, deltaMinutes: deltaMinutes || undefined };
 }
 
+/** **The two zones a JOURNEY between two rows reads in** (ADR-0107 §4, ADR-0159's
+ *  _"a leg reads in its own two zones"_, ADR-0206 §AQ).
+ *
+ *  A departure is a moment on the wrist of whoever is leaving, so it reads where they are
+ *  standing — the ORIGIN row's own end zone. An arrival is read where they get to, which is the
+ *  destination's start zone. Identical on a single-zone day, which is every day of most trips;
+ *  they part on the one day that crosses a zone, and there each clock then agrees with the card
+ *  it is about rather than with the trip's primary.
+ *
+ *  **The origin's end, and the two ends are not interchangeable** — the same inversion
+ *  `endpointPlaceId` makes one file over: you leave a flight where it LANDS, so the origin's zone
+ *  is its `end`. `fromEdge: 'start'` is the exception that proves it (`DayLeg.fromEdge`): a leg off
+ *  a hire's PICKUP edge leaves from the counter it was collected at, which is the span's start.
+ *
+ *  Beside `eventEdgeZone` because it is the same question asked of two rows at once, and shared
+ *  rather than answered at each day surface because ADR-0159 §1 forbids them differing about a
+ *  fact — and a clock is one. */
+export function legDisplayZones(
+  leg: { from: TripEvent; to: TripEvent; fromEdge?: 'start' | 'end' },
+  ctx: ZoneContext,
+): { depart: string; arrive: string } {
+  const from = eventDisplayZones(leg.from, ctx);
+  return {
+    depart: leg.fromEdge === 'start' ? from.start : from.end,
+    arrive: eventDisplayZones(leg.to, ctx).start,
+  };
+}
+
 /** The elapsed-duration label to show on a timeline row, or undefined when it
  *  shouldn't (ADR-0107/0084). A zone shift makes the raw times misread the span
  *  (07:15→11:00 with −3 looks like 3h45 but is 6h45), so show duration whenever
@@ -700,6 +799,22 @@ export function eventDurationLabel(
   if (!transport && zones.deltaMinutes == null) return undefined;
   const minutes = (Date.parse(event.endsAt) - Date.parse(event.startsAt)) / 60000;
   return formatDuration(minutes, eventDurationUnit(event)) ?? undefined;
+}
+
+/**
+ * **The distance label for a carried row** (ADR-0212), or `undefined` where there is none —
+ * `eventDurationLabel`'s sibling, and here for the same reason: both day surfaces need one
+ * answer, and ADR-0159 §1 lets them differ in posture but never about a fact.
+ *
+ * The rule about which bookings have a distance is `carriedLegMeters`', the coordinates are
+ * `carriedBookingMeters`', and the wording is `formatDistance`'s. This only joins them up.
+ */
+export function eventDistanceLabel(
+  booking: Booking | undefined,
+  places: readonly Place[],
+): string | undefined {
+  const metres = booking ? carriedBookingMeters(booking, places) : null;
+  return metres === null ? undefined : formatDistance(metres);
 }
 
 // ── Google Maps deep-links (Phase 2, ADR-0106/0109) ─────────────────────────
@@ -888,6 +1003,31 @@ export function eventShowOnMap(
   return place && show ? () => show(place.id) : undefined;
 }
 
+/**
+ * **The JOURNEY peer of {@link eventShowOnMap}** (owner, 2026-08-27) — the way from a leg in the
+ * day list to that leg on the canvas.
+ *
+ * It shows the leg's **destination** stop, and that is ADR-0206 §AB2/§AC2 rather than a choice
+ * made here: the map marks the leg ARRIVING at the stop you asked about and dims the rest, so
+ * asking for the arrival is asking for this leg. Handing it the origin would light the leg
+ * before this one.
+ *
+ * Takes the pair `useDayTravelReads.pairFor` already resolved rather than two events, because
+ * `endpointPlaceId`'s transport inversion (you leave a flight where it LANDS) is exactly the rule
+ * that goes wrong when it is answered twice — the mode override is keyed on the same pair for the
+ * same reason.
+ *
+ * `undefined` on either of the two ordinary absences, collapsed here like its three siblings so
+ * no call site has to remember them: a leg whose ends do not both resolve to a place, and a host
+ * outside the trip shell where there is no Map tab to route to ("absent, not broken", ADR-0121 §8).
+ */
+export function legShowOnMap(
+  pair: { fromPlaceId: string; toPlaceId: string } | undefined,
+  show: ShowPlaceOnMap,
+): (() => void) | undefined {
+  return pair && show ? () => show(pair.toPlaceId) : undefined;
+}
+
 /** The booking peer of {@link eventShowOnMap}. */
 export function bookingShowOnMap(
   booking: Booking,
@@ -917,6 +1057,16 @@ export function ideaShowOnMap(
   return hasCoords(place) && show ? () => show(place.id) : undefined;
 }
 
+/** Where you are now, and whether "where" is a place or a journey between two. */
+export interface CurrentDestination {
+  event: TripEvent;
+  place: Place;
+  /** **You are INSIDE a journey, and `place` is where it is taking you** — not where you
+   *  are standing, because mid-flight that is nowhere. Read by the canvas, which spends
+   *  its amber on the leg ARRIVING at this stop and so draws the leg you are on. */
+  inTransit: boolean;
+}
+
 /**
  * Where you are RIGHT NOW — the in-progress event's place, or `undefined`.
  *
@@ -932,7 +1082,16 @@ export function ideaShowOnMap(
  * **An ambient stay is filtered out before the question is asked**, exactly as
  * Home filters it: a stay's span runs to check-out, so it would read "now" for
  * three days straight and drown whatever you are actually doing. The hotel stays
- * the day's backdrop (ADR-0054).
+ * the day's backdrop (ADR-0054). **A journey is exempt from that filter for the same
+ * reason Home exempts it** (`scheduleEvents`): a red-eye has an `endDate`, so it is
+ * `isMultiDay` and therefore ambient — and dropping it here means the tab stops seeing
+ * the flight the moment it takes off. Ambient says how a span RENDERS across days; what
+ * its middle IS is the journey you are inside.
+ *
+ * **Mid-journey the place is the DESTINATION** (the rule session 215 settled for the
+ * board's own now-point, `midSpanEventId`): the authority rule answers the origin, which
+ * mid-flight is the airport you have already left — so the Map marked the layover you
+ * had just taken off from as `עכשיו` and drew no leg at all (owner report, 2026-09-12).
  *
  * Unlike `nextDestination` this needs **no directions URL**: a coordless place can
  * still be where you are standing — it simply has no pin to mark, which is
@@ -943,15 +1102,16 @@ export function currentDestination(
   bookings: Booking[],
   places: Place[],
   nowMs: number,
-): { event: TripEvent; place: Place } | undefined {
+): CurrentDestination | undefined {
   const { now } = deriveNow(
-    events.filter((e) => !isAmbient(e)),
+    events.filter((e) => !(isAmbient(e) && !isJourney(e))),
     new Date(nowMs),
   );
   if (!now) return undefined;
+  const inTransit = isJourney(now);
   const booking = now.bookingId ? bookings.find((b) => b.id === now.bookingId) : undefined;
-  const place = places.find((p) => p.id === eventPlaceId(now, booking));
-  return place ? { event: now, place } : undefined;
+  const place = places.find((p) => p.id === eventPlaceId(now, booking, inTransit));
+  return place ? { event: now, place, inTransit } : undefined;
 }
 
 /** Where you have to get to next, and the event that puts you there. */
@@ -960,6 +1120,10 @@ export interface NextDestination {
   place: Place;
   /** Directions deep-link — resolved here, so it is never null for a result. */
   url: string;
+  /** **The other places of the same stop** (ADR-0225 §4) — every mappable member of the
+   *  ADR-0041 cluster around `event`, in `byPeer` order. The canvas rings all of them and
+   *  prints the word on `place` alone, which is the peer the stop is entered through. */
+  peers: { event: TripEvent; place: Place }[];
 }
 
 /**
@@ -985,19 +1149,27 @@ export function nextDestination(
   nowMs: number,
 ): NextDestination | undefined {
   const at = new Date(nowMs);
-  let best: NextDestination | undefined;
-  let bestStart = Infinity;
-  for (const event of events) {
-    if (!event.startsAt) continue;
-    if (eventPhase(event, at) !== 'upcoming') continue;
-    const start = Date.parse(event.startsAt);
-    if (start >= bestStart) continue;
+  const placeOf = (event: TripEvent) => {
     const booking = event.bookingId ? bookings.find((b) => b.id === event.bookingId) : undefined;
-    const place = places.find((p) => p.id === eventPlaceId(event, booking));
+    return places.find((p) => p.id === eventPlaceId(event, booking));
+  };
+  // Earliest start first, ties by `byPeer` (ADR-0225 §1) — this took the FIRST of two equal
+  // starts in array order, a fourth tie-break beside the day's, the map's and the hero's.
+  const upcoming = events
+    .filter((event) => event.startsAt && eventPhase(event, at) === 'upcoming')
+    .sort((a, b) => Date.parse(a.startsAt!) - Date.parse(b.startsAt!) || byPeer(a, b));
+  for (const event of upcoming) {
+    const place = placeOf(event);
     const url = place && mapsDirectionsUrl(place);
     if (!place || !url) continue;
-    best = { event, place, url };
-    bestStart = start;
+    // The rest of the stop this event is one member of (ADR-0225 §4), each with its place.
+    const peers = clusterAround(event, upcoming)
+      .filter((peer) => peer !== event)
+      .flatMap((peer) => {
+        const peerPlace = placeOf(peer);
+        return peerPlace && peerPlace.id !== place.id ? [{ event: peer, place: peerPlace }] : [];
+      });
+    return { event, place, url, peers };
   }
-  return best;
+  return undefined;
 }

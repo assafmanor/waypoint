@@ -1,6 +1,6 @@
 # 0184 — An edge can be a **window**, and closing it is what gives it a position
 
-**Status:** Accepted (owner sign-off 2026-08-13), **and built the same day**.
+**Status:** Accepted (owner sign-off 2026-08-13), **and built the same day**. **Amended 2026-08-24** — see [the words read chronologically](#amendment-2026-08-24--a-window-reads-as-one-sentence-at-both-edges), a field report on the car hire's return.
 **Date:** 2026-08-13
 **Design reference:** [`mockups/an-edge-can-be-a-window-v1.html`](../../mockups/an-edge-can-be-a-window-v1.html) — the two affordances priced against each other (§1), the day's placement (§2), the row's own placement (§2b), Plan (§2c), the hero's four states (§3) and the window-vs-duration collision (§4). Every measurement quoted below is read from that file's live DOM at 360px.
 **Session note:** [2026-08-13 session 257](../planning/2026-08-13-session-257-an-edge-can-be-a-window.md).
@@ -140,6 +140,10 @@ Cost: the ~20px of row height §5 charged only to windowed rows is now charged t
 
 The word is now per edge — `＋ עד` / `＋ מ־`, with `סוף החלון` / `תחילת החלון` as the caption. **`windowBoundIso` is unchanged**: its roll is correct for the case it was written for (a car returned at 02:00 against a counter open from 22:00), and §8's refusal to put a threshold on window width still stands, so there is no number to reject a wide one by.
 
+### 9g. Amendment, 2026-09-05 — the strip is gone; the edge stays a row ([ADR-0219](0219-a-day-is-a-place-you-can-see.md) §4)
+
+§9f's whole subject was what the ambient STRIP said about an edge day, and the strip is deleted: it stacked a day's distance total, Plan's fit verdict, a span's day count and every untimed commitment in one teal box, and ADR-0219 §4 splits them by what they are. **Nothing §9f decided is reversed.** An edge day states the edge and never the count — as a `.transition-row` on its own day, which is where §9 put it in the first place (ADR-0209 §1 for a stay's two ends). What leaves is the second place that sentence was ALSO printed: a middle day now says nothing on the day at all (ADR-0163's 2026-09-05 amendment), so the `.day-ambient .an` ellipsis trade above describes a rule that no longer has a host. `edgeTimePhrase` + `edgeSentence` are unchanged and still shared, which is what keeps the row's clock the edge's own.
+
 ### 9f. Amendment, 2026-08-13 (after §9 shipped): the strip states the edge, and the range stops reading `atMs`
 
 §9a put the stay's ambient line on its edge days and left `ambientSpanLabel` on it. Owner, off that build:
@@ -178,3 +182,44 @@ A single clock still reads the placed instant, and that is not an inconsistency:
 - **A fourth explicit `edges` field on the profile.** Still two sources for one fact (ADR-0171 §2, ADR-0162 §2). The window is the per-EVENT answer; the profile stays the per-category one.
 - **Letting a closed window earn a map number.** The Iceland case (§10b): a number asserts a sequence, and a window is not a moment.
 - **Keeping the range at the row's trailing edge.** Cheaper by 20px of row height and costs 45px of the hotel's name at 360px. The owner picked the name.
+
+## Amendment (2026-08-24) — a window reads as ONE sentence, at both edges
+
+Reported from the field, on a car hire whose return carried a window:
+
+> on the return we have to times "מ-" which doesn't make sense at all. What is it? Do we need a "מ-" at all? Not just an "עד"?
+
+It printed `מ־ 08:00 מ־ 01:15`. **One word never learned which edge it was on.** `SpanLeg` printed a leading `מ־` before the leg's own time whenever a window existed — unconditionally, both edges — and then printed a second word that _was_ edge-aware. So a start edge came out right (`מ־ 10:00 עד 11:00`) and an end edge said `מ־` twice.
+
+The section above already stated the rule correctly: _"a start edge's own time is the floor, so its second bound is a ceiling and reads `עד` — an end edge's own time IS the deadline, so its second bound is the earliest and reads `מ־`."_ Only the first word was never told.
+
+**The answer to "do we need a `מ־` at all?" is yes — but not before that time.** The fix is the ORDER, not a new word. A start edge's own time is the floor; an end edge's own time is the deadline. Put the floor first either way and both edges read `מ־ … עד`, with the only difference being **which of the two is the stored value**:
+
+| edge                      | reads               | stored value                                  |
+| ------------------------- | ------------------- | --------------------------------------------- |
+| start (check-in, pick-up) | `מ־ 10:00 עד 11:00` | the **first** — its own time is the floor     |
+| end (check-out, return)   | `מ־ 01:15 עד 08:00` | the **second** — its own time is the deadline |
+
+**Reordered only once the bound has a value.** While it is empty the `＋ מ־` token is an affordance, not a clock, and an affordance belongs after the value it extends — putting it first would print `＋מ־ 08:00`, which reads as "from 08:00" about a deadline. So the pair becomes a sentence at the moment it is a pair.
+
+**Blast radius, counted rather than assumed:** only a `held` edge offers a window (`edgeMeaning(…) !== 'exact'`), `SpanLeg` is the only component that renders one, and `WhenDay` has no window at all. So this is a stay and a hire, both edges, one component — and the same two lines fix every case.
+
+**One thing left open.** Swapping the render order means the `Field` carrying the refusal mark (ADR-0150) is no longer the first token in the line. The mark sits on the line's box rather than on a token, so this is correct — but the refusal's scroll-into-view targets that box, and it is worth a look on a device.
+
+Design reference: [`mockups/the-way-back-is-its-own-route-v1.html`](../../mockups/the-way-back-is-its-own-route-v1.html) §3, whose measurement table prints the actual word run each line renders — a screenshot cannot be trusted to tell `מ־` from `עד` at that size.
+
+## Amendment (2026-09-15) — the count held an edge the day gave no way to answer
+
+Owner, with the Home glance and the day view of one Iceland evening at ⁦20:05⁩:
+
+> There's a bug in the home glance, for some reason it shows that there's one thing left while there isn't.
+
+The card read `נותר דבר אחד היום` beside `מסתיים ~18:30` — a day whose last stop had been marked done ninety minutes earlier, and one thing still counted. **The one thing was the guesthouse's check-in, booked ⁦17:00–22:00⁩, and the number was this §6 working exactly as decided.** What was missing is the other half of the loop.
+
+§6 widened `remaining` to hold a windowed check-in to its **ceiling**, and it holds it there until somebody settles it. ADR-0184 §2 had given a floor its `היינו` for precisely that reason, and [ADR-0209](0209-a-stay-is-named-once-in-the-day-it-belongs-to.md) §1 moved that control onto the stay's bookend row so it would survive the edge row's deletion — **gated on `edgeMeaning(…) === 'not-before'`**, with a comment asserting that _"a ceiling and a window expire by their own clock and need none."_ For a check-**out** that is true. For a check-**in** window it is this section's own rule, negated: the count was holding the edge for five hours and nothing on any screen could clear it. The row rendered no settle pair at all, which is what the screenshot shows.
+
+**The audit this section ran is the one that missed it.** §6 states that _"`glance.ts` was the one consumer in the codebase that asked `edgeMeaning` for a specific FLEXIBLE value rather than testing `exact`"_ — true when it was written, and the count was fixed there. ADR-0209's build then wrote a second one, and it is the same sentence ADR-0227's own amendment had to add: **a claim about a notion is counted over implementations, not over callers.** Two spellings of "which edges the clock cannot answer" will disagree the moment one of them is widened.
+
+**The fix is one predicate, in `@waypoint/shared` beside `isEdgeSettled`.** `edgeOutlivesItsInstant(event, edge)` is true for a floor and for a check-in window, false for a deadline and for an exact moment — and both surfaces now ask it: `buildDayGlance` to decide what the number holds, `DayView`'s `staySettle` to decide whether the row can answer. A window's ceiling stays the only clock that retires it, so nothing this section decided changes; what changes is that the number can now reach zero the way §6 assumed it could.
+
+**What was deliberately left alone.** `מסתיים ~18:30` reads off the day's own blocks and ignores an ambient edge — correct for the line it is (when the day's stops end), and the pairing stops looking like a contradiction the moment the check-in is answered. And `remaining` still counts an unanswered check-in in the evening: that is [ADR-0171](0171-a-time-can-be-a-floor-or-a-ceiling.md) §6's call — _"an un-checked-into hotel at ⁦19:00⁩ is exactly one"_ — and this report is not evidence against it, because until now there was no way to tell the app otherwise.

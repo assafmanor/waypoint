@@ -112,6 +112,10 @@ interface EntityOptions {
    *  difficulty of that property is that it is multi-valued and the ranks often do not
    *  separate the values (§18). */
   placeServed?: { qid: string; rank?: string }[];
+  /** `P131` ("located in the administrative territorial entity") — the region field
+   *  (ADR-0166's 2026-08-30 amendment). Free on the wire: `claims` is already fetched
+   *  wholesale, so this is a key in a payload the pass was parsing anyway. */
+  locatedIn?: string;
 }
 
 /** A `wbgetentities` response in Wikidata's real claim shape — `mainsnak.datavalue.value`,
@@ -154,6 +158,16 @@ export function entity(options: EntityOptions) {
       },
       rank: served.rank ?? 'normal',
     }));
+  }
+  if (options.locatedIn) {
+    claims.P131 = [
+      {
+        mainsnak: {
+          snaktype: 'value',
+          datavalue: { type: 'wikibase-entityid', value: { id: options.locatedIn } },
+        },
+      },
+    ];
   }
   for (const property of options.ended ?? []) {
     claims[property] = [
@@ -491,6 +505,7 @@ export const GULLFOSS_HE = {
     qid: 'Q38519',
     labels: { en: 'Gullfoss', is: 'Gullfoss', he: 'גאלפוס' },
     instanceOf: ['Q34038'], // waterfall
+    locatedIn: 'Q-blaskogabyggd',
     image: 'GullfossOverview.jpg',
     lat: 64.326111111111,
     lng: -20.121111111111,
@@ -509,6 +524,10 @@ export const FEATURE_CLASSES = {
     ...entity({ qid: 'Q131596', labels: { en: 'farm' } }).entities,
     ...entity({ qid: 'Q109391', labels: { en: 'volcanic crater' } }).entities,
     ...entity({ qid: 'Q204324', labels: { en: 'volcanic crater lake' } }).entities,
+    // The municipality Gullfoss sits in, for the `region` field. Hebrew-less on purpose:
+    // most Icelandic municipalities have no Hebrew label, so this is the `he` -> `en`
+    // fallback in its commonest real shape.
+    ...entity({ qid: 'Q-blaskogabyggd', labels: { en: 'Bláskógabyggð' } }).entities,
   },
 };
 

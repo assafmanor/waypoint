@@ -23,7 +23,11 @@ export function formatDistance(meters: number): string {
     return t.map.near.meters(Math.max(step, Math.round(meters / step) * step));
   }
   const km = meters / DISTANCE_STEP.KM_FROM_M;
-  return t.map.near.km(
-    km < DISTANCE_STEP.WHOLE_KM_FROM ? Math.round(km * 10) / 10 : Math.round(km),
-  );
+  if (km < DISTANCE_STEP.WHOLE_KM_FROM) return t.map.near.km(Math.round(km * 10) / 10);
+  // **A GROUPED NUMBER, BECAUSE THIS FUNCTION HAS SEEN FOUR DIGITS SINCE ADR-0212.** Every
+  // caller before it handed over a ring-road leg at most, so `2931 ק״מ` never came up and read
+  // as a part number the first time it did. `en-US` and not the locale: the app's numerals are
+  // Latin (ADR-0118's own premise) and Hebrew has no separator convention of its own to follow,
+  // so this pins the grouping the digits already imply rather than asking the device.
+  return t.map.near.km(Math.round(km).toLocaleString('en-US'));
 }

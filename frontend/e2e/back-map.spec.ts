@@ -13,6 +13,7 @@
 // errand) and it was the only one with no browser-contract coverage.
 import { test, expect, type Page } from '@playwright/test';
 import { bootIntoTrip, ERRAND_FIXTURE, shortLiveTripDates } from './boot';
+import { t } from '../src/i18n/he';
 
 // Fire the platform system-back the way the OS does — a history traversal — rather than
 // page.goBack(), whose navigation-commit wait fights the interceptor's preventDefault();
@@ -21,8 +22,8 @@ async function systemBack(page: Page) {
   await page.evaluate(() => window.history.back());
 }
 
-const SEARCH_BUTTON = 'חיפוש מקומות';
-const SEARCH_PLACEHOLDER = 'שם או כתובת';
+const SEARCH_BUTTON = t.map.search.button;
+const SEARCH_PLACEHOLDER = t.map.search.placeholder;
 const SEARCH_CLOSE = 'סגירת חיפוש';
 const ADD_LOCATION = 'הוספת מקום';
 

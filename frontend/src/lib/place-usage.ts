@@ -18,6 +18,7 @@ import {
   EVENT_KIND,
   EVENT_STATUS,
   eventCategorySchema,
+  edgeStatusOf,
   isAmbient,
   isExactEdge,
   isMultiDay,
@@ -28,7 +29,13 @@ import {
   type TripEvent,
 } from '@waypoint/shared';
 import { eventPlaceId } from './places';
+// ADR-0236 §4's hosting rule, read rather than restated: which day of the TRIP a span's end
+// is drawn on when its own day is outside the window. The day list already draws the arrival
+// there, and a pin on a different day would be the two surfaces disagreeing about one landing.
+import { endHostDay, type TransitionRange } from './glance';
+import { calendarDaysBetween } from './time';
 import { MS_PER_DAY } from '../constants';
+import type { TripPhase } from './mode';
 
 /** Commitment weight for the colour-by-most-committed tiebreak (ADR-0109 §4). */
 export type PinCommitment = 'hard' | 'soft' | 'idea';
@@ -124,8 +131,8 @@ export interface PlaceUsage {
    *  moment they said so. A union, so it never removes a facet the references earned. */
   categories: EventCategory[];
   isMaybe: boolean; // referenced by an unconsumed MaybeItem
-  /** Referenced by a **skipped soft event** — parked on the shelf and restorable
-   *  in place (ADR-0027 §2), which is the other half of what the shelf renders.
+  /** Referenced by a **skipped event** — parked on the shelf and restorable in
+   *  place (ADR-0027 §2), which is the other half of what the shelf renders.
    *  Distinct from `isMaybe`: the event still owns its date and slot. */
   isParked: boolean;
   isScheduled: boolean; // referenced by a scheduled event
@@ -163,19 +170,35 @@ const isTransport = (booking: Booking): boolean => carriesRoute(booking.type);
  * arrival's word — `נחיתה 02:00` at the airport you took off from. `place-usage` had it in
  * `spanDays`; `place-refs` had it in `edgeOnDate` on the day-scoped path. Naming the rule
  * once is what stops the third copy.
+ *
+ * **With a `range`, the end is HOSTED the way the day list hosts it** (ADR-0236 §4, extended
+ * to the map 2026-09-20). The flight home lands on a day the trip does not have, and that day
+ * is one no surface can ask for: the strip stops at `endDate`, so the destination fell out of
+ * every day scope and the map drew the departure airport alone. `endHostDay` is the same
+ * answer the arrival ROW already reads, so a pin and a row cannot put one landing on two days
+ * — and `null` (the whole leg shrunk out of the trip) means no day at all, which is §6's
+ * reading of a booking the trip no longer covers. `dayOffset` is how far past the host day
+ * the moment really lands, so a row drawn there can say `למחרת` beside the clock.
+ *
+ * Without a `range` nothing is hosted, which is what every caller that is not day-scoped wants.
  */
 export function routeEndpointDay(
   event: Pick<TripEvent, 'date' | 'endDate' | 'startsAt' | 'endsAt'>,
   endpoint: 'start' | 'end' | undefined,
-): { date: string; edge: 'start' | 'end'; iso?: string } | null {
+  range?: TransitionRange,
+): { date: string; edge: 'start' | 'end'; iso?: string; dayOffset?: number } | null {
   if (!endpoint) return null;
-  return endpoint === 'start'
-    ? { date: event.date, edge: 'start', iso: event.startsAt ?? undefined }
-    : {
-        date: event.endDate ?? event.date,
-        edge: 'end',
-        iso: event.endsAt ?? event.startsAt ?? undefined,
-      };
+  if (endpoint === 'start')
+    return { date: event.date, edge: 'start', iso: event.startsAt ?? undefined };
+  const own = event.endDate ?? event.date;
+  const host = endHostDay(event, range);
+  if (host == null) return null;
+  return {
+    date: host,
+    edge: 'end',
+    iso: event.endsAt ?? event.startsAt ?? undefined,
+    ...(host === own ? {} : { dayOffset: calendarDaysBetween(host, own) }),
+  };
 }
 
 /** Calendar dates spanned by an event, inclusive. Parsed/stepped in UTC so the
@@ -199,14 +222,26 @@ export function routeEndpointDay(
  *  A route whose two ends are the SAME place is not a special case and must not become one:
  *  it is two calls, each keeping its own end, which is exactly a car hire collected on one day
  *  and returned on another. */
-function spanDays(event: TripEvent, endpoint?: 'start' | 'end'): DayUsage[] {
-  const outcome =
-    event.status === EVENT_STATUS.DONE
+function spanDays(
+  event: TripEvent,
+  endpoint?: 'start' | 'end',
+  range?: TransitionRange,
+): DayUsage[] {
+  /** **Asked of an END, because that is what a day of a span is** (ADR-0224 §1, 2026-09-16).
+   *  A span's answer used to be read once off `status` and stamped on every day it touched, so
+   *  a hotel's check-out day inherited the check-in's tick: the pin went green the morning you
+   *  arrived and `מה נשאר` stopped counting a departure nobody had made. `edgeStatusOf` reads
+   *  the field that edge actually writes. A strictly-middle night has no edge and therefore no
+   *  answer of its own — it keeps the opening one, which is what it always had and is the only
+   *  thing on offer: nothing happens on it to settle. */
+  const outcomeAt = (edge?: 'start' | 'end') => {
+    const status = edgeStatusOf(event, edge ?? 'start');
+    return status === EVENT_STATUS.DONE
       ? ('done' as const)
-      : event.status === EVENT_STATUS.SKIPPED
+      : status === EVENT_STATUS.SKIPPED
         ? ('skipped' as const)
         : undefined;
-  const settled = outcome != null;
+  };
   const startAt = event.startsAt ? Date.parse(event.startsAt) : undefined;
   const endAt = event.endsAt ? Date.parse(event.endsAt) : undefined;
   const { sortOrder } = event;
@@ -220,18 +255,21 @@ function spanDays(event: TripEvent, endpoint?: 'start' | 'end'): DayUsage[] {
   // still ahead — on the strength of the tick. Reported as an airport whose 02:00 landing sat
   // under `מה שלפנינו` at 15:11, kept there by an 18:00 car return already marked `היינו`.
   // Per-reference is where the rule belongs: what a human has closed cannot be what makes a
-  // place still ahead of you.
-  const until = settled ? undefined : (endAt ?? startAt);
+  // place still ahead of you — and since ADR-0224 the answer is per-EDGE, so the day asks about
+  // its own end rather than about the span.
+  const until = (settled: boolean) => (settled ? undefined : (endAt ?? startAt));
   const eventId = event.id;
   const edge = endpoint ?? 'start';
   if (!isMultiDay(event)) {
     const at = edge === 'end' ? (endAt ?? startAt) : startAt;
+    const outcome = outcomeAt(edge);
+    const settled = outcome != null;
     return [
       {
         date: event.date,
         prominence: 'edge',
         at,
-        until,
+        until: until(settled),
         sortOrder,
         eventId,
         edge,
@@ -243,14 +281,20 @@ function spanDays(event: TripEvent, endpoint?: 'start' | 'end'): DayUsage[] {
   }
   // **A ROUTE ENDPOINT OWNS ONE END OF THE SPAN, NOT ALL OF IT** — `routeEndpointDay`'s rule,
   // shared with `placeRefs` so the row's way-in block and the row's own day cannot disagree.
-  const own = routeEndpointDay(event, endpoint);
+  const own = routeEndpointDay(event, endpoint, range);
+  // A route endpoint whose end the trip hosts nowhere anchors nothing (ADR-0236 §6): the leg
+  // is shrunk entirely out of the window, so hosting it would put a pin on a day that does
+  // not exist either.
+  if (endpoint && !own) return [];
   if (own) {
+    const outcome = outcomeAt(own.edge);
+    const settled = outcome != null;
     return [
       {
         date: own.date,
         prominence: 'edge',
         at: own.edge === 'start' ? startAt : (endAt ?? startAt),
-        until,
+        until: until(settled),
         sortOrder,
         eventId,
         edge: own.edge,
@@ -278,6 +322,9 @@ function spanDays(event: TripEvent, endpoint?: 'start' | 'end'): DayUsage[] {
   return dates.map((date, i) => {
     const isFirst = i === 0;
     const isLast = i === dates.length - 1;
+    const dayEdge = isFirst ? ('start' as const) : isLast ? ('end' as const) : undefined;
+    const outcome = outcomeAt(dayEdge);
+    const settled = outcome != null;
     return {
       date,
       prominence: ambient && !isFirst && !isLast ? ('ambient' as const) : ('edge' as const),
@@ -285,17 +332,17 @@ function spanDays(event: TripEvent, endpoint?: 'start' | 'end'): DayUsage[] {
       // the first day departs/checks in, the last arrives/checks out, the middle
       // nights have neither.
       at: isFirst ? startAt : isLast ? endAt : undefined,
-      until,
+      until: until(settled),
       sortOrder,
       eventId,
-      edge: isFirst ? ('start' as const) : isLast ? ('end' as const) : undefined,
+      edge: dayEdge,
       outcome,
       settled,
       moments: [
         {
           at: isFirst ? startAt : isLast ? endAt : undefined,
           eventId,
-          edge: isFirst ? ('start' as const) : isLast ? ('end' as const) : undefined,
+          edge: dayEdge,
           settled,
         },
       ],
@@ -335,12 +382,18 @@ const primaryRef = (a: DayUsage, b: DayUsage): DayUsage => {
  *  existing resolver: a transport event contributes BOTH endpoints (origin +
  *  destination), every other linked/unlinked event its single place; an unlinked
  *  booking contributes its place with no day facet (a Booking carries no time);
- *  an unconsumed MaybeItem contributes `isMaybe` + its category. (ADR-0110 §2.) */
+ *  an unconsumed MaybeItem contributes `isMaybe` + its category. (ADR-0110 §2.)
+ *
+ *  `range` is the trip's window, and passing it is what makes the index DAY-SCOPED-honest:
+ *  a span whose end the trip has no day for is hosted on the last day it still covers, the
+ *  same one the day list draws its arrival row on ({@link routeEndpointDay}). The Map passes
+ *  it; a caller asking about places rather than about days leaves it out. */
 export function buildPlaceUsageIndex(
   events: TripEvent[],
   bookings: Booking[],
   maybeItems: MaybeItem[],
   places: Place[],
+  range?: TransitionRange,
 ): Map<string, PlaceUsage> {
   const acc = new Map<string, Accum>();
   const ensure = (placeId: string): Accum => {
@@ -429,9 +482,10 @@ export function buildPlaceUsageIndex(
     const booking = event.bookingId ? bookings.find((b) => b.id === event.bookingId) : undefined;
     const category = event.category ?? (booking ? categoryForBookingType(booking.type) : null);
     const commitment: PinCommitment = event.kind === EVENT_KIND.HARD ? 'hard' : 'soft';
-    // A skipped SOFT event is what the shelf parks and offers to restore (ADR-0027
-    // §2 / ADR-0116 §3) — a hard one isn't restorable there, so it isn't shelved.
-    const isParked = event.kind === EVENT_KIND.SOFT && event.status === EVENT_STATUS.SKIPPED;
+    // What the shelf parks and offers to restore (ADR-0027 §2 / ADR-0116 §3), whatever its
+    // kind — this mirrors `shelfGroups`, and it dropped its `=== SOFT` the day the shelf did
+    // (ADR-0228's 2026-09-16 amendment): a cancelled booking is parked there too.
+    const isParked = event.status === EVENT_STATUS.SKIPPED;
     // Transport contributes both endpoints, each at its OWN moment — the origin
     // when you depart, the destination when you land — so the two ends of a flight
     // never tie and list in travel order. Everything else: its resolved place.
@@ -448,7 +502,7 @@ export function buildPlaceUsageIndex(
       addRef(placeId, {
         category,
         commitment,
-        days: spanDays(event, edge),
+        days: spanDays(event, edge, range),
         isEvent: true,
         isMaybe: false,
         isParked,
@@ -527,7 +581,7 @@ export interface PlaceFilter extends PlaceDayContext {
 }
 
 /** On the shelf: ADR-0027 §2's union, which is what the shelf actually renders —
- *  an unconsumed idea **or** a skipped soft event parked for restoring. The `אולי`
+ *  an unconsumed idea **or** a skipped event parked for restoring. The `אולי`
  *  facet reads this rather than `isMaybe` alone, so an idea that was scheduled and
  *  then skipped stops falling out of the one filter that should still find it. */
 export const isOnShelf = (usage: PlaceUsage): boolean => usage.isMaybe || usage.isParked;
@@ -570,7 +624,7 @@ export const matchesPlaceCategory = (usage: PlaceUsage, category: PlaceCategoryF
  *  the settle strip's job (ADR-0043), not a map filter's. */
 export function isPlaceLeft(usage: PlaceUsage, ctx: PlaceDayContext): boolean {
   const inScope = !ctx.onDate || usage.days.some((d) => d.date === ctx.onDate);
-  const scope = inScope ? ctx : { nowMs: ctx.nowMs, today: ctx.today };
+  const scope = inScope ? ctx : { nowMs: ctx.nowMs, today: ctx.today, phase: ctx.phase };
   return placeBlock(usage, scope) !== PLACE_BLOCK.behind;
 }
 
@@ -631,7 +685,17 @@ export interface PlaceOrderContext {
    *  resolve events, which then rank every clocked moment as known — the behaviour this
    *  had before the two questions were told apart. */
   eventById?: (id: string) => TripEvent | undefined;
+  /** `useMode().phase`. A finished trip (`'past'`) orders as if there were no clock:
+   *  see {@link listClock}. */
+  phase?: TripPhase;
 }
+
+/** The clock the list is split and ordered by. **A finished trip has none** (ADR-0239 §2):
+ *  every day is behind it, so the ahead/behind split would leave one block read
+ *  newest-first, which is the trip told backwards. Without a clock the list is the trip's
+ *  own sequence, day 1 first, and nothing is behind you, so `מה נשאר` withdraws itself. */
+const listClock = (ctx: PlaceDayContext): number | undefined =>
+  ctx.phase === 'past' ? undefined : ctx.nowMs;
 
 /** Whether a place's day is behind you: everything anchored there has ended.
  *  In progress counts as current — an event running now is maximally relevant. */
@@ -649,7 +713,7 @@ export function isDayUsagePast(day: DayUsage, nowMs: number, today?: string): bo
 /** What resolving a place's day needs: the scope, plus the clock where the caller
  *  already holds one. Omitting the clock is a real choice, not a shortcut — see
  *  {@link placeDay}. */
-export type PlaceDayContext = Pick<PlaceOrderContext, 'onDate' | 'nowMs' | 'today'>;
+export type PlaceDayContext = Pick<PlaceOrderContext, 'onDate' | 'nowMs' | 'today' | 'phase'>;
 
 /** The `DayUsage` a place is read as in this context. `undefined` when it has no day
  *  at all — day-scoped, that is a place not in this day (the map's ghost tier).
@@ -667,7 +731,8 @@ export type PlaceDayContext = Pick<PlaceOrderContext, 'onDate' | 'nowMs' | 'toda
  *  That is what keeps the pin's NUMBER clock-free (ADR-0121 §6): `buildPinOrderIndex`
  *  passes no `nowMs`, and so a tick can never renumber a pin. */
 export function placeDay(usage: PlaceUsage, ctx: PlaceDayContext = {}): DayUsage | undefined {
-  const { onDate, nowMs, today } = ctx;
+  const { onDate, today } = ctx;
+  const nowMs = listClock(ctx);
   if (onDate) return usage.days.find((d) => d.date === onDate);
   if (nowMs == null) return usage.days[0];
   return (
@@ -734,6 +799,40 @@ export function knowsMoment(
   return event ? isExactEdge(event, moment.edge ?? 'start') : true;
 }
 
+/**
+ * **WHAT BROUGHT YOU IN THROUGH THE NIGHT** (ADR-0054's 2026-08-26 amendment) — a moment
+ * before dawn that the app does not KNOW is an arrival from the night before, not something
+ * you left the bed for.
+ *
+ * Two questions, and one alone gets the other case wrong. Before dawn ({@link dayWindowMs}'s
+ * own 07:00, resolved by the caller because a wall-clock hour needs a zone): after it you are
+ * up and out, whatever it is. And not a moment the app knows ({@link knowsMoment}): a 06:30
+ * flight is an exact commitment you got up for, so the bed still leads it, while a car
+ * "available from 00:00" is a floor claiming no hour at all — and a floor in the small hours
+ * is the shape of a night arrival.
+ *
+ * **It had one reader and now has two**, which is why it is here rather than inside the map's
+ * `buildDayStopSequence` where it was written (root rule 8). The map has sorted a midnight car
+ * hire ahead of the hotel since 2026-08-25; the day list went on drawing the hotel first and a
+ * ⁦25km⁩ drive out to the counter beneath it, which is the same fact answered two ways on two
+ * surfaces (ADR-0159 §1) — and the owner reported the list's version.
+ *
+ * Its known cost, stated rather than buried: a pre-dawn stop with an EXACT time that you
+ * genuinely went out for after checking in (a 01:00 table) keeps the bed ahead of it. That is
+ * the safer of the two wrong answers and it is what buys the early-flight morning.
+ */
+export function broughtInOvernight(
+  moment: { at?: number; eventId?: string; edge?: 'start' | 'end' },
+  ctx: { dawnMs?: number; eventById?: (id: string) => TripEvent | undefined },
+): boolean {
+  return (
+    ctx.dawnMs != null &&
+    moment.at != null &&
+    moment.at < ctx.dawnMs &&
+    !knowsMoment(moment, ctx.eventById)
+  );
+}
+
 /** The list's three blocks, in reading order (ADR-0109 session-110 + its session-127
  *  amendment). Named because the list both **orders** by them and **labels** them:
  *  the group a row lands in is the one the header above it claims. */
@@ -751,7 +850,8 @@ export type PlaceBlock = (typeof PLACE_BLOCK)[keyof typeof PLACE_BLOCK];
 export function placeBlock(usage: PlaceUsage, ctx: PlaceDayContext): PlaceBlock {
   const day = placeDay(usage, ctx);
   if (!day) return PLACE_BLOCK.dayless;
-  return ctx.nowMs != null && isDayUsagePast(day, ctx.nowMs, ctx.today)
+  const nowMs = listClock(ctx);
+  return nowMs != null && isDayUsagePast(day, nowMs, ctx.today)
     ? PLACE_BLOCK.behind
     : PLACE_BLOCK.ahead;
 }
@@ -763,7 +863,8 @@ export function comparePlacesBySchedule(
   b: PlaceUsage,
   ctx: PlaceOrderContext,
 ): number {
-  const { nameOf, nowMs, today } = ctx;
+  const { nameOf, today } = ctx;
+  const nowMs = listClock(ctx);
   const da = placeDay(a, ctx);
   const db = placeDay(b, ctx);
   // The block comes first, BEFORE the date is even considered. Ordering by date first

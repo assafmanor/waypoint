@@ -93,6 +93,8 @@ const SNAPSHOT: TripSnapshot = {
   maybeItems: [],
   places: [],
   notes: [],
+  tasks: [],
+  travelModeOverrides: [],
   documentAttachments: [
     link('a1', { bookingId: 'b1' }),
     link('a2', { eventId: 'e1' }),
@@ -100,6 +102,7 @@ const SNAPSHOT: TripSnapshot = {
   ],
   enrichments: {},
   fxRates: null,
+  forecast: null,
   latestSeq: '10',
 };
 

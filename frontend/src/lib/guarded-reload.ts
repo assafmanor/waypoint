@@ -17,6 +17,10 @@ export const RELOAD_GUARD_KEY = {
   chunk: 'waypoint:chunk-reload',
   /** A map canvas no rebuild can revive (ADR-0121's 2026-08-14 amendment). */
   map: 'waypoint:map-reload',
+  /** A shared reader holding a build older than the projection it just fetched
+   *  (ADR-0213's seventeenth amendment). Same shape as `chunk`: the document is stale, and
+   *  only a new one can read the answer. */
+  share: 'waypoint:share-reload',
 } as const;
 export type ReloadGuardKey = (typeof RELOAD_GUARD_KEY)[keyof typeof RELOAD_GUARD_KEY];
 

@@ -35,6 +35,61 @@ describe('ListRow', () => {
     expect(container.querySelector('.wp-listrow-meta')).toBeNull();
   });
 
+  // ── THE LEAD SLOT (ADR-0188 §1) ────────────────────────────────────────────────────
+  //
+  // Three properties, and each one is a defect the design session found by rendering.
+  it('renders a lead control as a SIBLING of the trigger, before it in DOM order', () => {
+    const { container } = render(
+      <ListRow
+        lead={<button type="button">tick</button>}
+        onOpen={() => {}}
+        openLabel="task"
+        title="task"
+      />,
+    );
+    const row = container.querySelector('.wp-listrow')!;
+    // Not nested: Chrome closes `.wp-listrow-open` at a nested <button> and reparents
+    // everything after it (ADR-0160 §4), so the lead must not be inside the trigger.
+    expect(row.querySelector('.wp-listrow-open .wp-listrow-lead')).toBeNull();
+    // First, so the tick is the column the eye starts from in RTL.
+    expect(row.firstElementChild?.className).toBe('wp-listrow-lead');
+  });
+
+  it('does not swallow the row’s own tap when the lead is pressed', () => {
+    const onOpen = vi.fn();
+    const onTick = vi.fn();
+    const { container } = render(
+      <ListRow
+        lead={
+          <button type="button" aria-label="tick" onClick={onTick}>
+            ✓
+          </button>
+        }
+        onOpen={onOpen}
+        openLabel="task"
+        title="task"
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'tick' }));
+    expect(onTick).toHaveBeenCalledTimes(1);
+    // The whole point of the sibling: the trigger never sees this press, so the lead needs
+    // no `stopPropagation` of its own.
+    expect(onOpen).not.toHaveBeenCalled();
+    expect(container.querySelector('.wp-listrow-lead')).toBeTruthy();
+  });
+
+  it('renders NO badge when there is no icon — the control is the leading element', () => {
+    const { container } = render(
+      <ListRow lead={<span>x</span>} onOpen={() => {}} openLabel="t" title="t" />,
+    );
+    expect(container.querySelector('.wp-listrow-badge')).toBeNull();
+    // And a row with no lead is unchanged: every other consumer still gets its badge.
+    cleanup();
+    const withIcon = render(<ListRow icon="📄" onOpen={() => {}} openLabel="d" title="d" />);
+    expect(withIcon.container.querySelector('.wp-listrow-badge')).toBeTruthy();
+    expect(withIcon.container.querySelector('.wp-listrow-lead')).toBeNull();
+  });
+
   it('applies the category badge tint (teal stay / amber transport)', () => {
     const { container } = render(
       <ListRow icon="🏨" badgeTone="stay" onOpen={() => {}} openLabel="hotel" title="hotel" />,

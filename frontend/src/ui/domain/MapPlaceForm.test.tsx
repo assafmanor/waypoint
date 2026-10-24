@@ -409,6 +409,25 @@ describe('MapPlaceForm — the short label', () => {
     expect(screen.queryByLabelText(t.map.make.nicknameLabel)).toBeNull();
   });
 
+  // Owner, 2026-09-27: the card's height is a budget, so whatever comes last scrolls out of
+  // sight — and on a phone that was the place's existing notes.
+  it('comes AFTER the notes, which are what the form is opened to read', () => {
+    render(
+      wrapNav(
+        <MapPlaceForm
+          spec={spec(RENAME)}
+          onConfirm={vi.fn()}
+          onCancel={vi.fn()}
+          renderNotes={() => <p>existing-notes</p>}
+        />,
+      ),
+    );
+    const notes = screen.getByText('existing-notes');
+    expect(
+      notes.compareDocumentPosition(nicknameField()) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
   it('says what the row will show if it is left empty', () => {
     mount(RENAME);
     expect(screen.getByText(t.map.make.nicknameHint('תל אביב'))).toBeTruthy();

@@ -1,0 +1,51 @@
+<!-- THE BRAND COVER — the homepage (ADR-0220 §2). The mark and the wordmark, because this
+     is the one link whose subject is the app itself. The band carries `APP_TITLE`'s own
+     tagline (ADR-0170) rather than `og:title`'s sentence, which the first draft printed here
+     and which then appeared twice in one bubble, one line apart. -->
+<div class="og-cover">
+  <div class="og-art">
+    <div class="og-brand">
+      <svg class="og-mark" viewBox="0 0 512 512" aria-hidden="true">
+        <!-- `ui/AppMark.tsx`, verbatim: the disc, the 0.66 marker scale, the glowing core. -->
+        <defs>
+          <linearGradient id="c-teal" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#37B3A3" />
+            <stop offset="1" stop-color="#1F7D73" />
+          </linearGradient>
+          <linearGradient id="c-amber" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#F2B65A" />
+            <stop offset="1" stop-color="#E09A2F" />
+          </linearGradient>
+          <linearGradient id="c-board" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#182642" />
+            <stop offset="1" stop-color="#0E1729" />
+          </linearGradient>
+          <filter id="c-glow" x="-60%" y="-60%" width="220%" height="220%">
+            <feGaussianBlur stdDeviation="10" />
+          </filter>
+        </defs>
+        <circle cx="256" cy="256" r="256" fill="url(#c-board)" />
+        <g transform="translate(256 268) scale(0.66) translate(-256 -260)">
+          <path
+            d="M256 44 C150 44 66 126 66 230 C66 348 206 436 256 476 C306 436 446 348 446 230 C446 126 362 44 256 44 Z"
+            fill="url(#c-teal)"
+          />
+          <circle
+            cx="256"
+            cy="216"
+            r="96"
+            fill="none"
+            stroke="#F2B65A"
+            stroke-width="9"
+            opacity="0.42"
+          />
+          <circle cx="256" cy="216" r="66" fill="#F2B65A" filter="url(#c-glow)" opacity="0.7" />
+          <circle cx="256" cy="216" r="60" fill="url(#c-amber)" />
+        </g>
+      </svg>
+      <div class="og-word">Travelive</div>
+    </div>
+  </div>
+  <!-- No band: see `_cover.css`. The mark and the wordmark carry the card on their own, and
+       a near-white strip under them merged with the card's own text panel in a light chat. -->
+</div>

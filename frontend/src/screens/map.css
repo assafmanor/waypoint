@@ -16,6 +16,10 @@
 .map-screen[data-mode='plan'] {
   --idx-accent: var(--plan);
 }
+/* A finished trip selects in the archive's rose, as its day strip does (ADR-0240 §3). */
+.map-screen[data-phase='past'] {
+  --idx-accent: var(--memory);
+}
 
 /* ── The split (Phase 6, ADR-0121 §5; the controls leave the layout in ADR-0122 §1) ──
    The tab opts out of the scrolling body (`.body.is-fullbleed`, App.css) and owns its
@@ -140,22 +144,8 @@
   overflow-x: auto;
   scrollbar-width: none;
   scroll-snap-type: x mandatory;
-  /* Physical `to right` on purpose: RTL reorders flex children, not `mask-image`'s own
-     coordinate space (ADR-0100 §6). */
-  -webkit-mask-image: linear-gradient(
-    to right,
-    transparent 0,
-    black 14px,
-    black calc(100% - 14px),
-    transparent 100%
-  );
-  mask-image: linear-gradient(
-    to right,
-    transparent 0,
-    black 14px,
-    black calc(100% - 14px),
-    transparent 100%
-  );
+  /* The fade is the shared `edge-fade` class this strip also carries (ADR-0100 §6, one
+     mechanism since 2026-08-21), so the gradient is no longer written out here. */
 }
 .map-facetstrip::-webkit-scrollbar {
   display: none;
@@ -165,7 +155,10 @@
   scroll-snap-align: start;
 }
 /* The outer strip owns the scroll and the fade now, so the pills group inside it is a
-   plain flex group: two nested scrollers fight, and two nested masks fade a chip twice. */
+   plain flex group: two nested scrollers fight, and two nested masks fade a chip twice.
+   `lib/edge-fade.ts` declines this element too (it asks `scrollsOn`, and this clips rather
+   than scrolls), so the two mask lines below are belt to that braces — kept because the
+   invariant is "one mask per strip", not "whatever the JS happens to decide". */
 .map-facetstrip .choice-grid.pills {
   flex: 0 0 auto;
   overflow: visible;
@@ -682,11 +675,16 @@
 .map-placecard:is(:has(.note-sec), :has(.map-hero)) > .place:not(.result) {
   display: grid;
   grid-template-columns: auto 1fr auto;
-  /* identity · what the world knows · DOCUMENTS · notes head · NOTES(1fr) · refs · foot. The
-     summary's row and the documents' row are both `auto` and collapse to 0 when there is
-     nothing to show, which is the common case for both — so the card is byte-identical to
-     before on those places (the row gap is 0). */
-  grid-template-rows: auto auto auto auto minmax(0, 1fr) auto auto;
+  /* identity · what the world knows · DOCUMENTS · WHAT THE GROUP WROTE(1fr) · refs · foot.
+     The summary's and the documents' rows are both `auto` and collapse to 0 when there is
+     nothing to show, which is the common case for both.
+
+     **The flexible track holds BOTH sections since 2026-08-16** (ADR-0191 §7). It was the note
+     list alone, with that header pinned above it; tasks arriving as a second section broke
+     that twice over — every rule here is POSITIONAL, so `> .note-sec` matched both and stacked
+     two headers on one row, and pinning tasks instead put the card at 411px against its own
+     420px cap with one task and one note on it. One scroller answers both. */
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 0 11px;
   /* AMENDED 2026-08-11 (ADR-0182 §9): `hidden` here, which is what the shortfall used to
@@ -761,44 +759,58 @@
   grid-row: 5;
   grid-column: 1 / -1;
 }
-/* `contents` so the section's header can pin while its list scrolls — they have to be siblings
-   in the grid for one to be the flexible track. The separator moves to the header, which is
-   now the section's top edge. */
-.map-placecard:has(.note-sec) > .place > .note-sec {
-  display: contents;
-}
-.map-placecard:has(.note-sec) > .place > .note-sec > .note-sec-h {
+/* **WHAT THE GROUP WROTE — the card's ONE flexible track, holding BOTH sections**
+   (ADR-0191 §7). It used to be the note list alone, with that section's header pinned above it
+   (ADR-0167 §9.5). Tasks made that arrangement impossible: as a fifth PINNED row the card
+   measured 411px against its own 420px cap on a place carrying one task, one note and one
+   reference — ADR-0182 §9's cut-off with nine pixels to spare.
+
+   `min-height: 0` is what lets a grid row shrink below its content at all; without it the
+   track sizes to the sections and the card overflows. `align-self: stretch` is load-bearing
+   beside it: `align-items: center` leaves an item at its CONTENT height inside a 0px track, so
+   the list overflowed the card while the track itself measured 0 — invisible to track sizing,
+   and measured.
+
+   **The headers scroll with their sections now**, which is the stated cost: with two sections
+   there is no arrangement that pins both, and losing `שיבוץ ליום` under the fold is worse than
+   losing a sticky header. */
+.map-placecard:has(.note-sec) > .place > .map-cardwrote {
   grid-row: 4;
   grid-column: 1 / -1;
+  align-self: stretch;
+  min-height: 0;
+  overflow-y: auto;
+  /* `-y` for the reason spelled out on `.map-sum`: this region is a scrollport on both axes,
+     so an unqualified `contain` swallowed the track's horizontal swipe. */
+  overscroll-behavior-y: contain;
+  scrollbar-width: none;
   margin-top: 8px;
   padding-top: 8px;
   border-top: 1px solid var(--line);
+}
+.map-placecard:has(.note-sec) > .place > .map-cardwrote::-webkit-scrollbar {
+  width: 0;
+}
+/* Inside the shared scroller the sections are ordinary blocks again — no `display: contents`,
+   no per-section grid rows. That split existed only to make ONE section's list the track, and
+   applying it to both is what stacked two headers on one row (owner, 2026-08-16). */
+.map-placecard:has(.note-sec) .map-cardwrote > .note-sec {
+  margin-top: 0;
+}
+.map-placecard:has(.note-sec) .map-cardwrote > .note-sec + .note-sec {
+  margin-top: var(--space-3);
 }
 /* THE ONE SCROLLING REGION. `min-height: 0` is what lets a grid row shrink below its content at
    all — without it the track sizes to the notes and the card overflows, the same trap the form
    card's middle documents. `align-self: stretch` is load-bearing beside it: `align-items:
    center` leaves an item at its CONTENT height inside a 0px track, so the list overflowed the
    card while the track itself measured 0 — invisible to the track sizing, and measured. */
-.map-placecard:has(.note-sec) > .place > .note-sec > .note-sec-list {
-  grid-row: 5;
-  grid-column: 1 / -1;
-  align-self: stretch;
-  min-height: 0;
-  overflow-y: auto;
-  /* `-y` for the reason spelled out on `.map-sum` above: this region is a scrollport on both
-     axes, so an unqualified `contain` swallowed the track's horizontal swipe. */
-  overscroll-behavior-y: contain;
-  scrollbar-width: none;
-}
-.map-placecard:has(.note-sec) > .place > .note-sec > .note-sec-list::-webkit-scrollbar {
-  width: 0;
-}
 .map-placecard:has(.note-sec) > .place > .map-refs {
-  grid-row: 6;
+  grid-row: 5;
   grid-column: 1 / -1;
 }
 .map-placecard:has(.note-sec) > .place > .map-refs-foot {
-  grid-row: 7;
+  grid-row: 6;
   grid-column: 1 / -1;
 }
 
@@ -824,14 +836,35 @@
 .map-placecard:is(:has(.note-sec), :has(.map-hero)) > .place:not(.result):has(> .map-cardclose) {
   grid-template-columns: auto 1fr auto auto;
 }
-.map-placecard > .place > .map-cardclose {
+.map-placecard > .place > :is(.map-cardclose, .map-cardfold) {
   grid-row: 1;
   grid-column: 4;
   /* Aligned with the badge's top rather than the row's middle: on a two-line identity row the
      middle puts it beside the meta line, where it reads as belonging to a fact. */
   align-self: start;
 }
-.map-cardclose {
+/* **THE FOLD IS A FIFTH COLUMN BESIDE THE FOURTH** (ADR-0122 §7's 2026-08-27 amendment — the
+   other half of the same owner ask the `✕` above answered). Declared where the control is for
+   the reason the block above gives: a fifth `auto` in the template itself would give every
+   neighbour slide in the track an empty column's 11px gap. Everything else about it is
+   `.map-cardclose`'s, by sharing its rules rather than restating them — it is the same kind of
+   control, on the same row, at the same 16px of layout and 44px of target. */
+.map-placecard:is(:has(.note-sec), :has(.map-hero))
+  > .place:not(.result):has(> .map-cardfold):has(> .map-cardclose) {
+  grid-template-columns: auto 1fr auto auto auto;
+}
+.map-placecard > .place:has(> .map-cardfold) > .map-cardclose {
+  grid-column: 5;
+}
+/* The caret turns rather than swapping glyph: one control, one position, and the direction it
+   points is the whole message. Not mirrored under RTL — a rotation has no handedness. */
+.map-cardfold[data-folded] .icon {
+  transform: rotate(180deg);
+}
+.map-cardfold .icon {
+  transition: transform var(--t-base) var(--ease-standard);
+}
+:is(.map-cardclose, .map-cardfold) {
   position: relative;
   flex: 0 0 auto;
   display: inline-flex;
@@ -846,20 +879,20 @@
   cursor: pointer;
   border-radius: 8px;
 }
-.map-cardclose::after {
+:is(.map-cardclose, .map-cardfold)::after {
   content: '';
   position: absolute;
   inset: -14px;
 }
-.map-cardclose .icon {
+:is(.map-cardclose, .map-cardfold) .icon {
   width: 14px;
   height: 14px;
   display: block;
 }
-.map-cardclose:active {
+:is(.map-cardclose, .map-cardfold):active {
   transform: scale(var(--press-scale));
 }
-.map-cardclose:focus-visible {
+:is(.map-cardclose, .map-cardfold):focus-visible {
   outline: 2px solid var(--cta);
   outline-offset: 2px;
 }
@@ -1494,8 +1527,10 @@
   white-space: nowrap;
   text-decoration: none;
 }
-.map-navbtn:hover {
-  background: color-mix(in srgb, var(--teal) 10%, transparent);
+@media (hover: hover) and (pointer: fine) {
+  .map-navbtn:hover {
+    background: color-mix(in srgb, var(--teal) 10%, transparent);
+  }
 }
 /* The coordless `＋ מיקום` affordance is the shared `AddLocationButton`
    (ui/primitives/place-picker.css) — a placeless booking's מיקום fact needed the
@@ -1525,6 +1560,27 @@
   padding-top: 8px;
   border-top: 1px solid var(--line);
 }
+/* **The wrapper the two sections moved into needs the SAME declaration**, and forgetting it
+   is what put them beside the identity instead of under it (owner, 2026-08-16: _"is it a bug
+   that the tasks and notes are on the left?"_ — yes). The rule directly above already states
+   the cause in as many words: `.place` is a wrapping flex ROW, so anything dropped into it
+   joins the row rather than starting a line. Moving the sections one level down into
+   `.map-cardwrote` moved the flex ITEM, and the declaration stayed on the children.
+
+   The separator moves here too, so the pair reads as one block with one top edge rather than
+   two sections each drawing their own. */
+.place > .map-cardwrote {
+  flex-basis: 100%;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+.place > .map-cardwrote > .note-sec {
+  margin-top: 0;
+}
+.place > .map-cardwrote > .note-sec + .note-sec {
+  margin-top: var(--space-3);
+}
 /* **מסמכים ON A PLACE** (ADR-0173 §4's follow-up, built by ADR-0174 §3) — the same
    full-width line, one block up, and it needs its own declaration for the same reason:
    `.place` is a wrapping flex ROW, so a section dropped into it joins the row instead of
@@ -1544,134 +1600,16 @@
   grid-row: 3;
   grid-column: 1 / -1;
 }
-/* ── WHAT THE WORLD KNOWS, PINNED UNDER THE IDENTITY (ADR-0167 §9.3) ───────────────────
-   Another full-width line on a row that has wrapped since it shipped, like `.map-refs` and
-   `.note-sec` above — one declaration, no new grammar.
+/* **`PlaceKnowledge`'S BASE RULES LEFT THIS SHEET** (ADR-0219 §6). `.map-sum`, `.map-sum-lang`,
+   `.map-sum-t`, `.map-hero`, `.map-credit`, `.map-know-more` and the two clamp states are
+   `ui/domain/place-knowledge.css` now, because the component has a second host that is nowhere
+   near a map: the event read (`EventDetail`). Their `map-` names stay — they are the classes the
+   component renders, and renaming them would be a rewrite of every rule that positions them.
 
-   **No separator.** It belongs to the identity group rather than starting a new section; the
-   `border-top` below it is the notes header's, which is that section's top edge.
-
-   A flex row rather than one text box, so the language marker sits **before** the prose without
-   costing a line of its own: the chip is a `flex: 0 0 auto` sibling and the prose takes the rest.
-   Two reasons it cannot be inline inside the prose element — `dir="auto"` would sniff the Hebrew
-   chip and lay an English extract out RTL, and `-webkit-box` (which the clamp needs) lays
-   ELEMENT children out as boxes, so the chip would take a whole line of the clamp. */
-.map-sum {
-  flex-basis: 100%;
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  margin-top: 7px;
-  font-size: 12px;
-  line-height: 1.45;
-  color: var(--muted);
-}
-/* `באנגלית` — the row's existing tag grammar, no new hue (ADR-0167 §5). Slightly quieter than
-   the prose it introduces: it is a fact ABOUT the text, not part of it. */
-.map-sum-lang {
-  flex: 0 0 auto;
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--faint);
-}
-/* **TWO LINES, and the clamp lives on THIS element.** `min-width: 0` because a flex item's
-   default `auto` basis refuses to shrink below its content, which would push the chip out of
-   the row.
-
-   ADR-0167 §9's closing note is a warning to whoever adds the second state: a clamp that
-   varies by state has to be written on the **compound selector** (`.map-sum-t.expanded`, not a
-   sibling `.expanded` class), because the mockup's later-declared 3-line rule silently won the
-   specificity tie and rendered three lines where two were measured. */
-.map-sum-t {
-  flex: 1 1 auto;
-  min-width: 0;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-/* ── EXPANDING IS A MODE CHANGE (ADR-0167 §11.1) ───────────────────────────────────────
-   The card becomes the one an un-added research place gets — picture, whole summary, credit —
-   and the notes, the references and the schedule footer are not rendered at all. That is what
-   dissolved §10.2's measured problem rather than working around it: a 116px hero revealed INSIDE
-   the collapsed card left the notes scroller 31px, which only bites if expansion is GROWTH.
-
-   **The hero is on the deciding surface only** (§9.4). A committed place already carries its
-   photograph in the badge at zero cost, and 130px of picture is the least valuable block on a
-   capped card — so it appears when you have asked to look at the place as a subject, and never
-   before. 130px and `border-radius: 12px` are the mockup's own numbers. */
-.map-hero {
-  flex-basis: 100%;
-  height: 130px;
-  margin-top: 9px;
-  padding: 0;
-  border: 0;
-  border-radius: 12px;
-  overflow: hidden;
-  background: var(--paper);
-  cursor: pointer;
-  display: block;
-}
-.map-hero img {
-  display: block;
-  width: 100%;
-  height: 100%;
-  /* Same judgement as the badge's, for the same reason: the measured aspect range is 0.54-1.78
-     (ADR-0166 §11.4), so a `contain` would letterbox six portraits in 32. */
-  object-fit: cover;
-}
-/* **The credit, under the picture and never over it** (ADR-0167 §4): an overlay fights whatever
-   is behind it - a bright sky - and has to be re-solved for dark mode, where the card surface is
-   stable in both.
-
-   `text-align: start` and NO `dir`: the element stays RTL like every other line on this card, and
-   the Latin run inside it is isolated by `placeCredit`. Reversing those two is ADR-0118's
-   mirror-image bug, which its lint guard cannot see (§8.2) - the credit orphaned itself to the
-   opposite edge, correctly ordered and visually detached from the image it credits. */
-.map-credit {
-  flex-basis: 100%;
-  margin-top: 5px;
-  font-size: 11px;
-  color: var(--faint);
-  text-align: start;
-}
-/* The summary loses its clamp in the expanded state - **written on the compound selector, not as
-   a sibling class** (ADR-0167 §9's closing note): the clamp is declared later in this file, so a
-   `.is-open` rule on its own would lose the specificity fight and silently render two lines where
-   the whole extract belongs. */
-.map-sum.is-open .map-sum-t {
-  display: block;
-  -webkit-line-clamp: none;
-  overflow: visible;
-}
-/* **THREE lines on the deciding card** (ADR-0166 §17), which is the mockup's own `.summary` — the
-   two-line `.clamp2` there is the COMMITTED card's variant, and this is the state it was measured
-   against. Wider than the committed row because nothing competes with it: a place nobody has added
-   has no notes, no references and no schedule action (ADR-0167 §9.1).
-   Clamped rather than released, and that is deliberate: this card has nothing to expand INTO, so
-   the third line is the floor rather than a step on the way to more, and the way to the rest of the
-   text is the row's Google exit. Compound selector, like `.is-open` above and for the same reason
-   ADR-0167 §9 records. */
-.map-sum.is-decide .map-sum-t {
-  -webkit-line-clamp: 3;
-}
-/* `עוד ›` and `‹ חזרה לפרטי המקום` are one control in two directions - a teal text link, the
-   mockup's `.more`. Not a pill: the footer's `שיבוץ ליום` is this card's one primary, and a
-   second pill beside it reads as a second primary (the reasoning `.map-del` already follows). */
-.map-know-more {
-  align-self: flex-start;
-  border: 0;
-  background: none;
-  padding: 2px 0;
-  font: inherit;
-  font-size: 11.5px;
-  font-weight: 600;
-  color: var(--teal);
-  cursor: pointer;
-  white-space: nowrap;
-}
-/* The way back sits where the footer was, so the card's bottom edge does not move between the two
-   states - it is the same row, holding different verbs. */
+   **What stayed here is what lays them out ON THIS CARD** — `.map-placecard:has(.map-hero) > .place`
+   above, which makes the canvas card a grid with one scrolling track. That is the Map's geometry
+   and nothing else's; a column elsewhere needs the base rules alone, which is exactly what the
+   split is. */
 .map-backrow {
   justify-content: space-between;
   padding-top: 9px;
@@ -1970,8 +1908,10 @@
   text-decoration: none;
   cursor: pointer;
 }
-.map-res-out:hover {
-  border-color: var(--muted);
+@media (hover: hover) and (pointer: fine) {
+  .map-res-out:hover {
+    border-color: var(--muted);
+  }
 }
 /* ── THE DECIDING CARD (ADR-0166 §17, ADR-0167 §9.1) ──────────────────────────────
    A selected result grows the hero, the credit and the summary — and it needs **no rules of its
@@ -2050,8 +1990,10 @@
   white-space: nowrap;
   cursor: pointer;
 }
-.map-del:hover {
-  color: var(--miss);
+@media (hover: hover) and (pointer: fine) {
+  .map-del:hover {
+    color: var(--miss);
+  }
 }
 .map-del:active {
   transform: scale(var(--press-scale));
@@ -2079,9 +2021,11 @@
   cursor: pointer;
   white-space: nowrap;
 }
-.map-addmaybe:hover:not(:disabled) {
-  background: var(--cta);
-  color: var(--cta-text);
+@media (hover: hover) and (pointer: fine) {
+  .map-addmaybe:hover:not(:disabled) {
+    background: var(--cta);
+    color: var(--cta-text);
+  }
 }
 .map-addmaybe:disabled {
   opacity: 0.55;

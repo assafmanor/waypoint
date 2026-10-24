@@ -54,6 +54,11 @@ export interface BookingSheetDraft {
   /** **The company behind the booking** (ADR-0163 §2) — `Booking.provider`. Travels in
    *  the draft like every other typed field, so a place errand to the Map cannot lose it. */
   provider: string;
+  /** **The service's number and where you board it** (ADR-0222 §1/§2). Same travelling rule
+   *  as `provider` above. `gate` is also writable from the lifted hero without this form
+   *  (§7) — that path sends `{ gate }` alone and never builds a draft. */
+  flightNumber: string;
+  gate: string;
   fromPlaceId: string | undefined;
   toPlaceId: string | undefined;
   placeId: string | undefined;
@@ -94,6 +99,27 @@ export interface BookingSheetDraft {
    *  direction control exists to stop it doing. */
   roundTrip: boolean | undefined;
   returnLegs: LegTimes[];
+  /** **The way home's OWN stops** (ADR-0203 §6), and `null` while it is still a mirror of
+   *  the outbound. Reported from the field: "there's a good chance that it isn't going to be
+   *  the same stops exactly - it could be different stops and/or a different number of
+   *  stops."
+   *
+   *  A separate list rather than a flag over `stopPlaceIds`, because the whole point is that
+   *  it can be a DIFFERENT LENGTH — `reversed` could only ever be the same array read
+   *  backwards. `null` is what keeps the common case free: a round trip that does come home
+   *  the same way carries no second list at all.
+   *
+   *  **The flag and the list are separate on purpose.** Going back to "same way" sets this
+   *  to `null` for the save, and `returnStopsDraft` below keeps what was typed — so a change
+   *  of mind inside one form costs nothing and no confirm dialog has to ask. */
+  returnStopPlaceIds: (string | undefined)[] | null;
+  /** What the way-back list held last, so toggling back to a mirror is not destructive.
+   *  Never read by the save — only by the control that restores it.
+   *
+   *  **`null` is "never diverged", and `[]` is "diverged, and the way home is direct".** They
+   *  are different answers and the first version could not tell them apart, so clearing the
+   *  last stop and then toggling twice re-seeded the stop that had just been removed. */
+  returnStopsDraft: (string | undefined)[] | null;
   /** **Has a human said when this ends?** (field report #11.) While false, the end
    *  follows the start — the type's conventional check-out clock, or a typical length
    *  after whatever the start becomes. The same latch `iconTouched`/`kindTouched` put on
@@ -144,6 +170,8 @@ export const BOOKING_FIELD_COVERAGE = {
   type: 'form',
   title: 'form',
   confirmationCode: 'form',
+  flightNumber: 'form',
+  gate: 'form',
   placeId: 'form',
   fromPlaceId: 'form',
   toPlaceId: 'form',
@@ -224,6 +252,8 @@ export function bookingSheetDraft(input: {
     titleTouched: title.trim() !== '' && title.trim() !== derivedTitle,
     code: booking?.confirmationCode ?? '',
     provider: booking?.provider ?? '',
+    flightNumber: booking?.flightNumber ?? '',
+    gate: booking?.gate ?? '',
     fromPlaceId: fromPlaceId || undefined,
     toPlaceId: toPlaceId || undefined,
     placeId,
@@ -253,6 +283,8 @@ export function bookingSheetDraft(input: {
     // unspent and leaves the question open. Editing never offers the control at all.
     roundTrip: undefined,
     returnLegs: [],
+    returnStopPlaceIds: null,
+    returnStopsDraft: null,
     // The two optional window bounds (ADR-0184), as bare clocks in each edge's own
     // zone — the same read as `start`/`end` above, so a stay opened for editing shows
     // the window it was saved with and an empty pair simply offers.

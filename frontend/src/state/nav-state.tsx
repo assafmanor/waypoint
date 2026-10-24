@@ -72,11 +72,82 @@ export const BOOKING_PARAM = 'booking';
 export const DOCUMENT_PARAM = 'doc';
 export const EVENT_PARAM = 'event';
 export const IDEA_PARAM = 'idea';
+/** …and the fifth, which arrived with notifications (ADR-0197 §6): `?task=<id>` opens the
+ *  tasks screen with that task's sheet on top. A task had no param because nothing outside
+ *  the app had ever needed to name one — every way in was a tap on the row itself. */
+export const TASK_PARAM = 'task';
+/**
+ * **`?trip=<id>` — the only param that says WHICH TRIP, and the only one a notification
+ * cannot do without** (ADR-0197 §6).
+ *
+ * Every param above opens something *inside* the active trip. None of them could change
+ * which trip that is, because it comes from `localStorage` alone (`state/active-trip-id`) —
+ * which was invisible while every way in was a tap from inside the app, and is a
+ * wrong-answer bug the moment a notification arrives from outside it. Consumed by
+ * `ActiveTripIdProvider`, which sits ABOVE the router, so it reads `window.location`
+ * directly rather than through `useSearchParams`.
+ */
+export const TRIP_PARAM = 'trip';
+/**
+ * **`?event=`'s other half: what the surface stamps on the row it names** (2026-08-20).
+ *
+ * The param says which card to open; landing on it means FINDING it, and both day surfaces
+ * now answer to the same attribute — Trip's `EventCard` and Plan's builder row (whose own
+ * `data-bld-id` this replaces, so the drag's `closest()` and the arrival ask one question).
+ * Two surfaces reading one selector is the point: a place's reference sends you to a day
+ * without knowing which mode will draw it.
+ */
+export const EVENT_ROW_ATTR = 'data-event';
+export const eventRowSelector = (id: string): string => `[${EVENT_ROW_ATTR}="${id}"]`;
+
+/**
+ * **A one-shot id in the URL, taken and spent** (2026-08-20).
+ *
+ * Three surfaces run this discipline — the Index for `?booking=`/`?doc=`, both day surfaces
+ * for `?event=`/`?idea=` — and the third copy is what makes it a function: read it, act on
+ * it, and delete it, so a back or a reload does not re-open what you have since closed.
+ *
+ * It returns the value **on the render it arrives**, before its own effect has spent it, which
+ * two callers need for different reasons: an effect keyed on it acts once (and once more with
+ * `null`, which every caller already guards), and a decision taken AT MOUNT — the Day view's
+ * "land on now", which must stand down when the arrival names a card — can see it at all.
+ *
+ * **`active: false` makes it wholly inert** — no value returned and, the half that matters,
+ * the param NOT SPENT. Its one caller is the day peek (ADR-0200 §7), which renders a real day
+ * surface for the day you are swiping toward: two mounted surfaces both reading `?event=`
+ * means the preview consumes the arrival and the day you actually land on never sees it. That
+ * was counted before it was written rather than found afterwards — every arrival effect on
+ * both day screens keys off this hook, so one option covers all of them.
+ */
+export function useArrivalParam(name: string, { active = true } = {}): string | null {
+  const [params, setParams] = useSearchParams();
+  const value = active ? params.get(name) : null;
+  useEffect(() => {
+    if (value === null) return;
+    const next = new URLSearchParams(params);
+    next.delete(name);
+    setParams(next, { replace: true });
+  }, [name, value, params, setParams]);
+  return value;
+}
 /** Which of the Index's sub-screens to open on arrival. `docs` is ADR-0050's; `bookings`
  *  joins it for the errand return below, and needs no id — the point is only to MOUNT the
  *  screen, not to open anything on top of it. */
 export const FOCUS_PARAM = 'focus';
-export const INDEX_FOCUS = { DOCS: 'docs', BOOKINGS: 'bookings' } as const;
+export const INDEX_FOCUS = { DOCS: 'docs', BOOKINGS: 'bookings', TASKS: 'tasks' } as const;
+
+/** The same param pointed at the HOME tab (ADR-0190 §3). An automatic task's tap fires the
+ *  one verb that resolves its check, and two of the five — book a flight, book a bed — open
+ *  a seeded `BookingSheet` that lives on Plan Home. Tapping one from the tasks screen
+ *  therefore has to leave, and it leaves the way this app already deep-links: the same
+ *  `focus` key, a different destination tab.
+ *
+ *  The other three need nothing here, because Home is not where they live: an empty day is
+ *  the day tab, a passport is the Index's own documents screen, and an invite is trip
+ *  settings. "Navigate to where the thing is" is the rule; for three of five that is not
+ *  Home at all. */
+export const HOME_FOCUS = { ADD_FLIGHT: 'add-flight', ADD_LODGING: 'add-lodging' } as const;
+export type HomeFocus = (typeof HOME_FOCUS)[keyof typeof HOME_FOCUS];
 
 /** **Where a booking errand has to come back to** (session 172). The Index's bookings
  *  screen is view state inside `Index.tsx`, not a route (ADR-0098), so returning to the
@@ -101,6 +172,12 @@ export function withBookingFormReturn(path: string): string {
 
 /** The anchor tab: back from any other tab returns here, then exits to /trips. */
 export const HOME_TAB: TabId = 'home';
+/** Named beside `HOME_TAB` rather than written as a bare `'days'` at a new call site — the
+ *  tasks screen's empty-day verb navigates here (ADR-0190 §3), and a typo'd tab id is a
+ *  silent no-op rather than a compile error. */
+export const DAYS_TAB: TabId = 'days';
+/** Named beside the other two — the Trip Home task band deep-links here (ADR-0188 §6). */
+export const INDEX_TAB: TabId = 'index';
 /** Where leaving a trip lands (ADR-0033 all-trips home). */
 const EXIT_TRIP_TO = '/trips';
 /** Top-level entry surfaces where a structural back has nowhere in-app to go, so

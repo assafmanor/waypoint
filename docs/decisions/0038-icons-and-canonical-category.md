@@ -68,6 +68,21 @@ This makes §4's "auto-suggest is deterministic, from booking type only" the sha
 
 Wiring the selector into the day-view "add idea" quick-add put a full category pills row into a one-line jot field — **awkward**, and a category isn't a must for a loose idea. Revised: the **maybe-shelf quick-add stays minimal (icon + name only)** and creates an **uncategorized** idea; a maybe picks up its `category` when it's **scheduled into an event** (via `EventForm`'s selector), the point it becomes a real pin/timeline item. `IconPicker` stays glyph-only in the shelf (the "icon never decides category" rule is unchanged). An unscheduled, pinned idea falls back to the neutral `leisure` hue (ADR-0110). Tagging an idea _on the shelf itself_ (an optional, never-required `MaybeCard` affordance) was considered and **deferred** — not built. So of the two hosts the amendment named, only `EventForm` carries the explicit selector; the maybe path defers to schedule-time.
 
+### Amendment (2026-08-24) — the flag comes from the destination's **resolved country**; the words are the fallback
+
+Two owner reports off the shipped create form, one cause. Picking **פאפוס** (Paphos) left the default suitcase, and picking **קפריסין** suggested **🇨🇳** — because §5's `suggestFlagFromDestination` read the destination as _text_ only, and the text is the weakest signal available at that moment:
+
+- **Paphos is a city**, and the curated `DESTINATIONS` list is countries plus a few iconic cities. A city outside that handful matched nothing, so a pick that had already resolved `CY` still showed no flag.
+- **סין is literally the tail of קפריסין** — final nun included — and the matcher tested each alias as a bare substring, so China won on a list ordered by popularity. The last "Alternatives considered" bullet below predicted exactly this class of failure ("Hebrew morphology … makes naive matching unreliable") and it was still shipped inside the flag suggestion.
+
+Resolved by ranking the signals:
+
+1. **A resolved country code wins.** The destination pick already carries `countryCode` from Google ([ADR-0113](0113-trip-destination-place-and-primary-timezone.md) §2) — the same field the timezone and currency derive from — so `suggestFlagFromDestination(text, countryCode)` answers `flagForCountry(code)` when there is one. This is an _answer_, not a guess, and it covers **every** country rather than the curated ~57, at any pick granularity (city / region / country).
+2. **The text match is the "use as typed" fallback**, and now matches at a **word boundary with at most one glued Hebrew clitic** (בהוכלמש) instead of anywhere inside a word: `טיול לקפריסין` is Cyprus, `קפריסין` is not China. This also subsumes the old ≤2-char whole-token special case (`us` inside `australia`).
+3. **A miss still degrades to the default glyph**, never to a wrong flag, and the suggestion stays overridable — §5 is otherwise unchanged.
+
+The regression guard is the one that would have caught this: a test asserting **every** curated name and alias resolves to its own flag, whatever order the list is in. Cyprus's aliases also grew its cities (פאפוס, לרנקה, לימסול, איה נאפה) so the typed fallback answers them too.
+
 ## Consequences
 
 - **Schema + migration.** Add `enum EventCategory`; add `category EventCategory?` to `Event` and `MaybeItem`; add `icon String?` to `Trip`. Backfill: events with a linked `Booking` derive `category` from `Booking.type`; everything else stays `null`. `@waypoint/shared` gains `eventCategorySchema`, `ICON_SET`, `categoryForBookingType()`, `iconForCategory()`, and `category`/`icon` on the create/update schemas — kept in sync with the Prisma schema (non-negotiable rule 3).

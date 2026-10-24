@@ -2,22 +2,36 @@
    which was checked as unused before it was taken, and deliberately NOT `.gl-*`
    or `.glance-*`: those belong to `GlanceCard`, the day-at-a-glance time rail. */
 
+/* **The BOX, which is no longer the button** (ADR-0218's 2026-09-03 amendment §A). ADR-0180 §3's
+   "the whole card is one `<button>`" survives in substance — one target for the whole card, still
+   opening the converter — but the skin and the press are now two elements, which is exactly what
+   makes the source line's `<a>` a sibling of the button rather than a child of it. */
 .fx-card {
   width: 100%;
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: var(--radius-16);
-  padding: var(--space-3) var(--space-4);
+  overflow: hidden;
+  color: var(--ink);
+}
+/* The pressable row. Carries what `.fx-card` used to, minus the skin. */
+.fx-face {
+  width: 100%;
   min-height: 44px; /* ADR-0017's floor, met by the box that is tapped. */
   display: flex;
   align-items: center;
   gap: var(--space-3);
+  /* Trailing padding reduced because the foot below supplies the card's bottom edge; the 44px
+     floor is a `min-height` on this row and is unaffected. */
+  padding: var(--space-3) var(--space-4) 7px;
+  background: none;
+  border: 0;
   font: inherit;
-  color: var(--ink);
+  color: inherit;
   text-align: start;
   cursor: pointer;
 }
-.fx-card .ic {
+.fx-face .ic {
   flex: 0 0 auto;
   color: var(--muted);
   display: flex;
@@ -26,13 +40,13 @@
    already says "technical value". Amber is the clock's alone (rule 4), and
    `.qa .code` spends it on a confirmation code — lending it to a rate would take
    it out of its one meaning (ADR-0180 §8). */
-.fx-card .v {
+.fx-face .v {
   font-family: var(--font-mono);
   font-weight: 700;
   font-size: 1.15rem;
   min-width: 0;
 }
-.fx-card .asof {
+.fx-face .asof {
   margin-inline-start: auto;
   flex: 0 0 auto;
   font-size: 0.72rem;
@@ -40,28 +54,7 @@
   text-align: end;
 }
 
-/* §9 · the attribution the source's terms make mandatory and visible. OUTSIDE
-   the card, because the card is a `<button>` and an `<a>` inside one is invalid
-   markup — so "in the card" was never a placement, it was a decision to drop the
-   link. Per-card rather than one line for the whole section: the section will
-   hold weather next, and a shared line would credit the wrong source for it. */
-.fx-attr {
-  margin: var(--space-2) var(--space-1) 0;
-  font-size: 0.68rem;
-  line-height: 1.4;
-  color: var(--muted);
-}
-.fx-attr-link {
-  color: inherit;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-  /* 44px without growing a 10px line — the `ValueToken` overlay trick (ADR-0177),
-     and the same one the converter's refresh uses. */
-  position: relative;
-  display: inline-block;
-}
-.fx-attr-link::after {
-  content: '';
-  position: absolute;
-  inset: -16px -8px;
-}
+/* `.fx-attr` / `.fx-attr-link` USED TO LIVE HERE — the floating line under the card that
+   ADR-0180 §9 chose when an `<a>` could not go inside a `<button>`. Retired 2026-09-03 by
+   ADR-0218's amendment §A: the line is now `ui/domain/card-source.css`, inside the card, shared
+   with the section's other tenant. Nothing renders the old classes. */

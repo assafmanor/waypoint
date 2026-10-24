@@ -112,6 +112,48 @@ reported no font.
 synthetic images for exactly this reason, which left crop geometry honest and
 content dishonest — and the ADR said so rather than pretending otherwise.
 
+**`tokens.css` pins the document to the viewport, so a mockup must undo it.**
+Since 2026-08-21 (ADR-0200 §1) the app declares `html, body { overflow: clip }` —
+the app-shell scrolls inside `.body` and the root must never become a scroll
+container. Every mockup inlines that sheet, and a mockup is a *document* of
+sections rather than an app shell: `scrollHeight` collapses to the viewport,
+`window.scrollTo` does nothing, and a full-page screenshot comes back with §1 and
+then blank rectangles where §2–§5 are laid out but never painted. Nothing errors
+and the measurement table still fills in, so it reads as a page that renders.
+Undo it in the `mk-*` block, labelled:
+
+```css
+html,
+body {
+  height: auto;
+  overflow: visible;
+}
+```
+
+`note-full-screen-v1.html` is the file that found it; `a-day-turns-under-a-held-card-v1.html`
+is the other one that inlines the rule.
+
+**`document.fonts.ready` is not enough to trust a width.** An `@font-face` is
+fetched lazily on first use, so at parse time there may be nothing pending and
+`ready` resolves **immediately** — before a single glyph of Assistant exists.
+A measurement table built in that tick reports fallback metrics, which is the
+webfont trap above arriving through the clock instead of the network. Ask for the
+faces explicitly, per weight, and re-measure:
+
+```js
+Promise.all(
+  ['400 12px Assistant', '600 12px Assistant', '12px "Secular One"'].map((f) =>
+    document.fonts.load(f),
+  ),
+).then(() => document.fonts.ready.then(measure));
+```
+
+`note-full-screen-v1.html` reported a truncation rule as costing **nothing**
+(⁦38px⁩ against ⁦38px⁩) until it did this; the same two boxes are ⁦51px⁩ and ⁦37px⁩
+once Assistant is applied, because the fallback face is narrow enough that the
+name never overflowed. Note the shape of the failure: the number that lied was
+the one saying **the change makes no difference**.
+
 ## Drift
 
 **Re-run `inline-app-css.mjs` whenever a manifest sheet changes.** The catalog
@@ -167,3 +209,37 @@ construction** (every consumer tests `=== 'exact'`), and turned up the one
 consumer that does not follow the pattern and would have shipped a defect
 (`glance.ts:457` tests `!== 'not-before'`). The count is usually the deliverable,
 not the preamble.
+
+**Inlining `tokens.css` stops the mockup itself from scrolling, and the symptom
+looks like a page that fits.** ADR-0200 §1 put `html, body { overflow: clip }` in
+`styles/tokens.css` — the app's document never scrolls, an inner `.body` does — and
+every mockup that inlines that sheet applies the rule to its own page, which has no
+inner scroller and is several viewports tall. **`clip` is not a scroll container**,
+so the root's `scrollHeight` collapses to `clientHeight`: content below the fold is
+*unreachable*, not hidden, and the obvious check ("is `scrollHeight >
+clientHeight`?") answers **no** — identical to a short page. Caught only when a human
+tried to scroll one. Three files, all inlined after 2026-08-21: measured at
+**9713px of content against 700px reachable** on
+`a-journey-has-one-date-v1.html`, and 6650 / 5084 on
+`a-day-turns-under-a-held-card-v1/v2.html` — **the promoted build specs for
+ADR-0116 §2d and ADR-0200, unreadable for a day.** The template now ends with an
+`html, body { overflow: visible }` block; keep it **last**, and if you write a scroll
+check, assert on the content's own height rather than the root's.
+
+**A mockup written AFTER its change grades its own homework, and the "before"
+column is where it happens.** The manifest inlines shipped stylesheets. If the fix
+is already in them — which it is whenever the mockup is written alongside the code,
+the normal shape for a bug-report session rather than a design one — then the
+shipped CSS *is* the "after", and every "before" frame silently draws the fix too.
+Both columns then agree and the file reports a win it did not measure. Found twice
+in one session on `a-clock-follows-the-one-before-it-v1.html`: first **8px of
+zone-chip gap in both columns**, then **44px rows and 12px seams in both**, each
+time only because the numbers were suspiciously identical. Neither render errored
+and both screenshots looked plausible.
+
+So: when the change is already applied, the baseline has to be **drawn back by
+hand** — a namespaced block (`.bld-was*`) restoring the sheet as it stood, applied
+to the before frames only, labelled as the baseline and not as a proposal, and
+verifiable against `git show HEAD~1`. A useful tell is a before/after row whose two
+values are equal: that is either a section with nothing to say or a baseline that
+has gone missing, and it is worth knowing which.

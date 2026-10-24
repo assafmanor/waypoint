@@ -2,6 +2,7 @@
 
 **Status:** Accepted — authored and built 2026-07-28 (session 156), from two owner reports made while using the map. The pins were **rendered and looked at** in a headless browser against the real stylesheets (see §4), so §2's two hatch numbers are seen rather than derived. That is not a device pass and does not stand in for one — the shipped canvas over real tiles is still unseen (ADR-0121 §13).
 **Date:** 2026-07-28
+**Amended 2026-09-27 by [0241](0241-a-finished-trip-plays-back-and-leaves-the-app.md) §1 (built in the epic's 5.1):** a finished trip is not `planning`. It passes `finished` instead, which also withdraws the clock's `behind`, and greys only a place skipped on every visit.
 **Amends** [0121](0121-embedded-map-phase-6-design.md) **§6** — its prominence ladder gains a rung and its "the ghost tier covers _another day_ **and** _no day at all_" is withdrawn (§3) — and its **behind-you tier becomes Trip-mode only** (§1). Also amends [0123](0123-map-pin-size-is-a-share-of-the-canvas.md)'s `GHOST_SCALE`, renamed `ASIDE_SCALE` because it now has two wearers.
 Relates [0109](0109-map-tab-design.md)'s 2026-07-27 amendment (whose "desaturation on this canvas means BEHIND YOU" is the rule this applies twice), [0128](0128-map-dot-tier-and-the-cards-camera-reserve.md) §1 (the dot tier, whose day-scope selector this simplifies), [0117](0117-map-place-outcome-states.md) §2/§4 (what closes a place), [0011](0011-hard-soft-event-model.md) + [`design-language.md`](../design/design-language.md) (the hard/soft grammar this restores on the pin).
 

@@ -13,14 +13,25 @@
 import {
   connectionMinutes,
   edgeMeaning,
+  freeAfterTravel,
   isTightConnection,
+  TIME_MEANING,
+  TRAVEL_BUFFER_SECONDS,
+  TRAVEL_FIT,
+  windowBoundOf,
   type Booking,
   type BookingType,
   type BookingWhen,
+  type TravelFit,
+  type TravelWindow,
   type TripEvent,
 } from '@waypoint/shared';
-import { gapBetween, type Gap } from './gaps';
+import { MS_PER_MINUTE, MS_PER_SECOND, SECONDS_PER_MINUTE } from '../constants';
+import { flooredSlotEnd, gapBetween, type Gap } from './gaps';
+import { heroLeaveBy } from './hero-travel';
+import { isoToTimeInput, toMin, zonedIso } from './time';
 import { routeEndpointDay } from './place-usage';
+import type { TransitionRange } from './glance';
 import type { DayEntry } from './day-entries';
 import { groupEndEvent, groupStartEvent } from './day-entries';
 
@@ -52,6 +63,80 @@ export interface JoinContext {
   when: BookingWhen;
   /** The day's base zone, for the gap arithmetic `gapBetween` already does. */
   tz: string;
+  /** **Which rows a journey may start and end at** (ADR-0232) — required, because a surface that
+   *  forgets to say is indistinguishable from a day where every row is placed, and that is the
+   *  exact shape this ADR replaced. `journeyChainFor` (`day-travel.ts`) answers it from the
+   *  bookings and the places. */
+  chain: JourneyChainContext;
+}
+
+/**
+ * **THE JOURNEY CHAIN IS BETWEEN PLACED STOPS; THE JOIN CHAIN STAYS ADJACENT** (ADR-0232 R1).
+ *
+ * A row with no place is a claim about time and only time. It still opens and closes free time —
+ * `3:30 שע׳ פנויות` between the supermarket and an aurora watch is true — but it is nowhere a
+ * journey can start or end, so the leg is measured from the last PLACED row behind it to the next
+ * placed row ahead of it, however many placeless rows lie between. Pairing by adjacency deleted the
+ * leg into such a row and the leg out of it, and the drive to tonight's hotel with them.
+ *
+ * **A row that MOVES you and has an unplaced end is a seam, not transparent** (R2): a ferry to a
+ * landing nobody placed relocated you somewhere the plan cannot name, and chaining across it would
+ * draw a road route beside a sea crossing the row already states (§AA4's false-path claim). The
+ * chain restarts from it — the leg out of it is simply unmeasurable, as today.
+ */
+export interface JourneyChainContext {
+  /** Does this row's end resolve to a placed point — a place with coordinates? */
+  placedAt(event: TripEvent, end: 'leaving' | 'arriving'): boolean;
+  /** Does this row carry you somewhere (a flight, a train, a ferry) rather than keep you? */
+  movesYou(event: TripEvent): boolean;
+  /** **The row the day's chain starts from** — the stay you woke in (ADR-0209), so the leg out of
+   *  the bed spans a placeless first row like any other leg. Absent on a day with no bed behind it. */
+  from?: TripEvent;
+}
+
+/** **What the chain knows once a run of rows has been walked**: the row the next journey leaves
+ *  from and the placeless rows it would cross. `null` while nothing placed is behind. */
+export interface JourneyChainState {
+  from: TripEvent;
+  spans: readonly TripEvent[];
+}
+
+/** An interval on the clock, as `dayJourney` reads a crossed row: it holds instants, not events. */
+export interface TimeSpan {
+  startMs: number;
+  endMs: number;
+}
+
+/**
+ * **When the placeless rows a leg crosses happen** (ADR-0232 R4) — the intervals that come off the
+ * slack the leg is measured against, because a ⁦45⁩-minute call between two placed rows is time the
+ * traveller is not driving, wherever they are making it. Intervals rather than a sum, because only
+ * the part of a row that falls INSIDE the leg's window can eat that window: an aurora watch at
+ * ⁦22:45⁩ takes nothing off a check-in that closes at ⁦20:00⁩ (§8's second catch).
+ */
+export function spannedIntervals(spans: readonly TripEvent[]): TimeSpan[] {
+  const out: TimeSpan[] = [];
+  for (const row of spans) {
+    const startMs = Date.parse(row.startsAt ?? '');
+    const endMs = Date.parse(row.endsAt ?? '');
+    if (Number.isFinite(startMs) && Number.isFinite(endMs) && endMs > startMs)
+      out.push({ startMs, endMs });
+  }
+  return out;
+}
+
+/** Seconds of `spans` that fall inside `[fromMs, toMs]` — the slack the crossed rows really take. */
+export function reservedSecondsWithin(
+  spans: readonly TimeSpan[],
+  fromMs: number,
+  toMs: number,
+): number {
+  let total = 0;
+  for (const { startMs, endMs } of spans) {
+    const overlap = Math.min(endMs, toMs) - Math.max(startMs, fromMs);
+    if (overlap > 0) total += overlap / MS_PER_SECOND;
+  }
+  return total;
 }
 
 const bookingOf = (event: TripEvent, bookings: readonly Booking[]) =>
@@ -90,6 +175,30 @@ export interface DayBlockEntry {
   index: number;
   /** The join between the previous row and this one; absent on the first. */
   join?: DayJoin;
+  /** **The row above this one, whenever there is one** (ADR-0206 §V1.3) — the leg's first point,
+   *  so a surface can ask what the journey across this hole costs without walking the list a
+   *  second time and risking a different answer about which rows are adjacent. Recorded here
+   *  rather than re-derived because `dayBlocks` is the one place that knows: `prevEnd` is what a
+   *  flexible edge is transparent to (ADR-0171 §5), and a second walk would have to reproduce
+   *  that rule to agree with the join beside it.
+   *
+   *  **Set independently of `join`, and that is the fix for a silence §Z5 §M2 forbade.** A hole
+   *  under `GAP_MIN_MINUTES` — including a zero-length one, two rows that touch — produces no
+   *  `gap` join at all, because `gapBetween` is floored. The JOURNEY in it is still real: _"a
+   *  45-minute hole holding a 40-minute walk"_ is the case that ADR said must not stay silent, and
+   *  gating the leg on the floored gap is exactly how it stayed silent. The floor decides whether
+   *  free time is worth STATING; it has never had anything to say about travel. */
+  from?: TripEvent;
+  /** **The row this row's JOURNEY leaves from** (ADR-0232 R1) — the last placed stop behind it,
+   *  which is `from` on an ordinary day and an earlier row wherever placeless rows sit between.
+   *  Absent where nothing placed is behind (a placeless first row on a day with no bed). Every
+   *  reader of a journey on the day surface asks with THIS row, never with `from` (§4.1): a
+   *  spanning leg keyed on the adjacent pair is a leg nobody can find. */
+  legFrom?: TripEvent;
+  /** **The placeless rows that journey crosses** — empty on an ordinary leg. Their durations come
+   *  off the slack the leg is measured against (R4), and a leg with any is a detour of unknown
+   *  length, which is why the day's total stays a floor over it (R5). */
+  spans?: readonly TripEvent[];
 }
 
 /** A run of rows drawn as one thing. `journey: true` means every entry after the first
@@ -105,9 +214,9 @@ export interface DayBlock {
  * Group the day's entries into blocks, computing each join once.
  *
  * **Adjacency is the same rule Plan uses for its gap chips**: joins are measured between
- * consecutive EVENT entries, and a leaf group at that — a cluster is two things at once,
- * so "the gap after it" is not a single fact, and a transition point (ADR-0064 §B)
- * neither opens nor closes one.
+ * consecutive EVENT entries — a cluster included, measured from its exit member to the next
+ * group's entry member (ADR-0231 §2) — and a transition point (ADR-0064 §B) neither opens
+ * nor closes one.
  *
  * **What differs since ADR-0171 §5 is what a transition does to the row AFTER it.** It
  * still starts a new block, but a **flexible** edge no longer ends the measurement: free
@@ -121,31 +230,108 @@ export interface DayBlock {
  * two legs apart.
  */
 export function dayBlocks(entries: readonly DayEntry[], ctx: JoinContext): DayBlock[] {
+  return dayRun(entries, ctx).blocks;
+}
+
+/**
+ * **The blocks, and where the chain stands once the last row is walked** (ADR-0232). The tail is
+ * what the leg back into tonight's stay leaves from — the last placed row, with the placeless rows
+ * after it — and it is returned from here rather than re-derived at the screen because this loop
+ * is the one place that knows the transparency rules the chain has to agree with.
+ */
+export interface DayRun {
+  blocks: DayBlock[];
+  /** Where the chain stands after the last row — what the leg back into tonight's bed leaves
+   *  from. `null` while nothing placed is behind the end of the day. */
+  tail: JourneyChainState | null;
+  /** **Placeless runs no placed leg can reach** (ADR-0232 R5, and ADR-0206 §AT2's hole by another
+   *  road): rows before anything placed on a day with no bed to seed the chain, or after an exact
+   *  transition ended it. You travelled into or out of them from somewhere, and that somewhere is
+   *  not in the total — so each run is one hole the total is a floor over, counted here because
+   *  the reads never see a leg for it. The trailing run is the caller's to judge (`danglingLegs`),
+   *  since only the caller knows whether a bed follows it. */
+  orphanRuns: number;
+}
+
+export function dayRun(entries: readonly DayEntry[], ctx: JoinContext): DayRun {
   const blocks: DayBlock[] = [];
   let prevEnd: TripEvent | null = null;
+  // **The journey chain, beside the join chain** (ADR-0232 R1/R2). Seeded with the bed, so the
+  // walk out of it spans a placeless first row exactly as a mid-day leg spans a placeless stop.
+  let chainFrom: TripEvent | null = ctx.chain.from ?? null;
+  let spans: TripEvent[] = [];
+  let orphanRuns = 0;
 
   entries.forEach((entry, index) => {
-    const leaf = entry.kind === 'event' && entry.group.kind !== 'cluster';
-    const start = leaf ? groupStartEvent(entry.group) : null;
+    // **A cluster OPENS a join like any row** (ADR-0231 §2, fork F9). The docblock above argued
+    // that "the gap after a cluster is not a single fact", and the code below has always
+    // measured it anyway (`prevEnd` is set from the cluster's exit member) — what it withheld
+    // was the join BEFORE one, whose start is a single fact: the cluster's entry member. That
+    // is how cancelling the booking before an evening cluster freed two hours the day did not
+    // state. Both modes at once, since both read this.
+    const start = entry.kind === 'event' ? groupStartEvent(entry.group) : null;
     const join = prevEnd && start ? (joinBetween(prevEnd, start, ctx) ?? undefined) : undefined;
+    const from = start ? (prevEnd ?? undefined) : undefined;
+    const legFrom = start && chainFrom ? chainFrom : undefined;
     const last = blocks[blocks.length - 1];
+    const record: DayBlockEntry = {
+      entry,
+      index,
+      join,
+      from,
+      ...(legFrom ? { legFrom, spans: [...spans] } : {}),
+    };
     // A connection continues the block above it; everything else starts a new one.
     if (join?.kind === 'connection' && last && last.entries.length > 0) {
       last.journey = true;
-      last.entries.push({ entry, index, join });
+      last.entries.push(record);
     } else {
-      blocks.push({ entries: [{ entry, index, join }], journey: false });
+      blocks.push({ entries: [record], journey: false });
     }
     // **A flexible edge is TRANSPARENT to the measurement** (ADR-0171 §5). Free time is
     // time between commitments, and a check-out "by 11:00" does not consume a particular
-    // hour — so it neither bounds a gap nor hides one. Everything else still ends the
-    // run: an exact transition IS a moment, and a cluster is two things at once, so "the
-    // gap after it" is not a single fact.
-    if (entry.kind === 'event') prevEnd = groupEndEvent(entry.group);
-    else if (edgeMeaning(entry.event, entry.edge) === 'exact') prevEnd = null;
+    // hour — so it neither bounds a gap nor hides one. An exact transition IS a moment and
+    // ends the run; a cluster ends it at its exit member (`groupEndEvent`).
+    if (entry.kind === 'event') {
+      const end = groupEndEvent(entry.group);
+      prevEnd = end;
+      // **Where the chain stands after this row** (ADR-0232 R1/R2). A placed exit is the next
+      // journey's origin. A row that moves you is one too, placed or not — unplaced, the leg out
+      // of it is unmeasurable and stays so (a seam), never bridged from further back. A placeless
+      // STOP is neither: you are still wherever the plan last put you, and the row joins the list
+      // of what the next journey crosses.
+      if (ctx.chain.placedAt(end, 'leaving') || ctx.chain.movesYou(end)) {
+        // Placeless rows the chain was not standing anywhere behind are a run nobody's leg
+        // reaches (`DayRun.orphanRuns`); ones it was are the next leg's `spans`, already recorded.
+        if (!chainFrom && spans.length) orphanRuns += 1;
+        chainFrom = end;
+        spans = [];
+      } else {
+        spans.push(end);
+      }
+    } else if (edgeMeaning(entry.event, entry.edge) === TIME_MEANING.EXACT) {
+      prevEnd = null;
+      // A moment ends the run for the journey chain as it does for the join chain — a span edge
+      // is never a leg's endpoint (ADR-0054's 2026-08-26 amendment).
+      if (!chainFrom && spans.length) orphanRuns += 1;
+      chainFrom = null;
+      spans = [];
+    }
   });
+  if (!chainFrom && spans.length) orphanRuns += 1;
 
-  return blocks;
+  return { blocks, tail: chainFrom ? { from: chainFrom, spans } : null, orphanRuns };
+}
+
+/**
+ * **The holes a day's reads never see a leg for** (ADR-0232 R5): the run's orphan runs, plus its
+ * trailing placeless rows when no bed follows them — you leave the last placed stop for that row
+ * and the total does not know how far. Both surfaces add this to `unplacedLegs`; it is what keeps
+ * `לפחות` on a day whose last row nobody placed, which is the case ADR-0206 §AT2 was written for
+ * and the one the chain would otherwise have turned into a complete-looking number.
+ */
+export function danglingLegs(run: DayRun, sleeps: TripEvent | undefined): number {
+  return run.orphanRuns + (!sleeps && run.tail && run.tail.spans.length ? 1 : 0);
 }
 
 /** A place where one leg hands over to the next, on a given day. Two dates can name the
@@ -177,6 +363,7 @@ export function connectionStops(
   bookings: readonly Booking[],
   events: readonly TripEvent[],
   when: BookingWhen,
+  range?: TransitionRange,
 ): ConnectionStop[] {
   // **THE DAY THE LEG ENDS, not the day it began** (2026-08-06). `dateOf` read the event's own
   // `date`, which for an overnight inbound leg is the day you took OFF — so a layover you sit
@@ -184,10 +371,12 @@ export function connectionStops(
   // two dates this function means to list are named in its own doc ("arrives on one and leaves
   // on the next"): the **arrival** of the leg that brings you in, and the **departure** of the
   // one that takes you out. `routeEndpointDay` is the same rule `spanDays` and `placeRefs` read,
-  // so a third derivation of "which day does this end happen on" cannot drift from the other two.
+  // so a third derivation of "which day does this end happen on" cannot drift from the other two
+  // — including ADR-0236 §4's hosting, which is why `range` is threaded here too: a layover on
+  // the way home lands on the same day surface as the leg that arrives at it, or on none.
   const dateOf = (booking: Booking, edge: 'start' | 'end') => {
     const event = events.find((e) => e.bookingId === booking.id);
-    return event ? routeEndpointDay(event, edge)?.date : undefined;
+    return event ? routeEndpointDay(event, edge, range)?.date : undefined;
   };
   const stops: ConnectionStop[] = [];
   for (const from of bookings) {
@@ -209,4 +398,924 @@ export function connectionStops(
     }
   }
   return stops;
+}
+
+// ── THE JOURNEY IN A HOLE (ADR-0206 §V1.1 / §V1.3 / §V1.4) ────────────────────────────────
+//
+// A gap is absence and a connection is presence — and a **journey** is the third thing that can
+// be true of one slot (§D2's "one slot, three meanings"). It is not a fourth `DayJoin` kind: it
+// ABSORBS the gap rather than sitting beside it (§Z5 §M2, measured at ⁦58px⁩ against ⁦87px⁩ for a
+// strip plus a block), so the slot still holds one object, which is ADR-0159's own rule.
+//
+// Clock-injected like everything else here: instants and seconds in, a discriminant out. What it
+// SAYS is `i18n/he.ts`'s and `JourneyBlock`'s.
+
+/** **Which of the four things is true of this hole.** A discriminant rather than three booleans,
+ *  for `LEAVE_PHASE`'s own reason: the states are exclusive, and a caller branching on
+ *  `passed && !onWay` is one negation away from drawing two of them. */
+export const DAY_JOURNEY_ARM = {
+  /** The hole is behind you — the row below it has already started. A record, so it states the
+   *  measurement and nothing else. */
+  PAST: 'past',
+  /** **The journey does not fit the hole at all** — `freeAfterTravel`'s third `fit`, which the
+   *  shared derivation has answered since M2 and nothing rendered until it was reported. It says
+   *  the shortfall rather than a leave-by, and it outranks every clock arm below: "this cannot be
+   *  done" is a fact about the PLAN, it does not decay as the hour passes, and it is what you act
+   *  on. Without it an infeasible leg reads `פנוי לפני 0 דק׳` — nought minutes of free time,
+   *  where the truth is a journey nobody can make. */
+  OVERRUNS: 'overruns',
+  /** Ahead of the leave-by, or not yet claimable: the journey and when to go. */
+  AHEAD: 'ahead',
+  /** The leave-by has gone by and nothing has withdrawn that (§V1.4). `--miss`. */
+  PASSED: 'passed',
+  /** Somebody said `בדרך`, or a fix puts them along the leg (ADR-0207 §2). Teal. */
+  ON_WAY: 'on-way',
+  /** **Somebody declared this leg תחב״צ** (ADR-0206 §AA4). Its own arm rather than an absence,
+   *  because the block still has to RENDER — §AA4 is explicit that the declaration "suppresses the
+   *  duration and keeps the distance", and it is also the only thing carrying the mode control, so
+   *  a hole that vanishes on declaration is a door that does not open again. Neutral tone: there is
+   *  nothing wrong with this leg, we simply do not estimate it. */
+  DECLARED: 'declared',
+  /** **The number is on its way** (ADR-0206 §AU1). Its own arm rather than an absence, because the
+   *  absence is what was reported: a stop added to the day had no journey row at all — no
+   *  duration, no distance, and **no mode control**, since the block that carries it is the thing
+   *  that did not render — until the app was left and reopened. §D4 says the reader must not be
+   *  able to tell "not computed" from "not computable", and this is the state that rule never
+   *  covered: it is neither, it is *being* computed, and it resolves into a visible event a few
+   *  seconds later. §AT already made that argument once for the local cache read; this is the same
+   *  argument for the network one.
+   *
+   *  Ranked BELOW `DECLARED` and `TOO_FAR`, which are both facts that will not change, and ABOVE
+   *  the floor beneath them, which bails on exactly the missing estimate this arm exists to
+   *  explain. Quiet by nature: it says the mode, the crow-flies distance and that the time is
+   *  coming, and it claims nothing about the hole (§V1.1's rule — never a guess we did not
+   *  measure). */
+  WARMING: 'warming',
+  /** **The mode somebody CHOSE cannot cover this leg** (ADR-0206 §AM10) — a walk over walking's
+   *  ⁦15 km⁩ ceiling, a cycle over cycling's ⁦20 km⁩. Its own arm for `DECLARED`'s exact reason and
+   *  then one more: the gate refuses it, so there is no estimate and the block vanished — taking
+   *  the mode control with it, which made the override irreversible on the surface that set it
+   *  (field report, 2026-08-27: _"I changed a drive to a walk and the route simply disappeared"_).
+   *
+   *  **Not neutral like `DECLARED`, and that is the difference between the two.** A declaration
+   *  says "do not estimate this"; this says "what you asked for cannot be done", which is a fact
+   *  about the PLAN in the same family as `OVERRUNS` — so it says the ceiling in words and takes
+   *  the miss tone. It outranks the clock arms for the same reason `OVERRUNS` does. */
+  TOO_FAR: 'too-far',
+  /** **The journey is shorter than the ladder can name** (ADR-0206 §AW) — a ⁦50 m⁩ drive answers
+   *  ⁦12⁩ seconds, and ADR-0114's minutes rung rounds that to nothing. The app measured this leg;
+   *  what it has no rung for is how short the answer is, which is what `פחות מדקה` says.
+   *
+   *  **It used to be keyed on somebody having CHOSEN the mode** and §AZ1 drops that gate: a row
+   *  that vanishes because the number is small is the same defect whoever picked the mode, and the
+   *  control that would pick another one lives on the row. What §AW got right and this keeps is
+   *  that the rule belongs over the class rather than over each cause.
+   *
+   *  Neutral tone, like `DECLARED`: there is nothing wrong with the leg. */
+  UNTIMED: 'untimed',
+  /** **No estimate arrived, and none is on its way** (ADR-0206 §AZ1) — offline, the request
+   *  failed, the provider answered nothing, or the server's own gate refused the mode for a reason
+   *  `refusedFor` cannot reproduce (`sameClusterOnly` against a point missing from the cluster
+   *  set).
+   *
+   *  **This is §D4's ordinary absence, and it is an arm rather than a `null` now.** The row says
+   *  the mode, the crow-flies distance (§AZ2) and `בלי הערכת זמן`, and carries the mode control —
+   *  which is the whole difference between "we cannot time this leg" and a hole in the day where a
+   *  journey should be. It is the state a plane, a dead cell and a provider outage all land on, so
+   *  it is the one the app spends most of a real trip in.
+   *
+   *  **Kept apart from `UNTIMED` above because they say opposite things.** `פחות מדקה` is a claim
+   *  about the journey; `בלי הערכת זמן` is a statement about us. Before §AZ2 the two could be told
+   *  apart by whether a distance came with them — a distinction the crow-flies floor erases, which
+   *  is exactly how a ⁦40 km⁩ leg on a plane would have started reading `פחות מדקה`.
+   *
+   *  Ranked last of the no-duration arms: every one of them is a more specific account of the same
+   *  silence, so this is what is left when none of them applies. */
+  UNMEASURED: 'unmeasured',
+} as const;
+export type DayJourneyArm = (typeof DAY_JOURNEY_ARM)[keyof typeof DAY_JOURNEY_ARM];
+
+export interface DayJourney {
+  arm: DayJourneyArm;
+  /** What the leg costs, in seconds, on the mode that was asked about — and `null` on the three
+   *  arms where there is no estimate to read: `DECLARED`, which is never asked (§AA4), `TOO_FAR`,
+   *  which the gate refuses (§AM10), and `WARMING`, which has not been answered **yet** (§AU1).
+   *  The first two are permanent and the third is not, which is the whole difference between them
+   *  and why the third says so out loud. Every other arm has one: a leg with no estimate is no
+   *  journey at all (§D4), which is what makes these three the only nulls. */
+  travelSeconds: number | null;
+  /** What the leg covers, in metres — the ROUTED distance where one was answered, and the
+   *  crow-flies floor where none was and none is coming (ADR-0206 §D4 / §AZ2). `null` only where
+   *  the leg has neither, which since §AZ2 means an end nobody placed. */
+  distanceMeters: number | null;
+  /** **Whether that distance is a FLOOR rather than the road** (ADR-0206 §AZ3) — true on every arm
+   *  with no duration, which is exactly where `distanceFor` fell back to the crow. A ⁦1.9 km⁩
+   *  crow-flies leg is a ⁦2.4 km⁩ walk, so a total containing one is a floor and `dayTravelTotal`
+   *  says `לפחות` over it. Derived from the arms rather than threaded from the reads: a stated
+   *  duration means an estimate answered, and an estimate is where the routed distance comes
+   *  from. */
+  distanceIsFloor: boolean;
+  /** The instant behind `יציאה 17:15`, or `null` on the `PAST` arm — see {@link dayJourney}. */
+  leaveByMs: number | null;
+  /**
+   * **WHETHER THAT INSTANT IS A CEILING OR A FLOOR** (ADR-0206 §AJ2, surfaced 2026-08-31).
+   *
+   * `false`, the ordinary case: it is `arriveByMs - travel - buffer`, the LAST moment you may
+   * go, which is what lets a row say `יציאה עד 15:12`. `true`: the buffer put that behind the
+   * row you leave from, so `heroLeaveBy` clamped it to the origin's own end — the EARLIEST
+   * departure that exists (§AJ2's `יציאה 14:00 · הגעה ~14:58` on a hard 15:00 start), where
+   * `עד` would be false rather than merely redundant.
+   *
+   * **Not the same question as "is there free time".** A leg out of an ambient stay has no
+   * `departAfterMs` at all (§AD/§AF3), so nothing clamps it and its instant is a pure ceiling
+   * — while its `free` is `null` rather than zero. Gating the word on free minutes would strip
+   * it from the leg read first every morning.
+   */
+  leaveByIsFloor: boolean;
+  /** What is free once the journey is counted (§V1.1). `null` where the hole has no measurable
+   *  window at all, which is the day's first leg out of an ambient stay. */
+  free: TravelWindow | null;
+  /** **By how much the journey misses**, in seconds, on the `OVERRUNS` arm — `null` elsewhere.
+   *  The number to act on is the shortfall, not the zero that clamping leaves behind. */
+  overrunSeconds: number | null;
+  /**
+   * **WHAT THE DAY PREDICTS YOU WILL ARRIVE AT** (ADR-0206 §AI) — `null` wherever the leave-by is
+   * the statement, which is the ordinary case and most of the app.
+   *
+   * It exists because a departure is not always something the app may name. Two ways it is not:
+   * the destination has no **deadline** to count back from (a check-in window's opening is a
+   * floor, so counting back from it advises leaving in time to arrive the instant the door opens),
+   * or the departure it computes lands **inside the row it leaves from**. Either way the honest
+   * statement is when you will get there, given when you can go.
+   */
+  arriveAtMs: number | null;
+  /** **True where that arrival lands after the destination's window has SHUT** — the one thing
+   *  nobody can currently be warned about at plan time (`hero-booking.ts`'s own `missed` fires off
+   *  the clock, once it is already too late).
+   *
+   *  It rides the `OVERRUNS` arm rather than a sixth one, and that falls out of the fit measuring
+   *  to the close: missing the close and not fitting the window are the same fact. What it changes
+   *  is the SENTENCE — "you will get there after it shuts" is what you act on, where the generic
+   *  shortfall makes you work out why. */
+  arrivesAfterClose: boolean;
+  /** **What is LEFT of the journey**, on the `ON_WAY` arm (ADR-0207 §6) — scaled by the remaining
+   *  crow fraction rather than re-routed, and `null` where that ratio is noise. The stale total is
+   *  not more honest here but less: it reads as "44 minutes still to walk" two minutes from the
+   *  door. `null` on every other arm, where the leg's own total is the question. */
+  remainingSeconds: number | null;
+  /** **This leg crosses rows with no place** (ADR-0232 R4/R5). It is why the arm states no clock,
+   *  and it is what tells `narrowGapForTravel` to leave the hole it is drawn in alone: the journey
+   *  may be on either side of the placeless row, and narrowing either hole would invent a
+   *  position. The day's total reads it too, and stays `לפחות` over a detour of unknown length. */
+  spansPlaceless: boolean;
+}
+
+/**
+ * **What a hole says once there is a journey in it.**
+ *
+ * **IT ANSWERS FOR EVERY LEG BETWEEN TWO PLACED ROWS, AND `null` FOR NOTHING ELSE** (ADR-0206
+ * §AZ1). A hole is drawn because the PLAN puts a journey in it, never because the app happened to
+ * work out how long that journey takes — so no estimate, a refused mode, a declared תחב״צ leg, an
+ * answer still on its way, a duration under the ladder's floor and a destination with no clock all
+ * RENDER, each saying what it knows and no more. The one `null` left is a leg with nothing at all
+ * to say: no duration and no distance, which since §AZ2 means an end nobody placed
+ * (`DayTravelReads.unplacedLegs` counts it and the day's total declares itself a floor over it).
+ *
+ * **That inversion is the fix for a class rather than a case.** The bail used to be the default
+ * and each new way of not knowing deleted the row again — §AM6's declaration, §AM10's ceiling,
+ * §AU1's pending answer, §AW's sub-minute number: four fixes to one bug, and a fifth cause waiting.
+ * What never changes is the DURATION rule: absent stays absent, never a pessimistic guess, because
+ * the reader must not be able to tell "not computed" from "not computable" and inventing a walk we
+ * did not measure fails that in the direction that costs somebody their afternoon (§D4/§D5). A
+ * distance is different in kind — the crow-flies floor is arithmetic over two coordinates this
+ * device already holds, which is what §D4 has called the fallback since it was written.
+ *
+ * **The leave-by is `heroLeaveBy`'s, not a second copy** (§AE7's argument applied one level up):
+ * the board, the lifted hero and this row all describe one journey, so the buffer, the rounding
+ * and the sign have to come from one function or the day will tell you to leave at a different
+ * minute than the board does. What the day ignores is that function's `LIVE` arm — the ⁦30⁩-minute
+ * swap is the countdown TILE's question and this row has no tile.
+ *
+ * **Four arms, and `PAST` is the one the ADR did not name.** Without it a day list read at 22:00
+ * prints `זמן היציאה עבר` on every hole of the day, because every leave-by of a finished day has
+ * gone by — which is true and useless. A hole whose next row has already started is a **record**:
+ * it keeps the measurement and the corrected free time and drops the leave-by and the mark, since
+ * both are advice about a departure nobody is about to make.
+ *
+ * **`departAfterMs` may be absent, and then there is no free-time half.** That is the day's first
+ * leg, out of the stay you woke in (§AD): an ambient stay has no check-out instant on a middle
+ * night, and reaching for the day window's dawn instead would claim you could have left at 07:00.
+ * The journey and the leave-by are still facts; what is free before it is not one we have.
+ */
+export function dayJourney(input: {
+  /** The earliest the journey may leave — the previous row's end. Absent for the day's first leg. */
+  departAfterMs?: number;
+  /** When you have to be there: the next row's own start. */
+  arriveByMs: number;
+  /** The estimate for the leg, or `null` (§D4). */
+  travelSeconds: number | null;
+  distanceMeters?: number | null;
+  nowMs: number;
+  /** **Somebody said `בדרך`, or a fix put them on the leg** (§Z5 §M4 / ADR-0207 §2). Withdraws
+   *  the mark on both elevations at once, because both read the same module. */
+  onWay?: boolean;
+  /** What is left of the leg, where a fix says the traveller is on it (ADR-0207 §6). Computed by
+   *  the caller from `remainingTravelSeconds`, because the fix is the SCREEN's — this file holds no
+   *  position and issues no request (§1). */
+  remainingSeconds?: number | null;
+  /** **The destination has no deadline** (ADR-0206 §AI1) — its start edge is not `exact`, which
+   *  `isExactEdge` answers and the caller asks, because this file holds instants and cannot see an
+   *  event. A check-in's `17:00` is the hour the door OPENS; counting back from it invents a
+   *  deadline nobody set, and then marks you late against it. Withholding the printed clock is not
+   *  enough — the arm is what paints `--miss` and what the board reads for `באיחור` — so this
+   *  withdraws the leave-by itself, which is ADR-0208's shape: the measurement stands, the advice
+   *  is not given. */
+  flexibleArrival?: boolean;
+  /** Where that flexible arrival is a **closed** window, the instant it shuts
+   *  (`windowBoundOf(event, 'start')`, ADR-0184). Absent on an open floor, which can be missed by
+   *  nothing. */
+  windowClosesMs?: number;
+  /** **The plan's claim about where you are, when it has been denied** (ADR-0208 §2) — a skipped
+   *  origin. It removes the CLAIM (the leave-by, the mark) and leaves the MEASUREMENT standing:
+   *  the hole is still the hole and the walk is still in it, so §V1.1's correction is not a claim
+   *  about the traveller and does not need standing up. See ADR-0206 §AF2 for why this surface
+   *  gates the claim where the hero gates the request. */
+  claimDenied?: boolean;
+  /** **Somebody declared this leg תחב״צ** (ADR-0206 §AA4). Given, the estimate is not consulted at
+   *  all: the leg keeps its distance and says it has no time, which is the whole declaration. */
+  declared?: boolean;
+  /** **The mode chosen for this leg is past that mode's ceiling** (ADR-0206 §AM10) —
+   *  `DayTravelReads.refusedFor`. Like `declared` the estimate is not consulted, because the gate
+   *  guarantees there will never be one; unlike `declared` it is a problem with the plan and says
+   *  so. Ranked BELOW the declaration, since a declared leg is never asked about and so can never
+   *  be refused. */
+  tooFarForMode?: boolean;
+  /** **The estimate for this leg is still being computed** (ADR-0206 §AU1) —
+   *  `DayTravelReads.warmingFor`. Ranked last of the three no-estimate flags, because it is the
+   *  only one of them that is temporary: a declared leg is never asked and a refused one is never
+   *  coming, so either of those being true makes this one irrelevant rather than merely lower. */
+  warming?: boolean;
+  /**
+   * **WHEN THE PLACELESS ROWS THIS LEG CROSSES HAPPEN** (ADR-0232 R4) — `spannedIntervals(spans)`,
+   * given where the leg spans any and absent otherwise.
+   *
+   * Given, the leg is a fact about the plan and the clock advice is withheld: no `יציאה עד`, no
+   * `הגעה ~`, no late mark. A leave-by assumes you are at the origin until it, and with an aurora
+   * watch between the supermarket and the hotel you may make the drive at ⁦19:15⁩ or at ⁦00:45⁩; the
+   * plan cannot say which. What may still be said is whether the journey FITS, measured against the
+   * combined slack — the window minus the part of these rows that falls INSIDE it — never against
+   * the hole the block happens to be drawn in: a ⁦30⁩-minute hole under the block holding a
+   * ⁦51⁩-minute drive is not an overrun when the hours above the placeless row would have held it.
+   *
+   * **Inside it, and that clause is a field report** (owner, 2026-09-16, off the first deploy): the
+   * aurora watch runs ⁦22:45–00:45⁩ and the hotel's check-in closes at ⁦20:00⁩, so a ⁦22⁩-minute
+   * drive with ⁦45⁩ minutes of window read `אין זמן לדרך` because two hours that happen AFTER the
+   * deadline were subtracted from the slack before it. A row cannot eat a window it is not in.
+   */
+  spanned?: readonly TimeSpan[];
+}): DayJourney | null {
+  const { departAfterMs, arriveByMs, travelSeconds, nowMs, onWay, claimDenied } = input;
+  const spansPlaceless = input.spanned !== undefined;
+  // **A declared leg is a journey with no duration, not an absent journey** (ADR-0206 §AA4). It
+  // has to come BEFORE the floor below, because every one of those bails on exactly the missing
+  // estimate the declaration guarantees — and a hole that renders nothing also renders no mode
+  // control, so the declaration would be irreversible on the surface that made it.
+  if (input.declared)
+    return {
+      arm: DAY_JOURNEY_ARM.DECLARED,
+      travelSeconds: null,
+      distanceMeters: input.distanceMeters ?? null,
+      leaveByMs: null,
+      // No estimate means the hole reads exactly as it read before any of this existed (§V1.1's
+      // own rule): never a pessimistic guess about a journey nobody measured.
+      free: null,
+      overrunSeconds: null,
+      arriveAtMs: null,
+      arrivesAfterClose: false,
+      remainingSeconds: null,
+      // No departure is stated on this arm, so there is no ceiling to declare.
+      leaveByIsFloor: false,
+      // No duration means no routed answer, so whatever distance rode in is the crow (§AZ3).
+      distanceIsFloor: true,
+      spansPlaceless,
+    };
+  // **A REFUSED MODE IS AN ANSWER, NOT AN ABSENCE** (ADR-0206 §AM10). Same position and the same
+  // argument as the declaration above — it has to come BEFORE the floor, because the floor bails
+  // on exactly the missing estimate the gate guarantees, and a hole that renders nothing renders
+  // no mode control, so the ⁦40 km⁩ walk somebody picked by mistake could not be picked back.
+  // The distance is the caller's crow-flies fallback: there is no route to take a routed one from.
+  if (input.tooFarForMode)
+    return {
+      arm: DAY_JOURNEY_ARM.TOO_FAR,
+      travelSeconds: null,
+      distanceMeters: input.distanceMeters ?? null,
+      leaveByMs: null,
+      // No estimate, so no correction to make — §V1.1's rule, exactly as the declaration takes it.
+      free: null,
+      overrunSeconds: null,
+      arriveAtMs: null,
+      arrivesAfterClose: false,
+      remainingSeconds: null,
+      // No departure is stated on this arm, so there is no ceiling to declare.
+      leaveByIsFloor: false,
+      // No duration means no routed answer, so whatever distance rode in is the crow (§AZ3).
+      distanceIsFloor: true,
+      spansPlaceless,
+    };
+  // **A NUMBER ON ITS WAY IS NOT AN ABSENT NUMBER** (ADR-0206 §AU1). Third of the three flags that
+  // stand in for a missing estimate, and last for the reason its docblock gives — but still BEFORE
+  // the floor below, which bails on exactly the `null` this arm exists to explain. That bail is
+  // what deleted the row, and with it the mode control, on every leg the server had not answered
+  // yet: the reader could not see that a route was coming, and could not pick a different mode to
+  // get one sooner.
+  if (input.warming)
+    return {
+      arm: DAY_JOURNEY_ARM.WARMING,
+      travelSeconds: null,
+      // **No distance either, and that is §AM10's rule rather than an omission.** It already drew
+      // this exact line: a refused mode falls back to the crow "…not for a PENDING one, which is
+      // the distinction that keeps §D4 intact: there we genuinely do not know yet, and a
+      // crow-flies number that later becomes a routed one is a figure that changes under the
+      // reader." The day's TOTAL reads these journeys (`dayTravelTotal`), so a crow number here
+      // would also make the header climb as each leg lands. The mode and the word are the row.
+      distanceMeters: null,
+      leaveByMs: null,
+      // **No correction to the hole, and that is §V1.1's own rule rather than a shortcut.** We do
+      // not know the number yet, and subtracting a guess from the free time would be exactly the
+      // pessimistic invention §D4 forbids — in the direction that costs somebody their afternoon.
+      free: null,
+      overrunSeconds: null,
+      arriveAtMs: null,
+      arrivesAfterClose: false,
+      remainingSeconds: null,
+      // No departure is stated on this arm, so there is no ceiling to declare.
+      leaveByIsFloor: false,
+      // No duration means no routed answer, so whatever distance rode in is the crow (§AZ3).
+      distanceIsFloor: true,
+      spansPlaceless,
+    };
+  /**
+   * **NO DURATION TO NAME, AND THE ROW STANDS ANYWAY** (ADR-0206 §AZ1).
+   *
+   * Two states reach here and neither is an error: a duration under the ladder's own floor (a
+   * ⁦50 m⁩ drive answers ⁦12⁩ seconds, and ADR-0114's minutes rung rounds that to nothing), or **no
+   * estimate at all and none on its way** — offline, the ask failed, the provider answered
+   * nothing, the server's gate refused the mode for a reason `refusedFor` cannot reproduce.
+   *
+   * **This used to be the bail, and the bail is the defect §AZ names as a class.** It returned
+   * `null` — no row, no distance, no mode control — unless somebody had picked the mode (§AW).
+   * That made the row's EXISTENCE depend on what we happened to know about it, so every new way
+   * of not knowing deleted the row again: §AM6's declaration, §AM10's ceiling, §AU1's pending
+   * answer and §AW's sub-minute number were four fixes to one bug, each naming one cause. A leg
+   * between two placed rows is a fact about the PLAN; what we know about it is a fact about US,
+   * and only the first may decide whether the reader sees a row.
+   *
+   * So the gate is gone, and what is left is the one honest silence: **nothing to say at all** —
+   * no duration and no distance, which since §AZ2 means a leg whose ends did not both resolve to
+   * a placed point. That is the hole `DayTravelReads.unplacedLegs` counts and the day's total
+   * already declares itself a floor over.
+   */
+  const stated = travelSeconds !== null && Number.isFinite(travelSeconds) ? travelSeconds : null;
+  if (stated === null || Math.round(stated / SECONDS_PER_MINUTE) < 1) {
+    if (stated === null && input.distanceMeters == null) return null;
+    return {
+      // **Which of the two silences this is** — see the arms. A number we cannot round is not the
+      // same fact as no number, and since §AZ2 gave both of them a distance the row cannot tell
+      // them apart from the outside any more.
+      arm: stated === null ? DAY_JOURNEY_ARM.UNMEASURED : DAY_JOURNEY_ARM.UNTIMED,
+      // **Null even where there is a number**, which is the arm's own definition rather than a
+      // loss: the row cannot name it, and the day's total reads these journeys (`dayTravelTotal`),
+      // so counting seconds no row accounts for is how a header stops agreeing with its list
+      // (§AP2). The seconds in question round to nought minutes anyway.
+      travelSeconds: null,
+      distanceMeters: input.distanceMeters ?? null,
+      leaveByMs: null,
+      // A departure counted back from ⁦12⁩ seconds is the `PASSED` mark firing over the time it
+      // takes to cross a car park — the very noise the floor was added to stop. And no correction
+      // to the hole: §V1.1's rule, and the half-minute at stake is invisible once the free-time
+      // strip rounds to minutes.
+      free: null,
+      overrunSeconds: null,
+      arriveAtMs: null,
+      arrivesAfterClose: false,
+      remainingSeconds: null,
+      // No departure is stated on this arm, so there is no ceiling to declare.
+      leaveByIsFloor: false,
+      // No duration means no routed answer, so whatever distance rode in is the crow (§AZ3).
+      distanceIsFloor: true,
+      spansPlaceless,
+    };
+  }
+  /**
+   * **THE MEASUREMENT WITH NO ADVICE ATTACHED** (ADR-0206 §AZ1) — what a leg says when the app
+   * knows how far and how long it is and has no schedule to hang that on.
+   *
+   * The two lines below used to `return null` here, which is the same class the bail above was:
+   * the row vanished because of what the app could not work out about the HOUR, taking a duration
+   * and a distance it had in hand with it. `AHEAD` with no departure is the shape that already
+   * renders exactly this — `journeyMetaLine` says nothing where there is neither a leave-by nor an
+   * arrival — so it is the arm rather than a tenth one.
+   */
+  const measurementOnly = (): DayJourney => ({
+    arm: DAY_JOURNEY_ARM.AHEAD,
+    travelSeconds: stated,
+    distanceMeters: input.distanceMeters ?? null,
+    leaveByMs: null,
+    leaveByIsFloor: false,
+    // A stated duration comes from an estimate, and the routed distance comes with it (§AZ3).
+    distanceIsFloor: false,
+    free: null,
+    overrunSeconds: null,
+    arriveAtMs: null,
+    arrivesAfterClose: false,
+    remainingSeconds: null,
+    spansPlaceless,
+  });
+  // A destination with no instant at all — an untimed row. There is no deadline to count back
+  // from and nothing to be late for; the journey between the two points is unchanged by that.
+  if (!Number.isFinite(arriveByMs)) return measurementOnly();
+  const measurableFrom = departAfterMs !== undefined && Number.isFinite(departAfterMs);
+  // **The clamp is `heroLeaveBy`'s now** (ADR-0206 §AJ3): it was implemented here and nowhere
+  // else, so the board — reading the same function's unclamped answer — marked a traveller late
+  // for a departure this surface was correctly printing as the origin's own end.
+  const leave = heroLeaveBy({
+    arriveByMs,
+    travelSeconds: stated,
+    nowMs,
+    ...(measurableFrom ? { departAfterMs: departAfterMs! } : {}),
+  });
+  // Unreachable on today's inputs — `heroLeaveBy` answers `null` only for the two absences both
+  // guarded above — and kept as the measurement rather than as a bail so that stays true if its
+  // rule ever grows a third one.
+  if (!leave) return measurementOnly();
+  /**
+   * **THE DEADLINE THIS LEG ACTUALLY HAS, and `undefined` where it has none** (ADR-0206 §AI1/§AJ1).
+   *
+   * An exact start IS the deadline. A **closed** window's is the moment it shuts — measuring to its
+   * opening said `אין זמן לדרך` about a check-in you had three more hours to make. And an **open
+   * floor has no deadline at all**: `מ-15:00` is the hour you may arrive AFTER, so nothing can be
+   * late for it and nothing can fail to fit inside it.
+   *
+   * §AI1 fixed the first two and left this line reading `: arriveByMs`, written down at the time as
+   * _"a floor with no close keeps the opening, which is all the app knows about it"_. The opening is
+   * exactly the wrong half. Reported off that deploy, on the day BEFORE the one §AI1 was written
+   * for: the last flight of day 1 lands at 23:20 into a hotel open from 15:00, so the fit measured a
+   * 1:42 drive against a deadline **eight hours behind its own origin** and called the one leg of
+   * the day nobody can be late for impossible.
+   */
+  const deadlineMs = input.flexibleArrival === true ? input.windowClosesMs : arriveByMs;
+  // No deadline means no window to be free inside, so there is no free-time half and no fit — the
+  // same structural absence the day's first leg out of a bed reports (§AF3), for the same reason.
+  // **Against the combined slack where the leg spans placeless rows** (ADR-0232 R4): the window
+  // less the part of those rows that falls inside it. Shifting the departure is the arithmetic;
+  // the departure itself is not stated on such a leg.
+  const reservedMs =
+    measurableFrom && deadlineMs !== undefined && input.spanned
+      ? reservedSecondsWithin(input.spanned, departAfterMs!, deadlineMs) * MS_PER_SECOND
+      : 0;
+  const free =
+    measurableFrom && deadlineMs !== undefined
+      ? freeAfterTravel(departAfterMs! + reservedMs, deadlineMs, stated)
+      : null;
+  /**
+   * **WHETHER THE APP WILL ADVISE A DEPARTURE AT ALL** — an EXACT start is the only deadline it
+   * will count back from (§AI1). A window's opening is not one, and its close is a deadline nobody
+   * plans against: `יציאה 18:26` for a lagoon open from 15:00 is arithmetically true and useless.
+   */
+  // …and never across a placeless row (ADR-0232 R4): the departure it would advise is from a place
+  // you may have left hours ago, or not yet — the plan cannot say which.
+  const statesLeaveBy = input.flexibleArrival !== true && !spansPlaceless;
+  /**
+   * **THE BUFFERED DEPARTURE, PULLED FORWARD WHERE IT LANDS INSIDE THE ROW IT LEAVES FROM**
+   * (§AJ2 — §AI2's open question, answered).
+   *
+   * §AI2 was right that `יציאה 13:56` must not be printed when the stop you are in runs to 14:00 —
+   * and wrong to then say nothing about going. The earliest departure that exists is the origin's
+   * own end, so that is what the row offers, with the arrival beside it: `יציאה 14:00 · הגעה ~14:58`
+   * on a hard 15:00 start. The owner reported the silence as an inconsistency (_"why does it
+   * sometimes say יציאה and some other times הגעה"_), and they were reading two different situations
+   * wearing one sentence: a destination with no deadline, and a leg with no slack.
+   *
+   * **What makes it printable is that the clamp is a departure you could make**, so the late mark it
+   * licenses is defensible. `PASSED` is therefore measured against the CLAMPED instant, never the
+   * buffered one — firing it off 13:56 is exactly the `באיחור`-for-nothing §AI2 removed, and the
+   * owner's constraint (_"if you haven't left by the time that the app suggests the app doesn't show
+   * you as being late"_) was about a **flexible** destination, which still states no departure.
+   */
+  const leaveByMs = statesLeaveBy ? leave.leaveByMs : null;
+  /** **Which of the two facts `leaveByMs` holds** (ADR-0206 §AJ2, surfaced 2026-08-31 so the
+   *  row can say `יציאה עד` only where that is true). Read off `heroLeaveBy`'s own comparison,
+   *  never re-derived from `free`: a leg out of an ambient stay has no floor to clamp to, so
+   *  `free` is `null` there rather than zero and a free-time test would answer backwards. */
+  const leaveByIsFloor = leave.clamped;
+  /**
+   * **THE ARRIVAL THE STATED DEPARTURE IMPLIES** (ADR-0206 §AR1) — leave when the row says to, and
+   * this is when you are there. Never counted back from a bound the app invented.
+   *
+   * `leaveByMs` first, and that is the amendment: this line read `departAfterMs + travelSeconds`,
+   * which answers a different question ("the earliest you could be there") and therefore could not
+   * explain the departure sitting beside it. Where the app states no departure at all — a flexible
+   * destination — the earliest you could be there IS the answer, and `departAfterMs` is still it.
+   *
+   * **AND EVERY ROW THAT HAS ONE NOW SAYS IT**, which is the other half of §AR1. `arriveAtMs` was
+   * gated on `!statesLeaveBy || clamped` — said only where the app could not promise the buffer.
+   * Reported off the deploy: _"the transit rows should also display the arrival time, so then we
+   * immediately know WHY they tell us to take off at that time."_ A lone departure cannot answer
+   * that. `יציאה 20:46` is an instruction with its reasoning withheld; `יציאה 20:46 · הגעה ~21:09`
+   * above a table at 21:15 shows its whole working, §D5's buffer included.
+   *
+   * **§AJ2's distinction survives, and it is the half worth keeping**: `יציאה` still means "there
+   * is a deadline to advise against" and `הגעה` ALONE still means "there is none". What the old
+   * gate also happened to encode was whether the departure had been CLAMPED — never a fact the
+   * reader was asked to recover from the shape, and legible from the two clocks themselves.
+   *
+   * The one arm that must still withhold it is `claimDenied`, below.
+   */
+  const goesAtMs = leaveByMs ?? (measurableFrom ? departAfterMs! : null);
+  // No arrival across a placeless row either (ADR-0232 R4): `הגעה ~20:06` at the hotel claims you
+  // left the supermarket the moment it closed, with an aurora watch still to happen somewhere.
+  const arriveAt = goesAtMs === null || spansPlaceless ? null : goesAtMs + stated * MS_PER_SECOND;
+  // The same rounding `heroLeaveBy` phases on, asked of the clamped instant — which is what
+  // `leave.phase` is keyed to since §AJ3 moved the clamp there. Kept local only because this must
+  // also be false wherever the app states no departure at all (`statesLeaveBy`).
+  const departurePassed = leaveByMs !== null && Math.round((leaveByMs - nowMs) / MS_PER_MINUTE) < 0;
+  const measurement = {
+    travelSeconds: stated,
+    distanceMeters: input.distanceMeters ?? null,
+    free,
+    remainingSeconds: null,
+    overrunSeconds: null,
+    arriveAtMs: arriveAt,
+    arrivesAfterClose:
+      arriveAt !== null && input.windowClosesMs !== undefined && arriveAt > input.windowClosesMs,
+    leaveByIsFloor,
+    // Every arm below this line has a stated duration, so its distance is the road (§AZ3).
+    distanceIsFloor: false,
+    spansPlaceless,
+  };
+  // The row below has started: whatever the leave-by says, the departure is not the question any
+  // more. Checked FIRST, so a finished day is quiet however late its legs ran.
+  //
+  // **Against the deadline, and against the ARRIVAL where there is none** (§AJ1). A floor's own
+  // hour retires nothing: at 20:00 you are still in the air, and going quiet at 15:00 because the
+  // hotel's desk opened then is a block that has stopped saying when you land — on the one leg of
+  // the day you most want that from. Where the app has neither a deadline nor a prediction it falls
+  // back to the raw bound, which is exactly what every leg did before this.
+  if (nowMs >= (deadlineMs ?? arriveAt ?? arriveByMs)) {
+    return { ...measurement, arm: DAY_JOURNEY_ARM.PAST, leaveByMs: null };
+  }
+  // **Checked before every clock arm, and that ordering is the decision.** An infeasible leg's
+  // leave-by is behind the previous stop's own end, so `PASSED` fires on it almost at once and
+  // would say `זמן היציאה עבר` for ever — advice about a departure that was never possible. The
+  // shortfall does not decay, so it is what the row says until somebody moves something.
+  if (free && free.fit === TRAVEL_FIT.OVERRUNS) {
+    return {
+      ...measurement,
+      arm: DAY_JOURNEY_ARM.OVERRUNS,
+      leaveByMs: null,
+      overrunSeconds: free.overrunSeconds,
+    };
+  }
+  if (onWay) {
+    return {
+      ...measurement,
+      arm: DAY_JOURNEY_ARM.ON_WAY,
+      leaveByMs,
+      remainingSeconds: input.remainingSeconds ?? null,
+    };
+  }
+  // A claim nobody may make reads as the ordinary ahead arm minus its advice: the leave-by is
+  // derived from a stop the group said they did not go to, so it is not offered and the mark it
+  // would have licensed is not made.
+  if (claimDenied) {
+    // **The arrival goes with it** (ADR-0208 §2, held through §AR1's widening). Every other arm
+    // states one now, and this is the one that must not: the instant is derived from the end of a
+    // stop the group said they did not go to, so `הגעה ~14:58` would be precisely the claim this
+    // arm exists to withhold — offered in the confident voice of a prediction.
+    return { ...measurement, arm: DAY_JOURNEY_ARM.AHEAD, leaveByMs: null, arriveAtMs: null };
+  }
+  // A departure the app may not state cannot have passed, so the late mark goes with it.
+  if (leaveByMs === null) {
+    return { ...measurement, arm: DAY_JOURNEY_ARM.AHEAD, leaveByMs: null };
+  }
+  return {
+    ...measurement,
+    arm: departurePassed ? DAY_JOURNEY_ARM.PASSED : DAY_JOURNEY_ARM.AHEAD,
+    leaveByMs,
+  };
+}
+
+/** **What a whole day answers about its journeys** (ADR-0206 §V1.7 / §AN). */
+export interface DayFeasibility {
+  /** **A three-way discriminant, and it stays one even though only `OVERRUNS` draws.** `FITS` and
+   *  `UNKNOWN` are both silent — §D4 says a reader must not be able to tell "not computed" from
+   *  "not computable" — so a boolean would render identically and be a lie in the second case. The
+   *  moment this collapses, somebody puts a `✓` on a day nothing was measured on. */
+  fit: TravelFit;
+  /** How many of the day's legs the rows themselves call infeasible. Zero unless `OVERRUNS`. */
+  legs: number;
+  /** Their shortfalls added up — how much of the day has to move, in seconds. The one number no
+   *  single leg's row can state. */
+  overrunSeconds: number;
+}
+
+/**
+ * **DOES THIS DAY FIT?** (ADR-0206 §V1.7.) Plan mode's whole job is building a day that works and
+ * it has always been able to build days that cannot be walked; this is the read that lets it say
+ * so — and Plan's alone, which ADR-0159 §1 permits as a difference in **posture**: a day-level
+ * verdict in Trip mode is a verdict on a day you are already living.
+ *
+ * **It takes the JOURNEYS the rows render, not the day's stops — and that is the whole design
+ * decision** (§AN). `daySequenceFits` (`@waypoint/shared`, M2) is the obvious source and is the
+ * wrong one: it measures raw stop times, while every rule about whether a leg *can* be infeasible
+ * has since accumulated in {@link dayJourney} and nowhere else — a flexible arrival has no
+ * deadline to miss (§AI1/§AJ1), a declared leg has no estimate (§AA4), a leg out of a bed has no
+ * departure window (§AF3), a sub-minute hop is not a journey, and a hole behind you is a record.
+ * A verdict rebuilt from stops re-commits §AJ1's own bug one scope up: it calls a day impossible
+ * over the single leg nobody can be late for. Reading the arms instead makes agreement structural
+ * rather than careful — the day and its rows are describing the same objects.
+ *
+ * **It is a read and it moves nothing.** ADR-0011 is untouched: no event is implicated in "this
+ * does not fit", nothing is guarded, nothing is offered a move. Ripple learning about travel is
+ * §V2's and waits until these reads are trusted.
+ */
+export function dayFeasibility(journeys: readonly (DayJourney | null)[]): DayFeasibility {
+  let legs = 0;
+  let overrunSeconds = 0;
+  let measured = false;
+  for (const journey of journeys) {
+    if (!journey) continue;
+    if (journey.arm === DAY_JOURNEY_ARM.OVERRUNS) {
+      legs += 1;
+      overrunSeconds += journey.overrunSeconds ?? 0;
+    }
+    // **`FITS` needs a leg that was measured AGAINST A WINDOW**, which is what `free` being
+    // present means. A journey with no window (a bed's leg, an open floor) has a duration and no
+    // verdict, so counting it here would report a day as feasible on the strength of a leg that
+    // was never asked the question.
+    if (journey.free) measured = true;
+  }
+  if (legs) return { fit: TRAVEL_FIT.OVERRUNS, legs, overrunSeconds };
+  return { fit: measured ? TRAVEL_FIT.FITS : TRAVEL_FIT.UNKNOWN, legs: 0, overrunSeconds: 0 };
+}
+
+/** **How far the day travels and how long of it could be timed** — see {@link dayTravelTotal}. */
+export interface DayTravelTotal {
+  /** Every leg's distance added up, declared legs included. `null` where no leg had one. */
+  distanceMeters: number | null;
+  /** Only the legs that could be TIMED, added up. `null` where none could — a day of declared
+   *  legs travels a real distance for no duration this app may state. */
+  travelSeconds: number | null;
+  /** **The day travels at least this far, and we cannot say how much further** (ADR-0206 §AT2,
+   *  widened by §AZ3) — the total is a FLOOR and the line says `לפחות` rather than reading as the
+   *  day's whole travel. Two things put it here and they are the same claim: a hole with an end
+   *  nobody placed, which is missing from both halves above, and a leg whose distance is the
+   *  crow-flies floor rather than the road it takes.
+   *
+   *  **A leg still WARMING does not set it**, and that is §AT2's own rule kept intact: it
+   *  contributes no distance at all (§AU1), so nothing it later answers can make a claim change
+   *  under the reader. Only a number that is already on the screen and already a floor does. */
+  partial: boolean;
+  /** **How far the day goes in the AIR, kept apart from how far it goes on the ground**
+   *  (ADR-0212 §3), or `null` on a day that flies nowhere.
+   *
+   *  A separate field rather than more metres in `distanceMeters`, and the measurement is the
+   *  argument rather than a preference: on the day this was drawn against, folding the two makes
+   *  the total ⁦69 ק״מ⁩ → ⁦5,362 ק״מ⁩ — **78×** — and the number that answered "how far does this
+   *  day go" stops answering it. The ground half is what you walk, drive and leave time for; the
+   *  air half is what you are carried across. One line, two facts, neither swallowing the other.
+   *
+   *  It is also why this arrives as an ARGUMENT rather than being summed out of `journeys` below:
+   *  a flight is not a hole between two rows, it is a row, so nothing in the journey list has
+   *  ever known about it. */
+  airMeters: number | null;
+}
+
+/**
+ * **HOW FAR THE DAY GOES** (ADR-0206 §V1.9) — `3.2 ק״מ · ~48 דק׳`, the day-shape read a planner
+ * wants, off the journeys the rows already drew.
+ *
+ * **A roll-up of the SAME objects the rows render**, for {@link dayFeasibility}'s reason one
+ * paragraph up: a total rebuilt from the day's legs would count a hole that draws no block, and a
+ * day whose header claims ⁦4.1km⁩ over three journeys the list shows two of is worse than no header.
+ * So a leg with no estimate contributes nothing here exactly as it renders nothing there (§D4).
+ *
+ * **The two halves do not cover the same legs, and that asymmetry is the whole derivation.** A
+ * declared תחב״צ leg keeps its distance and has no duration by nature (§AA4 / §AM6: _"a journey
+ * with NO duration, not an absent journey"_) — so the kilometres count it and the minutes cannot.
+ * Dropping it from both would understate a day somebody is genuinely crossing; inventing minutes
+ * for it would print the walking number the declaration exists to suppress. What carries the
+ * difference to the reader is §D5's `~` on the minutes, which already says this counts what could
+ * be counted.
+ *
+ * `null` on either half where nothing contributed to it, never a zero: §D4's absence is silence,
+ * and `0 ק״מ · ~0 דק׳` on a day nobody could measure is precisely the tell that rule forbids.
+ *
+ * **`unplacedLegs` is what the roll-up cannot see, and it is required for that reason** (ADR-0206
+ * §AT2). Reading the journeys is what keeps the header and the list describing the same objects
+ * (§AP2) — and its cost is that a hole the list shows no block for is invisible here too. That is
+ * right for a leg still warming, which will gain its number; it is wrong for a hole with an end
+ * nobody placed, which never will. A day of five hops where two run through an unplaced stop then
+ * prints the three it could measure as if they were the day, and the reader has no way to tell.
+ * So the count comes from `useDayTravelReads`, which is the layer that resolved the ends, and the
+ * total says it is a floor. Required rather than optional for `useDayTravelReads`' own reason: a
+ * surface that forgets to pass it silently claims completeness it has not got.
+ */
+/** **Whether a total has anything to say** — the condition `DayTravelTotal` renders on, named so a
+ *  host that puts something BESIDE it (the glance card's foot, ADR-0215 §6) asks the same question
+ *  rather than keeping a second copy of it. `partial` alone is not content: a day whose only
+ *  measurable legs were unplaced has a floor over nothing. */
+export const hasTravelTotal = (total: DayTravelTotal | null | undefined): boolean =>
+  !!total && (total.distanceMeters !== null || total.airMeters !== null);
+
+/** **The two ways a day's total can fail to see a leg** (ADR-0206 §AT2, ADR-0232 R5) — both
+ *  required, because a surface that forgets either silently claims a completeness it has not got.
+ *  `unplacedLegs` is a hole this app can never measure; `spanningLegs` is one it measured as the
+ *  DIRECT route between two known points, which does not count the stop the reader can see between
+ *  them (ADR-0213 §3's cost, in as many words). */
+export interface DayTravelHoles {
+  unplacedLegs: number;
+  spanningLegs: number;
+}
+
+export function dayTravelTotal(
+  journeys: readonly (DayJourney | null)[],
+  holes: DayTravelHoles,
+  /** The day's carried legs, already in metres — `carriedLegMeters` per in-motion booking. Kept
+   *  out of the ground sum for the reason `DayTravelTotal.airMeters` gives. */
+  airMeters: number | null = null,
+): DayTravelTotal {
+  let distanceMeters: number | null = null;
+  let travelSeconds: number | null = null;
+  /** Whether any leg contributed a crow-flies floor instead of a routed road (§AZ3). */
+  let floored = false;
+  for (const journey of journeys) {
+    if (!journey) continue;
+    if (journey.distanceMeters !== null && Number.isFinite(journey.distanceMeters))
+      distanceMeters = (distanceMeters ?? 0) + journey.distanceMeters;
+    if (journey.travelSeconds !== null && Number.isFinite(journey.travelSeconds))
+      travelSeconds = (travelSeconds ?? 0) + journey.travelSeconds;
+    if (journey.distanceIsFloor && journey.distanceMeters !== null) floored = true;
+  }
+  return {
+    distanceMeters,
+    travelSeconds,
+    // A crow-flies leg makes the sum a floor exactly as an unmeasurable hole does (§AZ3).
+    partial: holes.unplacedLegs > 0 || holes.spanningLegs > 0 || floored,
+    airMeters: airMeters !== null && Number.isFinite(airMeters) ? airMeters : null,
+  };
+}
+
+/**
+ * **When a closed check-in window shuts**, or `undefined` for an open floor — which can be missed
+ * by nothing (ADR-0184's `not-before`).
+ *
+ * Lives here rather than at each day surface because both of them need it to call
+ * {@link dayJourney} and neither should own the rule: `startWindowEnd` is a full ISO instant, so
+ * no zone is threaded, and an unparseable one is absent rather than `NaN` walking into a
+ * comparison.
+ */
+export function windowClosesMs(event: TripEvent): number | undefined {
+  const shuts = windowBoundOf(event, 'start');
+  const ms = shuts ? Date.parse(shuts) : NaN;
+  return Number.isFinite(ms) ? ms : undefined;
+}
+
+/**
+ * **What a hole loses to the journey in it** — the leg, PLUS the buffer the leave-by keeps.
+ *
+ * The buffer is not slack the day gets to spend twice. `heroLeaveBy` states
+ * `arriveBy - travel - buffer` and the reader acts on that minute, so free time that runs past it
+ * is time the same surface has already told you to be moving in. Subtracting the leg alone is what
+ * put `פנוי · 2:10 שע׳` above `יציאה עד 08:05` on a hole that ends at 08:30 — five minutes of
+ * disagreement between two lines describing one hole, which is the smaller half of the report that
+ * prompted this and the half no screenshot would ever have caught.
+ *
+ * One rule and one reader, which is §AY's other half: Plan used to answer this with a number of its
+ * own (`travelFreeMinutes`) for its chip's label while the slot beside it kept the raw hole.
+ */
+export const goingCostMinutes = (travelSeconds: number): number =>
+  Math.round((travelSeconds + TRAVEL_BUFFER_SECONDS) / SECONDS_PER_MINUTE);
+
+/**
+ * **The slot a fill lands on, narrowed by the journey in it** (§V1.1 applied to the CONTROL rather
+ * than to the statement).
+ *
+ * `Gap.fill` prefills a block at the hole's start, capped at the room — and the room it was capped
+ * against is the whole hole. The journey sits at the **end** of it (you leave in time to arrive),
+ * so the offer only overstates once what is free is shorter than the default block; there it hands
+ * out a slot that eats the walk. One helper, every surface: Trip's tap on the journey block, Plan's
+ * `שבץ` chip, the day's two edge slots and the slot PICKER all land on the same window, which is
+ * ADR-0161 §9's whole point.
+ *
+ * **The window ends at the DEPARTURE, and that is the correction** (owner, 2026-09-01: _"transit
+ * row says take off by 08:05, but filling the gap suggests 07:30–08:30"_). It used to end at
+ * `fill.start + freeSeconds`, which is wrong twice over:
+ *
+ *  - it needs `journey.free`, and the day's first leg out of an ambient stay has none (§AD/§AF3) —
+ *    so the head slot, the one the owner photographed, was returned whole. The number the app does
+ *    have there is `leaveByMs`, and it is a pure ceiling precisely because nothing clamped it.
+ *  - it is a LENGTH added to the slot's own start, and `fill.start` is not always the hole's start:
+ *    `freeBeforeFirst` hugs the first event (`max(floor, first - 60)`), so on the reported day the
+ *    cap landed at 08:40 — past the leave-by AND past the event itself, i.e. no cap at all. An
+ *    instant cannot be recovered from a duration measured somewhere else; the leave-by IS the
+ *    instant, so it is what the offer is compared against.
+ *
+ * Rounded down onto {@link SLOT_STEP_MINUTES}, so `יציאה עד 14:47` offers a slot ending 14:45.
+ *
+ * Returns the gap unchanged where there is nothing to narrow, so a caller may apply it blindly.
+ */
+/**
+ * **WHEN A HOLE STOPS BEING FREE** — the instant the journey across it takes over, or `null` where
+ * the hole is one interval all the way down.
+ *
+ * **Two readers, one instant, and that is the whole reason it is a function** (ADR-0217's
+ * 2026-09-05 amendment). `nowInJoin` (`lib/now-line.ts`) splits the hole here to decide which box
+ * the marker is nailed to, and the free-time strip counts down to here — so if these were derived
+ * twice the arrow could land on a strip that had already stopped stating any free time, which is
+ * the null-shaped row the marker rule is written to make impossible.
+ *
+ * A claim that somebody is moving ends the free time wherever the clock stands (ADR-0207 §2) —
+ * that is the one arm where the answer is not the leave-by. Everywhere else it is `leaveByMs`,
+ * clamped into the hole because a floored one (`leaveByIsFloor`, §AJ2) is the origin's own end and
+ * leaves no free time at all. **Where the journey states no departure** — the arms with no
+ * estimate to count back from (§AA4/§AM10/§AU1/§AZ1), and a flexible destination, whose "leave now
+ * to arrive then" is the hole's own start (§AJ1) — there is nothing to hand over at, and the app
+ * must not claim either that the travel has begun or that the free time is spent.
+ */
+export function holeDepartsMs(
+  journey: DayJourney | null,
+  opensMs: number,
+  closesMs: number,
+): number | null {
+  if (!journey) return null;
+  if (journey.arm === DAY_JOURNEY_ARM.ON_WAY) return opensMs;
+  const leave = journey.leaveByMs;
+  if (leave === null || !Number.isFinite(leave)) return null;
+  return Math.min(Math.max(leave, opensMs), closesMs);
+}
+
+export function narrowGapForTravel(free: Gap, journey: DayJourney | null, tz: string): Gap {
+  // **A hole beside a spanning leg stays raw** (ADR-0232 R5): the journey may be on either side of
+  // the placeless row, so narrowing THIS hole says which, and that is a position nobody gave. Each
+  // strip is then a ceiling — the claim a strip already makes wherever the app has no estimate
+  // (§D4) — and the day's total says `לפחות` once for all of them.
+  if (!journey || journey.spansPlaceless) return free;
+  /** The advised departure, and **only where it is a CEILING**: on the clamped arm the same number
+   *  is the earliest departure that exists (§AJ2), so it says nothing about what is free. Guarded
+   *  for finiteness on the way in, this file's own rule — `NaN` is not a bound, and a slot capped
+   *  at one throws inside `toISOString` rather than merely reading wrong. */
+  const goMs =
+    journey.leaveByIsFloor || !Number.isFinite(journey.leaveByMs) ? null : journey.leaveByMs;
+  const cost = Number.isFinite(journey.travelSeconds)
+    ? goingCostMinutes(journey.travelSeconds!)
+    : null;
+  /** What is LEFT of the hole: the hole, minus what going costs — **asked of the cost and not of
+   *  the arm**, so one hole answers one number whatever the clock is doing. Keyed on `leaveByMs`
+   *  instead, it would have reported 115 minutes free all afternoon and then 120 the moment the row
+   *  below started (the `PAST` arm states no departure), which is a measurement that moves without
+   *  the day changing.
+   *
+   *  The fallback is for a shape the arms do not currently produce — a window with no duration to
+   *  subtract — and keeps that case reading exactly as it did before. */
+  const freeMinutes =
+    cost !== null
+      ? free.minutes - cost
+      : journey.free
+        ? Math.round(journey.free.freeSeconds / SECONDS_PER_MINUTE)
+        : undefined;
+  if (freeMinutes === undefined) return free;
+  // **`minutes` is corrected whether or not the FILL needs capping**, and the two used to
+  // disagree: the first draft spread `...free` and rewrote only `fill.end`, so a narrowed slot
+  // still reported the whole hole's length — an object contradicting itself, which is what
+  // handed the free-time strip a 2:40 hole to describe as free after a 40-minute walk. A caller
+  // asks a Gap how long it is; it must not have to know which field was corrected.
+  const narrowed = { ...free, minutes: Math.max(0, freeMinutes) };
+  if (goMs === null) return narrowed;
+  const startMs = Date.parse(zonedIso(free.fill.date, free.fill.start, tz));
+  if (!Number.isFinite(startMs)) return narrowed;
+  const cappedMs = flooredSlotEnd(goMs);
+  /** The ceiling, in the slot's own wall clock. **Carried even where the fill needs no capping**,
+   *  and that is not belt-and-braces: the block a CREATE gets is `blockFor`'s, whose length is
+   *  capped against the free MINUTES — measured over the hole, from an instant the block does not
+   *  necessarily start at. Without it a 60-minute idea in the reported head slot took 07:30–08:30
+   *  out of a window that ends at 08:05. */
+  const until = isoToTimeInput(new Date(cappedMs).toISOString(), tz);
+  // **Nothing left to offer keeps the position's DEFAULT block** — the same answer `freeBetween`
+  // gives a seam, and the reason this is not `Math.max(startMs, cappedMs)`: a zero-length slot is
+  // no droppable position at all, so a drop overlaps instead, which is ADR-0161 §3's accepted
+  // outcome rather than something to prevent by arithmetic. The old cap could produce exactly that
+  // degenerate slot on a journey that ate the whole hole.
+  //
+  // The test is on the two WALL CLOCKS and not on the instants, because a slot is a wall clock and
+  // a ceiling is only a ceiling while it is one: a departure past midnight reads `00:30`, which is
+  // before every hour of the day it belongs to.
+  if (toMin(until) <= toMin(free.fill.start)) return narrowed;
+  const endMs = Date.parse(zonedIso(free.fill.date, free.fill.end, tz));
+  const capsTheFill = Number.isFinite(endMs) && endMs > cappedMs;
+  return {
+    ...narrowed,
+    until,
+    ...(capsTheFill ? { fill: { ...free.fill, end: until } } : {}),
+  };
 }

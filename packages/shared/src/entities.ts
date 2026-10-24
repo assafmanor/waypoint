@@ -9,6 +9,7 @@ import { z } from 'zod';
 import { tripEnrichmentsSchema } from './enrichment';
 import { currencyCodeSchema } from './currency';
 import { fxRatesSchema } from './fx';
+import { forecastSchema } from './weather';
 import { avatarChoiceSchema, identityHueSchema } from './identity';
 
 export const idSchema = z.string();
@@ -23,6 +24,14 @@ export type AuthProvider = z.infer<typeof authProviderSchema>;
 
 export const eventStatusSchema = z.enum(['planned', 'done', 'skipped']);
 export type EventStatus = z.infer<typeof eventStatusSchema>;
+
+/** **Which end of a bracketed span** (ADR-0224 §1). The pair `'start' | 'end'` has been
+ *  written inline at every call site since ADR-0063 — `edgeMeaning`, `windowBoundOf`,
+ *  `eventEdgeTransition`, the day's transition entries — and naming it here is what lets a
+ *  wire schema take it (`eventStatusUpdateSchema`) without a third spelling of the union.
+ *  The inline ones are left alone: a repo-wide rename buys nothing this needs. */
+export const eventEdgeSchema = z.enum(['start', 'end']);
+export type EventEdge = z.infer<typeof eventEdgeSchema>;
 
 export const eventSourceSchema = z.enum(['manual', 'gmail', 'maybe_shelf', 'integration']);
 export type EventSource = z.infer<typeof eventSourceSchema>;
@@ -65,6 +74,37 @@ export const eventCategorySchema = z.enum([
 ]);
 export type EventCategory = z.infer<typeof eventCategorySchema>;
 
+/** **How you get from one stop to the next** (ADR-0205, ADR-0206 §V1.6).
+ *
+ *  **Three members, and the absence of a fourth is a decision** (ADR-0206 §D9, confirmed by
+ *  §Z3): there is no transit entry — not a disabled one — because the router we can reach
+ *  carries no GTFS, and a control that announces a mode and then answers nothing is worse
+ *  than a control that never mentions it.
+ *
+ *  Our vocabulary, not a provider's: Valhalla spells these `pedestrian`/`auto`/`bicycle` and
+ *  a second provider will spell them differently again, so the translation belongs in the
+ *  provider adapter behind ADR-0205 §2's port and nowhere else. */
+export const travelModeSchema = z.enum(['walking', 'driving', 'cycling']);
+export type TravelMode = z.infer<typeof travelModeSchema>;
+
+/**
+ * **What a LEG may be, which is one more thing than what a router may be asked** (ADR-0206 §AA4,
+ * shaped by §AM5).
+ *
+ * `travelModeSchema` above is the **routable** set: the values a provider can answer, and therefore
+ * the only ones that may appear in a `RouteBatchRequest`. תחב״צ is a fourth thing a leg can BE and
+ * not a fourth thing to ask about — declared by a person, never inferred, with no provider behind
+ * it. §AA4 is explicit that it is _"not a fourth member of `travelModeSchema`"_, and keeping the two
+ * types apart is what makes "no request is ever made for transit" a fact about the type system
+ * rather than a rule everyone has to remember.
+ *
+ * **Counted, the split lands on exactly three `Record<TravelMode, …>` sites** (§AM5): `TRAVEL_GATE`
+ * and the provider's `COSTING` keep three entries — a transit mode reaching either of those is the
+ * bug — and only the frontend's copy widens, because it is the one that needs a word for it.
+ */
+export const legTravelModeSchema = z.enum([...travelModeSchema.options, 'transit']);
+export type LegTravelMode = z.infer<typeof legTravelModeSchema>;
+
 // creator is admin — ADR-0005/0018
 export const membershipRoleSchema = z.enum(['admin', 'peer']);
 export type MembershipRole = z.infer<typeof membershipRoleSchema>;
@@ -96,7 +136,9 @@ export const entityTypeSchema = z.enum([
   'trip',
   'membership',
   'note',
+  'task',
   'documentAttachment',
+  'travelModeOverride',
 ]);
 export type EntityType = z.infer<typeof entityTypeSchema>;
 
@@ -114,6 +156,13 @@ export const userSchema = z.object({
   // sign-in, never user-edited. Kept even when the user is on `initials`, which is
   // what makes "use my Google photo" a real way back rather than a dead end.
   googleAvatarUrl: z.string().nullable(),
+  // **Our own copy of that photo**, or null when we have none (ADR-0133 §13). Relative to
+  // the API origin exactly like `uploadedAvatarUrl` below, and PREFERRED over the hotlink
+  // above wherever the Google source is rendered: a same-origin immutable URL is what makes
+  // a face survive a flight, which the hotlink never could. Kept as a second field rather
+  // than overwriting the one above, because that one is still the answer to "does this
+  // person have a Google photo at all" — the way back from `initials` depends on it.
+  googleAvatarCopyUrl: z.string().nullable(),
   // Where this user's uploaded avatar is served from, or null when there is no
   // upload — the server builds it from the stored blob key via `avatarContentPath`,
   // so no client knows the route shape and a retired key simply stops appearing.
@@ -124,6 +173,8 @@ export const userSchema = z.object({
   // chosen one — the client then seeds a default from the device region rather
   // than the server guessing on their behalf.
   preferredCurrency: currencyCodeSchema.nullable(),
+  // NOTE: the notification preferences are deliberately NOT here — see `notifyPrefsSchema`
+  // below. This shape is also every co-member's row in the roster.
   createdAt: z.string(),
 });
 export type User = z.infer<typeof userSchema>;
@@ -217,6 +268,18 @@ export const tripEventSchema = z.object({
    *  the user's pinned zone, honoured forever. Not a cache of the derived value. */
   displayTimezone: z.string().optional(),
   status: eventStatusSchema,
+  /** **What a human said about the CLOSING edge** (ADR-0224 §1) — a check-out, a car
+   *  return, a landing. A bracketed span has two moments and `status` above is already
+   *  spoken for: `glance.ts` clears a `not-before` row on `status === DONE` and
+   *  `hero-booking.ts` tests the same field on its missed-check-in arm, so that field
+   *  functions as the OPENING edge's answer and writing a check-out through it would
+   *  say "we checked in", a day late.
+   *
+   *  Read through `edgeStatusOf(event, edge)` rather than by hand, for the reason
+   *  `windowBoundOf` exists one field up: pairing an edge to its field reads fine and
+   *  inverts silently. Absent is the app's usual third state — nobody has answered
+   *  (ADR-0117 §1) — and it is absent on nearly every event, like the window bounds. */
+  endStatus: eventStatusSchema.optional(),
   bookingId: idSchema.optional(),
   sortOrder: z.number(),
   source: eventSourceSchema,
@@ -233,6 +296,17 @@ export const bookingSchema = z.object({
   title: z.string(),
   confirmationCode: z.string().optional(),
   provider: z.string().optional(),
+  /** **The service's own number** (ADR-0222 §1) — `LY315`, `Hikari 503`. One column with a
+   *  `Record<BookingType, string>` of words over it, the shape ADR-0163 §2 chose for
+   *  `provider`: a flight number IS a train number, and a single abstract label is the one
+   *  nobody fills in. Known when you book and stable, which is what separates it from `gate`
+   *  below and is why it is searchable and the gate is not. */
+  flightNumber: z.string().optional(),
+  /** **Where you board** (ADR-0222 §1) — a gate for a flight, a platform for a train. Same
+   *  one-column-many-words shape, opposite lifecycle: unknown at booking, published a couple
+   *  of hours out, changed without warning, and worthless once you are aboard. That is why it
+   *  has a quick-add of its own (§7) and why the board only draws it inside a window (§4/§5). */
+  gate: z.string().optional(),
   placeId: z.string().optional(), // single-place types; mutually exclusive with from/to
   fromPlaceId: z.string().optional(), // transport origin (ADR-0048)
   toPlaceId: z.string().optional(), // transport destination (ADR-0048)
@@ -253,12 +327,17 @@ export type Booking = z.infer<typeof bookingSchema>;
 
 /** **What a search is being asked to find, when the asker knows** (field report #6).
  *
- *  One member, and the enum shape is the point: a caller names a KIND, and which Google
- *  type(s) that becomes is the places proxy's business, not a form's. A flight leg wants an
- *  airport — searching `נתב"ג` unrestricted returns the terminal, the car park and a hotel
- *  beside it, all legitimate answers to the words and none of them where the plane leaves
- *  from. */
-export const placeSearchKindSchema = z.enum(['airport']);
+ *  A caller names a KIND, and which Google type(s) that becomes is the places proxy's
+ *  business, not a form's. A flight leg wants an airport — searching `נתב"ג` unrestricted
+ *  returns the terminal, the car park and a hotel beside it, all legitimate answers to the
+ *  words and none of them where the plane leaves from.
+ *
+ *  **`train_station` and `transit_station` join it in ADR-0203 §8**, closing a gap the old
+ *  one-member version left and which `BookingSheet.findPlace`'s own comment already named:
+ *  _"a train's stop is a station this restriction has no type for yet"_. Which type a
+ *  BOOKING asks for is now the profile's answer (`BOOKING_TYPE_PROFILE.searchKind`), not a
+ *  conditional at the call site. */
+export const placeSearchKindSchema = z.enum(['airport', 'train_station', 'transit_station']);
 export type PlaceSearchKind = z.infer<typeof placeSearchKindSchema>;
 
 /** Trip-scoped location registry (ADR-0048). Every `placeId` FK points here. A
@@ -384,6 +463,51 @@ export const documentAttachmentSchema = z.object({
 });
 export type DocumentAttachment = z.infer<typeof documentAttachmentSchema>;
 
+/**
+ * **HOW YOU GET BETWEEN TWO PLACES ON THIS TRIP, WHERE A PERSON HAS SAID** (ADR-0206 §V1.6 as
+ * amended by §Z2, and §AM says what the row is about).
+ *
+ * The default mode is **derived** (`derivedTravelMode`, `routing.ts`) and there is deliberately no
+ * `defaultTravelMode` column — §Z2 forbids one. This row is the only persisted half: it exists when
+ * somebody actually overrode the derivation for one journey, and not otherwise.
+ *
+ * **Keyed on the PLACE PAIR, not on an event** (§AM1). The two ids are **canonicalised (sorted)**, so
+ * one row serves the pair in both directions — a rail corridor is a rail corridor either way, and
+ * the failure that matters is the silent one: declaring תחב״צ on A→B and having the return leg keep
+ * printing a walking number (§AM2). An event key would die on every reorder and is finer than the
+ * coordinate-keyed cache it modifies, which is incoherent rather than merely awkward.
+ *
+ * `mode` is a `LegTravelMode`, so `transit` is expressible here and nowhere a provider can see it.
+ */
+export const travelModeOverrideSchema = z.object({
+  id: idSchema,
+  tripId: idSchema,
+  /** The lower of the two place ids. Canonicalised by `travelOverridePair`, never by a call site. */
+  fromPlaceId: idSchema,
+  /** The higher of the two. Same canonicalisation. */
+  toPlaceId: idSchema,
+  mode: legTravelModeSchema,
+  createdBy: idSchema,
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type TravelModeOverride = z.infer<typeof travelModeOverrideSchema>;
+
+/** **Setting one is idempotent on the pair** — the same two places, a mode, and the server upserts.
+ *  There is no separate create/update at the edge because there is nothing to distinguish: a person
+ *  is stating what this journey is, and stating it twice is stating it once. */
+export const setTravelModeOverrideSchema = z.object({
+  /** **Client-minted, like every other offline-capable write** (ADR-0056's shape). It is what lets
+   *  the queued row and the row the server writes be the same row, so an offline declaration does
+   *  not become a second one when the queue flushes. The server honours it on a create and keeps
+   *  the EXISTING id on an update, because the pair is the identity and the id is only its handle. */
+  id: idSchema.optional(),
+  fromPlaceId: idSchema,
+  toPlaceId: idSchema,
+  mode: legTravelModeSchema,
+});
+export type SetTravelModeOverride = z.infer<typeof setTravelModeOverrideSchema>;
+
 export const maybeItemSchema = z.object({
   id: idSchema,
   tripId: idSchema,
@@ -464,6 +588,114 @@ export const noteSchema = z.object({
 });
 export type Note = z.infer<typeof noteSchema>;
 
+/** **A task is an obligation with a deadline and optionally a doer; an event is a slot the
+ *  group occupies** (tasks brief §1). That line is what keeps a task off the day rail, out
+ *  of the ripple, and free of ADR-0011's hard/soft axis — it is already the flexible thing.
+ *
+ *  `open` → `done` (someone did it) or `dismissed` (it stopped mattering). Two settled
+ *  values rather than one boolean because they are different facts, and the screen collapses
+ *  them together while the row draws them apart. */
+export const taskStatusSchema = z.enum(['open', 'done', 'dismissed']);
+export type TaskStatus = z.infer<typeof taskStatusSchema>;
+
+/** **Which readiness check this row overlays** (tasks brief §4). The five ids
+ *  `computeReadiness` returns, promoted here because the column crosses the FE/BE boundary:
+ *  the server validates what it stores and the client resolves the row against the
+ *  derivation. `lib/readiness.ts`'s `CheckId` is this type, not a second copy of it.
+ *
+ *  A check nobody has touched has **no row at all** and renders as a pure derivation. The
+ *  moment someone dismisses, assigns or flags it, a `Task` carrying `derivedKey` is written
+ *  — same entity, same sync channel, same appliers. `status` stays the derivation's answer
+ *  unless the row says `dismissed`, so done-ness cannot go stale. */
+export const taskDerivedKeySchema = z.enum([
+  'flights',
+  'lodging',
+  'itinerary',
+  'documents',
+  'group',
+]);
+export type TaskDerivedKey = z.infer<typeof taskDerivedKeySchema>;
+
+/** **An alias, deliberately, rather than the same five strings written a second time.** A
+ *  task hangs off the same five hosts a note does and under the same "at most one" rule, so
+ *  the compiler holds them identical instead of a reviewer having to. The coupling is the
+ *  point: if the two sets are ever meant to differ, this line becomes a real list and the
+ *  divergence is visible at the moment it is introduced. (`ATTACHMENT_HOST_KEYS` is the
+ *  precedent for a genuinely different set — two members, for a stated reason.) */
+export const TASK_HOST_KEYS = NOTE_HOST_KEYS;
+export type TaskHostKey = NoteHostKey;
+
+/** **A task is one entity and what it is about is a field** — `Note`'s shape (ADR-0152 §1)
+ *  down to the host block, because this is that feature's sibling. No host = a general
+ *  task; exactly one host FK set = that entity's task.
+ *
+ *  Deliberate absences, each with its reason (brief §5): **no `category`** — the row's
+ *  leading element is its completion control, so there is no icon slot to fill and no
+ *  `EventCategory` chain to inherit; **no hard/soft**; **no priority enum**, because rule 4
+ *  has no colour left to spend and `important` upgrades to a scale later as a column rather
+ *  than a redesign.
+ *
+ *  **`displayTimezone` REVERSES brief §10** (owner, 2026-08-17: the zone should be
+ *  selectable in the task form _"the same way as in the event and booking forms"_). §10 had
+ *  the due zone derived through ADR-0107's resolver and nothing stored, so the chip stated a
+ *  zone and offered no pin.
+ *
+ *  Deriving it is right until somebody can CHOOSE it, and then it is the bug
+ *  `Event.displayTimezone` exists to prevent: type 09:00 with Tokyo picked, and a resolver
+ *  that answers "the zone you will be in when this falls due" renders it as 03:00 somewhere
+ *  else — a deadline showing a wall-clock nobody typed. A picked zone has to be stored or it
+ *  is not picked, only borrowed for the arithmetic.
+ *
+ *  Absent = derived, exactly as before, which is what keeps every existing task unchanged.
+ *
+ *  `dueAt` absent = no deadline, which is a legitimate task and not a half-filled one.
+ *  `dueHasTime` is not derivable from `dueAt`: a deadline of "Thursday" and one of
+ *  "Thursday 00:00" are the same instant and different obligations. */
+export const taskSchema = z.object({
+  id: idSchema,
+  tripId: idSchema,
+  title: z.string(),
+  body: z.string().optional(),
+  dueAt: z.string().optional(),
+  dueHasTime: z.boolean(),
+  /** The zone the deadline was TYPED in, when somebody pinned one. Absent → derived through
+   *  ADR-0107's resolver, which is every task written before this and every one where the
+   *  chip was left alone. `Event.displayTimezone`'s twin, down to the name. */
+  displayTimezone: z.string().optional(),
+  /** Absent = the group's ("one of us"), which already covers the "either of these two"
+   *  case the brief's §6 refuses to model. Set = delegated. */
+  assigneeUserId: idSchema.optional(),
+  important: z.boolean(),
+  status: taskStatusSchema,
+  settledAt: z.string().optional(),
+  settledBy: idSchema.optional(),
+  derivedKey: taskDerivedKeySchema.optional(),
+  /** **The task this one is a step of** (ADR-0196 §1). Set = this row is a sub-task, and the
+   *  schemas refuse everything a step may not carry: a host FK, a deadline, `important`,
+   *  `body`, `derivedKey` and a child of its own. Absent = a top-level task, which is every
+   *  task written before this.
+   *
+   *  **Depth is one level and it is enforced at both edges**, which is the decision that
+   *  keeps the rest of the feature finite. Nothing here records whether a task IS a parent:
+   *  that is `subtasks.get(id)?.length` on the client, so a "checklist" with no steps cannot
+   *  exist and no flag can go stale against the rows. */
+  parentTaskId: idSchema.optional(),
+  // The typed host union: AT MOST ONE is set, `onDelete: Cascade`, same discipline and
+  // same five columns as `Note` above (ADR-0152 §2). Nothing reads them until phase 4;
+  // they ship in the first migration because a nullable column is free today and a
+  // second migration on a live synced entity is not.
+  eventId: idSchema.optional(),
+  bookingId: idSchema.optional(),
+  placeId: idSchema.optional(),
+  maybeItemId: idSchema.optional(),
+  documentId: idSchema.optional(),
+  createdBy: idSchema,
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  updatedBy: idSchema,
+});
+export type Task = z.infer<typeof taskSchema>;
+
 /** Full current trip state + sync cursor — GET /trips/:tripId/snapshot (ADR-0019/0022). */
 export const tripSnapshotSchema = z.object({
   trip: tripSchema,
@@ -477,12 +709,18 @@ export const tripSnapshotSchema = z.object({
   maybeItems: z.array(maybeItemSchema),
   places: z.array(placeSchema),
   notes: z.array(noteSchema),
+  tasks: z.array(taskSchema),
   /** The document↔host links (ADR-0173 §1). A first-class syncable entity of its own, the
    *  cost ADR-0172's derivation deliberately avoided — but the storage genuinely differs
    *  here, so the sync substrate does too. Which DOCUMENT a link resolves to is answered
    *  against `documents` above, so an attachment whose document this reader cannot see
    *  renders as nothing (§6). */
   documentAttachments: z.array(documentAttachmentSchema),
+  /** **The per-leg travel-mode overrides** (ADR-0206 §V1.6/§Z2, keyed per §AM). Only the ones
+   *  somebody actually set — the default is derived, so an untouched trip carries an empty array
+   *  and reads exactly as it did before this existed. Defaulted rather than required for the same
+   *  compatibility reason `fxRates` is: a client on an older snapshot must not fail to parse. */
+  travelModeOverrides: z.array(travelModeOverrideSchema).default([]),
   /** **The world's facts about the trip's places, keyed by `placeId`** (ADR-0166 §6). A
    *  server-owned read model joined onto the snapshot, not an entity of the trip: the store
    *  is global and no client writes it, so it carries no `Change` and never appears in the
@@ -499,6 +737,16 @@ export const tripSnapshotSchema = z.object({
    *  a missing key must read as the cold state it already has a rendering for
    *  rather than failing the whole snapshot parse and blanking the trip. */
   fxRates: fxRatesSchema.nullable().default(null),
+  /** **The world's weather over the trip's coordinate cells** (ADR-0218 §1/§6), on
+   *  exactly the terms `fxRates` above states: global, server-owned, no `Change`,
+   *  never client-written, and defaulted rather than required so a client that
+   *  meets an older server mid-deploy reads the cold state instead of failing the
+   *  whole snapshot parse.
+   *
+   *  **This is the only way a forecast reaches a client** — there is no route and
+   *  no controller (§6). `FxController` exists because a human taps refresh;
+   *  nobody taps a forecast, so the snapshot read both serves it and triggers it. */
+  forecast: forecastSchema.nullable().default(null),
   latestSeq: z.string(), // BigInt serialized as string, see Change.seq
 });
 export type TripSnapshot = z.infer<typeof tripSnapshotSchema>;
@@ -524,9 +772,117 @@ export const tripWithMembersSchema = z.object({
 });
 export type TripWithMembers = z.infer<typeof tripWithMembersSchema>;
 
+/** What this server can do about notifications, answered at boot (ADR-0197 §7).
+ *
+ *  `vapidPublicKey` is `null` when the server holds no keypair — a real state, not an
+ *  error: a dev box or a deploy that never set them. It rides `/me` rather than a
+ *  `VITE_` copy of its own for two reasons. The halves of a keypair must not be able to
+ *  drift (the private one lives only on the server, so the public one is the server's to
+ *  state), and a client that is about to offer a control needs the answer **before** the
+ *  first gesture, which is exactly when `/me` has already landed.
+ *
+ *  Its own object rather than a loose field, because §7's settings row will need to say
+ *  more than one true thing about the server's side of this. */
+export const pushCapabilitySchema = z.object({
+  vapidPublicKey: z.string().nullable(),
+});
+export type PushCapability = z.infer<typeof pushCapabilitySchema>;
+
+/**
+ * One registered device, as a settings surface lists it (ADR-0197 §2, phase 1b).
+ *
+ * **The endpoint is not here, and that is the point.** It is a bearer capability — anyone
+ * holding it can push to that device — so it stays server-side, and the row is addressed by
+ * its own `id` instead. A client identifies *its own* row by the id it stored when it
+ * subscribed, never by comparing endpoints.
+ *
+ * `label` is derived on the server from the stored user-agent (`deviceLabel`), so the raw
+ * string never ships either: nothing on the screen needs it, and it is a hint rather than an
+ * identity — the "this device" mark is what carries recognition.
+ */
+export const pushDeviceSchema = z.object({
+  id: idSchema,
+  /** `iPhone · Safari`, or `מכשיר` when the user-agent said nothing recognisable. */
+  label: z.string(),
+  /** When this device was last actually reached, or null if it never has been. What answers
+   *  "is this row still alive" without a second call. */
+  lastSentAt: z.string().nullable(),
+  createdAt: z.string(),
+});
+export type PushDevice = z.infer<typeof pushDeviceSchema>;
+
+/**
+ * Which categories of notification this person wants (ADR-0198 §6).
+ *
+ * **On `Me` and not on `userSchema`, and that is the whole point of the separation.**
+ * `userSchema` is also every CO-MEMBER's row — the roster, the avatars, the assignee
+ * options — so a preference put there would tell the group what each of them has switched
+ * off. It is account state (it follows a person to a new phone, unlike the per-device
+ * subscription), and it is nobody else's business.
+ *
+ * Two fields, for phases A and B. `group` arrives only if phase D is ever built — a field for
+ * a phase that may never ship is a preference for a feature that does not exist.
+ */
+export const notifyPrefsSchema = z.object({
+  tasks: z.boolean(),
+  /** Phase B: the trip's own commitments — hard events, span edges, and the evening-before
+   *  send. A separate switch from `tasks` because they are different registers: one is what
+   *  a person wrote down, the other is what the itinerary already committed them to. */
+  obligations: z.boolean(),
+  /** A year on, the trip comes back once (ADR-0239 §8). Optional so a cached `/me` from an
+   *  older build still parses. */
+  memories: z.boolean().optional(),
+});
+export type NotifyPrefs = z.infer<typeof notifyPrefsSchema>;
+
+/**
+ * **Which planet build the live map source is serving right now** (ADR-0187 §1 amendment,
+ * 2026-08-21).
+ *
+ * On `/me` for the same two reasons `push` is, and the first one is the bug it fixes: the id
+ * names an upstream object whose lifetime is about a week, so the server — the only side that
+ * knows what it can actually read — has to be the one that states it. A build id compiled into
+ * the client is a URL that expires, and it expired silently.
+ *
+ * The second reason is timing: the answer has to be in hand before the FIRST TILE, and `/me` has
+ * already landed by the time the Map tab mounts.
+ *
+ * `null` is a real state, not an error — no live source resolved (upstream unreachable at boot,
+ * or a mirror misconfigured). The client answers it by drawing the coarse world layer as its
+ * detail source, which is the same fallback a plane already uses: coarse, but never blank.
+ */
+export const mapCapabilitySchema = z.object({
+  liveBuild: z.string().nullable(),
+  /** **Which vintage of the OFFLINE archives this server is cutting** (ADR-0186 §6 amendment).
+   *  A device compares it with the vintage it holds to know whether a fresher archive exists at
+   *  all — without it, a downloaded map is frozen at the build it was cut from forever. `null`
+   *  when the server cannot name one (no live build resolved).
+   *
+   *  **`.optional()`, and the reason is the whole point of the outer object being optional too.**
+   *  A field ADDED to a capability object has to tolerate the object's older shape, because that
+   *  shape is already in `localStorage` on every device (`readCachedMe`) and in every fixture
+   *  written against the previous build. Required, it made `meSchema.parse` throw on a `/me`
+   *  holding only `liveBuild` — so `fetchMe` rejected, the cached identity failed to parse with
+   *  it, and the app dropped to /login: an offline cold-load signing a person out on a plane.
+   *  Caught as 231 e2e timeouts, which is what "the app does not boot" looks like from CI. */
+  archiveVintage: z.string().nullable().optional(),
+});
+export type MapCapability = z.infer<typeof mapCapabilitySchema>;
+
 /** `GET /me` response shape — not its own persisted entity (ADR-0020). */
 export const meSchema = z.object({
   user: userSchema,
   memberships: z.array(membershipSchema),
+  /** Optional so a client built against this schema still reads a `/me` from a server
+   *  that predates it — the cached copy in Dexie is exactly such a payload. */
+  push: pushCapabilitySchema.optional(),
+  /** Optional for the same reason `push` is: a cached `/me` from before this field. A
+   *  reader that finds it absent should treat the preferences as ON, matching the column
+   *  default — the safe direction here is "as the server has it", not "off". */
+  notify: notifyPrefsSchema.optional(),
+  /** Optional for the same reason the two above are — and here the absent case is also the
+   *  CACHED one: a `/me` stored before this field says nothing about the live source, and a
+   *  reader that finds it missing falls back to the world layer rather than guessing a date. */
+  map: mapCapabilitySchema.optional(),
 });
 export type Me = z.infer<typeof meSchema>;

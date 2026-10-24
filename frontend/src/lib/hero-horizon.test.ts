@@ -10,10 +10,15 @@ import {
   type DocumentSummary,
   type Note,
   type Place,
+  TASK_STATUS,
+  type Task,
   type TripEvent,
 } from '@waypoint/shared';
 import { canLift, heroHorizon, type HeroHorizonInput } from './hero-horizon';
 import { buildHostContextIndex } from './host-context';
+
+/** The fixtures' own day, mid-afternoon — so "overdue" and "due today" mean something fixed. */
+const NOW_MS = Date.parse('2026-08-03T12:30:00Z');
 
 const ev = (id: string, e: Partial<TripEvent> = {}): TripEvent => ({
   id,
@@ -80,6 +85,20 @@ const documentSummary = (id: string, title: string): DocumentSummary =>
     updatedBy: 'u1',
   }) as DocumentSummary;
 
+const tsk = (id: string, over: Partial<Task> = {}): Task => ({
+  id,
+  tripId: 't1',
+  title: `task ${id}`,
+  dueHasTime: false,
+  important: false,
+  status: TASK_STATUS.OPEN,
+  createdBy: 'u1',
+  createdAt: '2026-08-01T10:00:00Z',
+  updatedAt: '2026-08-01T10:00:00Z',
+  updatedBy: 'u1',
+  ...over,
+});
+
 const booking = (id: string, b: Partial<Booking> = {}): Booking => ({
   id,
   tripId: 't1',
@@ -105,6 +124,11 @@ const input = (over: Partial<HeroHorizonInput> = {}): HeroHorizonInput => ({
   notes: [],
   attachments: [],
   documents: [],
+  tasks: [],
+  // The clock is PINNED, not read (`frontend/CLAUDE.md`): every fixture below carries a fixed
+  // date, so a live `Date.now()` here would make these tests mean something different daily.
+  taskClock: { nowMs: NOW_MS, crossings: [], primaryZone: 'Asia/Tokyo' },
+  settledHosts: new Set<string>(),
   ...over,
 });
 
@@ -241,6 +265,32 @@ describe('heroHorizon', () => {
     ]);
   });
 
+  // **WHICH EDGE THE SLOT IS SHOWING** (ADR-0224 §1). The board fills `הבא בתור` with an END
+  // transition `deriveNow` cannot surface — a hotel check-out — and only the caller knows,
+  // because only the caller chose it. Before this, the point reported the span's single
+  // `status`, so a check-out could only ever repeat what the check-in said.
+  describe('a point knows which END it is (ADR-0224 §1)', () => {
+    const stay = (over: Partial<TripEvent> = {}) => ev('stay', { category: 'lodging', ...over });
+
+    it('defaults to the opening edge, which is every point that is not a check-out', () => {
+      const h = heroHorizon(input({ nowAll: [stay()], events: [] }));
+      expect(h.now[0].edge).toBe('start');
+    });
+
+    it('reads `endStatus` when the slot is showing the closing edge', () => {
+      const out = stay({ endStatus: EVENT_STATUS.DONE });
+      const h = heroHorizon(input({ nextAll: [out], nextEdge: 'end', events: [out] }));
+      expect(h.next!.edge).toBe('end');
+      expect(h.next!.settled).toBe(EVENT_STATUS.DONE);
+    });
+
+    it('does not let the check-in answer for the check-out', () => {
+      const checkedIn = stay({ status: EVENT_STATUS.DONE });
+      const h = heroHorizon(input({ nextAll: [checkedIn], nextEdge: 'end', events: [checkedIn] }));
+      expect(h.next!.settled).toBeUndefined();
+    });
+  });
+
   describe('אחר כך — the third point', () => {
     it('is the first event after the NEXT cluster, not merely the one after now', () => {
       // Two events share the next start (ADR-0041's cluster) — both are `next`, so
@@ -255,6 +305,26 @@ describe('heroHorizon', () => {
     it('is absent when next is the last thing in the day', () => {
       const n = ev('n', { startsAt: '2026-08-03T14:00:00Z' });
       expect(heroHorizon(input({ nextAll: [n], events: [n] })).then).toBeUndefined();
+    });
+
+    it('skips a peer that starts later than the primary — a stop is the whole cluster (ADR-0225 §7)', () => {
+      const s = ev('s', { startsAt: '2026-08-03T08:30:00Z', endsAt: '2026-08-03T10:00:00Z' });
+      const g = ev('g', {
+        startsAt: '2026-08-03T09:00:00Z',
+        endsAt: '2026-08-03T10:30:00Z',
+        title: 'Gljúfrabúi',
+      });
+      const cafe = ev('cafe', { startsAt: '2026-08-03T10:45:00Z', title: 'Faxi' });
+      const h = heroHorizon(input({ nextAll: [s, g], events: [s, g, cafe] }));
+      expect(h.then).toEqual({ title: 'Faxi', startsAt: '2026-08-03T10:45:00Z' });
+      expect(h.nextPeers.map((p) => p.event.id)).toEqual(['g']);
+    });
+
+    it('a stop with peers lifts even when the primary carries nothing else', () => {
+      const s = ev('s', { startsAt: '2026-08-03T08:30:00Z' });
+      const g = ev('g', { startsAt: '2026-08-03T08:30:00Z' });
+      expect(canLift(heroHorizon(input({ nextAll: [s, g], events: [s, g] })))).toBe(true);
+      expect(canLift(heroHorizon(input({ nextAll: [s], events: [s] })))).toBe(false);
     });
 
     it('is absent when there is no next at all', () => {
@@ -277,6 +347,89 @@ describe('heroHorizon', () => {
 // The predicate is the one piece of this feature that can silently answer "nothing
 // to lift" on a board with plenty, which is why it is tested exhaustively over the
 // four things that count and the two that deliberately do not.
+// **A hosted task on a point** (ADR-0160 §U). Every case here is one the drawing could not
+// settle and the running app would only have shown by accident.
+describe('a point’s tasks', () => {
+  const withNow = (rest: Partial<HeroHorizonInput> = {}, e: Partial<TripEvent> = {}) => {
+    const event = ev('now', e);
+    return heroHorizon(input({ nowAll: [event], events: [event], ...rest }));
+  };
+
+  it('carries the host’s open tasks, in the screen’s own urgency order', () => {
+    const h = withNow({
+      tasks: [
+        tsk('later', { eventId: 'now', dueAt: '2026-08-09T09:00:00Z' }),
+        tsk('overdue', { eventId: 'now', dueAt: '2026-08-03T09:00:00Z' }),
+      ],
+    });
+    // `sortTasks`' ladder, not insertion order — so "the one the hero shows" is the one
+    // the tasks screen puts on top.
+    expect(h.now[0].tasks.map((x) => x.id)).toEqual(['overdue', 'later']);
+  });
+
+  it('drops a task that is already done or dismissed', () => {
+    const h = withNow({
+      tasks: [
+        tsk('open', { eventId: 'now' }),
+        tsk('done', { eventId: 'now', status: TASK_STATUS.DONE }),
+        tsk('gone', { eventId: 'now', status: TASK_STATUS.DISMISSED }),
+      ],
+    });
+    expect(h.now[0].tasks.map((x) => x.id)).toEqual(['open']);
+  });
+
+  // ADR-0191 §6, read through the SAME set the bands and the Index tile read. A settled host
+  // has no future, so the hero must not offer what the rest of the app has already dropped.
+  it('shows none at all once the host event is settled', () => {
+    const h = withNow(
+      { tasks: [tsk('t1', { eventId: 'now' })], settledHosts: new Set(['event:now']) },
+      { status: EVENT_STATUS.DONE },
+    );
+    expect(h.now[0].tasks).toEqual([]);
+  });
+
+  // §U8 — the reason this resolves through the host CONTEXT and not through the event. A task
+  // about a flight is written on the BOOKING, and a booked event is materialized server-side
+  // with no client id at save time (ADR-0172 §7): asking about the event alone reads empty
+  // where the app holds a task, on exactly the surface built for standing at a gate.
+  it('finds a task written on the point’s BOOKING', () => {
+    const b = booking('b1');
+    const event = ev('now', { bookingId: 'b1' });
+    const h = heroHorizon(
+      input({
+        nowAll: [event],
+        events: [event],
+        bookings: [b],
+        tasks: [tsk('t1', { bookingId: 'b1' })],
+      }),
+    );
+    expect(h.now[0].tasks.map((x) => x.id)).toEqual(['t1']);
+  });
+
+  it('does not take a task belonging to a different host', () => {
+    const h = withNow({ tasks: [tsk('elsewhere', { eventId: 'other' })] });
+    expect(h.now[0].tasks).toEqual([]);
+  });
+
+  // `אחר כך` carries no id, so nothing can hang off it — ADR-0160 §12's condition enforced by
+  // the TYPE rather than by anyone remembering it. A task is the second thing to bounce off it.
+  it('cannot reach אחר כך, because that point has no id to hang on', () => {
+    const now = ev('now');
+    const n = ev('n', { startsAt: '2026-08-03T14:00:00Z' });
+    const later = ev('later', { startsAt: '2026-08-03T19:30:00Z' });
+    const h = heroHorizon(
+      input({
+        nowAll: [now],
+        nextAll: [n],
+        events: [now, n, later],
+        tasks: [tsk('t1', { eventId: 'later' })],
+      }),
+    );
+    expect(h.then).toEqual({ title: 'event later', startsAt: '2026-08-03T19:30:00Z' });
+    expect(Object.keys(h.then!)).toEqual(['title', 'startsAt']);
+  });
+});
+
 describe('canLift', () => {
   const withNow = (e: Partial<TripEvent>, rest: Partial<HeroHorizonInput> = {}) => {
     const event = ev('now', e);
@@ -351,6 +504,24 @@ describe('canLift', () => {
     expect(
       canLift(
         withNow({}, { attachments: [attachment('a1', 'd1', { eventId: 'now' })], documents: [] }),
+      ),
+    ).toBe(false);
+  });
+
+  // §T's argument for the document, applied to the fourth content type: a point whose ONLY
+  // depth is a task would otherwise take the rebuff — the board refusing to open onto the one
+  // thing it has to show.
+  it('counts a task as depth', () => {
+    expect(canLift(withNow({}, { tasks: [tsk('t1', { eventId: 'now' })] }))).toBe(true);
+  });
+
+  it('does NOT count a task the host has already closed', () => {
+    expect(
+      canLift(
+        withNow(
+          { status: EVENT_STATUS.SKIPPED },
+          { tasks: [tsk('t1', { eventId: 'now' })], settledHosts: new Set(['event:now']) },
+        ),
       ),
     ).toBe(false);
   });

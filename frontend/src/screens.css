@@ -18,6 +18,208 @@
    itself out of the ACCENT tokens, which is why it renders as the brightest
    surface in the whole dark app. Paper/card colours read tokens. */
 
+/* ===== The day surface's page step + its peek (ADR-0200 §2/§7, lib/useSwipePager.ts) =====
+   One grammar, worn by BOTH day surfaces (`DayView`'s wrapper and `PlanDay`'s `.builder`),
+   because stepping to the next day is a fact and not a posture (ADR-0159 §1).
+
+   Three elements and each has one job:
+
+     .day-swipe   the host — holds the offset variable, is the measured box, and is NOT
+                  transformed, which is what lets the peeks be fixed panes (a transform makes
+                  its element the containing block for `position: fixed` inside it).
+     .day-page    the day you are on. This is what the finger moves.
+     .day-peek    a neighbouring day, one page away on the inline axis, riding the same offset
+                  so the strip moves as one thing.
+
+   `min-height: 100%` on the host is the hit area, not the look: a day holding two events
+   leaves most of the body empty, and a swipe that only works where there happen to be rows
+   reads as a swipe that works sometimes. The body is the scroller, so 100% is its content box.
+
+   The settle is a transition rather than a keyframe, and it has TWO lengths because it has two
+   meanings: a commit finishes the turn (a full page of travel, `--t-base`) and a refusal only
+   gives back the strain it took (`--t-quick`). The attribute carries which, so the CSS and the
+   JS timer that clears it cannot disagree — one value for both would leave a refusal's class
+   removed mid-animation, and the transform would snap.
+
+   The refusal is `--ease-arrive`, and its overshoot is the reason: a page settling is an object
+   settling, and on a refused swipe that mild nudge past the mark IS the recoil. `--ease-exit`
+   would be wrong twice over — nothing here is leaving. The TURN is `--ease-standard`, which is
+   §9's correction: over a full page of travel the same overshoot is a wobble rather than a
+   recoil, and the two settles mean different things. */
+.day-swipe {
+  min-height: 100%;
+  /* **THE GUTTER BETWEEN PAGES** (owner: _"there should be some gap between the days. They
+     shouldn't look sticked together"_). Without it the two days are contiguous to the pixel,
+     which is geometrically tidy and reads as ONE long sheet sliding past — the cards of
+     tomorrow start where today's stop and nothing says a boundary was crossed.
+     `--space-6`, and the size is an argument rather than a preference: the day's own cards are
+     11px apart vertically, so a page break has to be visibly wider than a card gap or it reads
+     as one more row. It is a feel number all the same, and a device pass owns it.
+     Declared here rather than in `constants.ts` because CSS is what spends it — the pager
+     READS it back off this element for the commit distance, so the two cannot disagree (the
+     same discipline `motionDurationMs` follows for durations). */
+  --swipe-page-gap: var(--space-6);
+}
+/* **THE DAY PAINTS ONCE** (ADR-0206 §AT). The day's journey rows and its total APPEAR when a
+   travel estimate lands, so a day that paints before its own cache has answered paints twice —
+   measured on a warm cache at ⁦174ms⁩ apart and ⁦162px⁩ taller the second time, on every open and
+   every swipe. The surface therefore holds while its LOCAL read is in flight, which is bounded
+   by an IndexedDB round trip and never by the network.
+
+   `visibility` and not a mount gate, and the difference is the point: the day lays out, keeps its
+   refs, its scroll position and its measured boxes, and simply is not painted for that frame or
+   two. Removing the rows instead would make the hold a second structural state — the one thing
+   this is here to stop — and would re-run every arrival the moment they came back.
+
+   No transition on it. A fade would be a second beat over the body's own (`.body`'s `fade`), and
+   what the hold is worth is that there is no beat at all: the day appears once, complete.
+
+   `data-measuring` and deliberately not `data-settling`, which this file already spends twice on
+   a different fact — `.day-swipe[data-swipe-settling]` is a page turn coming to rest and
+   `.doc-viewer-lift[data-settling]` is an exit animation finishing. Both are motion ending; this
+   is a read in flight. */
+.day-page[data-measuring] {
+  visibility: hidden;
+}
+/* **`>` and not a descendant space, and a render is what caught it.** A peek holds a whole day
+   surface, so `.day-page` and `.day-swipe` both exist again INSIDE each pane — a descendant
+   selector therefore also translated every pane's own inner page by the same `--swipe-dx` the
+   pane was already carrying, which showed up as the preview's content sliding out from under
+   its own frame. Only the host's direct child is the page the finger moves. */
+.day-swipe[data-swiping] > .day-page {
+  transform: translateX(var(--swipe-dx, 0px));
+}
+/* **Promoted for the length of the gesture, and only for it** (§9). Three full day surfaces
+   have their transform rewritten from JS every frame, which is exactly the shape `.wp-dragghost`
+   and `.doc-viewer-lift` already carry this declaration for. Measured over four matched arms
+   (30 follow moves each, same day, same node count): total main-thread work per move fell from
+   ~2.3ms to ~1.9ms, every bare arm worse than every promoted one. Scoped to `[data-swiping]` so
+   an idle day surface pays no layer for a gesture nobody made. */
+.day-swipe[data-swiping] > .day-page,
+.day-swipe[data-swiping] .day-peek {
+  will-change: transform;
+}
+/* **The turn ARRIVES; only the refusal recoils.** `--ease-arrive` overshoots by design
+   (`cubic-bezier(0.22, 1.16, 0.36, 1)`) and that overshoot is the whole message of a rebuff —
+   the surface strains, is arrested, springs back. Spent on a commit it is a different
+   statement: the page travels ~382px on a 390px phone, so a few percent past the mark is
+   ~15px of the arriving day sliding past level and coming back, which reads as a wobble at
+   the end of every step. `--ease-standard` is the app's arrival curve and has no overshoot. */
+.day-swipe[data-swipe-settling='turn'] > .day-page,
+.day-swipe[data-swipe-settling='turn'] > .day-peeks .day-peek {
+  transition: transform var(--t-base) var(--ease-standard);
+}
+.day-swipe[data-swipe-settling='back'] > .day-page,
+.day-swipe[data-swipe-settling='back'] > .day-peeks .day-peek {
+  transition: transform var(--t-quick) var(--ease-arrive);
+}
+
+/* The WINDOW: the body's visible strip, the host's inline column, clipping whatever slides
+   through it. Every number is measured by `ui/domain/DayPeek.tsx`. Bounding it to the scroller
+   is what stops a fixed layer painting over the header and the tab bar; bounding it to the
+   column and clipping is what stops a pane mid-flight sliding across the page background on a
+   desktop viewport, where `.app` is a centred column rather than the whole screen. */
+.day-peeks {
+  position: fixed;
+  top: var(--peek-top, 0px);
+  left: var(--peek-x, 0px);
+  block-size: var(--peek-h, 0px);
+  inline-size: var(--swipe-page-w, 0px);
+  /* `clip`, not `hidden` (the same distinction tokens.css draws for the root): this must not
+     become a scroll container — it holds two whole days, and `scrollIntoView` from anything
+     inside would then have somewhere to go. */
+  overflow: clip;
+  /* Belt to `inert`'s braces: `inert` is the contract, this is the paint-level guarantee that
+     a pane mid-flight can never take a press meant for the day underneath. */
+  pointer-events: none;
+}
+/* A pane: the whole window, one page over, riding the gesture's offset. Its own ground, so the
+   day it draws reads as a page and not as a translucent hint over the one you are leaving.
+   
+   **`--dir`, not a local copy.** `tokens.css` already publishes the inline axis's physical sign
+   (−1 RTL / 1 LTR) and `modal.css`, `form-steps.css` and `App.css` all spend it; §7 declared a
+   `--peek-dir` with the same two values for the same job, which is the duplicate ADR-0116 §2c
+   found while drawing. One token, and the `[dir='ltr']` override goes with it. */
+.day-peek {
+  position: absolute;
+  inset: 0;
+  background: var(--screen);
+  /* The window spans the body's block-start PADDING (`DayPeek.tsx`), so the pane puts it back:
+     its content then begins exactly where the host's does, and the head's photograph has the
+     same 16px above it to bleed into (ADR-0219 §3). Clip the padding away instead and the
+     peeked day's picture hangs a gap below the strip while the host's sits flush against it. */
+  padding-block-start: var(--peek-pad, 0px);
+  transform: translateX(
+    calc(
+      var(--swipe-dx, 0px) + var(--dir) * var(--peek-side) *
+        (var(--swipe-page-w, 0px) + var(--swipe-page-gap, 0px))
+    )
+  );
+}
+/* **The next day always arrives from inline-end, in both directions** — that is what makes
+   this two rules rather than four. RTL: later days lie to the left, so inline-end is physical
+   −x, which is exactly what `--dir` says. `--peek-side` then only has to say which neighbour a
+   pane is. */
+.day-peek[data-day='next'] {
+  --peek-side: 1;
+}
+.day-peek[data-day='prev'] {
+  --peek-side: -1;
+}
+
+/* ===== The page is LIFTED to a detent, and the dwell decides (ADR-0116 §2d) =====
+   Owner, on §2c: _"your design is very ugly, no I don't like the static 'peek'… we should
+   maybe get a peek but in a more fluent way, like it starts dragging to the next day and stops
+   and then if your finger stays then it completes the motion."_
+
+   §2c animated the incoming PANE by itself across the whole dwell, and the rejection has a
+   number behind it: 48px over 700ms is **1.1px per frame**, which is a static offset with a
+   timer attached rather than a motion. So this moves the STRIP — page and both panes together,
+   `--swipe-dx`, exactly what a finger moves — briskly, to a detent where it stops. Three
+   phases: lift (`--t-base`, ~3.2px/frame), hold (the rest of the dwell, nothing moves),
+   complete (the swipe's own `[data-swipe-settling='turn']` below).
+
+   `--ease-arrive` because a page settling into a detent is an arriving object, and 48px is
+   short enough for its overshoot to read as weight — §9b measured the other end of that same
+   token, where a 382px turn under it is ~15px of wobble.
+
+   The commanded lift/turn live in `useSwipePager` (`hold`/`turn`), because it already owns the
+   offset channel, both attributes, the timer and §8's wait-for-the-arriving-page. A page turn
+   can be commanded, not only dragged. */
+.day-swipe[data-edge-lift] > .day-page,
+.day-swipe[data-edge-lift] > .day-peeks .day-peek {
+  transition: transform var(--t-base) var(--ease-arrive);
+}
+/* **The rebase frame** (§2d's second repair): a turn that began at a detent lands back at it, so
+   at the commit the offset drops by exactly one page — the page that was swapped underneath it
+   in the same paint. Nothing moves and the value changes, which is the one combination a
+   transition gets wrong: it would slide the arriving day in from off screen over `--t-base`.
+   Held for a single frame by `useSwipePager`. */
+.day-swipe[data-swipe-rebase] > .day-page,
+.day-swipe[data-swipe-rebase] > .day-peeks .day-peek {
+  transition: none;
+}
+/* The abort, on the DESTINATION state (design-language.md's asymmetric settle): the lift is
+   deliberate, giving it up is a correction, so it unwinds quickly rather than replaying the
+   lift backwards. Scoped to `body.wp-dragging` because during a SWIPE `--swipe-dx` is rewritten
+   every frame and a transition on it would smear the follow.
+
+   **And to `[data-swiping]`, which is the attribute the transform itself lives under.** Without
+   it the rule outlived the offset: the moment the pager gave the surface back, `transform` went
+   from `translateX(0px)` to none WITH a transition still declared, so a 140ms transition ran
+   over zero distance — invisible, but a real animation on the main thread after every gesture,
+   and it showed up in the recording that found the jitter above. There is nothing to move when
+   there is no offset. */
+body.wp-dragging
+  .day-swipe[data-swiping]:not([data-edge-lift]):not([data-swipe-settling])
+  > .day-page,
+body.wp-dragging
+  .day-swipe[data-swiping]:not([data-edge-lift]):not([data-swipe-settling])
+  > .day-peeks
+  .day-peek {
+  transition: transform var(--t-quick) var(--ease-exit);
+}
+
 /* section titles */
 .sec-title {
   font-size: 12px;
@@ -52,15 +254,34 @@
   padding: 5px 9px;
   cursor: pointer;
 }
-.new-event-btn:hover {
-  background: var(--ink);
-  color: var(--cta-text);
-  border-color: var(--ink);
+@media (hover: hover) and (pointer: fine) {
+  .new-event-btn:hover {
+    background: var(--ink);
+    color: var(--cta-text);
+    border-color: var(--ink);
+  }
 }
 
 /* quick-access grid — the four real shortcuts (ADR-0045; navigate-to-next joined
    them with the maps work, ADR-0106 §6). The column count is set inline from the
    visible-tile count, so a derived tile with no source just reflows the row. */
+/* **`מבט מהיר`'s tenants, and the rhythm between them** (design brief 2026-09-02).
+   The SECTION owns the gap, not the cards: `.fx-card` carries no margin of its
+   own and `.sun-widget` carries none either, so when daylight joined the rate
+   card the two rendered flush against each other — reported off the deployed
+   app, and a real regression against the mockup, which spaced them.
+
+   A gap on the container rather than a margin on a tenant, for the reason the
+   section exists at all: it holds an ORDERED set that grows (forecast · daylight
+   · rate, brief §3.2a). A margin would have to be added to each new tenant and
+   suppressed on whichever renders last; a gap is correct for one tenant, two, or
+   three, and adds nothing below the final one. Same call `.quick` below makes. */
+.glance-cards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
 .quick {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -91,9 +312,11 @@
   font: inherit;
   color: var(--ink);
 }
-.qa:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 10px 18px -12px rgba(22, 35, 61, 0.35);
+@media (hover: hover) and (pointer: fine) {
+  .qa:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 18px -12px rgba(22, 35, 61, 0.35);
+  }
 }
 .qa .ic {
   font-size: 20px;
@@ -110,15 +333,6 @@
   outline-offset: 2px;
 }
 
-/* the ticket tile carries the real next-confirmation code (amber = commitment) */
-.qa .code {
-  display: block;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 700;
-  color: var(--amber-deep);
-  margin-top: 3px;
-}
 .qa .lb .plus {
   color: var(--amber-deep);
 }
@@ -161,82 +375,57 @@
   margin-top: 3px;
 }
 
-/* Ambient-span backdrop (a hotel / multi-day booking, ADR-0054): shown above the
-   day's blocks on the strictly-middle nights it covers, teal-tinted (it's a place,
-   not a time). Day-screen only — Home carries no persistent band (ADR-0064 §A). */
-.day-ambient .ambient {
+/* **HOW FAR THE DAY GOES** (ADR-0206 §V1.9, amended §AP) — both day surfaces, because a day's
+   total distance is a FACT and ADR-0159 §1 lets the two differ only in posture.
+
+   **It was never a card, and that was the decision** — in the retired strip its neighbours were
+   tinted boxes because each asserted something to locate (teal, a place) or to act on (amber, the
+   fit verdict), and a total is neither: you read it and read past it. Since ADR-0219 §2 it is a
+   line in the day head's footer band, where the verdict is a line beside it and neither is a box
+   — so nothing about this rule changed and the reasoning outlived its strip.
+
+   Amber survives on the GLYPH alone, which is rule 4 spent where it is true — a travel time is
+   time (§D1) — at the one strength a summary can carry. */
+/* **UNSCOPED FROM `.day-ambient` BY ADR-0215 §6**, because the component moved and the rules had
+   not: `DayTravelTotal` renders in the Home glance card's foot, and — since ADR-0219 §2 — in the
+   day head's footer band, where the strip it used to lead has been retired. A second copy of
+   three declarations under a second host is the duplication root rule 8 exists to stop; the
+   inline padding that WAS the host's went with the host. */
+.day-total {
   display: flex;
   align-items: center;
   gap: 9px;
-  background: color-mix(in srgb, var(--teal) 8%, transparent);
-  border: 1px solid color-mix(in srgb, var(--teal) 30%, transparent);
-  border-radius: 12px;
-  padding: 9px 12px;
 }
-.day-ambient .ai {
-  font-size: 16px;
+.day-total-ic {
+  display: flex;
   flex: 0 0 auto;
+  color: var(--amber-deep);
 }
-/* **THE READ-OUT IS PROTECTED; THE TITLE IS WHAT GIVES WAY**, and that became necessary the
-   moment an edge day started saying `צ׳ק-אאוט · עד 09:40` (2026-08-13) where it used to say
-   `לילה 1 מתוך 1`. `.an` had no ellipsis and could not shrink, so a long guesthouse name and
-   the longer sentence would have wrapped the line — the same trade `.index .bk-when` states
-   and for the same reason: a truncated name still identifies the booking, a truncated clock
-   is the fact the line exists for. The block is `.as-open`'s own, which the unplaced variant
-   beside it has always carried — generalised here rather than copied a second time, so both
-   strip rows agree. */
-.day-ambient .an {
-  font-size: 12.5px;
-  font-weight: 700;
-  color: var(--ink);
+.day-total-ic .icon {
+  width: 14px;
+  height: 14px;
+}
+/* `.an`'s truncation, for `.an`'s reason: at 360 the line measures well inside the box (§AP), but
+   a text scale is a box this app does not control, and a total that wraps pushes the day's first
+   row down. The distance leads, so what an ellipsis takes is the hedged half. */
+.day-total-n {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.day-ambient .as {
-  margin-inline-start: auto;
-  flex: 0 0 auto;
   white-space: nowrap;
   font-size: 11px;
   font-weight: 600;
   color: var(--muted);
 }
-.day-ambient {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-bottom: 12px;
-}
 
-/* An unpositioned COMMITMENT sharing the strip (ADR-0171 §10a-i). Same box as the
-   ambient backdrop beside it — one hotel reads the same way on every day of itself,
-   edges included — with two differences it earns: its title is a button (there is a
-   booking behind it), and it carries the settle pair, because ADR-0164 counts it in
-   `נותרו היום` until somebody answers. */
-.day-ambient .ambient.unplaced .as {
-  margin-inline-start: auto;
-}
-.day-ambient .as-open {
-  background: none;
-  border: 0;
-  padding: 0;
-  font: inherit;
-  font-size: 12.5px;
-  font-weight: 700;
-  color: var(--ink);
-  text-align: start;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.day-ambient .as-open:disabled {
-  cursor: default;
-}
-/* The settle cluster sits after the label rather than pushing it: `.as` already takes
-   the free space, so this only needs to stop shrinking. */
-.day-ambient .ambient.unplaced .wp-settle {
+/* **THE AIR HALF** (ADR-0212 §3) — the same two elements at the same weights, so the two facts
+   read as one line rather than as a fact and a footnote. It cannot shrink: the ground half owns
+   the ellipsis above (the hedged half is what an overflow should take), and a carried distance
+   is four digits of pure number with nothing in it to truncate gracefully. */
+.day-total-air {
+  display: flex;
+  align-items: center;
+  gap: 9px;
   flex: 0 0 auto;
 }
 
@@ -298,10 +487,16 @@
   outline: 2.5px solid var(--amber);
   outline-offset: -2px;
 }
+/* **A POINT IS A DOT** (ADR-0210 §2). One property, and it is the cheapest half of
+   the whole rule: a moment you must be somewhere takes a circle, a place you spend
+   time at keeps `.wp-event-badge`'s rounded square, and a movement has no tile at
+   all (`day-join.css`). Three marks on ONE leading edge — `.day-trv-ic`'s stated
+   rule kept, not broken. `StayRow`'s bookend overrides it below; it is not a
+   moment, and the code has said so twice for weeks. */
 .tr-badge {
   width: 32px;
   height: 32px;
-  border-radius: 10px;
+  border-radius: 50%;
   display: grid;
   place-items: center;
   font-size: 16px;
@@ -347,6 +542,129 @@
   white-space: nowrap;
 }
 
+/* **THE CLOCK SAYS WHAT KIND OF BOUND IT IS** (ADR-0210 §2, drawn and measured in
+   `a-day-has-three-shapes-v1.html` §4).
+
+   `edgeMeaning` has returned `exact | not-before | not-after | window` since
+   ADR-0171/ADR-0184, and the row drew that difference in ONE Hebrew word (`מ-` /
+   `עד`) and nothing else — so a ⁦06:30⁩ flight, a `מ-00:00` car pick-up and an
+   `עד 11:00` return rendered as the same box with the same mono clock. That is the
+   owner's report almost exactly: two of the three rows named in it are the same
+   value to the model, and the third is categorically different and looked
+   identical anyway.
+
+   The box is OPEN on the side time runs free — a floor at the inline-end (time runs
+   on from here), a ceiling at the inline-start (time runs up to here), a window
+   closed on both, an exact moment no box at all, because a moment has no bound.
+   Logical properties throughout, so the openness follows the direction time runs in
+   the list rather than a hard-coded side.
+
+   `.vt`'s geometry (ADR-0177 §2) as a READ-OUT — same hairline, near-same radius, no
+   press, no target, no `cursor` — and deliberately NOT `.vt`'s class: that primitive
+   means "a value you can change" and this is not one. Borrowing it would be a second
+   `.vt` semantics rather than a first re-use.
+
+   ADR-0028's non-colour-redundancy rule runs the other way here for once: the word is
+   already in the row and is the redundancy FOR the shape, so the shape can be quiet.
+
+   Measured cost: ⁦2px⁩ of row height. At `padding-block: 2px` it was ⁦4px⁩, charged to
+   every transition row in the app — and the clock line already paid ~⁦20px⁩ when it
+   moved under the title (2026-08-13), so it must not be re-charged for it. */
+.tr-clock {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border: 1px solid color-mix(in srgb, var(--amber) 34%, transparent);
+  border-radius: 8px;
+}
+.tr-clock[data-bound='exact'] {
+  border: 0;
+  padding-inline: 0;
+}
+.tr-clock[data-bound='not-before'] {
+  border-inline-end: 0;
+  border-start-end-radius: 0;
+  border-end-end-radius: 0;
+  padding-inline-end: 2px;
+}
+.tr-clock[data-bound='not-after'] {
+  border-inline-start: 0;
+  border-start-start-radius: 0;
+  border-end-start-radius: 0;
+  padding-inline-start: 2px;
+}
+
+/* **The stay's own bound, beside a row that states no clock** (ADR-0209 §1). Quiet and not
+   amber, because it is not a moment: a ceiling says "out by 09:40" and a window says "in from
+   17:00", and where in the day you actually walked through the door is not a fact the app holds.
+   Rule 4 / ADR-0028 — amber is the clock's, and this is a constraint rather than a commitment. */
+.tr-bound {
+  font-family: 'Assistant', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* **A STAY IS AN ENVELOPE, NOT A COMMITMENT** (ADR-0210 §4, drawn in
+   `a-day-has-three-shapes-v1.html` §3).
+
+   The code already said this twice and then drew the opposite. `StayRow` carries no
+   clock at all — "where in the day you actually walked through the door is not
+   something the app knows" — and `.tr-bound` right above is deliberately `--muted`
+   rather than amber, because a ceiling is a constraint and not a moment. Both facts
+   were then painted inside `.transition-row`'s amber tint, amber border and ⁦3px⁩
+   amber spine: the loudest commitment mark in the list, on the one row that asserts
+   no commitment.
+
+   So the bookend gives up the box AND the amber. What it takes instead is a bracket
+   whose OPEN SIDE POINTS INTO THE DAY — down on the row you woke in, up on the row
+   you sleep in. `dayBookendStays` already returns `{woke, sleeps}` (ADR-0209 §1), so
+   the direction is data the app holds, not a new prop on the derivation; only the
+   row is told which end it is.
+
+   No hue: rule 4 / ADR-0028 has none to spend on a condition, and that is the
+   finding rather than a compromise. Measured ⁦60px⁩ → ⁦52px⁩.
+
+   The bracket rides a pseudo-element rather than the badge's own borders — drawn on
+   the ⁦34px⁩ badge (the first pass) it read as a stray corner beside the hotel glyph;
+   at the row's height it embraces the row and the direction becomes legible. */
+.transition-row.stay-bookend {
+  position: relative;
+  background: none;
+  border: 0;
+  border-radius: 0;
+}
+.stay-bookend::before {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  inline-size: 26px;
+  border-inline-start: 1.5px solid var(--soft-line);
+  border-block-start: 1.5px solid var(--soft-line);
+  border-start-start-radius: 9px;
+  pointer-events: none;
+}
+.stay-bookend.at-sleep::before {
+  border-block-start: 0;
+  border-block-end: 1.5px solid var(--soft-line);
+  border-start-start-radius: 0;
+  border-end-start-radius: 9px;
+}
+.stay-bookend .tr-face {
+  padding: 7px 12px 7px 0;
+}
+/* The badge keeps the day's leading column and gives up its tile — it is not a
+   moment, so it is not a dot either (`.tr-badge` above). */
+.stay-bookend .tr-badge {
+  width: 38px;
+  height: 34px;
+  border-radius: 0;
+  background: none;
+  font-size: 15px;
+}
+
 /* Zone-shift pill on a transition edge (ADR-0107): the clock jump vs the day's
    ambient zone, amber like the time it annotates. Usually absent. */
 /* Surface tweak only — the pill itself is ui/zone-shift-pill.css. */
@@ -361,6 +679,15 @@
 .transition-row .wp-settle.compact {
   align-self: center;
   margin-inline-end: 10px;
+}
+/* **The RECORD, once this edge is answered** (ADR-0224 §4/§6). The pair is two 32px squares
+   and needs no type of its own; the tag that replaces them is words, and with nothing said
+   here it inherits the body size — louder than `.tr-title`'s own ⁦13.5px⁩ two lines up, on a
+   row whose whole point is that the title wins. `nowrap` because `יצאנו` sharing a line with
+   the undo is the shape, not two lines of it. */
+.transition-row .wp-settle.compact .wp-settle-tag {
+  font-size: 11.5px;
+  white-space: nowrap;
 }
 .tr-nav {
   flex: 0 0 auto;
@@ -439,18 +766,6 @@
   padding: 2px 6px;
   border-radius: 6px;
 }
-.tag-done {
-  font-size: 10px;
-  font-weight: 700;
-  color: var(--ok);
-  background: rgba(60, 154, 107, 0.13);
-  padding: 2px 6px;
-  border-radius: 6px;
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-}
-
 /* ripple suggestion bar — pinned to the top of the scroll viewport so the
    ripple prompt stays reachable however far the day is scrolled (it's the one
    time-sensitive decision on the board). The amber tint is composited over an
@@ -545,17 +860,15 @@
    A quiet soft-amber hairline marking the current moment; the amber ring on the
    live event stays the accent, so this whispers (no chip fill, glow, or pulse).
    Its movement down the list as time passes is the liveness. */
-.nowline {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 2px 2px 11px;
-}
-.nowline-rule {
-  flex: 1;
-  height: 1px;
-  background: linear-gradient(90deg, rgba(233, 166, 60, 0.5) 0%, rgba(233, 166, 60, 0.1) 100%);
-}
+/* **WHAT IS LEFT OF `.nowline`, AND IT IS THE CHIP** (ADR-0217, amended 2026-09-02).
+   The row this belonged to is gone from all three hosts — `.nowline`, `.nowline-rule` and
+   `.nowline-lbl` with it — and `ui/domain/NowMarker.tsx` renders these two: the boundary
+   form always, and every host whose row cannot say `עכשיו` for itself.
+
+   Kept under the old name deliberately. It is the same object doing the same job, and
+   renaming it would be a diff across three surfaces that changes nothing a reader sees —
+   the kind of "finish the rename" this repo's root `CLAUDE.md` warns off. `now-marker.css`
+   grounds and places it; everything about how it LOOKS is still here. */
 .nowline-chip {
   flex: 0 0 auto;
   display: inline-flex;
@@ -575,53 +888,11 @@
   border-radius: 999px;
   background: var(--amber);
 }
-.nowline-lbl {
-  font-family: var(--font-body);
-  font-size: 10px;
-  font-weight: 600;
-  opacity: 0.8;
-}
 
 /* Past-day archive (ADR-0029/0040): a calm read-only banner + a slightly cooled,
    desaturated list. No now-line (a day that's over has no "now"). */
 .day-list.archive {
   filter: saturate(0.9);
-}
-.archive-banner {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  background: var(--paper);
-  border: 1px solid color-mix(in srgb, var(--ink) 9%, transparent);
-  border-radius: 12px;
-  padding: 9px 12px;
-  margin-bottom: 12px;
-  font-size: 12px;
-  color: var(
-    --ink
-  ); /* was #5f6577; --ink matches the banner's own ab-back ink and holds AA on --paper */
-  font-weight: 600;
-}
-.archive-banner .ab-ic {
-  font-size: 14px;
-}
-.archive-banner .ab-main {
-  min-width: 0;
-}
-.archive-banner .ab-back {
-  margin-inline-start: auto;
-  font: inherit;
-  font-weight: 700;
-  color: var(--ink);
-  background: none;
-  border: 0;
-  cursor: pointer;
-  white-space: nowrap;
-}
-.archive-banner .ab-back:focus-visible {
-  outline: 2.5px solid var(--teal);
-  outline-offset: 2px;
-  border-radius: 6px;
 }
 .past-build-hint {
   display: flex;
@@ -636,43 +907,6 @@
   font-weight: 500;
 }
 
-/* Plan builder's static now-reference (ADR-0043): Plan's violet, dashed, hollow
-   marker — the deliberate opposite of the Trip now-line, never a live signal. */
-.nowref {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 1px 2px 10px;
-}
-.nowref-rule {
-  flex: 1;
-  height: 0;
-  border-top: 1px dashed rgba(110, 89, 214, 0.55);
-}
-.nowref-tag {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--plan-deep);
-  background: var(--plan-tint);
-  border: 1px solid rgba(110, 89, 214, 0.28);
-  font-size: 11px;
-  font-weight: 700;
-  padding: 2px 9px;
-  border-radius: 999px;
-}
-.nowref-ring {
-  width: 6px;
-  height: 6px;
-  border-radius: 999px;
-  border: 1.5px solid var(--plan);
-  background: transparent;
-}
-.nowref-tm {
-  font-family: var(--font-mono);
-}
-
 /* maybe shelf */
 .shelf {
   display: flex;
@@ -681,25 +915,11 @@
   padding: 2px 2px 6px;
   scroll-snap-type: x mandatory;
   scrollbar-width: none;
-  /* A partially-visible card at the edge is inherent to a scrolling strip; the
-     fade makes it read as "scroll for more" instead of a chopped card (the exact
-     grammar ADR-0100 §6 established for the Index chip row — same declarations,
-     `to right` physical, correct in RTL since direction only reorders flex
-     children, not the mask's coordinate space). */
-  -webkit-mask-image: linear-gradient(
-    to right,
-    transparent 0,
-    black 14px,
-    black calc(100% - 14px),
-    transparent 100%
-  );
-  mask-image: linear-gradient(
-    to right,
-    transparent 0,
-    black 14px,
-    black calc(100% - 14px),
-    transparent 100%
-  );
+  /* A partially-visible card at the edge is inherent to a scrolling strip; the fade makes
+     it read as "scroll for more" instead of a chopped card (ADR-0100 §6's grammar for the
+     Index chip row). The declarations are no longer copied here: the shelf carries the
+     `edge-fade` class, which is that one gradient plus the condition the copies all
+     lacked — an edge with nothing behind it does not fade. */
 }
 /* A shelf group under a dragged idea: dropping here re-aims its DAY, so the whole
    strip lights up rather than one card (ADR-0116 §2 amendment). */
@@ -811,8 +1031,10 @@
   cursor: pointer;
   transition: 0.14s;
 }
-.acct-signout:hover {
-  border-color: var(--ink);
+@media (hover: hover) and (pointer: fine) {
+  .acct-signout:hover {
+    border-color: var(--ink);
+  }
 }
 .acct-signout:focus-visible {
   outline: 2.5px solid var(--teal);
@@ -1080,7 +1302,7 @@
   border-bottom: 1px solid var(--line);
 }
 .tp-list {
-  max-height: 210px;
+  max-height: 226px;
   overflow-y: auto;
   scroll-snap-type: y proximity;
   scrollbar-width: none;
@@ -1088,13 +1310,49 @@
 .tp-list::-webkit-scrollbar {
   display: none;
 }
+/* **The day turning, inside the list** (ADR-0203 §10). A caption row, deliberately not a
+   `.tp-list button`: that class owns a row's bottom border and its touch box, so reusing it
+   drew a dead option and collapsed against the row above. Sticky, so the day the rows below
+   belong to stays readable while they scroll past. Amber, which is the hue time already
+   spends (rule 4) — the divider IS a statement about a clock.
+
+   **The ground is OPAQUE, and it shipped transparent** (field report, 2026-08-24: "it could
+   go over the time… and it could become hard to read"). A 10% wash over `transparent` leaves
+   the scrolling row visible straight through a band that does not move, so the numerals and
+   the word land on one baseline and neither wins. Mixed into `--card` instead of into nothing:
+   same tint, same weight, and what passes underneath is covered. Centring the label was drawn
+   and rejected — it moves the collision rather than ending it, and this is a caption for the
+   rows below it, so it belongs at the reading edge like every other caption here. */
+.tp-list-turn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 13px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--amber-deep);
+  background: color-mix(in srgb, var(--amber) 13%, var(--card));
+  border-block: 1px solid color-mix(in srgb, var(--amber) 26%, transparent);
+  position: sticky;
+  top: 0;
+}
+.tp-list-turn::after {
+  content: '';
+  flex: 1;
+  border-block-start: 1px dashed color-mix(in srgb, var(--amber) 34%, transparent);
+}
 .tp-list button {
   width: 100%;
   text-align: start;
   background: none;
   border: none;
   border-bottom: 1px solid var(--line);
-  padding: 10px 13px;
+  /* **14.5px, and the number is measured.** 10px put the row at 36.1px against ADR-0017's
+     44px floor — on the control a traveller taps most while setting a journey — and 14px
+     measured 43.1px, the same quarter-pixel miss `value-token.css` records against its own
+     first number. The window below grows with it so the same five rows stay visible: a floor
+     paid for by showing less would only move the cost. */
+  padding: 14.5px 13px;
   cursor: pointer;
   font-family: var(--font-mono);
   font-size: 15px;
@@ -1215,25 +1473,63 @@
 /* ============================================================
    Plan-mode Home — the prep dashboard (screens/PlanHome.tsx).
    modes.md; design-language "Plan-mode components". The prep hero is the one
-   loud element and it is PLAN VIOLET, never amber, and never pulses
-   (design-language: mode identity, ADR-0028). Everything else stays paper.
+   loud element and it is PLAN VIOLET and never pulses (design-language: mode
+   identity, ADR-0028). Amber appears on it only as the clock's ink and the horizon
+   line of the last week (ADR-0221 §1/§3 — rule 4's own use, not decoration); the
+   card itself is never an amber fill. Everything else stays paper.
    ============================================================ */
 
 /* prep hero — the single expressive surface on this screen */
 .prep {
+  /* The collapsed hero's own height, as a number the LIFTED card can read (ADR-0193 §5).
+     It is not used to lay this card out — `.prep` is content-sized and stays so — only to
+     pin `::before`'s painting box when the same element is 3× taller, so the corner sheen
+     renders at the geometry it was tuned at instead of scaling into a smear. Measured on
+     the shipped hero with its task readout present; ±20px is invisible in a radial falloff,
+     which is why this is a round number rather than a measurement at runtime. */
+  --prep-collapsed-h: 190px;
   background: linear-gradient(180deg, var(--plan-surface-2), var(--plan-surface));
   border-radius: 22px;
   padding: 18px 18px 16px;
-  color: #f2effc; /* fixed: light ink on the always-violet plan hero */
+  /* --on-plan (ADR-0193 §5). Was `#f2effc`, one of six white-alpha-ish literals
+     this surface carried; they are tokens now, for the reason ADR-0158 §3 gives
+     for every other surface's ink. Converted as a no-op — the rungs were chosen
+     to preserve what this hero already rendered. */
+  color: var(--on-plan);
   box-shadow: 0 20px 34px -20px rgba(46, 33, 104, 0.7);
   position: relative;
   overflow: hidden;
 }
-/* **A tap on the prep hero is answered, and answered with nothing more than a beat**
-   (ADR-0160 §9's rebuff, §H). Plan's hero does not lift and should not: its depth IS the
-   checklist rendered directly beneath it, so a lifted copy would show you what you are
-   already looking at. But a press that produces no response at all reads as a dead
-   surface, so the surface acknowledges the touch and stays where it is.
+/* **THE HERO IS A TAP TARGET** (ADR-0193 §4) — `.wp-board.is-tappable`'s rule, one
+   surface over, because both are "a whole card that lifts". The press step is the
+   large one (ADR-0140 §2's line every large surface owes).
+
+   IT CARRIES ADR-0160 §4's CONSTRAINT WITH IT, PERMANENTLY: a liftable card is a
+   `<button>`, and Chrome closes it at a nested `<button>` and reparents everything
+   after — measured live at 1 of 4 children left inside. `.prep` has no interactive
+   child today and must never grow one; `PlanHome.lift.test.tsx` fails the build
+   if it does, because no snapshot can see this. */
+.prep.is-tappable {
+  display: block;
+  width: 100%;
+  text-align: start;
+  font: inherit;
+  border: 0;
+  cursor: pointer;
+  --press-scale: var(--press-scale-lg);
+}
+/* While the hero is lifted it is the SAME OBJECT one elevation up, so it must not be
+   on screen at once — `visibility`, never `display`, because the descent measures this
+   box and collapsing it would take Plan Home's layout with it. `.wp-board.is-lifted`'s
+   reasoning verbatim; the board learned it from a device report. */
+.prep.is-lifted {
+  visibility: hidden;
+}
+/* **A tap on the prep hero with nothing to lift is answered, and answered with nothing more
+   than a beat** (ADR-0160 §9's rebuff, §H). The hero LIFTS now (ADR-0193 §4), so this is the
+   empty case only — a ready trip, where the run-up it would open onto is empty. A press that
+   produces no response at all reads as a dead surface, so the surface acknowledges the touch
+   and stays where it is.
 
    The motion itself is no longer declared here: the Trip board answers an empty press the
    same way now (ADR-0160 §Q), so the beat is one shared rule in `styles/beats.css` and this
@@ -1246,13 +1542,8 @@
   background: radial-gradient(90% 60% at 85% 0%, rgba(255, 255, 255, 0.16), transparent 60%);
   pointer-events: none;
 }
-/* Past-trip retrospective (ADR-0040): the same violet plan hero, toned down —
-   a calm archive card, not the loud prep countdown. */
-.prep-past {
-  box-shadow: 0 14px 26px -20px rgba(46, 33, 104, 0.5);
-}
 .prep-k {
-  color: rgba(255, 255, 255, 0.72);
+  color: var(--on-plan-faint);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.14em;
@@ -1262,17 +1553,17 @@
   font-size: 34px;
   line-height: 1;
   margin-top: 4px;
-  color: var(--on-dark-strong);
+  color: var(--on-plan-strong);
 }
 .prep-count-u {
   font-family: var(--font-body);
   font-size: 15px;
   font-weight: 400;
-  color: rgba(255, 255, 255, 0.8);
+  color: var(--on-plan-dim);
 }
 /* mixed Hebrew/numeric line ("5–14 ביולי · 10 ימים") — body font, never mono */
 .prep-dates {
-  color: rgba(255, 255, 255, 0.82);
+  color: var(--on-plan-dim);
   font-size: 12.5px;
   font-weight: 600;
   margin-top: 5px;
@@ -1289,24 +1580,439 @@
   justify-content: space-between;
   font-size: 12px;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.88);
+  color: var(--on-plan);
   margin-bottom: 6px;
 }
 .prep-ready-top b {
   font-family: var(--font-mono);
-  color: var(--on-dark-strong);
+  color: var(--on-plan-strong);
 }
 .prep-track {
   height: 7px;
-  background: rgba(255, 255, 255, 0.18);
+  background: var(--on-plan-track);
   border-radius: 6px;
   overflow: hidden;
 }
 .prep-fill {
   height: 100%;
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0.82), #fff); /* fixed: on the plan hero */
+  background: linear-gradient(90deg, var(--on-plan-dim), var(--on-plan-strong));
   border-radius: 6px;
   transition: width 0.4s ease;
+}
+
+/* ── THE SECOND NUMBER, AND IT HAS ITS OWN NOUN (ADR-0193 §2) ──────────────────
+   `מוכנות הטיול` is the five derived checks and nothing else, so 100% above eight
+   open tasks was the same lie the `הכול מוכן` sentence told one line down. The fix
+   is not to fold tasks into the percentage — that denominator GROWS every time
+   somebody writes one, so recording work would read as losing ground — it is to
+   name the second measurement. Once a line says `משימות פתוחות` in as many words,
+   the bar above stops implying it covers them.
+
+   `.prep-ready-top`'s own shape (label at the start, value at the end) rather than
+   a new one, because it is the same kind of statement about the same card.
+
+   A READOUT, NEVER A CONTROL, and here that is structural rather than tasteful:
+   §4 makes this hero a `<button>`, and a nested one tears the card apart. Same
+   reason `.wp-board-also-toggle` became `.wp-board-also-read` (ADR-0160 §4). */
+.prep-tasks {
+  margin-top: 11px;
+  padding-top: 10px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.22);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--on-plan);
+}
+.prep-tasks-end {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.prep-tasks-n {
+  font-family: var(--font-mono);
+  color: var(--on-plan-strong);
+}
+/* Overdue is a STATUS, so it takes --miss (rule 4) — but as a FILL, which is the
+   job `tokens.css` gives that token in as many words ("dots, dashed borders, the
+   settle mark"); --miss-deep is the ink. On this ground the distinction is not
+   academic: a tinted chip with red ink measures 1.94:1 on the bright violet, and
+   `#f0a09b` (7.82:1 on the BOARD) does not travel here either. Only a near-white
+   ink clears AA at all, so the pill inverts — 5.74:1 light, 13.87:1 dark. */
+.prep-tasks-late {
+  font-weight: 700;
+  color: #fff;
+  background: var(--miss);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   THE RUN-UP TO DEPARTURE (ADR-0221; `mockups/the-countdown-climbs-to-tomorrow-v1.html`).
+   The hero's energy is a function of the distance to departure — `data-tier` on `.prep`,
+   set from `daysUntilStart` (`lib/prep-tier.ts`). `far` is the card above, unchanged.
+
+   THE COLOUR IS THE MODE SWITCH'S. design-language: "the chrome warms violet → indigo +
+   amber". That ramp plays once, in 600ms, at midnight, when nobody is watching; here the
+   hero travels the same ramp over the last week — night deepens at its top, and an amber
+   HORIZON LINE at its foot goes from faint to dawn. No new hue. The comment at the top of
+   this file ("PLAN VIOLET, never amber") was written when the hero carried no clock: amber
+   here is the clock's ink (rule 4) and the horizon's, and the card itself stays violet,
+   glowless and pulseless — pulse means live NOW, and the eve is not.
+
+   THE DAWN IS A HORIZON, NOT A BAND, and the mockup's own measurement decided it: amber
+   mixed into the ground under the tasks row put white ink at 3.6:1 in light. So the glow
+   dies within 14px of the foot while the tasks row's text ends 16px above it (measured):
+   ink never sits on amber. Re-check those two numbers on any change to `.prep`'s padding.
+   ══════════════════════════════════════════════════════════════════════════════ */
+.prep[data-tier='week'] .prep-count {
+  font-size: 44px;
+}
+.prep[data-tier='eve2'] .prep-count {
+  font-size: 46px;
+}
+.prep[data-tier='eve'] .prep-count {
+  font-size: 58px;
+  /* Secular One sits low; without this the word crowds the dates line. */
+  line-height: 1.05;
+}
+.prep[data-tier='week'],
+.prep[data-tier='eve2'],
+.prep[data-tier='eve'] {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--plan-surface-2) 84%, #0b0a2a) 0%,
+    var(--plan-surface-2) 42%,
+    var(--plan-surface) 100%
+  );
+}
+/* The horizon, one tier at a time. The layer is the sheen's own `::before`, with the
+   horizon stacked under it. */
+.prep[data-tier='week']::before {
+  background:
+    linear-gradient(
+      0deg,
+      rgba(233, 166, 60, 0.3) 0,
+      rgba(233, 166, 60, 0.08) 5px,
+      transparent 12px
+    ),
+    radial-gradient(90% 60% at 85% 0%, rgba(255, 255, 255, 0.14), transparent 60%);
+}
+.prep[data-tier='eve2']::before {
+  background:
+    linear-gradient(
+      0deg,
+      rgba(233, 166, 60, 0.5) 0,
+      rgba(233, 166, 60, 0.12) 6px,
+      transparent 13px
+    ),
+    radial-gradient(90% 60% at 85% 0%, rgba(255, 255, 255, 0.12), transparent 60%);
+}
+.prep[data-tier='eve']::before {
+  background:
+    linear-gradient(
+      0deg,
+      rgba(233, 166, 60, 0.95) 0,
+      rgba(233, 166, 60, 0.7) 2px,
+      rgba(233, 166, 60, 0.16) 8px,
+      transparent 14px
+    ),
+    radial-gradient(50% 8% at 50% 100%, rgba(233, 166, 60, 0.28), transparent 72%),
+    radial-gradient(90% 60% at 85% 0%, rgba(255, 255, 255, 0.1), transparent 60%);
+}
+.prep[data-tier='eve'] {
+  box-shadow:
+    0 26px 44px -22px rgba(233, 166, 60, 0.5),
+    0 20px 34px -20px rgba(46, 33, 104, 0.7);
+  /* A real object entering, so the settling easing (ADR-0140). */
+  animation: prep-arrive var(--t-deliberate) var(--ease-arrive) both;
+}
+@keyframes prep-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+  }
+}
+/* THE WORD (`מחרתיים`, `מחר`) rides in the value slot with a light ink ramp — one ramp the
+   surface already carries, read as depth. */
+.prep[data-tier='eve2'] .prep-count-n,
+.prep[data-tier='eve'] .prep-count-n {
+  background: linear-gradient(180deg, var(--on-plan-strong), var(--on-plan-dim));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+/* A NUMERAL ARRIVES AS A FLAP inside the last week: `steps()`, because a split-flap is
+   DISCRETE — a smooth scaleY reads as a blind (the birth board's own note). */
+.prep[data-tier='week'] .prep-count-n,
+.prep[data-tier='eve2'] .prep-count-n {
+  display: inline-block;
+  transform-origin: center top;
+  animation: prep-flap-in 320ms steps(5, end) both;
+}
+@keyframes prep-flap-in {
+  0% {
+    transform: scaleY(0.08);
+    opacity: 0.4;
+  }
+  60% {
+    transform: scaleY(1.04);
+    opacity: 1;
+  }
+  100% {
+    transform: none;
+    opacity: 1;
+  }
+}
+/* The eve's kicker carries the word the clock counts to, one size up. */
+.prep-k-eve {
+  font-size: 13px;
+  letter-spacing: 0.12em;
+}
+
+/* ── THE RUNWAY: seven lamps, one lit per day behind you. DISCRETE lamps, never a bar —
+   ADR-0193 §2 rejected a second bar over the readiness track, and two bars read as one
+   measurement split in half. A lit lamp is amber (time passed) with the glow a lamp has at
+   night, and they come on in order down the strip. */
+.prep-runway {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 140px;
+  margin-top: 10px;
+}
+.prep-runway i {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--on-plan-track);
+}
+.prep-runway i.on {
+  background: var(--amber);
+  box-shadow: 0 0 10px 1px rgba(233, 166, 60, 0.65);
+  animation: prep-lamp-on 320ms var(--ease-emphasized) both;
+  animation-delay: calc(120ms + var(--i, 0) * var(--stagger-step) * 2);
+}
+@keyframes prep-lamp-on {
+  from {
+    background: var(--on-plan-track);
+    box-shadow: 0 0 0 0 rgba(233, 166, 60, 0);
+  }
+}
+
+/* ── THE EVE'S SENTENCE — the first timed thing on day 1, the fact `trip.tomorrow`
+   already pushes at 19:00. `.prep-dates`' own rung, one size up: a fact about the trip in
+   the same voice, not a second headline. */
+.prep-eve {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--on-plan);
+  animation: prep-line-in var(--t-deliberate) var(--ease-standard) both;
+  animation-delay: 260ms;
+}
+.prep-eve-ic {
+  margin-inline-end: 6px;
+}
+@keyframes prep-line-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+/* ── THE DEPARTURE-BOARD CLOCK ON THE PLAN HERO, ONE DAY EARLY (`FlapClock`). `HH:MM:SS`
+   in split-flap cells cut from the zero state's `.cell` recipe (App.css — the two-tone face
+   and the split line) at headline size, with the board's own countdown ink
+   (`.wp-board-countdown .t` is `--amber`): a departure-board countdown is amber wherever it
+   is drawn. THIS SPENDS BOARD GRAMMAR IN PLAN MODE, which design-language rations, and the
+   exception is narrow: cells, not a surface — no dark ground under the card, no glow, no
+   pulse, no `עכשיו`. It is the board's flaps warming up one day early on the plan hero.
+   Seconds are the smallest cell; the eye reads hours. */
+.prep-flaps {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 8px;
+  width: fit-content;
+  filter: drop-shadow(0 10px 22px rgba(233, 166, 60, 0.28));
+}
+.prep-flap {
+  position: relative;
+  width: 34px;
+  height: 48px;
+  border-radius: 6px;
+  background: linear-gradient(180deg, var(--board-2) 0 50%, var(--board) 50% 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 6px 14px -8px rgba(0, 0, 0, 0.6);
+  display: grid;
+  place-items: center;
+  font-family: var(--font-mono);
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--amber);
+  transform-origin: center top;
+  /* Cells turn in one after another on mount (`--i`); a tick's fresh cell turns with no
+     delay (`--i: 0`). `steps()` — a flap is discrete. */
+  animation: flap-turn 260ms steps(4, end) both;
+  animation-delay: calc(var(--i, 0) * var(--stagger-step));
+}
+.prep-flap::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 50% 0;
+  border-radius: 6px 6px 0 0;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), transparent);
+  pointer-events: none;
+}
+.prep-flap::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+  background: rgba(10, 17, 32, 0.9);
+}
+.prep-flap.sec {
+  width: 26px;
+  height: 38px;
+  font-size: 22px;
+  align-self: end;
+  margin-bottom: 2px;
+}
+@keyframes flap-turn {
+  0% {
+    transform: scaleY(1);
+  }
+  50% {
+    transform: scaleY(0.1);
+  }
+  100% {
+    transform: scaleY(1);
+  }
+}
+.prep-flap-sep {
+  font-family: var(--font-mono);
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--on-plan-dim);
+  margin: 0 1px;
+  line-height: 1;
+  padding-bottom: 6px;
+}
+
+/* READINESS AT 100% IS A STATUS, and statuses take `--ok` (rule 4). Full only: at 99% the
+   bar stays the plan ink, or the green would be a colour step and not a fact. */
+.prep-fill.is-full {
+  background: linear-gradient(90deg, var(--ok), color-mix(in srgb, var(--ok) 55%, #fff));
+  box-shadow: 0 0 12px rgba(60, 154, 107, 0.45);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   THE FIRST MORNING: THE PREP HERO BECOMES THE BOARD (ADR-0221 §4; `GoingLiveMorph`).
+   Both faces in one grid cell; `align-items: start` lets the board keep its own height,
+   and the plan face's `height` transitions from its measured height to the board's over
+   the same `--t-cinematic` as its fade — `.prep` already clips, so the card visibly
+   shrinks INTO the board while it dims. The board's shipped power-on is DELAYED to the end
+   of the fade (only while a stage is live — at `board` it is the shipped timing again),
+   and then BLOOMS: the amber glow swells past the card and settles, one highlight sweeps
+   the face, and `יום 1/12` in the header lights once in the clock's ink.
+   ══════════════════════════════════════════════════════════════════════════════ */
+.prep-morph {
+  display: grid;
+  align-items: start;
+}
+.prep-morph > .prep,
+.prep-morph > .wp-board {
+  grid-area: 1 / 1;
+  transition: opacity var(--t-cinematic) var(--ease-standard);
+}
+.prep-morph > .prep {
+  animation: none;
+  transition:
+    opacity var(--t-cinematic) var(--ease-standard),
+    height var(--t-cinematic) var(--ease-standard);
+}
+.prep-morph[data-stage='plan'] > .wp-board {
+  opacity: 0;
+  visibility: hidden;
+}
+.prep-morph[data-stage='morph'] > .prep {
+  opacity: 0;
+  pointer-events: none;
+}
+/* The word the plan face was saying turns as it goes. */
+.prep-morph[data-stage='morph'] .prep-count-n {
+  display: inline-block;
+  transform-origin: center top;
+  animation: flap-turn 260ms steps(4, end) both;
+}
+.app[data-mode='trip'] .prep-morph[data-stage='morph'] > .wp-board:not(.hero-lifted) {
+  animation:
+    wp-board-power var(--t-cinematic) var(--ease-emphasized) calc(var(--t-cinematic) + 0.12s) both,
+    prep-bloom 1100ms var(--ease-emphasized) calc(var(--t-cinematic) + 0.12s) both;
+}
+.app[data-mode='trip'] .prep-morph[data-stage='morph'] > .wp-board:not(.hero-lifted)::before {
+  animation-delay: calc(var(--t-cinematic) + 0.12s);
+}
+@keyframes prep-bloom {
+  0% {
+    box-shadow: 0 20px 34px -20px rgba(8, 14, 28, 0.9);
+  }
+  45% {
+    box-shadow:
+      0 0 0 2px rgba(233, 166, 60, 0.35),
+      0 0 64px 6px rgba(233, 166, 60, 0.42),
+      0 20px 34px -20px rgba(8, 14, 28, 0.9);
+  }
+  100% {
+    box-shadow:
+      0 0 0 1px rgba(233, 166, 60, 0.18),
+      0 0 28px -4px rgba(233, 166, 60, 0.28),
+      0 20px 34px -20px rgba(8, 14, 28, 0.9);
+  }
+}
+.prep-morph[data-stage='morph'] > .wp-board::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    100deg,
+    transparent 30%,
+    rgba(255, 255, 255, 0.09) 48%,
+    rgba(233, 166, 60, 0.12) 52%,
+    transparent 70%
+  );
+  transform: translateX(calc(var(--dir) * -130%));
+  animation: prep-sweep 900ms var(--ease-standard) calc(var(--t-cinematic) + 0.3s) both;
+}
+@keyframes prep-sweep {
+  to {
+    transform: translateX(calc(var(--dir) * 130%));
+  }
+}
+/* `יום 1/12` is the first true thing the chrome says about the trip, and it says it in
+   the clock's ink, once, with the board. */
+.app[data-switching='to-trip'] .hdr-anchor .num {
+  animation: prep-anchor-on 900ms var(--ease-emphasized) calc(var(--t-cinematic) + 0.12s) both;
+}
+@keyframes prep-anchor-on {
+  40% {
+    color: var(--amber);
+    transform: scale(1.12);
+  }
 }
 
 /* completeness checklist — paper card, violet CTAs (plan action) */
@@ -1316,95 +2022,24 @@
   border-radius: 14px;
   overflow: hidden;
 }
-.chk-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 13px 14px;
-  border-bottom: 1px solid var(--line);
-}
-.chk-row:last-child {
-  border-bottom: 0;
-}
-.chk-ic {
-  width: 34px;
-  height: 34px;
-  border-radius: 10px;
-  display: grid;
-  place-items: center;
-  font-size: 17px;
-  flex: 0 0 auto;
-  background: var(--paper);
-}
-.chk-main {
-  flex: 1;
-  min-width: 0;
-}
-.chk-t {
-  font-weight: 700;
-  font-size: 14px;
-}
-.chk-m {
-  font-size: 11.5px;
-  color: var(--muted);
-  margin-top: 2px;
-}
-.chk-ok {
-  flex: 0 0 auto;
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--ok);
-}
-.chk-cta {
-  flex: 0 0 auto;
-  font: inherit;
-  font-size: 11.5px;
-  font-weight: 700;
-  border: 1px solid var(--plan);
-  color: var(--plan-deep);
-  background: var(--card);
-  border-radius: 8px;
-  padding: 6px 12px;
-  cursor: pointer;
-  transition: 0.12s;
-}
-.chk-cta:hover {
-  background: var(--plan);
-  color: var(--on-fill);
-}
-.chk-cta:focus-visible {
-  outline: 2.5px solid var(--plan);
-  outline-offset: 2px;
-}
-/* A missing hard commitment (flight/lodging) nudges in --miss, not plan violet
-   (ADR-0061 mockup) — a status hint, still advisory, never a blocker. */
-.chk-cta.warn {
-  border-color: var(--miss);
-  color: var(--miss-deep);
-}
-.chk-cta.warn:hover {
-  background: var(--miss);
-  color: var(--on-fill);
-}
-/* Per-traveller passport indicator on the documents row (ADR-0061). */
-.chk-ppl {
-  display: inline-flex;
-  gap: 3px;
-  margin-inline-start: 6px;
-  vertical-align: middle;
-}
-.chk-ppl i {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--line);
-}
-.chk-ppl i.on {
-  background: var(--ok);
-}
+/* **THE WHOLE `.chk-*` FAMILY IS RETIRED** (ADR-0188 §6/§7, built in ADR-0190; the last of
+   it 2026-08-16). The finding was that `.chk-row` was `ListRow` written a second time —
+   badge + title + meta + trailing control, inside a `.checklist` card that is
+   `.index .listcard` under another name — so Plan Home and the tasks screen now render the
+   SAME row from `ui/AutomaticTaskRow.tsx`.
+
+   `.chk-ok` was the last survivor: the "✓ הושלם" a completed check trailed. It went when the
+   owner ruled that an automatic task's completion must look and behave exactly like a manual
+   one's — a filled tick at the leading edge and a struck title, not a different mark in a
+   different place. Two indications for one state was the defect; deleting one of them is the
+   fix. `.checklist` itself stays: it is the card both Homes hold their rows in. */
 /* Show/hide-completed toggle in the checklist section title (ADR-0061). */
+/* `font-size`/`font-weight` here are load-bearing again, and were not before: the
+   `.wp-collapse-toggle` shorthand used to override them, so this toggle rendered at
+   whatever its parent's font was. It now applies its own — 11px/700, the same size
+   `.index .past-toggle` uses, which is what makes the app's two collapse toggles one
+   control rather than two that happen to be round. */
 .chk-toggle {
-  font: inherit;
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0;
@@ -1419,30 +2054,54 @@
   outline: 2.5px solid var(--plan);
   outline-offset: 2px;
 }
-/* Collapsed "completed" summary: one line of pills (ADR-0061). */
-.chk-done-sum {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 11px 13px;
-  font-size: 12.5px;
-  color: var(--muted);
-  font-weight: 600;
+/* **THE EMPTY STATE LIVES INSIDE THE CARD** (ADR-0193 §6). `EmptyState` owns a centred
+   column and no frame, because its usual host is a whole screen region; here the section
+   already has a frame — the same `.checklist` the rows sit in — so it goes inside and the
+   section keeps ONE silhouette in every state.
+
+   That is also what makes the reported stripe unreachable rather than merely fixed: the
+   card now holds rows or an empty state, and there is no third case in which it can be
+   rendered with nothing in it. */
+.checklist > .fb-empty {
+  padding-block: var(--space-5);
 }
-.chk-done-sum .ok {
+/* `--ok`, not `.fb-empty-icon`'s default `--muted`, and it is inside rule 4 rather than an
+   exception to it: this is a STATUS (`--ok`/`--miss` is the status mini-palette). The app's
+   two kinds of empty state mean opposite things — "nothing here yet" and "you are done" —
+   and only one of them is good news. */
+.checklist > .fb-empty .fb-empty-icon {
   color: var(--ok);
-  font-weight: 700;
 }
-.chk-done-sum .pill {
-  color: var(--ink);
-  background: var(--paper);
-  border-radius: 999px;
-  padding: 2px 9px;
+
+/* **THE COMPLETED HALF IS A DIFFERENT LIST, SO IT IS NOT A ROW OF THIS CARD** (ADR-0193 §3,
+   amended 2026-08-16). It was one of two matching `.chk-toggle` pills in a `.chk-foot` row,
+   which is the grammar of two peers — and they are not peers: `עוד N` continues the list you
+   are reading (it is the card's last ROW now), this opens something else. Footnote weight,
+   centred, below.
+
+   The 44px target is an `::after` OVERLAY rather than padding — `ValueToken`'s shipped
+   idiom (`frontend/CLAUDE.md`), so clearing ADR-0017's floor does not grow the line. Worth
+   knowing what it replaces: the pills measured **22px** painted and 22px tappable, i.e. half
+   the floor, and had since they were written. */
+.chk-done-link {
+  display: block;
+  position: relative;
+  margin: var(--space-3) auto 0;
+  padding: 6px 10px;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: var(--text-caption);
   font-weight: 700;
+  color: var(--muted);
+  cursor: pointer;
+}
+.chk-done-link::after {
+  content: '';
+  position: absolute;
+  inset: 50% 0 auto;
+  transform: translateY(-50%);
+  height: 44px;
 }
 
 /* overview stats — three quiet paper tiles; counts in mono */
@@ -1629,7 +2288,15 @@
 
    `minmax(0, 1fr)` is the `min-width: 0` the flex version carried on `.bld-main`,
    said once and in the place that owns the width. */
+/* **The gap above a row an arrival landed on** (2026-08-20) — the same property and the same
+   reason as the Map row's (`map.css`'s `.place`): `block: 'start'` aligns the margin box with
+   the scroller's edge, and flush against it a card reads as clipped rather than as placed. It
+   belongs to the row's own box, so no screen passes a number. */
 .bld {
+  scroll-margin-top: 8px;
+  /* The whole card opens the read (`BuilderRow`'s `openFromCard`), so the whole card says
+     so. A soft row keeps `grab` — `.bld.draggable` below is the more specific rule. */
+  cursor: pointer;
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: 14px;
@@ -1666,6 +2333,31 @@
 }
 .bld.soft .bld-bd {
   background: color-mix(in srgb, var(--ink) 5%, transparent);
+}
+/* A finished trip's rows are a record, not a builder (ADR-0240 §5): nothing moves after the
+   trip, so the soft dash and the soft badge wash have nothing left to say. A hard row keeps its
+   lock on the when line. */
+.app[data-phase='past'] .bld.soft {
+  border-style: solid;
+  border-color: var(--line);
+}
+.app[data-phase='past'] .bld.soft .bld-bd {
+  background: var(--paper);
+}
+/* An overlap on a finished trip is a fact about what happened, not a conflict to resolve, and
+   the cluster's violet is plan's alone (rule 4). The box and its seam tags go neutral; the
+   resolve button is already absent on a read-only row. */
+.app[data-phase='past'] .bld-cluster {
+  border-color: var(--line);
+  background: color-mix(in srgb, var(--ink) 3%, transparent);
+}
+.app[data-phase='past'] .bld-cluster-head,
+.app[data-phase='past'] .bld-cluster-head .win {
+  color: var(--muted);
+}
+.app[data-phase='past'] .seam-tag {
+  color: var(--muted);
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
 }
 .bld-main {
   grid-area: title;
@@ -1791,6 +2483,20 @@
 .bld-dur {
   font-size: 10px;
 }
+/* **How far a carried leg goes** (ADR-0212), at the builder row's tighter density. Same standing
+   as `.wp-event-dist` on the Trip card — `--muted`, no wrap — because it is the same fact, and
+   the separator likewise belongs to the JOIN rather than to the distance. */
+.bld-dist {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.bld-dur + .bld-dist::before {
+  content: '·';
+  margin-inline-end: 5px;
+  opacity: 0.7;
+}
 /* Zone-shift pill on a Plan-builder row (ADR-0107): matches the day-view pill —
    amber, mono, how far the clock jumps. Only shown when the shift is non-zero. */
 /* Surface tweak only — the builder row is tighter than a day card. */
@@ -1829,9 +2535,11 @@ button.bld-time::after {
   position: absolute;
   inset: -8px 0;
 }
-button.bld-time:hover {
-  border-color: var(--plan);
-  background: var(--plan-tint);
+@media (hover: hover) and (pointer: fine) {
+  button.bld-time:hover {
+    border-color: var(--plan);
+    background: var(--plan-tint);
+  }
 }
 button.bld-time:focus-visible {
   outline: 2.5px solid var(--plan);
@@ -1870,27 +2578,28 @@ button.bld-time.empty {
   display: grid;
   place-items: center;
 }
-.bld-icon:hover {
-  border-color: var(--plan);
-  color: var(--plan-deep);
+@media (hover: hover) and (pointer: fine) {
+  .bld-icon:hover {
+    border-color: var(--plan);
+    color: var(--plan-deep);
+  }
 }
-.bld-icon.danger:hover {
-  border-color: var(--miss);
-  color: var(--miss);
+@media (hover: hover) and (pointer: fine) {
+  .bld-icon.danger:hover {
+    border-color: var(--miss);
+    color: var(--miss);
+  }
 }
 .bld-icon:focus-visible {
   outline: 2.5px solid var(--plan);
   outline-offset: 2px;
 }
 
-/* Archive settle control (ADR-0044) — a soft row in a finished trip settles in
-   place, taking the ⋯ slot the read-only row leaves free. --ok green record
-   (status is mode-neutral, ADR-0028 — the same check the Trip archive uses); the
-   ✓ morphs to an undo arrow on hover/focus, and a thin persistent ring hints it
-   is tappable on touch. Done ✓ / skipped ↩ restore in one tap; unresolved ○
-   opens the settle chooser. */
-/* The archive's settle control takes the ⋯ cell, which a read-only row leaves
-   free (ADR-0044). */
+/* Archive settle control (ADR-0044) — a soft row in a finished trip settles in place,
+   taking the ⋯ slot the read-only row leaves free, for what is still a question (○ opens
+   the chooser) or an action (↩ restores a skipped row). A done row has no circle here: its
+   `היינו ✓` chip is the mark and the undo (ADR-0240 §5, `DoneChip`). The slot only exists
+   on a finished trip, so its focus ring is the archive's hue. */
 .bld-settle {
   grid-area: menu;
   align-self: center;
@@ -1912,56 +2621,25 @@ button.bld-time.empty {
     background var(--t-quick);
 }
 .bld-settle:focus-visible {
-  outline: 2.5px solid var(--plan);
+  outline: 2.5px solid var(--memory);
   outline-offset: 2px;
-}
-.bld-settle.done {
-  background: var(--ok);
-  color: var(--on-fill);
-}
-.bld-settle.done .mark,
-.bld-settle.done .undo {
-  grid-area: 1 / 1;
-  transition:
-    opacity var(--t-quick),
-    transform var(--t-quick);
-}
-.bld-settle.done .undo {
-  opacity: 0;
-  transform: scale(0.6);
-}
-.bld-settle.done::after {
-  content: '';
-  position: absolute;
-  inset: -4px;
-  border-radius: 999px;
-  box-shadow: 0 0 0 1.5px rgba(60, 154, 107, 0.35);
-}
-.bld-settle.done:hover,
-.bld-settle.done:focus-visible {
-  box-shadow: 0 0 0 4px rgba(60, 154, 107, 0.18);
-  transform: scale(1.06);
-}
-.bld-settle.done:hover .mark,
-.bld-settle.done:focus-visible .mark {
-  opacity: 0;
-  transform: scale(0.6);
-}
-.bld-settle.done:hover .undo,
-.bld-settle.done:focus-visible .undo {
-  opacity: 1;
-  transform: scale(1);
 }
 .bld-settle.ghost {
   border: 1.5px dashed var(--soft-line);
   color: var(--muted);
   background: transparent;
 }
-.bld-settle.ghost:hover,
 .bld-settle.ghost:focus-visible {
   border-style: solid;
   border-color: var(--ok);
   color: var(--ok);
+}
+@media (hover: hover) and (pointer: fine) {
+  .bld-settle.ghost:hover {
+    border-style: solid;
+    border-color: var(--ok);
+    color: var(--ok);
+  }
 }
 .bld-settle.restore {
   border: 1.5px solid rgba(194, 88, 78, 0.4);
@@ -1969,9 +2647,13 @@ button.bld-time.empty {
   background: transparent;
   font-size: 12px;
 }
-.bld-settle.restore:hover,
 .bld-settle.restore:focus-visible {
   background: rgba(194, 88, 78, 0.1);
+}
+@media (hover: hover) and (pointer: fine) {
+  .bld-settle.restore:hover {
+    background: rgba(194, 88, 78, 0.1);
+  }
 }
 /* A skipped archive row recedes and strikes through — legible history, not a
    live plan (ADR-0044). */
@@ -2009,11 +2691,28 @@ button.bld-time.empty {
 .gap {
   margin: 0 0 9px;
   padding: 2px 6px;
+  /* So the note line below can take a row of its own. On `.gap` only and not on the shared block
+     above: a seam never carries a note, and that block's own comment is about not widening what
+     `.gap`'s selectors match. */
+  flex-wrap: wrap;
 }
 .gap-line {
   flex: 1;
   height: 1px;
   background: repeating-linear-gradient(90deg, var(--soft-line) 0 5px, transparent 5px 10px);
+}
+/* **WHY THE OFFER IS SMALLER THAN THE GAP** — `where-a-route-shows-up-v1.html` §2's drawn
+   `bld-slot-note`. It sits under the chip on its own line rather than inside it: the chip is the
+   control and says what it offers, and the arithmetic behind the offer is context, so it takes
+   `--faint` and the row's own quiet size. Full width so it centres under the chip whatever the
+   chip's width is, which is what keeps it reading as that chip's note and not as a row. */
+.bld-slot-note {
+  flex: 0 0 100%;
+  text-align: center;
+  margin-top: 3px;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--faint);
 }
 .gap-add {
   font: inherit;
@@ -2027,9 +2726,11 @@ button.bld-time.empty {
   cursor: pointer;
   white-space: nowrap;
 }
-.gap-add:hover {
-  background: var(--plan);
-  color: var(--on-fill);
+@media (hover: hover) and (pointer: fine) {
+  .gap-add:hover {
+    background: var(--plan);
+    color: var(--on-fill);
+  }
 }
 .gap-add:focus-visible {
   outline: 2.5px solid var(--plan);
@@ -2131,13 +2832,28 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
   margin-top: 2px;
   transition: 0.12s;
 }
-.addbtn:hover {
-  border-color: var(--plan);
-  background: var(--plan-tint);
+@media (hover: hover) and (pointer: fine) {
+  .addbtn:hover {
+    border-color: var(--plan);
+    background: var(--plan-tint);
+  }
 }
 .addbtn:focus-visible {
   outline: 2.5px solid var(--plan);
   outline-offset: 2px;
+}
+/* A finished trip's one `.addbtn` is the Home's way into its days, which is not a plan action. */
+.app[data-phase='past'] .addbtn {
+  color: var(--memory-deep);
+}
+@media (hover: hover) and (pointer: fine) {
+  .app[data-phase='past'] .addbtn:hover {
+    border-color: var(--memory);
+    background: var(--memory-tint);
+  }
+}
+.app[data-phase='past'] .addbtn:focus-visible {
+  outline-color: var(--memory);
 }
 
 /* add-idea row under the shelf */
@@ -2174,9 +2890,11 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
   border-radius: 10px;
   cursor: pointer;
 }
-.add-idea-btn:hover:not(:disabled) {
-  background: var(--plan);
-  color: var(--on-fill);
+@media (hover: hover) and (pointer: fine) {
+  .add-idea-btn:hover:not(:disabled) {
+    background: var(--plan);
+    color: var(--on-fill);
+  }
 }
 .add-idea-btn:disabled {
   opacity: 0.4;
@@ -2190,10 +2908,41 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
    Hard rows show a static anchor glyph instead — they're pinned (ADR-0011). */
 .bld.draggable {
   cursor: grab;
-  /* A long press on a row otherwise starts a text selection or the iOS callout. */
-  user-select: none;
-  -webkit-user-select: none;
-  -webkit-touch-callout: none;
+  /* The `user-select`/`-webkit-touch-callout` trio that lived here is GONE (ADR-0199 §4).
+     It was keyed on `.draggable`, and the key was the bug: what makes selection wrong on a
+     day row is not that the row drags, it is that a press on it is a GESTURE — which is
+     exactly why the two rows that never drag (a hard `.bld`, every `.wp-event`) were left
+     selecting. One rule in `styles/tokens.css` now covers all three row types, beside the
+     `body.wp-dragging` block that already owned the other half of the subject. */
+}
+
+/* **`BEAT.PINNED`** (ADR-0199 §2) — the hold answered on a row that is a pinned anchor
+   (ADR-0011). The row strains on the axis it was being dragged on, is arrested, and is
+   pulled back PAST level onto its anchor: the return overshoot is what makes it read as
+   held down rather than as merely stopping.
+
+   The family's four properties, each load-bearing (`lib/one-shot.ts`): one shot applied
+   imperatively, so a repeat hold on the same row is felt again; `linear`, because the
+   keyframe offsets ARE the timing of an oscillation and an easing curve resamples them
+   into a different shape; symmetric, so no `--dir` in an RTL app; and the duration from a
+   token, so `motionDurationMs` and this rule cannot disagree.
+
+   The lift is 4px because the row's own `margin-bottom` is 9px — the beat rises into that
+   gap and must not reach the row below (measured in
+   `mockups/a-hard-event-answers-the-hold-v1.html`, where it is 44% of it). */
+.is-pinned {
+  animation: bld-pinned var(--t-base) linear;
+}
+@keyframes bld-pinned {
+  35% {
+    transform: translateY(-4px);
+  }
+  62% {
+    transform: translateY(1px);
+  }
+  100% {
+    transform: translateY(0);
+  }
 }
 .bld.dragging {
   opacity: 0.45;
@@ -2220,6 +2969,70 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
   vertical-align: super;
 }
 
+/* ── THE QUICK ADD (ADR-0231 §3) ───────────────────────────────────────────────
+   A title, one when-sentence (`TimePicker`'s own two tokens) and one primary — the primary is
+   `.sched-confirm` below, the shelf schedule's, because it is the same "put this on today". */
+.quick-add {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.quick-add .field input {
+  width: 100%;
+}
+/* The way into the big room. A link, not a second primary: `.sched-confirm` is the one
+   primary, and this is the exit from the small room into `EventForm`, carrying the draft. */
+.quick-add-more {
+  display: block;
+  width: fit-content;
+  margin: 0 auto;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--muted);
+  background: none;
+  border: 0;
+  padding: 6px 10px;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.quick-add-more:focus-visible {
+  outline: 2.5px solid var(--cta);
+  outline-offset: 2px;
+  border-radius: var(--radius-8, 8px);
+}
+
+/* ── THE DAY TAKES A DELAY (ADR-0231 §5) ───────────────────────────────────────
+   Two lines of prose around the chooser: what moves, and what stays. `--muted`, the
+   `.wp-row-subject` voice — they explain, they do not ask. The anchor line names the row that
+   will not move and why, so the consequence is read BEFORE the tap, not in a toast after it. */
+.late-what,
+.late-anchor {
+  margin: 0 2px 12px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.late-anchor {
+  margin-block: 12px 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.late-anchor .hard-lock {
+  opacity: 1;
+}
+/* The chooser's pills at ADR-0017's floor. `.choice-pill` ships at 36px (ADR-0052 §6, known);
+   `.category-pills` already bumps its own consumer to 8px 14px. This is a third consumer
+   taking the same bump to the floor: a control whose whole job is one tap has no other job to
+   spend the height on. Measured ⁦54×44px⁩, five inside a 360 sheet. */
+.late-steps .choice-pill {
+  font-size: var(--text-secondary);
+  padding: 11px 16px;
+  min-block-size: 44px;
+}
+
 /* Trip-mode quick-schedule confirm (shelf → day). Neutral --cta, not plan
    violet — this is Trip mode. */
 .sched-confirm {
@@ -2238,6 +3051,10 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
 .sched-confirm:focus-visible {
   outline: 2.5px solid var(--cta);
   outline-offset: 2px;
+}
+.sched-confirm:disabled {
+  opacity: 0.55;
+  cursor: default;
 }
 
 /* The `.row-action*` family that lived here is GONE (ADR-0138 §1). It was the
@@ -2303,6 +3120,21 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
   border-radius: 8px;
   padding: 4px 12px;
   cursor: pointer;
+  /* **ADR-0017's 44px floor, through an overlay rather than by growing the chip.** It
+     rendered at 25px — found by rendering `notifications-in-settings-v1`, and the same class
+     of defect that mockup's predecessor found in `.set-tz-trigger` at 40px. The overlay is
+     `ValueToken`'s technique (ADR-0177): the rows this sits in stay 52px, and a control that
+     is 25px of paint stops being 25px of target. */
+  position: relative;
+}
+.set-edit::after {
+  content: '';
+  position: absolute;
+  inset: 50% auto auto 50%;
+  translate: -50% -50%;
+  width: 100%;
+  min-width: 44px;
+  height: 44px;
 }
 .set-card {
   background: var(--card);
@@ -2345,15 +3177,80 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
   font-family: 'JetBrains Mono', monospace;
   font-size: 13px;
 }
+/* One statement inside a `.set-card` explaining why there is no control. `TripSettings`'
+   "you cannot change this" was its only call site; the notifications section's blocked
+   states are the second, and they need it to WRAP — so `align-items` moves to the top
+   (identical for a single line) and the glyph is nudged onto the first line's cap height.
+   Generalising the existing one-off rather than adding a second note beside it, which is
+   what the phase-1b mockup's own name collision caught. */
 .set-note {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
   padding: 10px 15px;
   background: color-mix(in srgb, var(--ink) 3%, transparent);
   border-top: 1px solid var(--line);
   font-size: 11.5px;
+  line-height: 1.6;
   color: var(--muted);
+}
+.set-note .icon {
+  margin-top: 2px;
+}
+.set-note b {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+/* The device list (ADR-0197 §2, mockup §4). **Two lines, not one** — drawn as a single
+   `.id-row` the device NAME was what ellipsised at 360px, on the very row a person is there
+   to recognise: 116px of label against 296px, for 9px of height. So the row answers "where
+   does a wide value go" the way `.wp-event-face` does (title over meta) rather than the way
+   `.transition-row` does (value at the trailing edge). */
+.set-dev-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+}
+.set-dev-row + .set-dev-row {
+  border-top: 1px solid var(--line);
+}
+.set-dev-body {
+  flex: 1;
+  min-width: 0;
+}
+.set-dev-name {
+  display: block;
+  font-size: 13.5px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.set-dev-sub {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 3px;
+}
+.set-dev-meta {
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 500;
+}
+/* "This device", and it is a MARK rather than a hue: recognition is carried by this, never
+   by the user-agent label beside it, which is a hint and can be wrong (Chrome on iOS reports
+   itself as Safari). Neutral chrome, because the colour budget has no member for "you are
+   here" in a list. */
+.set-dev-here {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 2px 7px;
+  flex: none;
 }
 
 /* members */
@@ -2449,9 +3346,11 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
   line-height: 1;
   cursor: pointer;
 }
-.kebab:hover {
-  background: color-mix(in srgb, var(--ink) 5%, transparent);
-  color: var(--ink);
+@media (hover: hover) and (pointer: fine) {
+  .kebab:hover {
+    background: color-mix(in srgb, var(--ink) 5%, transparent);
+    color: var(--ink);
+  }
 }
 
 /* invite */
@@ -2845,8 +3744,10 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
   cursor: pointer;
   transition: background 0.1s ease;
 }
-.icon-cell:hover {
-  background: var(--screen);
+@media (hover: hover) and (pointer: fine) {
+  .icon-cell:hover {
+    background: var(--screen);
+  }
 }
 /* Selection — neutral ink fill + ring (non-colour-redundant, ADR-0038 §6).
    The ring is a `0 0 0 Npx` SPREAD, which is a ring and not a drop shadow — the
@@ -3086,8 +3987,10 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
     background 0.15s ease,
     transform 0.12s ease;
 }
-.index .back-icon-btn:hover {
-  background: color-mix(in srgb, var(--ink) 6%, transparent);
+@media (hover: hover) and (pointer: fine) {
+  .index .back-icon-btn:hover {
+    background: color-mix(in srgb, var(--ink) 6%, transparent);
+  }
 }
 .index .back-icon-btn:active {
   transform: scale(var(--press-scale));
@@ -3128,6 +4031,10 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
 .app[data-mode='plan'] .index {
   --idx-accent: var(--plan);
 }
+/* A finished trip selects in the archive's rose, as its day strip does (ADR-0240 §3). */
+.app[data-phase='past'] .index {
+  --idx-accent: var(--memory);
+}
 
 /* One dense chip+search row (ADR-0100 §2, retargeted by ADR-0101): the search
    icon is a FIXED control at the row's left end (RTL: last DOM child, outside
@@ -3153,8 +4060,9 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
   color: var(--idx-accent-text);
 }
 /* A minimal real-SVG control (ADR-0100 §4) in the same rounded-SQUARE shape
-   as `.back-icon-btn` — not a circle. */
-.index .search-icon-btn {
+   as `.back-icon-btn` — not a circle. Unscoped since the memory cover carries one too
+   (ADR-0240 §4). */
+.search-icon-btn {
   flex: 0 0 auto;
   width: 32px;
   height: 32px;
@@ -3171,11 +4079,11 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
     border-color 0.18s ease,
     color 0.18s ease;
 }
-.index .search-icon-btn .icon {
+.search-icon-btn .icon {
   width: 15px;
   height: 15px;
 }
-.index .search-icon-btn:active {
+.search-icon-btn:active {
   transform: scale(var(--press-scale));
 }
 
@@ -3578,9 +4486,11 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
   padding: 5px 11px;
   cursor: pointer;
 }
-.bk-edit:hover {
-  border-color: var(--plan);
-  background: var(--plan-tint);
+@media (hover: hover) and (pointer: fine) {
+  .bk-edit:hover {
+    border-color: var(--plan);
+    background: var(--plan-tint);
+  }
 }
 .bk-head {
   display: flex;
@@ -3620,8 +4530,10 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
      while `ניווט` stays an <a> out to Google — one appearance, two elements. */
   cursor: pointer;
 }
-.bk-loc-link:hover {
-  background: color-mix(in srgb, var(--teal) 10%, transparent);
+@media (hover: hover) and (pointer: fine) {
+  .bk-loc-link:hover {
+    background: color-mix(in srgb, var(--teal) 10%, transparent);
+  }
 }
 .bk-badge {
   width: 44px;
@@ -3669,6 +4581,14 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
   font-family: var(--font-mono);
   color: var(--amber-deep);
 }
+/* **The same face without the hue** (ADR-0222 §3). `.mono` above carries a typeface AND a
+   colour, which was right while the confirmation code was its only caller. A flight number
+   wants the monospace — it is read character by character — and must not take the amber,
+   because rule 4 spends amber on time and commitment and `LY315` is neither. */
+.bk-fact-v.ident {
+  font-family: var(--font-mono);
+  color: var(--ink);
+}
 /* The derived round-trip pair's way through (ADR-0154 §5). Deliberately NOT the
    `.bk-loc-link` pill beside it: that one is teal because it goes to a place, and
    teal is location only (rule 4). A sibling booking is not a location, so this
@@ -3695,10 +4615,15 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
 .bk-pairlink:active {
   transform: scale(var(--press-scale));
 }
-.bk-pairlink:hover,
 .bk-pairlink:focus-visible {
   outline: none;
   text-decoration: underline;
+}
+@media (hover: hover) and (pointer: fine) {
+  .bk-pairlink:hover {
+    outline: none;
+    text-decoration: underline;
+  }
 }
 
 /* ===== Documents section (DocumentsSection.tsx) — grouped by type, per the
@@ -4259,9 +5184,11 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
   border-radius: 6px;
   opacity: 0.7;
 }
-.stay-strip .ss-x:hover {
-  background: color-mix(in srgb, var(--ink) 6%, transparent);
-  opacity: 1;
+@media (hover: hover) and (pointer: fine) {
+  .stay-strip .ss-x:hover {
+    background: color-mix(in srgb, var(--ink) 6%, transparent);
+    opacity: 1;
+  }
 }
 
 /* Shared badge tint (ADR-0059 §3): teal for a stay, amber for transport — on the
@@ -4532,8 +5459,10 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
   cursor: pointer;
   min-height: 44px;
 }
-.set-member-tap:hover {
-  background: color-mix(in srgb, var(--ink) 3%, transparent);
+@media (hover: hover) and (pointer: fine) {
+  .set-member-tap:hover {
+    background: color-mix(in srgb, var(--ink) 3%, transparent);
+  }
 }
 .set-member-tap:focus-visible {
   outline: 2.5px solid var(--teal);
@@ -4675,4 +5604,427 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
     opacity: 0;
     transform: scaleY(0.88) translateY(-4px);
   }
+}
+
+/* ═══ Itinerary sharing — the owner's sheet and its two entries (ADR-0213) ═══════════════
+   Ported from the proposal block of mockups/an-itinerary-is-shared-from-every-trip-v2.html.
+   Everything structural comes from the existing primitives (Modal/Sheet, ChoiceGrid, Switch,
+   ConfirmDialog); these rules are only the composition delta. */
+
+.share-header-btn {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  margin-inline: -6px;
+  font-size: 18px;
+}
+
+/* **The sheet's rhythm is two numbers, not one** (ADR-0213's 2026-08-30 amendment).
+   It used to be a flat `gap: 12px`, so a question sat exactly as far from the control that
+   answers it as from the next subject — which is the same thing as having no grouping at
+   all, and most of why the sheet read as a stack rather than as a sequence. 16px between
+   GROUPS, 8px inside one. Both off the spacing ramp. */
+.share-sheet {
+  gap: var(--space-4);
+}
+
+.share-group {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.share-lead {
+  margin: -4px 0 0;
+  color: var(--muted);
+  font-size: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.share-sheet .choice-card {
+  min-height: 58px;
+}
+
+/* **A live link, marked on the level that holds it** (ADR-0213's tenth amendment §4). The
+   mark has to sit OUT of flow: `.choice-card` is a flex column and the grid stretches its
+   cards to the tallest, so a mark in the icon slot would raise all three and leave the two
+   unmarked labels floating — a ragged row saying "these are different kinds of option"
+   about three answers to one question. */
+.share-sheet .share-levels .choice-card {
+  position: relative;
+}
+
+/* `--ok`, not `--cta`. Rule 4 splits them by MEANING and not by taste: `--cta` is the
+   neutral action hue (and in light it resolves to `var(--ink)`, so a `--cta` dot is a navy
+   speck that reads as decoration and merges with the selected card's own ring), while
+   `--ok`/`--miss` are for statuses. "This link is live" is a status. */
+.share-level-live {
+  position: absolute;
+  inset-block-start: 7px;
+  inset-inline-end: 7px;
+  width: 7px;
+  height: 7px;
+  border-radius: var(--radius-999);
+  background: var(--ok);
+}
+
+/* The one destructive action in the sheet, and the only place `--miss` appears here. It
+   renders only when two or more links are live — with one, `הפסקת השיתוף הזה` beside it
+   already stops everything, and two buttons that do the same thing is how somebody presses
+   the wrong one.
+
+   **Two classes, and that is not decoration.** As a bare `.share-stop-all` this loses a
+   plain specificity tie to `.share-manage`'s `color: var(--muted)` several hundred lines
+   below, so the danger tone never rendered — caught by running the app, not by reading it,
+   which is the same failure the sheet's own `gap` has had twice. Naming both classes makes
+   the rule independent of where either sits in the file. */
+.share-manage.share-stop-all {
+  color: var(--miss);
+}
+
+/* **The audience fork** (ADR-0213's 2026-08-30 amendment) — the sheet's first question,
+   above everything it already asks. Two cards rather than the levels' three, and taller
+   because these carry a glyph: this is the one choice here whose wrong answer cannot be
+   taken back, since a peek link can be revoked and a person added to the trip is in it. */
+.share-sheet .share-audience .choice-card {
+  min-height: 66px;
+}
+
+/* **The live fact belongs INSIDE the explainer, not beside it.** It used to be a bordered
+   box followed by a floating hint line — two blocks saying things about the same link, and
+   most of why the sheet read as a stack of grey slabs rather than as a hierarchy. */
+.share-scope-note .share-scope-live {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-block-start: 9px;
+  padding-block-start: 9px;
+  border-block-start: 1px solid var(--line);
+}
+
+.share-scope-live .icon {
+  color: var(--cta);
+}
+
+/* **What the recipient's chat will show** (ADR-0241 §4), heading the sheet in every phase: in
+   `.share-send`'s paint, a thumbnail beside two lines. The link cover is 1200×630 at 120px wide
+   (the unit is 89px tall); the card is 4:5 at 76px (the unit is 140px). */
+.share-preview {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-16);
+  background: var(--card);
+  box-shadow: var(--elevation-raised);
+  /* A flex item of `.modal-form` with `overflow` hidden below: without this it shrinks to its
+     borders, the defect `.share-send` documents. */
+  flex-shrink: 0;
+}
+.share-preview-thumb {
+  overflow: hidden;
+  border-radius: 8px;
+  box-shadow: 0 0 0 1px var(--line);
+}
+.share-preview-thumb.is-link {
+  width: 120px;
+  aspect-ratio: 1200 / 630;
+}
+.share-preview-thumb.is-card {
+  width: 76px;
+  aspect-ratio: 4 / 5;
+}
+.share-preview-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.share-preview-copy {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.share-preview-copy strong {
+  font-size: 14px;
+}
+.share-preview-copy span {
+  color: var(--muted);
+  font-size: var(--text-secondary);
+  line-height: 1.4;
+}
+
+/* **The link and what you do with it are ONE object** — the sheet's single prominent
+   element ("one loud element, everything else quiet"), on `--card` and `raised`, with the
+   quiet explainer above earning it. Radii straight off the ramp: 16 for the card, 12 for
+   the elements inside it. */
+.share-send {
+  display: grid;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-16);
+  background: var(--card);
+  box-shadow: var(--elevation-raised);
+  /* **WITHOUT THIS THE WHOLE UNIT COLLAPSES TO ITS OWN TWO BORDERS** (owner, 2026-08-30,
+     four times: _"still no way to share the הכל … no link to be seen"_ — and rightly not
+     buying a stale-bundle explanation, because the deployed bundle was correct all along).
+
+     `.modal-form` is `display: flex; flex-direction: column; overflow-y: auto`, so its
+     children are flex items at `flex-shrink: 1`. A flex item's AUTOMATIC MINIMUM SIZE is
+     what normally stops one shrinking past its content — and an item whose `overflow` is
+     not `visible` does not get it (CSS Flexbox §4.5: the automatic minimum is 0 there).
+     This is the only child of the sheet that clips, so when the content exceeds 75dvh the
+     browser satisfied the overflow by squashing THIS box instead of scrolling: measured
+     2.0px at 360×640, 360×780 and 390×844, and 34.9px at 412×915, against the 92px its
+     link row and two buttons need. The link and both outcomes were rendered, in the right
+     order, and clipped away — which is why a DOM-order unit test passed throughout (jsdom
+     lays nothing out) and why only a real render caught it.
+
+     `flex: none` restores the size the item asks for and lets the sheet scroll, which is
+     what a scroll container is for. Any future child of `.modal-form` that clips inherits
+     the same trap. */
+  flex: none;
+}
+
+/* **Flush, with no inset of its own.** Padded, the unit's button sat 8px narrower than the
+   cards above it and the sheet's edge came out stepped — the whole body reads down one
+   16px column, and a nested box that indents again breaks it. So the rows sit edge to edge
+   inside one frame, separated by hairlines, and the frame is what groups them. */
+.share-send .share-link-row {
+  border-radius: 0;
+  border-block-end: 1px solid var(--line);
+  background: transparent;
+}
+
+.share-send .share-outcomes {
+  gap: 0;
+}
+
+.share-send .share-outcome {
+  border: 0;
+  border-radius: 0;
+}
+
+.share-send .share-outcome + .share-outcome {
+  border-inline-start: 1px solid var(--line);
+}
+
+/* **The trip's public link as a control** (`ui/TripLinkRow.tsx`). Neutral on purpose: the
+   `.invite-box` this replaces paints `--plan-tint` and a dashed violet border on screens
+   that are not Plan mode, which spends a hue ADR-0028 reserves. */
+.share-link-row {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: var(--radius-12);
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+  color: var(--ink);
+  text-align: start;
+  font: inherit;
+  cursor: pointer;
+  transition: background var(--t-base) var(--ease-standard);
+}
+
+.share-link-row .share-link {
+  flex: 1;
+  min-width: 0;
+}
+
+.share-link-row .icon {
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+
+/* The box you tapped says that you tapped it (ADR-0142 §3) — a status tint, which is
+   `--ok`'s own job and the one colour this row ever shows. Specific enough to beat the
+   `transparent` the send unit sets on it. */
+.share-link-row[data-copied],
+.share-send .share-link-row[data-copied] {
+  background: color-mix(in srgb, var(--ok) 12%, transparent);
+}
+
+.share-link-row[data-copied] .icon {
+  color: var(--ok);
+}
+
+/* Standing alone in Trip Settings it needs a frame of its own; inside the send unit the
+   card around it already is one. */
+.set-body .share-link-row {
+  border: 1px solid var(--line);
+  background: var(--card);
+}
+
+.share-scope-note {
+  min-height: 52px;
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-12);
+  background: color-mix(in srgb, var(--ink) 3%, transparent);
+}
+
+.share-scope-note strong,
+.share-scope-note span,
+.share-private-copy strong,
+.share-private-copy span {
+  display: block;
+}
+
+.share-scope-note strong,
+.share-private-copy strong {
+  font-size: var(--text-secondary);
+}
+
+.share-scope-note span,
+.share-private-copy span {
+  margin-block-start: 2px;
+  color: var(--muted);
+  font-size: var(--text-micro);
+  line-height: 1.4;
+}
+
+.share-private {
+  padding-block-start: 6px;
+  border-block-start: 1px solid var(--line);
+}
+
+.share-private-row {
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-block-start: 1px solid var(--line);
+}
+
+.share-private-row:first-child {
+  border-block-start: 0;
+}
+
+.share-private-copy {
+  min-width: 0;
+}
+
+.share-files {
+  margin-block: -4px 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--screen);
+}
+
+.share-file {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--ink);
+  font-size: var(--text-caption);
+}
+
+.share-file + .share-file {
+  border-block-start: 1px solid var(--line);
+}
+
+.share-file input {
+  accent-color: var(--cta);
+}
+
+.share-file-empty {
+  display: block;
+  padding: 10px 0;
+  color: var(--muted);
+  font-size: var(--text-caption);
+}
+
+.share-live-note {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted);
+  font-size: var(--text-micro);
+}
+
+.share-live-note .icon {
+  color: var(--cta);
+}
+
+.share-link {
+  overflow: hidden;
+  color: var(--ink);
+  font: 500 var(--text-caption) var(--font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.share-error {
+  color: var(--miss);
+  font-size: var(--text-caption);
+}
+
+.share-outcomes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+/* The invite branch has one outcome, not two: a `/join/` link has no second format. */
+.share-outcomes.is-single {
+  grid-template-columns: 1fr;
+}
+
+/* Both outcomes are 48px, over ADR-0017's 44px floor. The live link is the primary because
+   it is what a shared trip IS; the PDF is its snapshot. */
+.share-outcome {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-12);
+  background: var(--card);
+  color: var(--ink);
+  font: 700 var(--text-secondary) var(--font-body);
+  cursor: pointer;
+}
+
+.share-outcome.primary {
+  border-color: var(--cta);
+  background: var(--cta);
+  color: var(--cta-text);
+}
+
+.share-outcome:disabled {
+  opacity: 0.55;
+}
+
+.share-outcome .icon {
+  font-size: 18px;
+}
+
+.share-manage {
+  min-height: 44px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: 700 var(--text-caption) var(--font-body);
+  cursor: pointer;
+}
+
+.share-manage-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+/* The trip header's share control. The All Trips card no longer renders one at all — the
+   way in there is a hold (ADR-0033's 2026-08-30 amendment §1) — so this is the visible,
+   keyboard-reachable twin that pays for that gesture (ADR-0157 §2). */
+.share-header-btn:focus-visible {
+  outline: 2.5px solid var(--teal);
+  outline-offset: -2px;
 }

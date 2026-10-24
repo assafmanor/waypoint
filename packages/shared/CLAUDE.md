@@ -46,8 +46,24 @@ clock.
   boundary (`instant` vs `day`) instead of comparing against `now` itself,
   precisely so it stays clock-free and unit-testable — the caller (which owns
   `now` + timezone) resolves it. Don't add a function here that reads
-  `Date.now()`, `Intl`, or anything else environment-dependent; that's a
-  frontend/backend concern.
+  `Date.now()`, the ambient locale, or the ambient time zone.
+
+  **`Intl` is not itself the line, and the rule used to say it was** (amended
+  2026-08-21, notifications phase 2). What matters is whether the answer depends
+  on anything the caller did not pass: `new Intl.DateTimeFormat('en-CA', { timeZone })`
+  with the zone as an **argument** is deterministic in its inputs and belongs here
+  as much as any other pure function — `schemas.ts` had been validating zone
+  strings that way since long before the rule was written, and `zones.ts`'s
+  `todayInTz` is the same shape. What stays out is `Intl` reading the
+  **environment**: no ambient `timeZone`, no ambient locale (`APP_LOCALE` is the
+  frontend's, and product formatting is its concern — see "UI copy" above).
+
+  The reason this mattered enough to amend rather than work around: ADR-0197 §5
+  needs a notification's send time and a row's printed time to be the **same
+  derivation**, and "which calendar day is this, in that zone" is unavoidably an
+  `Intl` question. Two implementations that agree today is how you get a
+  reminder that fires on the wrong day.
+
 - **Frontend-only or backend-only vocabulary "just in case it's needed later."**
   ADR-0095 deliberately keeps `OUTBOX_VERB`, `TRIP_ACTION`, `SYNC_STATE`,
   `HTTP_METHOD` co-located with the frontend type each feeds, not lifted here —
@@ -66,6 +82,19 @@ hand (no generator yet) — change both in the same commit. Run
 `pnpm --filter @waypoint/shared build` (or the workspace `pnpm build`) before
 relying on a change from a consuming package; both `backend` and `frontend`
 import the compiled output, not the source directly.
+
+**A Prisma row is not one of these shapes, and the difference is silent.** They
+mirror each other field-for-field and disagree about _types_: a `DateTime`
+column arrives as a `Date` where this package says `string`, and an absent one
+as `null` where it says `undefined`. Several derivations here compare **day
+keys** (`YYYY-MM-DD`) with `===`, `<=` and `Set.has`, so a `Date` sitting in
+`date`/`endDate` matches nothing at all — it reads as _no event on this day_,
+never as a type error. A backend caller therefore goes through
+`backend/src/trips/trips.mapper.ts` (`toEventDto` and its siblings), which is
+the one Prisma-row → wire-shape conversion, and **never** through `as never`.
+That cast has hidden this exact defect twice: the shared itinerary framed every
+card in the wrong zone (2026-09-03) and the readiness nudge told a whole trip
+its lodging and route were missing when both were complete (2026-09-04).
 
 ## Anti-patterns seen and fixed here before (don't reintroduce)
 

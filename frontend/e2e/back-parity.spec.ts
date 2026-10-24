@@ -12,6 +12,7 @@
 // paid four shipped-but-broken fixes to learn that.
 import { test, expect, type Page } from '@playwright/test';
 import { bootIntoTrip, overlappingSoftEvents, shortLiveTripDates } from './boot';
+import { t } from '../src/i18n/he';
 
 // Fire the platform system-back the way the OS does — a history traversal — rather than
 // page.goBack(), whose navigation-commit wait fights the interceptor's preventDefault();
@@ -20,10 +21,10 @@ async function systemBack(page: Page) {
   await page.evaluate(() => window.history.back());
 }
 
-const PLAN_MODE = 'תכנון';
-const FILTER_OPEN = 'סינון';
-const FILTER_CLOSE = 'סגירת סינון';
-const RESOLVE = 'הזז';
+const PLAN_MODE = t.mode.plan;
+const FILTER_OPEN = t.map.filter.open;
+const FILTER_CLOSE = t.map.filter.close;
+const RESOLVE = t.planDay.resolve;
 const RESOLVE_STEP1 = '.resolve-mover'; // step 1's mover buttons — the step, as a selector
 const RESOLVE_BACK = '.resolve-backbtn';
 
@@ -64,7 +65,7 @@ test.describe('Plan mode’s overlap resolve sheet', () => {
     await bootIntoTrip(page, { events: overlappingSoftEvents(), dates: shortLiveTripDates() });
     await page.goto('/');
     await page.getByRole('button', { name: PLAN_MODE, exact: true }).click();
-    await page.locator('nav.nav button', { hasText: 'יום-יום' }).click();
+    await page.locator('nav.nav button', { hasText: t.tabs.days }).click();
     await expect(page).toHaveURL(/[?&]tab=days/);
   });
 

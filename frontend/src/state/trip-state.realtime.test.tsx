@@ -112,9 +112,12 @@ const SNAPSHOT: TripSnapshot = {
   maybeItems: [],
   places: [],
   notes: [],
+  tasks: [],
+  travelModeOverrides: [],
   documentAttachments: [],
   enrichments: {},
   fxRates: null,
+  forecast: null,
   latestSeq: '100',
 };
 

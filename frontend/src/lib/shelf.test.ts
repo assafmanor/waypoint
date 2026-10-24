@@ -2,14 +2,18 @@ import { describe, expect, it } from 'vitest';
 import {
   SUGGESTION_REASON,
   EVENT_KIND,
+  iconForCategory,
   EVENT_SOURCE,
   EVENT_STATUS,
   type MaybeItem,
   type Place,
+  type Booking,
   type TripEvent,
 } from '@waypoint/shared';
 import {
   dayStops,
+  ideaCategory,
+  ideaGlyph,
   poolStrip,
   rankIdeas,
   proposedDay,
@@ -17,14 +21,23 @@ import {
   shelfForSlot,
   tripDayStops,
   shelfGroups,
+  parkedTag,
   slotStops,
   stopReasonText,
   tileReasonText,
 } from './shelf';
 import { withoutBidiControls } from './bidi';
-import { SHELF_POOL_CAP } from '../constants';
+import { t } from '../i18n/he';
+import { DEFAULT_MAYBE_ICON, SHELF_POOL_CAP } from '../constants';
 
 const DAY = '2026-07-20';
+// `reasonText`/`tileReasonText` name a day through `dayLabel` now: a window containing the
+// anchor keeps the trip LIVE, which is the relative phrasing these cases assert.
+const naming = (day: string) => ({
+  trip: { startDate: '2026-07-01', endDate: '2026-07-31' },
+  today: day,
+  anchor: day,
+});
 
 const idea = (id: string, targetDate?: string, consumed = false): MaybeItem =>
   ({ id, tripId: 't', title: id, consumed, targetDate }) as MaybeItem;
@@ -67,7 +80,7 @@ describe('shelfGroups (ADR-0116 §2/§3)', () => {
     expect(ids(groups.pool)).toEqual([]);
   });
 
-  it("carries the day's skipped soft events — the parking lot, in both modes", () => {
+  it("carries the day's skipped events, both kinds — the parking lot, in both modes", () => {
     const groups = shelfGroups(
       [],
       [
@@ -78,8 +91,10 @@ describe('shelfGroups (ADR-0116 §2/§3)', () => {
       ],
       DAY,
     );
-    // Only this day's SOFT skipped events park here.
-    expect(ids(groups.skipped)).toEqual(['bailed']);
+    // Only THIS day's skipped events park here — and a skipped commitment parks beside a
+    // skipped stop (ADR-0228's 2026-09-16 amendment): the `=== SOFT` this asserted was the one
+    // place a cancelled booking fell out of, with no surface left to restore it from.
+    expect(ids(groups.skipped)).toEqual(['bailed', 'hard-skip']);
   });
 
   it('an all-dateless trip reads as one pool, so the shelf looks unchanged', () => {
@@ -218,13 +233,13 @@ describe('fits-a-day, rendered', () => {
     } as const;
 
     it('the tile says the day and the distance, and NOT the stop', () => {
-      const line = withoutBidiControls(tileReasonText(reason, DAY_1)!);
+      const line = withoutBidiControls(tileReasonText(reason, naming(DAY_1))!);
       expect(line).toContain('300');
       expect(line).not.toContain('מוזיאון אדו');
     });
 
     it('the sheet says all three', () => {
-      const line = withoutBidiControls(reasonText(reason, DAY_1));
+      const line = withoutBidiControls(reasonText(reason, naming(DAY_1)));
       expect(line).toContain('300');
       expect(line).toContain('מוזיאון אדו');
     });
@@ -265,8 +280,10 @@ describe('shelfForSlot', () => {
   const slot = { date: DAY, start: '12:00', end: '14:00' };
 
   it('joins both shelf groups and ranks them against the slot’s own neighbours', () => {
-    const ranked = shelfForSlot(shelf, slot, 'UTC', ctx);
-    expect(ranked.map((r) => r.item.id).sort()).toEqual(['m-day', 'm-pool']);
+    const { ideas, dropped } = shelfForSlot(shelf, slot, 'UTC', ctx);
+    expect(ideas.map((r) => r.item.id).sort()).toEqual(['m-day', 'm-pool']);
+    // Nothing measured, so nothing refused — every caller before ADR-0216 (§D4).
+    expect(dropped).toBe(0);
   });
 
   // **The blank screen** (reported 2026-08-04): `החלף` was offered on an untimed row, so this
@@ -278,7 +295,7 @@ describe('shelfForSlot', () => {
     expect(() => shelfForSlot(shelf, clockless, 'UTC', ctx)).not.toThrow();
     expect(
       shelfForSlot(shelf, clockless, 'UTC', ctx)
-        .map((r) => r.item.id)
+        .ideas.map((r) => r.item.id)
         .sort(),
     ).toEqual(['m-day', 'm-pool']);
   });
@@ -287,6 +304,105 @@ describe('shelfForSlot', () => {
     expect(() =>
       shelfForSlot(shelf, { date: DAY, start: '12:00', end: '' }, 'UTC', ctx),
     ).not.toThrow();
+  });
+});
+
+// ── AN IDEA YOU CANNOT REACH IS NOT OFFERED (ADR-0216) ────────────────────────────────────
+//
+// Owner, off the shipped sheet: _"Maybe unfeasible suggestions should be dropped entirely (too
+// far, not enough time)."_ The screenshot offered a glacier lagoon ⁦182 ק״מ⁩ away for a one-hour
+// hole, because proximity past `FAR_M` scores zero for everything and the order fell back to
+// recency — nothing was wrong with the ranking, and nothing had ever asked whether you could go.
+describe('shelfForSlot — the slot refuses what it cannot hold', () => {
+  /** Both of the slot's neighbours at the SAME point, so a detour is a clean there-and-back and
+   *  the round trip is exactly twice the one leg. That is what makes §2's argument testable. */
+  const places = [
+    located('p-stop', 'העצירה', 0),
+    located('p-near', 'קרוב', 20_000),
+    located('p-far', 'רחוק', 60_000),
+    located('p-both-legs', 'שני הצדדים', 56_000),
+    place('p-lite', 'מקום בלי נקודה'),
+  ];
+  const events = [
+    at('before', '09:00', 'p-stop', { endsAt: `${DAY}T10:00:00.000Z` }),
+    at('after', '15:00', 'p-stop'),
+  ];
+  const ctx = { events, bookings: [], places };
+  const slot = { date: DAY, start: '12:00', end: '13:00' };
+  const shelfOf = (...ids: string[]) => ({
+    forDay: [],
+    pool: ids.map((id) => withPlaceAt(id, id.replace('m-', 'p-'))),
+  });
+  // `createdAt` is not decoration: past `FAR_M` every idea scores zero, so the ranking's tiebreak
+  // is the only thing ordering these — which is the report's own root cause, asserted here by the
+  // fixture needing it at all.
+  const withPlaceAt = (id: string, placeId: string): MaybeItem =>
+    ({
+      id,
+      tripId: 't',
+      title: id,
+      consumed: false,
+      placeId,
+      createdAt: '2026-07-01',
+    }) as MaybeItem;
+  /** ⁦65⁩ free minutes, the reported hole once §AY corrects it: ⁦15⁩ owed to being there and ⁦50⁩ to
+   *  driving, which at ⁦130 km/h⁩ is ⁦108 ק״מ⁩ of crow round trip. */
+  const FREE = 65;
+
+  it('offers what fits and drops what does not', () => {
+    const { ideas, dropped } = shelfForSlot(shelfOf('m-near', 'm-far'), slot, 'UTC', ctx, FREE);
+    expect(ideas.map((r) => r.item.id)).toEqual(['m-near']);
+    expect(dropped).toBe(1);
+  });
+
+  // **The round trip, not the distance** (§2) — and this is the case the ADR names: the ⁦56 ק״מ⁩
+  // idea is comfortable one way (⁦26⁩ minutes of the ⁦50⁩ available) and impossible there and back.
+  // Measuring the one leg the reason line already prints would keep it.
+  it('counts both legs, which is how a comfortable errand becomes an impossible one', () => {
+    const { ideas, dropped } = shelfForSlot(shelfOf('m-both-legs'), slot, 'UTC', ctx, FREE);
+    expect(ideas).toEqual([]);
+    expect(dropped).toBe(1);
+  });
+
+  // **And there has to be time to BE there** (§2, `FREE_TIME_MIN_MINUTES`). ⁦5 ק״מ⁩ each way is
+  // under five minutes of driving inside a ⁦19⁩-minute window — reachable, and not a visit.
+  it('drops an idea it could reach and not stay at', () => {
+    const closer = [...places, located('p-close', 'ממש קרוב', 5_000)];
+    const { ideas, dropped } = shelfForSlot(
+      shelfOf('m-close'),
+      slot,
+      'UTC',
+      { ...ctx, places: closer },
+      19,
+    );
+    expect(ideas).toEqual([]);
+    expect(dropped).toBe(1);
+  });
+
+  // §D4 read from the other end: **nothing is dropped on an absence.** Three ways to have none.
+  it('keeps an idea whose place has no coordinates', () => {
+    const { ideas, dropped } = shelfForSlot(shelfOf('m-lite'), slot, 'UTC', ctx, FREE);
+    expect(ideas.map((r) => r.item.id)).toEqual(['m-lite']);
+    expect(dropped).toBe(0);
+  });
+
+  it('keeps everything when the slot has no located neighbour to leave from', () => {
+    const unlocated = { ...ctx, events: [at('before', '09:00'), at('after', '15:00')] };
+    const { ideas, dropped } = shelfForSlot(
+      shelfOf('m-near', 'm-far'),
+      slot,
+      'UTC',
+      unlocated,
+      FREE,
+    );
+    expect(ideas.map((r) => r.item.id).sort()).toEqual(['m-far', 'm-near']);
+    expect(dropped).toBe(0);
+  });
+
+  it('keeps everything when nothing said what is free', () => {
+    const { ideas, dropped } = shelfForSlot(shelfOf('m-near', 'm-far'), slot, 'UTC', ctx);
+    expect(ideas.map((r) => r.item.id).sort()).toEqual(['m-far', 'm-near']);
+    expect(dropped).toBe(0);
   });
 });
 
@@ -419,7 +535,7 @@ describe('the reason, in Hebrew', () => {
       consumed: false,
       placeId: 'p-near',
     } as MaybeItem);
-    expect(withoutBidiControls(reasonText(r.reason, DAY))).toBe('300 מ׳ ממסעדת מון');
+    expect(withoutBidiControls(reasonText(r.reason, naming(DAY)))).toBe('300 מ׳ ממסעדת מון');
   });
 
   it('names the day an idea is aimed at', () => {
@@ -430,12 +546,12 @@ describe('the reason, in Hebrew', () => {
       consumed: false,
       targetDate: '2026-07-21',
     } as MaybeItem);
-    expect(reasonText(r.reason, DAY)).toBe('מכוון למחר');
+    expect(reasonText(r.reason, naming(DAY))).toBe('מכוון למחר');
   });
 
   it('says recency when there is nothing else true to say', () => {
     const r = only({ id: 'a', tripId: 't', title: 'a', consumed: false } as MaybeItem);
-    expect(reasonText(r.reason, DAY)).toBe('נוסף לאחרונה');
+    expect(reasonText(r.reason, naming(DAY))).toBe('נוסף לאחרונה');
   });
 
   // The tile is 140px and its one line is what bought its height: the full sentence
@@ -450,7 +566,7 @@ describe('the reason, in Hebrew', () => {
         consumed: false,
         placeId: 'p-near',
       } as MaybeItem);
-      expect(withoutBidiControls(tileReasonText(r.reason, DAY)!)).toBe('300 מ׳');
+      expect(withoutBidiControls(tileReasonText(r.reason, naming(DAY))!)).toBe('300 מ׳');
     });
 
     it('states the day alone, which is what the shipped pool card already said', () => {
@@ -461,12 +577,12 @@ describe('the reason, in Hebrew', () => {
         consumed: false,
         targetDate: '2026-07-21',
       } as MaybeItem);
-      expect(tileReasonText(r.reason, DAY)).toBe('מחר');
+      expect(tileReasonText(r.reason, naming(DAY))).toBe('מחר');
     });
 
     it('spends no line on recency — on a strip that is chrome, not a fact', () => {
       const r = only({ id: 'a', tripId: 't', title: 'a', consumed: false } as MaybeItem);
-      expect(tileReasonText(r.reason, DAY)).toBeUndefined();
+      expect(tileReasonText(r.reason, naming(DAY))).toBeUndefined();
     });
   });
 
@@ -490,5 +606,65 @@ describe('the reason, in Hebrew', () => {
     } as MaybeItem);
     expect(stopReasonText(aimed.reason)).toBeUndefined();
     expect(stopReasonText(undefined)).toBeUndefined();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// **What an idea READS as** (owner, 2026-08-20: _"maybe items added from the map don't
+// inherit the place category and icon"_). The map is where ideas come from — every place
+// added outside an errand becomes one — and the category is picked on the PLACE, so the
+// idea it created carried nothing and showed the shelf's own `💡`.
+
+describe('ideaCategory / ideaGlyph', () => {
+  const bare = (over: Partial<MaybeItem>): MaybeItem =>
+    ({ id: 'm', tripId: 't', title: 'רעיון', consumed: false, ...over }) as MaybeItem;
+  const categorised = { ...place('p-food', 'רמן נאגי'), category: 'food' } as Place;
+  const picked = { ...categorised, icon: '🍜' } as Place;
+
+  it('falls back to the place, and to the shelf default when nothing knows anything', () => {
+    const places = [categorised];
+    expect(ideaCategory(bare({ placeId: 'p-food' }), places)).toBe('food');
+    expect(ideaGlyph(bare({ placeId: 'p-food' }), places)).toBe(iconForCategory('food'));
+    expect(ideaCategory(bare({}), places)).toBeUndefined();
+    expect(ideaGlyph(bare({}), places)).toBe(DEFAULT_MAYBE_ICON);
+  });
+
+  it("a placeholder glyph does not shadow the place's category", () => {
+    // The whole icon half of the report: `verbs.addMaybe` stores `💡` when no glyph was
+    // PICKED, and reading the column alone let that default outrank a category that says
+    // what the thing is — the `chosenIcon` rule, one entity over.
+    const item = bare({ placeId: 'p-food', icon: DEFAULT_MAYBE_ICON });
+    expect(ideaGlyph(item, [categorised])).toBe(iconForCategory('food'));
+  });
+
+  it('prefers a pick at the nearest scope: the idea, then the place, then the category', () => {
+    expect(ideaGlyph(bare({ placeId: 'p-food', icon: '🍣' }), [picked])).toBe('🍣');
+    expect(ideaGlyph(bare({ placeId: 'p-food' }), [picked])).toBe('🍜');
+    expect(ideaGlyph(bare({ placeId: 'p-food' }), [categorised])).toBe(iconForCategory('food'));
+  });
+
+  it("the idea's own category wins, and a missing place changes nothing", () => {
+    expect(ideaCategory(bare({ placeId: 'p-food', category: 'sightseeing' }), [categorised])).toBe(
+      'sightseeing',
+    );
+    expect(ideaCategory(bare({ placeId: 'p-gone' }), [categorised])).toBeUndefined();
+    expect(ideaGlyph(bare({ placeId: 'p-gone' }), [categorised])).toBe(DEFAULT_MAYBE_ICON);
+  });
+});
+
+describe('parkedTag — what a parked card says about its state (ADR-0231 §2, F1)', () => {
+  const bookings = [{ id: 'b1' } as unknown as Booking];
+  it('a skipped soft stop says דילגתם', () => {
+    expect(parkedTag(event({ id: 'stop', status: EVENT_STATUS.SKIPPED }), bookings)).toBe(
+      t.day.skippedTag,
+    );
+  });
+  it('a parked commitment says לא מתקיים — hard, or booked', () => {
+    expect(
+      parkedTag(event({ id: 'hard', status: EVENT_STATUS.SKIPPED, kind: EVENT_KIND.HARD }), []),
+    ).toBe(t.day.notHappeningTag);
+    expect(
+      parkedTag(event({ id: 'booked', status: EVENT_STATUS.SKIPPED, bookingId: 'b1' }), bookings),
+    ).toBe(t.day.notHappeningTag);
   });
 });

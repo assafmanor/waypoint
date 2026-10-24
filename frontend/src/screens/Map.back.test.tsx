@@ -39,6 +39,15 @@ let tripEvents: TripEvent[] = [];
 
 vi.mock('../state/trip-state', () => ({
   useTrip: () => ({
+    zoneCrossings: [],
+    // Tasks ride the same snapshot since phase 1; the mark and the sections read them.
+    tasks: [],
+    taskVerbs: {
+      createTask: async () => undefined,
+      updateTask: async () => {},
+      deleteTask: async () => {},
+      tickTask: async () => {},
+    },
     documents: [],
     // The attachment link list every documents surface reads (ADR-0173/0174).
     documentAttachments: [],
@@ -119,6 +128,7 @@ vi.mock('../lib/map-config', () => ({
     detail: '/map/planet-20260813.pmtiles',
   }),
   mapPaneAvailable: () => true,
+  routePackUrl: (tripId: string) => `/trips/${tripId}/routes/pack`,
 }));
 vi.mock('../ui/domain/MapPane', () => ({ MapPane: () => <div data-pane /> }));
 

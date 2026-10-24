@@ -13,8 +13,10 @@ import {
   ambientEventsOnDate,
   ambientSpanLabel,
   ambientSpanPosition,
+  heldSpansOnDate,
   buildDayGlance,
   countsNights,
+  dayBookendStays,
 } from './glance';
 import { DEFAULT_EVENT_ICON } from '../constants';
 import { tripZoneCrossings, type ZoneContext } from './places';
@@ -217,6 +219,36 @@ describe('buildDayGlance', () => {
       TZ,
     );
     expect(after.remaining).toBe(0); // behind you now
+  });
+
+  // **AND SAYING SO CLEARS IT EARLY** (ADR-0224 §5). The clock rule above is untouched — a
+  // ceiling still expires by itself at 11:00, which is ADR-0171 §6 working — but until this
+  // ADR that was the ONLY way a check-out could leave the number, because `status` is the
+  // opening edge's answer and there was no field for the closing one.
+  it('drops a check-out the group has already made, before its ceiling', () => {
+    const base = {
+      id: 'hotel',
+      category: 'lodging' as const,
+      kind: EVENT_KIND.HARD,
+      startsAt: at('15:00'),
+      endsAt: at('11:00', '2026-07-11'),
+      endDate: '2026-07-11',
+    };
+    const count = (over: Partial<TripEvent>) =>
+      buildDayGlance(
+        [ev({ ...base, ...over })],
+        '2026-07-11',
+        ms('09:00', '2026-07-11'),
+        ms('07:00', '2026-07-11'),
+        ms('23:00', '2026-07-11'),
+        TZ,
+      ).remaining;
+
+    expect(count({})).toBe(1);
+    expect(count({ endStatus: EVENT_STATUS.DONE })).toBe(0);
+    expect(count({ endStatus: EVENT_STATUS.SKIPPED })).toBe(0);
+    // The check-in's answer is NOT the check-out's — the defect ADR-0224 is about, counted.
+    expect(count({ status: EVENT_STATUS.DONE })).toBe(1);
   });
 
   it('keeps a CHECK-IN counted after its floor passes — a floor is not an event (ADR-0171 §6)', () => {
@@ -446,11 +478,17 @@ describe('buildDayGlance', () => {
     const g = buildDayGlance(events, DATE, ms('12:00'), day07, day23, TZ);
     expect(g.anchors).toHaveLength(1);
     expect(g.anchors[0].kind).toBe('span');
-    expect(g.anchorLaneCount).toBe(1);
-    expect(g.anchorsCollapsed).toBe(false);
+    // A same-day flight IS on the counted rail, so the rail needs no tick of its own for it.
+    expect(g.anchors[0].standalone).toBe(false);
   });
 
-  it('keeps well-separated anchors on a single lane', () => {
+  // ── WHICH ANCHORS THE RAIL HAS TO DRAW ITSELF (ADR-0215 §2) ────────────────
+  // `standalone` replaced the lane/collapse machinery when the pill band was withdrawn: what a
+  // renderer needs is not where a pill would fit but whether the MOMENT is on the rail at all.
+  // An ambient span is excluded from the counted rail (ADR-0054) while ADR-0164 still counts its
+  // edge in `remaining` — so these are exactly the anchors that must become ticks, or a card
+  // would say `2` and show one thing.
+  it('an ambient edge is standalone; a same-day bracket is not', () => {
     const events = [
       // an ambient hotel check-in (a point) far from a morning flight (a span)
       ev({
@@ -470,16 +508,14 @@ describe('buildDayGlance', () => {
     ];
     const g = buildDayGlance(events, DATE, ms('12:00'), day07, day23, TZ);
     expect(g.anchors).toHaveLength(2);
-    expect(g.anchorLaneCount).toBe(1);
-    expect(g.anchorsCollapsed).toBe(false);
-    expect(g.anchors.every((a) => a.lane === 0)).toBe(true);
+    const byKind = Object.fromEntries(g.anchors.map((a) => [a.kind, a.standalone]));
+    expect(byKind).toEqual({ point: true, span: false });
   });
 
-  it('pushes two pill-width-apart anchors onto separate lanes (no smear)', () => {
-    // A checkout (point) and a check-in (point) ~0.30 of the rail apart: wide
-    // enough that the old gap (0.28) kept them on one lane, where two heavy
-    // pills still visually cover each other. The gap now matches a real phone
-    // pill (~0.36), so they split to two lanes instead of smearing (ADR-0077).
+  it('both edges of a bed that moves are standalone', () => {
+    // The transfer day: a check-out and a check-in, neither with a block on the rail. Under
+    // ADR-0077 this pair was the lane machinery's hardest case (two heavy pills ~0.30 apart);
+    // as ticks it is two instants and there is nothing to stack.
     const events = [
       ev({
         id: 'hotelOut',
@@ -500,14 +536,13 @@ describe('buildDayGlance', () => {
     const g = buildDayGlance(events, DATE, ms('12:00'), day07, day23, TZ);
     expect(g.anchors).toHaveLength(2);
     expect(g.anchors.every((a) => a.kind === 'point')).toBe(true);
-    expect(g.anchorLaneCount).toBe(2);
-    expect(g.anchorsCollapsed).toBe(false); // two lanes is still readable above
-    expect(g.anchors[0].lane).not.toBe(g.anchors[1].lane);
+    expect(g.anchors.every((a) => a.standalone)).toBe(true);
   });
 
-  it('collapses a crowded anchor band to the legs line (ADR-0077 §D)', () => {
-    // Three transition anchors clustered around midday → they would need >2
-    // lanes, so the band collapses.
+  it('the arrival day: two edges the rail must draw, and one it already has', () => {
+    // The day ADR-0215 §2 was written about. Under ADR-0077 these three anchors needed more than
+    // two lanes, so `anchorsCollapsed` fired and the POSITIONED band was never drawn at all —
+    // three behaviours for one question, with the fallback on the day the card matters most.
     const events = [
       ev({
         id: 'hotelOut',
@@ -534,14 +569,15 @@ describe('buildDayGlance', () => {
     ];
     const g = buildDayGlance(events, DATE, ms('12:00'), day07, day23, TZ);
     expect(g.anchors).toHaveLength(3);
-    expect(g.anchorLaneCount).toBeGreaterThan(2);
-    expect(g.anchorsCollapsed).toBe(true);
+    expect(g.anchors.filter((a) => a.standalone)).toHaveLength(2);
+    // And the ferry is one of the day's two counted blocks, so it needs no tick.
+    expect(g.anchors.find((a) => a.kind === 'span')?.standalone).toBe(false);
   });
 
-  it('stretches the window to a late transition so its marker stays on the rail', () => {
-    // An overnight (ambient) flight departs late and lands after midnight: it is
-    // not a counted block that stretches the window, so without folding the
-    // transition instants in, the arrival marker would land past frac 1 and clip.
+  it('keeps a late transition on the rail by clamping it, not by stretching the window', () => {
+    // An overnight (ambient) flight departs late and lands after midnight: it is not a
+    // counted block, so nothing stretches the window to it. The marker must still land on
+    // the rail rather than past frac 1.
     const events = [
       ev({
         id: 'redeye',
@@ -559,11 +595,37 @@ describe('buildDayGlance', () => {
     expect(g.segs.some((s) => s.key === 'redeye')).toBe(false);
     const dep = g.anchors.find((a) => a.kind === 'point' && a.labelKey === 'departure');
     expect(dep).toBeDefined();
-    if (dep && dep.kind === 'point') {
-      expect(dep.frac).toBeGreaterThanOrEqual(0);
-      expect(dep.frac).toBeLessThanOrEqual(1);
-    }
-    expect(g.windowEndMs).toBe(ms('23:30')); // stretched to the departure instant
+    if (dep && dep.kind === 'point') expect(dep.frac).toBe(1); // clamped onto the edge
+    expect(g.windowEndMs).toBe(day23); // the instant does not move the window
+  });
+
+  it('a midnight pick-up does not drag the window back and skew the day', () => {
+    // The reported case (2026-09-11): a car hire with no authored pick-up hour starts at
+    // 00:00, and that instant used to set `windowStartMs` — seven hours of rail with
+    // nothing drawable in them, and the day's real blocks squeezed into the far end.
+    const events = [
+      ev({
+        id: 'hire',
+        title: 'Iceland Car Rental',
+        category: 'transport',
+        kind: EVENT_KIND.HARD,
+        date: DATE,
+        endDate: '2026-07-10',
+        startsAt: at('00:00'),
+        endsAt: at('09:00', '2026-07-10'),
+      }),
+      ev({ id: 'hike', startsAt: at('11:00'), endsAt: at('15:00') }),
+    ];
+    const g = buildDayGlance(events, DATE, ms('08:00'), day07, day23, TZ);
+    expect(g.windowStartMs).toBe(day07);
+    // The hike keeps its proportional place in a 07:00→23:00 window (4/16 through it),
+    // where the dragged window put it at 11/23.
+    const hike = g.segs.find((seg) => seg.key === 'hike');
+    expect(hike?.startFrac).toBeCloseTo(4 / 16, 5);
+    expect(hike?.endFrac).toBeCloseTo(8 / 16, 5);
+    // The pick-up is still on the rail, at the day's own start edge.
+    const pickup = g.anchors.find((a) => a.kind === 'point');
+    expect(pickup?.kind === 'point' && pickup.frac).toBe(0);
   });
 
   it('is not empty on a day carrying only a transition marker', () => {
@@ -694,6 +756,37 @@ describe('buildDayGlance', () => {
     expect(ambientEventsOnDate(events, '2026-07-10').map((e) => e.id)).toEqual(['hotel']);
     expect(ambientEventsOnDate(events, '2026-07-11')).toHaveLength(0);
     expect(ambientEventsOnDate(events, '2026-07-06')).toHaveLength(0);
+  });
+
+  // ── THE RESOURCES YOU ARE HOLDING (ADR-0227 §B) ───────────────────────────────
+  it('heldSpansOnDate takes the same-day hire `ambientEventsOnDate` cannot see', () => {
+    const hotel = ev({
+      id: 'hotel',
+      category: 'lodging',
+      date: '2026-07-07',
+      endDate: '2026-07-10',
+    });
+    // One day, so NOT `isMultiDay` and therefore never ambient — which is exactly why the
+    // board had nothing to move it aside with.
+    const hire = ev({ id: 'hire', category: 'transport', icon: '🚗', date: '2026-07-08' });
+    const flight = ev({ id: 'flight', category: 'transport', icon: '✈️', date: '2026-07-08' });
+    const walk = ev({ id: 'walk', category: 'sightseeing', date: '2026-07-08' });
+    const events = [hotel, hire, flight, walk];
+
+    expect(heldSpansOnDate(events, '2026-07-08').map((e) => e.id)).toEqual(['hotel', 'hire']);
+    // A journey is excluded BY CONSTRUCTION — its middle is you, inside it, not a condition
+    // you are under. That is what retired the `!isJourney` guard at the strip's call site.
+    expect(heldSpansOnDate(events, '2026-07-08').map((e) => e.id)).not.toContain('flight');
+    expect(heldSpansOnDate(events, '2026-07-08').map((e) => e.id)).not.toContain('walk');
+    // The hire covers its own day only; the hotel still covers every night it spans.
+    expect(heldSpansOnDate(events, '2026-07-09').map((e) => e.id)).toEqual(['hotel']);
+  });
+
+  it('a same-day held span reads 1/1 rather than NaN', () => {
+    // `ambientSpanPosition` read `endDate!`, and `Math.max(1, NaN)` is `NaN` — invisible until
+    // a span with no `endDate` could reach the strip, which is what §B newly allows.
+    const hire = ev({ id: 'hire', category: 'transport', icon: '🚗', date: '2026-07-08' });
+    expect(ambientSpanPosition(hire, '2026-07-08')).toEqual({ position: 1, total: 1 });
   });
 
   // ── THE AMBIENT STRIP'S READ-OUT (ADR-0163 §4) ────────────────────────────────
@@ -948,5 +1041,74 @@ describe('a windowed check-in expires from נותרו היום (ADR-0184 §6)', 
     expect(
       count([stay({ startWindowEnd: at('21:00'), status: EVENT_STATUS.DONE })], ms('18:30')),
     ).toBe(0);
+  });
+});
+
+// ── THE STAYS THAT BRACKET A DAY (ADR-0054's amendment / ADR-0206 §AD) ────────────────────
+//
+// The day list's own use of the fact ADR-0054 established for the route: the journey blocks sit
+// between two ROWS, so the first row of a mid-stay day has nothing above it and the walk out of
+// the hotel was the one leg the list could never draw. That the answer here agrees with
+// `buildDayStopSequence`'s first/last position is asserted in `map-pins.test.ts`, beside that
+// function's own harness.
+describe('dayBookendStays', () => {
+  const stay = (from: string, to: string) =>
+    ev({
+      id: 'stay',
+      category: 'lodging',
+      date: from,
+      endDate: to,
+      startsAt: `${from}T15:00:00${OFF}`,
+      endsAt: `${to}T11:00:00${OFF}`,
+    });
+  const museum = ev({ id: 'm', startsAt: at('11:00') });
+
+  // Which end needs no third rule: the span covered last night → you woke there; it covers
+  // tonight → you end there.
+  it('a middle night is both ends — the day with a hotel at each', () => {
+    const bookends = dayBookendStays([stay('2026-07-05', '2026-07-09'), museum], DATE);
+    expect(bookends.woke?.id).toBe('stay');
+    expect(bookends.sleeps?.id).toBe('stay');
+  });
+
+  it('a check-in day is only the one you sleep in', () => {
+    const bookends = dayBookendStays([stay(DATE, '2026-07-09'), museum], DATE);
+    expect(bookends.woke).toBeUndefined();
+    expect(bookends.sleeps?.id).toBe('stay');
+  });
+
+  it('a check-out day is only the one you woke in', () => {
+    const bookends = dayBookendStays([stay('2026-07-05', DATE), museum], DATE);
+    expect(bookends.woke?.id).toBe('stay');
+    expect(bookends.sleeps).toBeUndefined();
+  });
+
+  // **`countsNights` is the half that separates a hotel from a car hire** — you sleep in one, so
+  // it brackets your day; you merely hold the other, so its pickup and return are ordinary stops.
+  // Both are read off ADR-0162's profile rather than compared against a category here.
+  it('a car hire brackets nothing, however many days it spans', () => {
+    const hire = ev({
+      id: 'car',
+      category: 'transport',
+      icon: '🚗',
+      date: '2026-07-05',
+      endDate: '2026-07-09',
+      startsAt: `2026-07-05T09:00:00${OFF}`,
+      endsAt: `2026-07-09T09:00:00${OFF}`,
+    });
+    expect(dayBookendStays([hire, museum], DATE)).toEqual({ woke: undefined, sleeps: undefined });
+  });
+
+  it('a single-day stay is ambient in neither direction, so it brackets nothing', () => {
+    expect(dayBookendStays([stay(DATE, DATE), museum], DATE)).toEqual({
+      woke: undefined,
+      sleeps: undefined,
+    });
+  });
+
+  it('answers nothing on a day the stay does not cover', () => {
+    const bookends = dayBookendStays([stay('2026-07-01', '2026-07-03')], DATE);
+    expect(bookends.woke).toBeUndefined();
+    expect(bookends.sleeps).toBeUndefined();
   });
 });

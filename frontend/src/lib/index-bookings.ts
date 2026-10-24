@@ -8,11 +8,16 @@ import {
   type Booking,
   type BookingType,
   type Place,
-  type Trip,
   type TripEvent,
 } from '@waypoint/shared';
-import { bookingDestinationId, bookingPlaceId, placeName } from './places';
-import { formatTime, isEventPast, relativeDayLabel, todayInTz } from './time';
+import {
+  bookingDestinationId,
+  bookingPlaceId,
+  eventDisplayZones,
+  placeName,
+  type ZoneEvidence,
+} from './places';
+import { dayLabel, formatTime, isEventPast, todayInTz, type DayNaming } from './time';
 import { plainTimingLabel, timingLabels } from './booking-timing';
 import { revealRows, type Revealed } from './filter-reveal';
 import { BOOKING_TYPE_ICON } from '../constants';
@@ -93,6 +98,10 @@ function searchTerms(booking: Booking, places: Place[]): (string | undefined)[] 
   return [
     booking.title,
     booking.confirmationCode,
+    // **The number, but never the gate** (ADR-0222 §1). A flight number is how a booking
+    // is looked up by someone reading a departure board; a gate is a two-character value
+    // that would collide with half the trip and goes stale by design.
+    booking.flightNumber,
     t.index.bookingType[booking.type],
     t.index.bookingTypePlural[booking.type],
     ...t.index.bookingTypeSynonyms[booking.type],
@@ -148,6 +157,14 @@ export function visibleRows(
   );
 }
 
+/** Every booking with its linked event, chronological. A finished trip lists these as they
+ *  are (ADR-0239 §4): once everything is past, a past/upcoming split hides the whole trip. */
+export function bookingRows(bookings: Booking[], events: TripEvent[]): BookingRow[] {
+  return bookings
+    .map((booking) => ({ booking, event: events.find((e) => e.bookingId === booking.id) }))
+    .sort(byWhen);
+}
+
 export function splitBookings(
   bookings: Booking[],
   events: TripEvent[],
@@ -155,18 +172,15 @@ export function splitBookings(
   now: number,
 ): { upcoming: BookingRow[]; past: BookingRow[] } {
   const at = new Date(now);
-  const rows: BookingRow[] = bookings.map((booking) => ({
-    booking,
-    event: events.find((e) => e.bookingId === booking.id),
-  }));
+  const rows = bookingRows(bookings, events);
   // A booking is behind you once its linked event's closing edge has passed
   // (ADR-0049): a flight at landing, a hotel at check-out, an untimed booking at
   // midnight. An unlinked booking has no place on the timeline yet, so it's never
   // past. The edge is derived type-agnostically by `eventEndBoundary`.
   const isPast = (r: BookingRow) => !!r.event && isEventPast(r.event, at, timezone);
   return {
-    upcoming: rows.filter((r) => !isPast(r)).sort(byWhen),
-    past: rows.filter(isPast).sort(byWhen),
+    upcoming: rows.filter((r) => !isPast(r)),
+    past: rows.filter(isPast),
   };
 }
 
@@ -208,32 +222,45 @@ export interface ScheduleParts {
 export function scheduleParts(
   event: TripEvent,
   booking: Booking,
-  trip: Trip,
+  evidence: ZoneEvidence,
   now: Date,
+  trip: DayNaming['trip'],
 ): ScheduleParts {
-  const today = todayInTz(trip.timezone, now);
+  // **The clock reads in the EDGE's own resolved zone** (ADR-0107) — a departure in its
+  // origin, an arrival in its destination — which is what the day card and the two detail
+  // sheets already do. This took the trip's primary zone, so on a multi-zone trip the row
+  // stated a time no clock on the itinerary shows. The evidence replaced the `Trip` here
+  // rather than joining it: `primaryZone` IS `trip.timezone`, and nothing else was read.
+  const zones = eventDisplayZones(event, evidence);
+  const today = todayInTz(evidence.primaryZone, now);
   const labels = timingLabels(booking.type);
   const multiDay = !!event.endDate && event.endDate !== event.date;
-  const past = isEventPast(event, now, trip.timezone);
+  const past = isEventPast(event, now, evidence.primaryZone);
 
   if (multiDay && today > event.date) {
-    const day = relativeDayLabel(event.endDate!, today);
+    const day = dayLabel(event.endDate!, { trip, today });
     const verb = past ? undefined : plainTimingLabel(labels.end);
     // Before the check-out day the day is enough; on the day itself, name the time.
     return event.endDate === today && event.endsAt
-      ? { verb, day, time: formatTime(event.endsAt, trip.timezone), edge: 'end' }
+      ? { verb, day, time: formatTime(event.endsAt, zones.end), edge: 'end' }
       : { verb, day, edge: 'end' };
   }
 
-  const day = relativeDayLabel(event.date, today);
+  const day = dayLabel(event.date, { trip, today });
   if (!event.startsAt) return { day, edge: 'start' };
   const verb = past ? undefined : plainTimingLabel(labels.start);
-  return { verb, day, time: formatTime(event.startsAt, trip.timezone), edge: 'start' };
+  return { verb, day, time: formatTime(event.startsAt, zones.start), edge: 'start' };
 }
 
 /** The parts as one run, `verb · day · time` — unchanged output, and still what the Index
  *  landing tile's one-line "next booking" preview wants. */
-export function scheduleLabel(event: TripEvent, booking: Booking, trip: Trip, now: Date): string {
-  const { verb, day, time } = scheduleParts(event, booking, trip, now);
+export function scheduleLabel(
+  event: TripEvent,
+  booking: Booking,
+  evidence: ZoneEvidence,
+  now: Date,
+  trip: DayNaming['trip'],
+): string {
+  const { verb, day, time } = scheduleParts(event, booking, evidence, now, trip);
   return [verb, day, time].filter(Boolean).join(' · ');
 }

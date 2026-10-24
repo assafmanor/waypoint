@@ -12,7 +12,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { wrapNav } from './test/nav-harness';
 import { setSimulatedNow } from './lib/useClock';
+import type { TravelModeOverride } from '@waypoint/shared';
 import { t } from './i18n/he';
+import { formatDuration } from './lib/duration';
+import { MINUTES_PER_DAY } from './constants';
 
 // jsdom has no layout engine, so it implements neither of these — `useShrinkToFit`
 // installs a ResizeObserver and the strip centres its selected pill on every change.
@@ -45,8 +48,24 @@ let pending = 0;
 let failures: unknown[] = [];
 const setOverride = vi.fn();
 
+const tripOverrides: TravelModeOverride[] = [];
+
 vi.mock('./state/trip-state', () => ({
   useTrip: () => ({
+    zoneCrossings: [],
+    // **The declared legs** (ADR-0206 §AM/§AQ2), mutable so a spec can declare one and re-render.
+    // Stated rather than omitted: `useDayTravelReads` takes it as a REQUIRED list precisely so a
+    // surface cannot forget to wire it and silently ignore every declaration on the trip — and the
+    // board reads it since §AQ2, which is why this fixture gained it.
+    travelModeOverrides: tripOverrides,
+    // Tasks ride the same snapshot since phase 1; the mark and the sections read them.
+    tasks: [],
+    taskVerbs: {
+      createTask: async () => undefined,
+      updateTask: async () => {},
+      deleteTask: async () => {},
+      tickTask: async () => {},
+    },
     trip: TRIP,
     users,
     events: [],
@@ -62,7 +81,9 @@ vi.mock('./state/trip-state', () => ({
   }),
 }));
 vi.mock('./state/auth-state', () => ({ useAuth: () => ({ me: { user: ME } }) }));
-vi.mock('./state/mode-state', () => ({ useMode: () => ({ mode, phase, setOverride }) }));
+vi.mock('./state/mode-state', () => ({
+  useMode: () => ({ mode, chromeMode: mode, phase, isFinished: phase === 'past', setOverride }),
+}));
 vi.mock('./state/drag-state', () => ({
   useDragState: () => ({ dragging: false, overDate: null }),
 }));
@@ -89,6 +110,7 @@ const renderHeader = (props: Partial<Parameters<typeof Header>[0]> & { at?: stri
         onOpenSwitcher={props.onOpenSwitcher ?? noop}
         onOpenPeople={props.onOpenPeople ?? noop}
         onOpenSettings={props.onOpenSettings ?? noop}
+        onShare={props.onShare ?? noop}
         otherTripCount={props.otherTripCount}
         allDays={props.allDays}
       />,
@@ -225,6 +247,49 @@ describe('the anchor slot', () => {
     const { container } = renderHeader();
     expect(container.querySelector('.hdr-anchor')!.classList.contains('is-back')).toBe(false);
   });
+
+  // ADR-0239 §3 withdrew the progress; ADR-0240 §3 gives the slot the trip's age, on the
+  // app's one elapsed ladder (`formatDuration`), never a second vocabulary.
+  it('says how long ago a finished trip was, and is not a control', () => {
+    mode = 'plan';
+    phase = 'past';
+    setSimulatedNow(Date.parse('2026-07-31T03:00:00Z')); // four days after the 27th
+    const { container } = renderHeader();
+    const anchor = container.querySelector('.hdr-anchor')!;
+    expect(anchor.tagName).not.toBe('BUTTON');
+    expect(anchor.textContent).toContain(t.header.agoCap);
+    expect(anchor.querySelector('.num.is-words')!.textContent).toBe(
+      formatDuration(4 * MINUTES_PER_DAY),
+    );
+    expect(anchor.textContent).not.toContain(t.header.dayCap);
+  });
+
+  it('reads `הסתיים · היום` on the last date itself', () => {
+    mode = 'plan';
+    phase = 'past';
+    setSimulatedNow(Date.parse('2026-07-27T13:00:00Z')); // the 27th, 22:00 Tokyo
+    const { container } = renderHeader();
+    const anchor = container.querySelector('.hdr-anchor')!;
+    expect(anchor.textContent).toBe(t.header.endedCap + t.header.endedToday);
+  });
+});
+
+// The fixture trip has no events, so every Plan-mode day is empty.
+describe('the empty-day marker', () => {
+  it('marks empty days while the trip is still being planned', () => {
+    mode = 'plan';
+    phase = 'pre';
+    const { container } = renderHeader({ at: '/?tab=days' });
+    expect(container.querySelectorAll('.wp-daypill.empty')).toHaveLength(10);
+  });
+
+  it('marks none on a finished trip (ADR-0239 §3)', () => {
+    mode = 'plan';
+    phase = 'past';
+    const { container } = renderHeader({ at: '/?tab=days' });
+    expect(container.querySelectorAll('.wp-daypill')).toHaveLength(10);
+    expect(container.querySelectorAll('.wp-daypill.empty')).toHaveLength(0);
+  });
 });
 
 // **One remembered day, shown only where a day is what you are looking at** (field
@@ -330,5 +395,14 @@ describe('the mode control', () => {
     phase = 'before';
     const { container } = renderHeader();
     expect(container.querySelector('.hdr-mode')).toBeNull();
+  });
+
+  // ADR-0213: sharing is one of the trip's visible capabilities, not something behind a
+  // menu — the header entry and the All Trips card entry are the two, and both are 44px.
+  it('offers sharing beside the trip actions', () => {
+    const onShare = vi.fn();
+    renderHeader({ onShare });
+    fireEvent.click(screen.getByRole('button', { name: t.share.entry }));
+    expect(onShare).toHaveBeenCalledTimes(1);
   });
 });

@@ -13,12 +13,12 @@ import {
   type Note,
   type NoteHostKey,
 } from '@waypoint/shared';
-import { DEFAULT_EVENT_ICON } from '../constants';
+import { DEFAULT_EVENT_ICON, NOTE_INLINE_MAX_LINES, NOTE_ROW_CHARS_PER_LINE } from '../constants';
 import { inContext, type HostContext } from './host-context';
 import { revealRows, type Revealed } from './filter-reveal';
-import { formatDuration } from './duration';
+import { agoLabel } from './duration';
 import { prettyUrl } from './external-url';
-import { t } from '../i18n/he';
+import { flattenNoteMarkdown } from './note-markdown';
 
 /** Every `EventCategory`, in the enum's own order — the chip row's order, so nothing here
  *  chooses one (`other` is last because the enum puts it last). */
@@ -26,12 +26,36 @@ const EVENT_CATEGORIES = eventCategorySchema.options;
 
 /** The `Change` fields these derivations read — the same subset `EntityChange` names in
  *  `lib/cache.ts`, so a live WS echo and an offline optimistic write both fit. */
-type HostChange = { entityType: EntityType; entityId: string; action: string };
+export type HostChange = { entityType: EntityType; entityId: string; action: string };
 
-/** Is this note hosted by that entity? */
-export function isHostedBy(note: Note, entityType: EntityType, entityId: string): boolean {
+/** **A row carrying the five host FKs** — a `Note` or a `Task`, which hold the same five
+ *  under the same "at most one" rule (`TASK_HOST_KEYS` is an ALIAS of `NOTE_HOST_KEYS`, not
+ *  a copy). Typed structurally so the two helpers below serve both, which is what stopped
+ *  phase 4 adding a second copy of each beside them. */
+export type HostedRow = Partial<Record<NoteHostKey, string | undefined>>;
+
+/** Is this row hosted by that entity? */
+export function isHostedBy(row: HostedRow, entityType: EntityType, entityId: string): boolean {
   const field = NOTE_HOST_FIELD[entityType as keyof typeof NOTE_HOST_FIELD];
-  return field ? note[field] === entityId : false;
+  return field ? row[field] === entityId : false;
+}
+
+/** **The host cascade, for any row that carries the five FKs** (ADR-0152 §2, generalised in
+ *  phase 4). See `dropNotesForHostChange` below for why this exists at all.
+ *
+ *  **Where the generalisation stops, and why** (root rule 8's "ask before the bigger
+ *  refactor"): this covers `dropNotesForHostChange` and `dropTasksForHostChange`, which are
+ *  the same table and the same operation. It deliberately does NOT absorb
+ *  `dropAttachmentsForHostChange` — that reads a different, two-member table AND carries an
+ *  extra case (a deleted DOCUMENT drops its own links, not just links pointing at it) — nor
+ *  `clearPlaceRefsForChange`, which CLEARS a field rather than dropping a row and is already
+ *  generic over its own shape. Folding either in would mean a flag argument that exists to
+ *  say "behave differently", which is the copy in a different costume. */
+export function dropHostedForHostChange<T extends HostedRow>(rows: T[], change: HostChange): T[] {
+  if (change.action !== CHANGE_ACTION.DELETE) return rows;
+  if (!(change.entityType in NOTE_HOST_FIELD)) return rows;
+  const kept = rows.filter((row) => !isHostedBy(row, change.entityType, change.entityId));
+  return kept.length === rows.length ? rows : kept;
 }
 
 /**
@@ -50,10 +74,7 @@ export function isHostedBy(note: Note, entityType: EntityType, entityId: string)
  * change that is not a host delete) cannot cause a re-render.
  */
 export function dropNotesForHostChange(notes: Note[], change: HostChange): Note[] {
-  if (change.action !== CHANGE_ACTION.DELETE) return notes;
-  if (!(change.entityType in NOTE_HOST_FIELD)) return notes;
-  const kept = notes.filter((note) => !isHostedBy(note, change.entityType, change.entityId));
-  return kept.length === notes.length ? notes : kept;
+  return dropHostedForHostChange(notes, change);
 }
 
 // --- Reading a note: its host, its category, its glyph, its order -------------------------
@@ -130,7 +151,13 @@ export function buildNoteHosts(sources: NoteHostSources): Map<string, NoteHostRe
  *  cache, or a peer's delete mid-render. Such a note reads as GENERAL (no chip) rather than
  *  showing an empty chip or a placeholder name, because "we don't know what this is about"
  *  is exactly what a general note looks like and it is the truthful degradation. */
-export function noteHost(note: Note, hosts: Map<string, NoteHostRef>): NoteHostRef | undefined {
+/*  **Widened from `Note` to `HostedRow`** (ADR-0191 §8): it only ever read the five FKs, and a
+ *  task carries the same five — so the tasks screen's host chip is this function rather than a
+ *  copy of it. The same extraction `isHostedBy` and `dropHostedForHostChange` already took. */
+export function noteHost(
+  note: HostedRow,
+  hosts: Map<string, NoteHostRef>,
+): NoteHostRef | undefined {
   for (const [kind, field] of Object.entries(NOTE_HOST_FIELD) as [NoteHostKind, NoteHostKey][]) {
     const id = note[field];
     if (id) return hosts.get(`${kind}:${id}`);
@@ -250,21 +277,18 @@ export function noteTitleText(note: Note): string {
 
 /** "When", for a note's meta line — `לפני 4 ד׳`, `לפני 3 ימים`, `לפני שבועיים`.
  *
- *  Built on `formatDuration`, the app's ONE elapsed ladder (ADR-0114: minutes → hours →
- *  days → weeks → months → years, largest rung, rounded to nearest), rather than a second
- *  relative-time helper. `ChangeFeed`'s private `relTime` deliberately stops at hours
- *  because a 20-entry ring only ever holds recent things; a notes list holds the whole
- *  trip, so a note from last week must not read as `לפני 216 ש׳`.
+ *  The sentence itself is `duration.ts`'s `agoLabel`, built on `formatDuration`, the app's
+ *  ONE elapsed ladder (ADR-0114: minutes → hours → days → weeks → months → years, largest
+ *  rung, rounded to nearest) — never a second relative-time helper. `ChangeFeed`'s private
+ *  `relTime` deliberately stops at hours because a 20-entry ring only ever holds recent
+ *  things; a notes list holds the whole trip, so a note from last week must not read as
+ *  `לפני 216 ש׳`.
  *
- *  Under a minute is "now" — the same floor the change feed uses, and the case that
- *  matters most, since it is what you see the instant you write one. **A timestamp that
- *  will not parse reads "now" as well**, through `formatDuration`'s own non-finite guard:
- *  the only row that can be in that state is one this device has just written and not yet
- *  had stamped, so "now" is the truth rather than a fallback. */
+ *  This wrapper is what remains once the public shared reader wanted the same sentence for
+ *  its freshness line (ADR-0213's eleventh amendment §4): a note's "when" is `agoLabel` of
+ *  its `createdAt`, and that is the whole of it. */
 export function noteWhen(createdAt: string, nowMs: number): string {
-  const minutes = Math.floor((nowMs - Date.parse(createdAt)) / 60_000);
-  const elapsed = formatDuration(minutes);
-  return elapsed ? t.changeFeed.relTime.agoPrefix(elapsed) : t.changeFeed.relTime.now;
+  return agoLabel(createdAt, nowMs);
 }
 
 /** This host's notes, newest first — the list every host surface reads (ADR-0152 §6). Here
@@ -286,9 +310,13 @@ export function notesForContext(notes: Note[], context: HostContext): Note[] {
 
 /** The context's count, from the per-host tally a list screen already keeps. Summed rather
  *  than re-filtered because the caller asks per row. */
-export function noteCountForContext(counts: Map<string, number>, context: HostContext): number {
+export function hostCountForContext(counts: Map<string, number>, context: HostContext): number {
   return context.members.reduce((total, m) => total + noteCountFor(counts, m.kind, m.id), 0);
 }
+
+/** The same sum, under its original name. It is generic over the TALLY — tasks pass their own
+ *  map through it — so the neutral name above is the one new callers should use. */
+export const noteCountForContext = hostCountForContext;
 
 /** The host half of a `createNote` input — `{ bookingId: id }`, `{ documentId: id }`, … —
  *  looked up rather than spelled at the call site, which is what keeps a surface from
@@ -321,3 +349,44 @@ export function noteCountsByHost(notes: Note[]): Map<string, number> {
  *  so callers ask by kind and id rather than building it. */
 export const noteCountFor = (counts: Map<string, number>, kind: NoteHostKind, id: string): number =>
   counts.get(`${kind}:${id}`) ?? 0;
+
+/** **Is this note too long to read inside the list?** (ADR-0202 §9c.)
+ *
+ * A tap means "read this", and the app decides where: a short note lifts its clamp where it
+ * sits, a long one opens on its own screen. That is state-dependent behaviour for one gesture,
+ * which is a real cost — but the alternative shipped and was reported, because expanding a
+ * document-length note produces a wall inside a list row and puts its verbs at the bottom of
+ * it.
+ *
+ * **Estimated, not measured.** Measuring the rendered height first would mean rendering the
+ * thing before deciding whether to render it. So this counts what the row WOULD show — the
+ * flattened text, which is what `.note-body-line` receives — and turns it into a line count by
+ * wrapping at `NOTE_ROW_CHARS_PER_LINE`. Counting characters alone was the first version and it
+ * is wrong in a way that matters: a note of twelve short lines is twelve lines tall and barely
+ * 150 characters, so it would have expanded into exactly the wall this exists to prevent.
+ *
+ * A note with no body never qualifies: a url-only note's row IS its url, and there is nothing
+ * for a screen to add that the foot does not already carry.
+ *
+ * **ONE CONSUMER SINCE 2026-09-20, and that is the whole point** (ADR-0235 §7). It used to
+ * decide the same tap on a host's SECTION too, and does not any more: once that surface
+ * clips, the estimate and the clip can disagree — a control offering to reveal nothing, or a
+ * cut note whose tap still opens the foot — so the section asks the box (`lib/useIsClipped.ts`)
+ * and this stays where it is still the right tool. On the notes screen the clamp is TWO lines
+ * and the threshold is eight, which are genuinely two different numbers: "is it cut" would
+ * answer the wrong question there, since almost every note is.
+ *
+ * Worth knowing when reading the numbers below: they are frozen at the 360px design width, so
+ * the same note estimated at 19 lines renders as 19 at 360px and 18 at 390px.
+ */
+export function noteReadsFullScreen(note: Pick<Note, 'body'>): boolean {
+  const text = flattenNoteMarkdown(note.body ?? '');
+  if (!text) return false;
+  const lines = text
+    .split('\n')
+    .reduce<number>(
+      (total, line) => total + Math.max(1, Math.ceil(line.length / NOTE_ROW_CHARS_PER_LINE)),
+      0,
+    );
+  return lines > NOTE_INLINE_MAX_LINES;
+}

@@ -1,4 +1,5 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import { MEMBERSHIP_ROLE } from '@waypoint/shared';
 import type { PrismaService } from '../prisma/prisma.service';
 
 /**
@@ -111,5 +112,55 @@ export async function assertEntityRefsInTrip(
   for (const [id, label, find] of checks) {
     if (!id) continue;
     if (!(await find())) throw new BadRequestException(`Unknown ${label} for this trip: ${id}`);
+  }
+}
+
+/**
+ * Reject an assignee who is not a member of this trip (tasks brief §6). The same
+ * class of reference as the three guards above — a client-supplied id written onto a
+ * trip's row — and a foreign one would be a task delegated to somebody who can never
+ * see it, which reads on the row as a name nobody recognises.
+ *
+ * **A sibling rather than a sixth line in the table above**, per this file's own rule:
+ * that lookup keys on the referenced row's `id`, and a member is resolved by the
+ * `(tripId, userId)` pair on `Membership` instead. Same shape, different key.
+ */
+export async function assertMemberInTrip(
+  prisma: PrismaService,
+  tripId: string,
+  userId: string | null | undefined,
+): Promise<void> {
+  if (!userId) return;
+  const membership = await prisma.membership.findFirst({
+    where: { tripId, userId },
+    select: { id: true },
+  });
+  if (!membership) throw new BadRequestException(`Unknown member for this trip: ${userId}`);
+}
+
+/**
+ * Reject an actor who is not an **admin** of this trip.
+ *
+ * A sibling to the guards above rather than a variant of them: those answer "is this id in
+ * this trip", this answers "may this person do this", and both are the same class of
+ * client-supplied claim checked once, in one place. It moved here from
+ * `TripsService.assertAdmin` when ADR-0213's sharing module needed the identical check —
+ * a private copy in a second service is precisely the drift `assertPlacesInTrip` exists to
+ * prevent (B-06), and an authorization check that drifts is worse than a scope one.
+ *
+ * Assumes membership is already confirmed by `MembershipGuard`; a non-member reads as a
+ * non-admin and gets the same 403, which discloses nothing extra either way.
+ */
+export async function assertTripAdmin(
+  prisma: PrismaService,
+  tripId: string,
+  userId: string,
+): Promise<void> {
+  const membership = await prisma.membership.findUnique({
+    where: { tripId_userId: { tripId, userId } },
+    select: { role: true },
+  });
+  if (!membership || membership.role !== MEMBERSHIP_ROLE.ADMIN) {
+    throw new ForbiddenException('Admin only');
   }
 }

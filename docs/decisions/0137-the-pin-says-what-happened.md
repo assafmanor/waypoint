@@ -2,6 +2,7 @@
 
 **Status:** Accepted (design + build)
 **Date:** 2026-07-31
+**Amended 2026-09-27 by [0241](0241-a-finished-trip-plays-back-and-leaves-the-app.md) §1 (built in the epic's 5.1):** on a finished trip the pin reads the record (`recapHappened`) through `PinContext.finished`, not the day: happened carries no mark, skipped keeps the `✕` and the grey, and a place nobody marked gains a third mark, the empty ring `.pin-n.outcome.open`.
 **Refines:** [0117](0117-map-place-outcome-states.md) (its three outcome states, and the "Phase 6 inherits it" its Consequences promised), [0121](0121-embedded-map-phase-6-design.md) §6 (the pin ladder gains no tier — this is a second axis on two existing ones), [0130](0130-a-maybe-is-not-a-past-place.md) §2/§3 (the `behind` tier is Trip-only; `ghost` and `shelf` are the two subordinate tiers, and only one of them can carry an outcome), [0028](0028-plan-violet-color-budget-dark-ready.md) (`--ok`/`--miss` are for statuses, which is what an outcome is)
 
 Mockup: [`mockups/map-pin-outcome-v2.html`](../../mockups/map-pin-outcome-v2.html) (v1 is superseded and kept only for its §F, which is what this ADR's Alternatives point at)

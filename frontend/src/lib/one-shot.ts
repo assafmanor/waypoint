@@ -63,6 +63,31 @@ export const BEAT = {
    *  `styles/beats.css`, with a per-surface plug-in only where a surface cannot take a
    *  plain `animation`. */
   REBUFF: 'is-rebuffing',
+  /** A task being completed: the ink squashes in, overshoots and settles while the ✓ is
+   *  drawn through it (ADR-0195). Keyframes in `ui/tasks.css`, beside the control.
+   *
+   *  **The one beat whose caller uses the RETURN VALUE**, and it is the reason this
+   *  family's `playBeat` reports a duration at all: on every surface that draws a tick,
+   *  completing a task makes its row leave — the tasks screen collapses it through
+   *  `RevealList`, both Home bands unmount it — so a beat played on the row that was
+   *  pressed has nothing to play in unless the departure waits for it. `TaskTick`
+   *  therefore fires `onTick` after this many ms, and at 0 fires straight away.
+   *
+   *  **One direction only.** Un-ticking is a correction, not an achievement, so it plays
+   *  no beat at all: the open state declares its own `transition`, which a `transition`
+   *  being read from the DESTINATION state makes govern the way back and nothing else. */
+  TICK: 'is-ticking',
+  /** A hold on something that cannot be dragged: the row strains on the axis it was being
+   *  dragged on, is arrested, and is pulled back past level onto its anchor (ADR-0199 §2).
+   *  Keyframes in `screens.css`, beside `.bld.draggable`.
+   *
+   *  Deliberately neither of its two nearest siblings, and for the same kind of reason each
+   *  time. Not `NUDGE`: that beat means something is WRONG, and trying to drag a hard event
+   *  is not an error — ADR-0011 guards a commitment rather than forbidding it, and the event
+   *  does move, through the time chip the lock sits on. Not `REBUFF`: that one means there
+   *  is nothing to OPEN, and a hard row has a read, a `⋯` and a time; its arc also
+   *  COMPLETES, where the whole statement here is a movement that does not. */
+  PINNED: 'is-pinned',
 } as const;
 
 export type Beat = (typeof BEAT)[keyof typeof BEAT];

@@ -8,6 +8,14 @@
 // Shared by BOTH of the builder's drags (a shelf idea onto a gap, and a soft row's
 // reorder grip): the reorder drag had the same reach limit, so this is one
 // mechanism rather than a second copy (CLAUDE.md rule 8).
+//
+// **Two of the pure functions here are shared with the INLINE axis** (`useEdgeDayStep`,
+// ADR-0116 §2's 2026-08-22 amendment), where holding at an edge steps the DAY rather than
+// scrolling the list: `edgeDepth` is how deep into a band a position is, and `gateEdgeStep`
+// is the latch that stops a drag lifted inside a band from acting on it. The second one is
+// the reason they are shared rather than copied — its scar transposes exactly. Vertically it
+// was "you pressed, held, and the list took off"; on the inline axis a card lifted from a row
+// that reaches the edge would start flipping days under a finger that had not moved.
 import { useCallback, useEffect, useRef } from 'react';
 import {
   DRAG_EDGE_SCROLL_MAX_PX,
@@ -32,33 +40,56 @@ export function edgeScrollStep(
   zone: number = DRAG_EDGE_SCROLL_ZONE_PX,
   max: number = DRAG_EDGE_SCROLL_MAX_PX,
 ): number {
-  if (viewportHeight <= 0) return 0;
-  // A short viewport can't hold two full zones; shrink them rather than overlap,
-  // which would make the middle of the screen scroll in both directions at once.
-  const edge = Math.min(zone, viewportHeight / 2);
+  return Math.round(max * edgeDepth(clientY, viewportHeight, zone));
+}
+
+/**
+ * **How deep into an edge band a position is**, as a signed share of the band: `-1..0`
+ * approaching the low edge (top, or inline-start in the reading direction's terms — the
+ * caller owns which axis it asked about), `0..1` approaching the high edge, and exactly `0`
+ * anywhere in the middle.
+ *
+ * Extracted from `edgeScrollStep` when the day step needed the same bands on the inline axis
+ * (ADR-0116 §2's amendment). The share rather than the sign is what `edgeScrollStep` needs —
+ * easing toward an edge should crawl and pinning against it should move at full speed — and
+ * the sign alone is what a day step needs, so one function answers both.
+ */
+export function edgeDepth(
+  pos: number,
+  extent: number,
+  zone: number = DRAG_EDGE_SCROLL_ZONE_PX,
+): number {
+  if (extent <= 0) return 0;
+  // A short box can't hold two full zones; shrink them rather than overlap, which would
+  // make the middle of the screen pull in both directions at once.
+  const edge = Math.min(zone, extent / 2);
   if (edge <= 0) return 0;
-  const fromTop = clientY;
-  const fromBottom = viewportHeight - clientY;
-  if (fromTop < edge) return -Math.round(max * Math.min(1, (edge - fromTop) / edge));
-  if (fromBottom < edge) return Math.round(max * Math.min(1, (edge - fromBottom) / edge));
+  const fromLow = pos;
+  const fromHigh = extent - pos;
+  if (fromLow < edge) return -Math.min(1, (edge - fromLow) / edge);
+  if (fromHigh < edge) return Math.min(1, (edge - fromHigh) / edge);
   return 0;
 }
 
 /** Which edge band a step is pulling toward, or `null` from the middle. The bands
- *  never overlap (`edgeScrollStep` shrinks them on a short viewport), so a pointer
- *  is in at most one of them and a single value describes it. */
-export type EdgeDirection = 'up' | 'down' | null;
+ *  never overlap (`edgeDepth` shrinks them on a short viewport), so a pointer
+ *  is in at most one of them and a single value describes it.
+ *
+ *  `low`/`high` rather than up/down because the same latch now guards the inline axis:
+ *  on the block axis low is the top, on the inline axis it is whichever side a smaller
+ *  `clientX` is — the caller knows which, and the latch does not need to. */
+export type EdgeDirection = 'low' | 'high' | null;
 
 export function edgeDirection(step: number): EdgeDirection {
-  if (step < 0) return 'up';
-  if (step > 0) return 'down';
+  if (step < 0) return 'low';
+  if (step > 0) return 'high';
   return null;
 }
 
-/** The band a drag was LIFTED in, with the position (inside the scroller's box) it
+/** The band a drag was LIFTED in, with the position (inside the measured box) it
  *  was lifted at — the reference the release is measured from. `null` for a drag
  *  that began clear of both bands, which is gated by nothing. */
-export type EdgeLatch = { dir: 'up' | 'down'; from: number } | null;
+export type EdgeLatch = { dir: 'low' | 'high'; from: number } | null;
 
 export function edgeLatchAt(step: number, y: number): EdgeLatch {
   const dir = edgeDirection(step);
@@ -93,7 +124,7 @@ export function gateEdgeStep(
   release: number = DRAG_EDGE_SCROLL_RELEASE_PX,
 ): { step: number; latch: EdgeLatch } {
   if (!latch || edgeDirection(step) !== latch.dir) return { step, latch: null };
-  const toward = latch.dir === 'down' ? y - latch.from : latch.from - y;
+  const toward = latch.dir === 'high' ? y - latch.from : latch.from - y;
   return toward >= release ? { step, latch: null } : { step: 0, latch };
 }
 

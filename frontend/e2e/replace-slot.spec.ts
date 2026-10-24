@@ -11,6 +11,10 @@
 // event's own time afterwards. The day view has no unit suite at all (see `note-way-in`).
 import { test, expect, type Page } from '@playwright/test';
 import { bootIntoTrip, shortLiveTripDates, todayAt, TRIP_ID } from './boot';
+// The control is `t.actions.swap`. The spec's PROSE keeps saying `החלף` because that is the
+// name ADR-0161 §6 gave this decision; the 2026-08-17 register pass reworded the button to
+// `החלפה` and broke all seven selectors, which is why none of them is a literal any more.
+import { t } from '../src/i18n/he';
 
 const PHONE = { width: 390, height: 844 };
 /** **Pinned before both fixtures**, which is load-bearing here: a PASSED soft event renders the
@@ -102,17 +106,16 @@ async function boot(page: Page): Promise<void> {
   });
   await page.goto('/');
   await expect(page.locator('nav.nav')).toBeVisible();
-  await page.locator('nav.nav button', { hasText: 'יום-יום' }).click();
+  await page.locator('nav.nav button', { hasText: t.tabs.days }).click();
   await expect(page).toHaveURL(/[?&]tab=days/);
 }
 
-/** Open a row's `⋯` sheet. The card has to be expanded first — the menu lives inside it, and
- *  both locators are scoped to the card so a day of several rows cannot answer for the wrong
- *  one. */
+/** Open a row's `⋯` sheet. The menu is on the card FACE since ADR-0228 §5b, so the card no
+ *  longer has to be expanded first; the locator stays scoped to the card so a day of several
+ *  rows cannot answer for the wrong one. */
 async function openRowMenu(page: Page, title: string) {
   const card = page.locator('.wp-event', { hasText: title });
-  await card.locator('.wp-event-face').click();
-  await card.locator('.wp-event-act.more').click();
+  await card.locator('.wp-event-menu').click();
   await expect(page.getByRole('dialog')).toBeVisible();
 }
 
@@ -124,7 +127,7 @@ test.describe('החלף on a soft event', () => {
 
   test('opens the slot chooser, naming the event and the slot it hands over', async ({ page }) => {
     await openRowMenu(page, 'מוזיאון אדו');
-    await page.getByRole('button', { name: 'החלף' }).click();
+    await page.getByRole('button', { name: t.actions.swap }).click();
 
     const sheet = page.getByRole('dialog');
     // The header names what is being displaced — a gap fill names the slot, because it has
@@ -141,7 +144,7 @@ test.describe('החלף on a soft event', () => {
 
   test('spends no plan violet: the accent follows the mode (root rule 4)', async ({ page }) => {
     await openRowMenu(page, 'מוזיאון אדו');
-    await page.getByRole('button', { name: 'החלף' }).click();
+    await page.getByRole('button', { name: t.actions.swap }).click();
 
     const sheet = page.locator('.slotfill');
     await expect(sheet).toHaveAttribute('data-mode', 'trip');
@@ -162,7 +165,7 @@ test.describe('החלף on a soft event', () => {
     page,
   }) => {
     await openRowMenu(page, 'מוזיאון אדו');
-    await page.getByRole('button', { name: 'החלף' }).click();
+    await page.getByRole('button', { name: t.actions.swap }).click();
     await page.locator('.slotfill-row', { hasText: 'אודן קאשימה' }).click();
 
     // The replacement is on the day, at the displaced event's own time — that is §1's rule
@@ -183,7 +186,7 @@ test.describe('החלף on a soft event', () => {
 
   test('one undo puts the day back — both halves of it', async ({ page }) => {
     await openRowMenu(page, 'מוזיאון אדו');
-    await page.getByRole('button', { name: 'החלף' }).click();
+    await page.getByRole('button', { name: t.actions.swap }).click();
     await page.locator('.slotfill-row', { hasText: 'אודן קאשימה' }).click();
 
     await page.locator('.toast').getByRole('button').click();
@@ -200,7 +203,7 @@ test.describe('החלף on a soft event', () => {
   // the form can be cancelled — so the park is its own undoable step.
   test('אירוע חדש parks the event and opens the form on the slot it freed', async ({ page }) => {
     await openRowMenu(page, 'מוזיאון אדו');
-    await page.getByRole('button', { name: 'החלף' }).click();
+    await page.getByRole('button', { name: t.actions.swap }).click();
     await page.locator('.slotfill-new').click();
 
     await expect(page.locator('.wp-event', { hasText: 'מוזיאון אדו' })).toHaveCount(0);
@@ -293,13 +296,12 @@ test('an untimed row is never offered החלף, and nothing crashes on the way',
   });
   await page.goto('/');
   await expect(page.locator('nav.nav')).toBeVisible();
-  await page.locator('nav.nav button', { hasText: 'יום-יום' }).click();
+  await page.locator('nav.nav button', { hasText: t.tabs.days }).click();
 
   const card = page.locator('.wp-event', { hasText: 'משהו' });
-  await card.locator('.wp-event-face').click();
-  await card.locator('.wp-event-act.more').click();
+  await card.locator('.wp-event-menu').click();
   await expect(page.getByRole('dialog')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'החלף' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: t.actions.swap })).toHaveCount(0);
 
   // The day is still standing, which is the actual report.
   await expect(page.locator('.wp-event', { hasText: 'משהו' })).toBeVisible();
@@ -313,5 +315,5 @@ test('a hard event is never offered החלף — a commitment is not displaced (
   await boot(page);
   await openRowMenu(page, 'טיסה הביתה');
   await expect(page.getByRole('dialog')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'החלף' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: t.actions.swap })).toHaveCount(0);
 });

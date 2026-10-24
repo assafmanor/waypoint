@@ -34,6 +34,18 @@ export function stopHeightCss(stop: SnapStop): string {
 }
 const PERCENT_PRECISION = 4;
 
+/** The outermost stops in px — the axis the drag lives on. `max` is also the answer to
+ *  "can the sheet still grow", which is what decides whether a drag UP on a scrollable
+ *  body is the sheet's or the list's (ADR-0122 §4's 2026-09-15 amendment). */
+export function stopsRangePx<T extends string>(
+  containerPx: number,
+  stops: Record<T, SnapStop>,
+  order: readonly T[],
+): { min: number; max: number } {
+  const heights = order.map((id) => stopHeightPx(stops[id], containerPx));
+  return { min: Math.min(...heights), max: Math.max(...heights) };
+}
+
 /** Keep a dragged height inside the outermost stops, so the gesture can neither
  *  shrink the sheet past its lowest stop nor pull it above the container. */
 export function clampToStops<T extends string>(
@@ -42,8 +54,8 @@ export function clampToStops<T extends string>(
   stops: Record<T, SnapStop>,
   order: readonly T[],
 ): number {
-  const heights = order.map((id) => stopHeightPx(stops[id], containerPx));
-  return Math.min(Math.max(heightPx, Math.min(...heights)), Math.max(...heights));
+  const { min, max } = stopsRangePx(containerPx, stops, order);
+  return Math.min(Math.max(heightPx, min), max);
 }
 
 /**

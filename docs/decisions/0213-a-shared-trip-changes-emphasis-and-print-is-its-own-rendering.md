@@ -1,0 +1,2702 @@
+# 0213 - A shared trip changes emphasis, and print is its own rendering
+
+**Status:** Accepted - built (2026-08-30)
+**Date:** 2026-08-29
+**Relates:** [0011](0011-hard-soft-event-model.md), [0017](0017-mobile-first-device-targets.md), [0018](0018-timeline-data-model-shape.md), [0028](0028-plan-violet-color-budget-dark-ready.md), [0067](0067-revocable-code-invites-and-removal-blocks.md), [0097](0097-mockup-catalog-out-of-root-claude-md.md), [0107](0107-per-place-timezones-and-multi-zone-time.md), [0118](0118-numbers-in-hebrew-bidi.md), [0166](0166-place-enrichment-is-a-multi-source-pipe.md)
+
+## Context
+
+Itinerary sharing has two audiences and two media. A fellow traveler needs operational detail; someone planning a similar trip wants its shape. A live public page is read on a phone and can expand. A PDF is a fixed snapshot that must remain compact, legible, and printable.
+
+The first public mockup removed facts at lower detail levels. The second added a route-led introduction and a sunrise/sun/sunset/moon row. The owner rejected that row because it labelled parts of a day without organizing the schedule, and challenged mandatory day titles because the app deliberately has no `Day` entity. The owner also intends to add LLM models and skills later, wants generated summaries to publish without an approval step, and requires that sensitive data never cross the model boundary.
+
+## Decision
+
+### 1. One projection vocabulary, three reading intents
+
+The owner selects one of three projections. Web and PDF consume the same projection contract, but each medium renders it independently.
+
+- **Summary is for inspiration.** It emphasizes trip identity, route order, destinations, generated-or-derived day narrative, and event titles grouped by part of day. It excludes exact times, addresses, travel legs, and operational/private fields.
+- **Full schedule is for orientation.** It adds exact times, locations, addresses, travel legs, and map links. It excludes booking references, notes/tasks, traveler identity, files, and financial details.
+- **Everything is for operation.** It starts from Full and adds only owner-enabled sensitive fields. Every sensitive field family is off by default.
+
+The public page keeps a stable day spine across projections. Hierarchy changes; navigation and privacy do not.
+
+#### The schedule owns parts of the day
+
+Daypart marks are section headings over real events, not a decorative rail. Empty sections do not render. The grouping is derived from an event's displayed local start time, using the same display-zone resolution as the event itself:
+
+- morning: 05:00-11:59;
+- noon: 12:00-13:59;
+- afternoon: 14:00-17:59;
+- evening: 18:00-21:59;
+- night: 22:00-04:59;
+- flexible: no start time.
+
+These boundaries are presentation-policy constants, not stored data. Summary shows event identity beneath the heading without exact facts. Full and Everything show the same grouping with their allowed details.
+
+### 2. Narrative is optional, automatic enrichment
+
+A day does not require an authored title. ADR-0018 deliberately dropped the `Day` table; sharing must remain complete with only events, places, and dates.
+
+The server always builds a deterministic fallback:
+
+- trip narrative: route labels and counts;
+- day title: route endpoints or principal place;
+- day summary: the first meaningful public event titles.
+
+A future `ItineraryNarrativeGenerator` may replace only those narrative strings. Its output publishes automatically when it is current and valid; there is no owner-review state. Model output never decides which fields are shared, how events are grouped, or how web/PDF render.
+
+#### Model boundary
+
+The generator receives a separate `SummaryNarrativeInput`, never the Full or Everything projection. It is a server-built allowlist containing only:
+
+- locale;
+- public destination and route labels;
+- day ordinal;
+- event title, icon, and category already included in Summary;
+- coarse daypart;
+- public place display names already included in Summary.
+
+It excludes trip/member/entity identifiers, emails, traveler names, exact dates and times, addresses and coordinates, notes, tasks, booking fields and confirmation codes, documents, costs, URLs, provider payloads, and every Everything toggle. Identifier-like, email, phone, and URL patterns are removed from allowed free text before dispatch.
+
+An allowlist cannot prove that arbitrary prose is semantically non-sensitive. Therefore model generation runs only for an active shared link, and only text already selected for publication in Summary may cross an external model boundary. If the product later promises that no itinerary content at all leaves Travelive, that requires a local or self-hosted model rather than a broader prompt filter.
+
+#### Generation lifecycle
+
+- A skill is a named, versioned generator with a strict input schema and strict JSON output schema; sharing does not build a general-purpose agent runtime.
+- Results are keyed by trip, locale, input hash, and skill version, with model/provider provenance and generation time.
+- Output is rejected if it fails schema, length, locale, or no-URL rules.
+- An input-hash mismatch makes the result ineligible immediately. Web and PDF use the deterministic fallback while background regeneration runs.
+- Public reads and PDF rendering never invoke a model synchronously.
+- Provider failure, timeout, refusal, or disabled AI leaves sharing fully functional through the fallback.
+
+### 3. Visual identity has no new media dependency
+
+The first release does not require a trip-cover upload, stock photography, generated imagery, or static map rendering. A compact route strip comes from actual ordered destinations. Event badges and daypart headings come from existing event content. This is truthful, available offline, and buildable from the projection already required for sharing.
+
+Travelive identifies the source quietly at the top and offers a low-pressure product invitation only after the itinerary. The trip makes the first impression.
+
+### 4. PDF is not a screenshot
+
+PDF has a dedicated fixed-light A4 renderer. It shares data, daypart grouping, and projection rules with the public page, not the public page's component tree.
+
+- Summary targets one page for the nine-day reference trip.
+- Full targets two pages for that reference trip.
+- Everything moves selected sensitive data into an appendix.
+- Days are break-safe units; event rows do not split across pages.
+- Daypart headings appear only above events that belong to them.
+- Page footers contain generated-at time, page count, written URL, and QR.
+- Color is restrained and semantic; structure remains legible in grayscale.
+
+These are density targets, not truncation rules. Longer trips may use more pages rather than reducing text below the print typography floor.
+
+### 5. The public URL uses the invite-link technique
+
+The proposed public route is `/s/<code>`, where `code` is an 8-character case-sensitive base58 credential backed by a durable database row, following ADR-0067. The URL contains neither a trip ID nor a signed payload.
+
+The v1 build has one reconfigurable public link per trip. Updating its projection changes that live link; rotating its code invalidates the old URL immediately. Multiple independently revocable audience links remain a future access-management feature rather than infrastructure hidden inside v1.
+
+## Consequences
+
+- Detail levels need explicit server-owned projection schemas; arbitrary client-side field hiding is insufficient.
+- Daypart grouping is one shared pure derivation consumed by web and PDF.
+- Sharing remains useful before any model integration and remains available during provider failure.
+- A future LLM/skills subsystem gets a narrow versioned port rather than access to the trip snapshot.
+- One link keeps the ordinary path short and the lifecycle legible; serving two audiences simultaneously requires the future multiple-link feature rather than weakening one link's projection contract.
+- Generated narrative may change automatically on a live link, but only after schema validation and only for the exact current input hash.
+- Free-text sensitivity cannot be solved by field names alone; external generation is limited to Summary-public text and requires explicit provider policy.
+- PDF generation needs pagination tests and rendered-page inspection, not only unit tests.
+
+## Amendment — what shipping it changed (2026-08-30)
+
+Built as designed. Six things the build decided or corrected, recorded because a reader of
+the design alone would get them wrong.
+
+**The display zone has no place-zone rung.** The build plan resolved an event's display zone
+as _event override → place zone → trip zone_. That is not this app's rule: ADR-0107 §4 is
+_event override → the itinerary segment holding that instant → trip primary zone_, and a
+place's zone reaches it through the crossings transport builds, never as a step of its own.
+`eventZone` in `notifications/kinds/event-shape.ts` already implemented the real chain, so
+the derivation moved to `common/event-zone.util.ts` and sharing consumes it. A shared page
+or PDF printing an hour the app never showed is the bug ADR-0197 §5 calls the one that gets
+a feature turned off permanently; two implementations that agree today are how you get there.
+
+**`shared-itineraries` is a server route prefix.** Missing from the plan, and it breaks two
+things: `openapi-contract.spec.ts`'s route-ownership test rejects any documented path outside
+`SERVER_ROUTE_PREFIXES`, and in production the service worker's navigation denylist answers
+the public API call with the cached app shell. Note the feature needs **two** different
+prefixes for one flow — `/s/<code>` is an ordinary SPA route that must keep getting the
+shell, while the JSON and PDF it then fetches must reach the backend.
+
+**The deterministic narrative emits no prose.** §2 said the server builds a fallback of
+"route labels and counts", which would have put Hebrew sentences in a server that owns no UI
+copy (ADR-0009). What it actually emits is trip data joined by punctuation — `רייקיאוויק ←
+ויק`, `נחיתה בקפלוויק · כניסה לדירה` — with no word of any language in it, and `dayCount`
+/`eventCount` as fields. Each renderer composes the sentence around them in its own locale.
+An empty string is a legitimate answer: a day with no places has nothing true to say about
+itself, and the reader falls back to its date.
+
+**The PDF owns one Hebrew file, and it is the only Hebrew in the backend.** The print
+renderer runs server-side and cannot import the app's i18n, so `itinerary-pdf.copy.ts` is a
+deliberate second locale consumer. The obvious guard — a test importing
+`frontend/src/i18n/he.ts` — makes the backend's own `tsc` build reach across the workspace,
+which it refuses (TS2835) and should. What keeps it honest is that all of it is in that one
+file.
+
+**The `unicode-range` split is load-bearing in print too.** Inlining the app's fonts without
+it lets the Latin Assistant face win for every Hebrew codepoint, and every title silently
+falls back to a system font. The page still _looked_ right in a container with Hebrew
+coverage; the tell was a PDF whose Hebrew could not be extracted at all. This is why the
+smoke check opens the artifact with `pdfjs` and asserts extractable Hebrew rather than
+trusting the renderer's own report — a mocked browser can see none of it.
+
+**Everything's fourth family is per-file, not a switch.** Booking secrets, notes/tasks and
+traveller identity are switches; documents are chosen one at a time, because "share my
+documents" is a promise nobody can check later. Financial data has no member at all — the
+shape cannot express it, which is a stronger default than a switch left off. Traveller
+identity publishes display names and there is no toggle anywhere that reveals an email: the
+`select` cannot name one, rather than the mapper choosing not to read it.
+
+### What was verified, and what was not
+
+Verified: the full projection at all three levels against a leak fixture (an email, a
+confirmation code, coordinates, a `googlePlaceId`, two private bodies) asserted on the
+serialised output; the narrative boundary including provider failure, staleness and a
+generator that never resolves; both API surfaces; the reader and the owner sheet; the PDF
+rendered by a real Chromium — page counts, extractable Hebrew, the written URL.
+
+**The container PDF smoke was not verified while building** — the session had no Docker, so
+the Docker leg and its host-side verifier (`.github/workflows/ci.yml`,
+`scripts/verify-pdf-smoke.mjs`) were written unexecuted. **CI closed it on the first run**
+(2026-08-30, PR #749): the production image built, rendered the nine-day reference itinerary
+through its system Chromium, and the host-side `pdfjs` verifier confirmed two pages,
+extractable Latin and Hebrew, and the written URL. The runtime image can render.
+
+## Amendment — four field reports, and what the repairs changed (2026-08-30)
+
+Shipped, merged, and four things wrong in a day's use. All four are worth recording because
+none of them was a knowledge gap: each had a test that passed while the defect was on screen.
+
+**A sibling control needs a rule that lays it out.** The All Trips share action rendered on a
+line of its own, because `.trip-share-wrap` was written into the JSX and never into the CSS —
+so an unstyled block wrapper let a `width: 100%` card push its sibling to the next row. The
+unit test that guarded the split asserted the button was not NESTED inside the card, which is
+true of a control anywhere on the page. **jsdom reports every rect as zero, so a claim about
+where something SITS cannot be a unit test** — `e2e/trip-share-entry.spec.ts` now measures the
+action against the card's own band, at both phone widths and in both list shapes.
+
+**A screen outside the shell inherits its refusal to scroll and none of its scroller.** The
+public reader could not be scrolled at all. `html, body { overflow: clip }` is app-wide and
+deliberate (every scroll belongs to `.body`, a sheet or a strip), and `/s/<code>` renders
+outside `AppShell` — so `.sh-page` had to own a scroll container and did not. It is sized in
+`dvh` rather than `%` for the reason `tokens.css` already gives: a percentage resolves against
+the large viewport, which would have hidden the last ~125px behind the phone's toolbar with
+nothing able to scroll to it.
+
+**A page number is only true if the paginator is what counted.** The print renderer sliced
+days into fixed groups of five, wrapped each in a `min-height: 297mm` box and printed that
+arithmetic as `עמוד N מתוך M`. A dense twelve-day trip overflowed those boxes, so five
+physical sheets were numbered to three, the `position: absolute` footer inside an overflowing
+box printed **on top of** the schedule, and one document ended on a blank page. The repair is
+to stop paginating: the days are one multi-column flow, Chromium breaks it on
+`break-inside: avoid`, and the running footer is Chromium's `footerTemplate` reading
+`.pageNumber`/`.totalPages`. Its cost is that the footer renders as a **separate document**
+that inherits no stylesheet and no font from the page, so it carries its own inlined
+`@font-face` — a footer saying `עמוד` in a container with no Hebrew coverage would print
+boxes. Two columns are a `column-count`, never a grid: a grid container that outgrows the page
+fragments by row, which is where the overlapping lines came from.
+
+**An emoji is content, and the runtime image has none.** Every icon printed as a rectangle.
+`icons.ts` says the glyph is content and `node:22-slim` + `fonts-liberation` has no emoji
+coverage at all, so Chromium drew `.notdef` for each one — invisible on every developer
+machine, because a desktop has an emoji font. Monochrome Noto Emoji is now vendored and
+inlined like the other faces (`backend/assets/fonts/README.md` records why monochrome, why
+vendored, and why not subsetted). The lesson generalises past emoji: **the smoke check must
+run where the fonts are missing, and it must open the artifact.** It now asserts extractable
+emoji beside extractable Hebrew, that each page's own footer names the sheet it is printed on,
+that no page is blank, and that no text run is printed over another — against **two**
+documents, the reference trip and a deliberately dense one, because only the dense one
+fragments and the comfortable one was green through all of the above.
+
+## Amendment — four field reports, and what the repairs changed (2026-08-30)
+
+Shipped, merged, and four things wrong in a day's use. Worth recording because none was a
+knowledge gap: each had a passing test while the defect was on screen.
+
+**A sibling control needs a rule that lays it out.** The All Trips share action rendered on a
+line of its own, because `.trip-share-wrap` was written into the JSX and never into the CSS —
+so an unstyled block wrapper let a `width: 100%` card push its sibling to the next row. The
+unit test guarding the split asserted the button was not NESTED inside the card, which is true
+of a control anywhere on the page. **jsdom reports every rect as zero, so a claim about where
+something SITS cannot be a unit test** — `e2e/trip-share-entry.spec.ts` now measures the action
+against the card's own band, at both phone widths and in both list shapes.
+
+**A screen outside the shell inherits its refusal to scroll and none of its scroller.** The
+public reader could not be scrolled at all. `html, body { overflow: clip }` is app-wide and
+deliberate — every scroll belongs to `.body`, a sheet or a strip — and `/s/<code>` renders
+outside `AppShell`, so `.sh-page` had to own a scroll container and did not. Sized in `dvh`
+rather than `%` for the reason `tokens.css` already gives: a percentage resolves against the
+LARGE viewport, so the last ~125px would sit behind the phone's toolbar with nothing able to
+scroll to it.
+
+**A page number is only true if the paginator is what counted.** The print renderer sliced days
+into fixed groups of five, wrapped each in a `min-height: 297mm` box and printed that
+arithmetic as `עמוד N מתוך M`. A dense twelve-day trip overflowed those boxes, so five physical
+sheets were numbered to three, the `position: absolute` footer inside an overflowing box
+printed **on top of** the schedule, and one document ended on a blank page. The repair is to
+stop paginating: the days are one multi-column flow, Chromium breaks it on `break-inside:
+avoid`, and the running footer is Chromium's `footerTemplate` reading `.pageNumber` /
+`.totalPages`. Two consequences worth knowing. The footer renders as a **separate document**
+that inherits no stylesheet and no font from the page, so it carries its own inlined
+`@font-face` — a footer saying `עמוד` in a container with no Hebrew coverage prints boxes. And
+the page margins move to `page.pdf()`, because that footer lives in the bottom margin: the band
+has to hold it and still leave air above it, which the first pass at 12/13/15mm did not.
+
+Two columns are a `column-count`, never a grid — a grid container that outgrows the page
+fragments by row, which is where the overlapping lines came from.
+
+**An emoji is content, and the runtime image has none.** Every icon printed as a rectangle.
+`icons.ts` says the glyph is content, and `node:22-slim` + `fonts-liberation` has no emoji
+coverage at all, so Chromium drew `.notdef` for each — invisible on every developer machine,
+because a desktop has an emoji font. Monochrome Noto Emoji is now vendored and inlined like the
+other faces (`backend/assets/fonts/README.md` records why monochrome, why vendored, why not
+subsetted).
+
+**What the smoke check learned from all of it.** It must run where the fonts are missing, it
+must open the artifact, and it must be given a document that actually fragments. It now asserts
+extractable emoji beside extractable Hebrew, that each page's own footer names the sheet it is
+printed on, that no page is blank, and that no text run is printed over another — against
+**two** documents, the reference trip and a deliberately dense one, because only the dense one
+fragments and the comfortable one stayed green through every defect above.
+
+## Amendment — the share control asks who the link is for (2026-08-30)
+
+Owner, the same day: _"The share button should be both for sharing the trip and inviting
+(let's mockup this)."_ Drawn and measured in
+[`mockups/sharing-and-inviting-are-one-control-v1.html`](../../mockups/sharing-and-inviting-are-one-control-v1.html).
+
+**§1 · The problem is that two grants live in two places.** This ADR gave the trip a reader's
+link — `/s/<code>`, no account, revocable, a projection — and put its control on the trip
+header and every All Trips card. [ADR-0067](0067-revocable-code-invites-and-removal-blocks.md)
+gave the trip a traveller's link — `/join/<code>`, a `Membership`, full live data, edit
+rights — and it sits at the foot of Trip Settings, past the roster and the removed-members
+list. "Send my sister the trip" and "add my sister to the trip" are one sentence in Hebrew
+and two screens in the app, and the control labelled `שיתוף` is the one people press.
+
+**§2 · One question above the sheet, and the body branches under it.** `למי זה הולך?` —
+`מצטרפים לטיול` or `רק לצפייה`. Deliberately **not** a third button beside `לינק חי` and
+`PDF`: those two are two **formats of one grant**, and a row of three teaches that all three
+are interchangeable. The cost of that lesson is not symmetric — someone who meant to send a
+peek instead adds a person to the trip, with edit rights, and nothing on screen said so.
+
+No new mechanism. The sheet already reads _pick a level → read what it costs → press an
+outcome_; the fork is the same sentence one clause earlier, so it is a second `ChoiceGrid`
+over the `.choice-card` the levels already use. The mockup's whole proposed stylesheet is 36
+lines, which is the argument.
+
+Join is the **default**: it is the common audience for a live trip, and it is the one that
+cannot be reached today without leaving the screen.
+
+**§3 · The invite link is one component with two hosts.** The sheet and Trip Settings render
+the same row rather than two copies of "the trip's link" — the duplication rule 8 exists to
+prevent. It is drawn in the neutral `.share-link` idiom at the 44px floor, and specifically
+**not** as today's `.invite-box`, which paints `--plan-tint` with a dashed violet border on a
+Trip-mode screen and so spends the hue [ADR-0028](0028-plan-violet-color-budget-dark-ready.md) reserves for
+Plan mode. Fixing that in place is what makes one component possible.
+
+**Authorization is unchanged**, and that is the point: `POST /trips/:tripId/invite` is
+already get-or-create for any member and `…/invite/rotate` is already admin-only (ADR-0067),
+which matches this sheet's existing split exactly — sharing is what the group does, changing
+what the world sees is the admin's. A peer sees the invite branch in full, with the rotate
+row absent, exactly as they see the read-only branch without the level cards.
+
+**§4 · What rendering it changed, since none of it was visible in the code.** The first draft
+marked the two audience cards with emoji, which the design language forbids on a control
+("emoji are content, icons are UI", and a glyph whose siblings draw icons is a control) — they
+are `Icon`s now, and `eye` joined the set because nothing in it meant "look". More
+consequentially, `.share-sheet` set a flat `gap: 12px`, so a question sat exactly as far from
+the control answering it as from the next subject; that is the same as having no grouping at
+all, and it is most of why the sheet read as a stack. It is now 16px between groups and 8px
+inside one, and the redesigned sheet is **shorter** than today's (428px against 490px) despite
+asking one more question. The mockup could not see any of that for three rounds, because
+`form-actions.css` — which owns `.modal-form`, the flex container the gap lives on — was
+missing from its `APP-CSS` manifest and every block rendered at a 0px gap. An incomplete
+manifest is an argument from CSS the app does not have.
+
+**Rejected.** _One link that lets the recipient choose_ — it hands the authorization decision
+to the party that does not hold it, and inverts ADR-0067's "the code **is** the grant".
+_Leaving the invite in settings behind a shortcut in the sheet_ — it keeps the long journey
+and adds a sign to it. _Borrowing the hard/soft grammar for the two audiences_ — it fits the
+meaning almost perfectly (one is a commitment, one is provisional) and was refused anyway:
+that grammar belongs to events (ADR-0011), and spending it here would teach that dashed means
+"read-only" rather than "movable".
+
+## Amendment — six field reports on the shared page, and what they had in common (2026-08-30)
+
+All six are about **a line the server composed**, and four of them are the same mistake in
+different costumes: a composed line was treated as if it were a single value.
+
+**A composed line cannot sniff its own direction.** `dir="auto"` resolves from the first
+strong character, so `Haifoss ← Stutur crater` laid out LTR — putting the ORIGIN on the left
+with the arrow pointing back at it — while the identical string with a Hebrew first stop laid
+out RTL and read correctly. Two rows differing only in their data disagreed about which way
+the trip went. The repair is the one `lib/bidi.ts` already applies to a number and its unit,
+one level up: each **value** gets a first-strong isolate so it keeps its own script, the
+punctuation stays in the surrounding flow, and both renderers pin that flow to the page's RTL
+by **not** setting `dir="auto"` — which, being isolate-blind, would find no strong character
+at all and fall back to LTR. `fallbackDaySummary`, the appendix rows and the route strip are
+the same shape and got the same treatment. Verified by rendering all three script orders.
+
+**A leg's endpoints live on its booking, and the day title could not see them.** `from`/`to`
+are on `Booking`, not on `Event.place`, so a transport event contributed nothing to the day's
+route: a flight day had no title at all and fell back to its date, and a driving day's route
+began at whichever sight happened to have a pin (owner: _"Why doesn't it include the first and
+last legs?"_). `journeyLookup` already knew to read the booking; the day derivation now knows
+the same thing. A day whose ends match is named once rather than `X ← X`.
+
+**A cap applied before the endpoints were taken.** `routeLabelsFrom` sliced to eight and
+`fallbackTripTitle` then took the last element of the SLICE, so a twelve-day trip's title
+ended at day eight — which is how `Kerið Crater ← אסבירג׳י` came to name two arbitrary
+attractions. The route is now derived whole; the strip's cap is the projection's, applied only
+to what it draws, and it keeps the last stop so the strip and the title cannot disagree.
+
+**A mode is a discriminant, and it was a `z.string()` nobody read.** `journey.mode` was in the
+contract and neither renderer rendered it, so a 121-minute walk and a 67-minute drive were the
+same shape of line and nothing said which (owner: _"the live map doesn't show driving/walking
+etc. properly"_). It is `z.enum(LEG_TRAVEL_MODES)` now, and both renderers key the app's own
+activity word off it — the PDF's leg had been printing two bare numbers with no units at all.
+
+**Hebrew must never sit inside a mono element**, and the `font` shorthand is how it got there.
+`.pdf-subtitle` was `font: … 'JetBrains Mono', monospace`; the shorthand replaces the family
+list, so Assistant was not behind it, JetBrains ships no Hebrew, and the container's only
+monospace is Liberation Mono — `12 ימים · עודכן` printed as empty rectangles while the
+headings two lines above were perfect. Mono is now scoped to the numeric run (`.pdf-num`), and
+a spec asserts no `.pdf-num` ever receives a Hebrew codepoint.
+
+**What the smoke check could not see, and now can.** `hebrew-text` passed throughout: it asks
+whether SOME Hebrew is extractable, and the headings always were. A check that a subtitle's own
+Hebrew survives is a different question from a check that the document has any.
+
+## Amendment — a shared page that says what it means (2026-08-30, second pass)
+
+Seven reports in one sitting, and mapping them was worth more than fixing each: **six of the
+seven are one root cause.** The projection shipped every derived line as a **composed string**
+— data joined by punctuation, with no word of any language in it — because that is what let
+one server derivation feed a Hebrew page and a Hebrew PDF (§2). The cost only became visible
+once real trips ran through it: a server holding no copy cannot say _"flying"_. It can only
+join. So every derived line on every day of every trip had the same shape, made of whatever
+the place rows happened to be called.
+
+The repair is the move `journey.mode` already made one field over: **ship the discriminant.**
+A day's headline is now `{ kind, …values }` and each renderer keys its own words off it. The
+locale boundary is exactly where it was — the projection still holds no UI copy — and the page
+can finally speak.
+
+### The map
+
+Every line a reader sees, what it said, and what it says now.
+
+| #   | Line                 | Was                                                                                              | Now                                                                                             |
+| --- | -------------------- | ------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
+| 1   | Masthead dates       | `2026-09-11 - 2026-09-22 · 12 ימים · עודכן …` on one wrapping line, in ISO the app shows nowhere | two lines: `11.09–22.09 · 12 ימים`, then a quieter stamp. The app's own `formatTripDates` shape |
+| 2   | Masthead route block | the trip's title, **printed again** one centimetre below in the lede                             | the strip only, labelled `המסלול`                                                               |
+| 3   | `אזורים` count       | `routeLabels.length` — the **capped** strip, so a long trip reported 8                           | `routeStopCount`, the whole route                                                               |
+| 4   | Route strip          | opened and closed on airport names, because a day's transport endpoints are stops                | a day offers its first **non-transport** stop, falling back only if it has nothing else         |
+| 5   | Day headline         | `נתב״ג ← נמל התעופה הבינלאומי קפלוויק`                                                           | `טסים לאיסלנד` · `טסים הביתה` · `טיסה ל<X>` · `<A> ← <B>` · `<A>` · the date                    |
+| 6   | Day second line      | the first two event titles — on a flight day, the same two airport names again                   | `לינה ב<place>` where there is a bed; otherwise the titles the headline did **not** already say |
+| 7   | Event row            | `15:00 · The Hill Hotel at Fludir`                                                               | `לינה · 15:00 · …` — the booking's own type, in the app's own eight words                       |
+| 8   | A pre-dawn event     | filed on its own date and rendered **last**, under an evening 19 hours later                     | filed on the night before                                                                       |
+| 9   | Public bar           | the letter `T`                                                                                   | the app's own mark                                                                              |
+| 10  | Share sheet          | link and both send buttons below the sensitive toggles **and** the file list                     | audience → scope → **send** → refine                                                            |
+
+### The three rules the map produced
+
+**§A · A kind, never a sentence.** `SHARE_DAY_KIND` and `SHARE_DAY_SUMMARY_KIND` are
+discriminated unions in `packages/shared`; `PDF_COPY.dayTitle` and `t.share.public.dayTitle`
+are the two word tables. A generated narrative lands as `text`, which has no kind and needs
+none. Values arrive **raw** and each renderer isolates them itself (ADR-0118) — asserted, so
+nothing can arrive pre-wrapped and get isolated twice.
+
+**§B · Name the trip, not the airport.** An outbound flight day says the trip's `destination`,
+because `נמל התעופה הבינלאומי קפלוויק` is where the plane lands and `איסלנד` is where you are
+going. A returning day carries **no place at all**: home is the absence of the trip. Both tests
+are deliberately narrow — the first flight day must also be the trip's first day with anything
+on it, and the last must be its last — so a domestic hop on day three cannot announce a country
+nobody left.
+
+**§C · The share's day starts at dawn, and the grouping owes the sections that.**
+`shareDaypart` already said so: `night` is the fallthrough below hour 5. Grouping by calendar
+date contradicted it, and because `night` renders last, a landing at 00:30 printed at the
+bottom of its own card. This is share-only and contradicts nothing: the app's own day surfaces
+sort by `startsAt`, so the same event already reads first there. It is grouping by **daypart**
+that turns a pre-dawn hour into a trailing one, so it is grouping by daypart that owes the fix.
+Nothing stored moves; `Event.date` stays what the traveller authored.
+
+### What this cost the privacy argument: nothing
+
+`SHARE_EVENT_SELECT` gains exactly one column, `booking.type` — the booking's **kind**, already
+selected for zone crossings, and the discriminant §A and the captions key off. Everything
+operational stays behind `SHARE_SECRET_BOOKING_SELECT` and the Everything appendix, and the
+projection spec asserts a confirmation code still never appears.
+
+And the masthead block the owner asked about (_"Are they leaks of something?"_) never was one:
+both lines are place labels that already appear in the schedule below. It read as a leak because
+it printed the same string twice with nothing naming either.
+
+## Amendment — a live link is a setting, and a strip of initials is not a route (2026-08-30, third pass)
+
+Field reports on the second pass. Three fixes and one deferral.
+
+**§1 · A LEVEL IS A SETTING ON A LIVE LINK, NOT A DRAFT.** Two reports, one cause: _"No
+indication that the live sharing detail level was changed when switching"_ and _"every time I
+open the sharing menu it's on תקציר"_. `upsertTripShare` was reachable only through
+`ensureShare`, and `ensureShare` only from the two send buttons — so moving the level control
+wrote nothing, closing the sheet discarded it, and the next open re-seeded from the stored
+config and looked like the control had never moved. A link that is already live is already
+showing something to whoever holds it, so moving the control now moves the link: it saves on
+change and the sheet confirms it by name. With **no** share yet it still mints nothing — the
+first send creates it, and minting a link from a control somebody was only looking at would
+be a grant nobody asked for.
+
+**§2 · The journey mode is the app's derivation, not this projection's.** `journeyLookup`
+took "the first mode that has an answer, in `TRAVEL_MODES` order", which opens with `walking`
+— while `useDayTravel` caches every mode for every leg precisely so a mode question costs no
+request. Every unoverridden leg therefore answered walking, and a 38km drive printed as a
+walk. `legTravelMode` + `defaultLegTravelMode` are in `@waypoint/shared` exactly so the
+board, the Map and a server-side projection cannot disagree (root rule 8); using them also
+repairs an override lookup that built its own `from>to` key where overrides are stored
+**canonicalised**, so a pair declared in the other direction was silently missed.
+
+**§3 · The route strip leaves the phone, and stays on paper.** §3 above put a compact route
+strip on both renderers. At 390px, `MAX_ROUTE_LABELS` of 8 plus connectors leaves ~30px a
+label, so every stop ellipsised to an initial and the line read `נמל הת… — S. — S. — D.` —
+the owner's _"no one can get any info from just the initials"_. It is deleted from the live
+page and kept in the PDF, which lays the same eight labels across an A4 column and prints
+them whole. The strip was always a width bet and only one of the two media can afford it.
+The phone keeps the line that said the same thing in words: the trip's own route title.
+
+**§4 · Both ends of a time, where there are two.** `startLabel` and `endLabel` were both in
+the contract and both renderers printed only the first, so an eleven-hour flight and a
+forty-minute drive were the same shape of line (_"flights must show when they start and when
+they finish"_). The masthead's own line stopped wrapping at the same time: it is short and
+fixed, so it says `nowrap` and the strip beside it yields instead.
+
+**Deferred, deliberately: the journey as a unit.** _"Layovers must be represented … Flights
+should be clumped together, not split by days"_, and _"maybe these sharings should have
+sections for important stuff"_. This changes the day's **structure** rather than its words —
+§1 made the daypart the spine, and a journey spanning two dayparts and a midnight has no home
+in it — so on the owner's call it goes to a mockup rather than into this pass. The derivation
+is already known and is written down in the backlog: `Event.bookingId` is `@unique`, so
+nothing stored says two legs are one journey, but a leg continues the one before it exactly
+when the previous leg's `toPlaceId` is its `fromPlaceId`. A half-built contract for it was
+written and reverted rather than shipped ahead of the drawing.
+
+## Amendment — a share tells the trip's story, not its database (2026-08-30, fourth pass)
+
+The owner opened their own twelve-day Iceland trip at `הכל` and reported: _"the live sharing when all is shared is an abomination, looks disgusting, nothing is linked to the events!"_, then on the PDF _"the texts are meaningless and the alignment is so bad … Why נתב״ג to Frankfurt?? What does it have to do with anything? What's the teal random places on top? Bad event ordering when it comes to the flights and hotels … no layover detection and visualization"_. The frame they set for the fix is the section title: _"Sharing should tell a story, not present information in a misleading way like it does now."_
+
+Two mockups were drawn against that trip and rendered before anything was built — [`a-shared-itinerary-tells-the-trip-v4.html`](../../mockups/a-shared-itinerary-tells-the-trip-v4.html) and [`a-shared-itinerary-is-printed-as-a-story-v3.html`](../../mockups/a-shared-itinerary-is-printed-as-a-story-v3.html) — and the catalog entries carry their measurements. What follows is what they promoted and what shipped.
+
+### §1 · The appendix dissolves, and this reverses §4's third bullet
+
+§4 said _"Everything moves selected sensitive data into an appendix."_ That was wrong, and the diagnosis is not a privacy one: **the flatness was a missing `join`, not a constraint.** `Note.eventId | bookingId | placeId | documentId` has been a closed union since the first migration, and `buildAppendix` queried `where: { tripId }` and dropped it — so seventy-nine notes printed as one undifferentiated list at the end of a page whose events they belonged to, which is exactly _"nothing is linked to the events"_.
+
+So a note, a task, a confirmation code and a file now ride the row they are attached to, as one `SharedOp` union (`SHARE_OP_KIND` = `CODE | NOTE | TASK | FILE`) behind a per-row fold on the reader page. **The appendix survives, narrowed to what is attached to nothing** — a packing list is a real thing and it has no event. The booking block left it entirely: `Event.bookingId` is `@unique`, so every booking has a host by construction and its code prints under its own row.
+
+**A privacy defect closed with it, and it deserves naming separately.** The share sheet's toggle says `רק תוכן שמחובר למסלול` and the query said `where: { tripId }`; the promise and the code disagreed, and the repair is the linkage filter the copy always described.
+
+### §2 · A journey is one row, and the gap between its legs has a name
+
+The third pass deferred this to a mockup (_"Layovers must be represented … Flights should be clumped together, not split by days"_). The mockup was drawn; this is the build. Nothing stored says two legs are one journey, and nothing needs to: a leg continues the one before it exactly when `previous.booking.toPlaceId === next.booking.fromPlaceId`, and the layover is the gap between the previous leg's `endsAt` and the next leg's `startsAt`. `SharedEvent.legs` (minimum two, each with its own code and endpoints) is the shape; a single-leg journey stays an ordinary row rather than a one-item list.
+
+### §3 · Where you sleep frames the day
+
+The stay was a row, sorted into the afternoon by its check-in hour — which on the outbound day put a hotel between the two legs of a flight (the _"bad event ordering"_) and printed `15:00–11:00`, a range that reads backwards because a stay crosses midnight. It moves into the day header as `לינה ב-X`, which is what it always was: the frame, not an item.
+
+### §4 · A trip has a shape, and the day titles follow it
+
+Owner, on the fixture: _"it says Reykjavik → Snæfellsnes but it is actually a circumnavigation (טיול מתגלגל maybe), where you switch locations every day … Then there's טיול כוכב where you stay at one place … we should differentiate between them and display the titles accordingly."_
+
+`tripShapeOf` reads the sequence of stays, collapses consecutive repeats, and classifies: one base is a **star** trip, first base equal to last is a **loop**, otherwise a **line**; no stays at all is `UNKNOWN` and says nothing. The masthead states the shape and, where the shape implies several, the base count — suppressed at one, since `1 בסיס` on a star trip is the same sentence twice.
+
+The shape then picks the day's title: **region → kind → (on a star trip) the day's own significant place → the route**. A day of four waterfalls in Suðurland is named for the region, not for two of its waterfalls; and on a star trip, where every day's route starts and ends at the same base, the route is the one derivation guaranteed to say nothing. `region` and `kind` come from two new enrichment fields (ADR-0166 §23, `P131` and `P31`) — both claims on an entity the identity pass already reads.
+
+`fallbackTripTitle` now returns the trip's **name** first. Its first-place-to-last-place derivation over the whole schedule is why the masthead read `נתב״ג → Frankfurt`: on any trip you fly to, both ends of the schedule are transit airports. Both values were already in the projection.
+
+### §5 · One photo a day, which reverses §3's "no new media dependency"
+
+§3 refused imagery, and the refusal named its reasons: _"media, licensing, privacy, attribution, and availability work."_ Every one of those was answered in the eight weeks since, by a pipe built for a different purpose. ADR-0166 §7 holds **our own bytes at our own URL** under a free licence with a stored credit, cached by the service worker, refreshed out of band. So this is not "adds media"; it is spending something already paid for.
+
+What is new is the **gate**, and it is stricter than any read surface's: `MATCH_METHOD_CONFIDENCE ≥ 0.9` **and** a non-empty credit. A wrong thumbnail in your own app is a shrug; a wrong photograph on a page you hand to somebody else is not recoverable. There is no default image and no placeholder — a day whose stops clear no gate simply has no photo, and both renderers have a no-photo layout rather than a hole.
+
+**Which stop's photo** is a ranked choice, not the first pin: dwell minutes, plus a bonus for a booked or hard commitment, plus `log10(1 + userRatingsTotal) × 30`, plus a small bonus if anybody bothered to nickname or icon it. Sitelink count was considered and rejected — the provider filters sitelinks to `hewiki|enwiki` (Tokyo has hundreds), and `userRatingsTotal` gives the same tiebreak free. `rating` was rejected too: every scenic place is 4.5–4.8.
+
+**On paper the same decision inverts twice.** A 116px band is nothing on a page you scroll and about a page and a half across twelve days at two-column density, so print gets a 34px square inside the header's existing 47px minimum. And the credit rides the `alt` rather than a caption, because the licence line for a whole document is the appendix's job and not every square's.
+
+**The renderer aborts every request the page makes**, so the photo arrives as bytes: `dayPhotoDataUrls` reads each blob behind the same key-prefix check the public route makes and inlines it as a data URL, exactly as the QR and the fonts already do. This is not a policy the renderer may make an exception to — it is what makes a PDF of somebody's itinerary unable to phone anywhere.
+
+### §6 · The row says what a thing IS before it says where
+
+_"hotels and other derivable stuff texts should be enhanced … and that also includes bookings."_ A booking states its type, so `The Hill Hotel at Fludir` gets `לינה` in front of its hour and stops being a bare proper noun. An event no booking backs is captioned with nothing: a guess in that slot is worse than a gap.
+
+Times follow the owner's call from the mockup round — **the start only, except for hard pins and bookings**, where both ends print. A flight's arrival is a fact you plan against; a soft stop's end is an estimate, and printing it as a range makes it look like one of the former.
+
+A bookings block (`ההזמנות`) sits above the schedule on the reader page, each row jumping to its day. It is deliberately **not** on paper: whoever holds a printout has the whole document in hand, and the count already prints as a tile. The section was first drawn as `מה שקבוע` and renamed on the owner's call — _"makes no sense in Hebrew"_.
+
+### §7 · The teal strip goes from paper too, one renderer behind
+
+`.pdf-route-mini` was the capped `routeLabels` sample beside the QR — Dyrhólaey, Stokksnes, Svartifoss and an airport, on a ring road. It came off the reader page in the third pass and kept printing for a week: **the same defect one renderer behind**, which is the argument for one ADR section covering both renderers rather than two fixes. The tiles beside it changed with it — days, **nights** and bookings, all three derived from what is already there, replacing a pin count that read `12 אזורים` and told nobody anything.
+
+### §8 · A shipped bidi defect both renderers wrote
+
+`<strong dir="auto">` sets the element's **base direction**, and base direction drives `text-align: start` as well as bidi resolution. So a Latin place name landed **229px from the start edge of a 288px column** while its own Hebrew caption sat at 0 — most of what _"the alignment is so bad"_ meant on a trip where most stops are Latin. The fix is `autoIsolate` (FSI…PDI) from `lib/bidi.ts`, whose docblock covers a **composed line joining several values** and therefore left the case of a single value alone in a block uncovered — which is why it survived ADR-0118's sweep. Both renderers now measure 0px. The same shape is worth a repo-wide grep and that line stays in the backlog.
+
+### §9 · Two field reports that were not about sharing's design
+
+- **The link at `הכל` was invisible, and it was not a stale bundle.** The owner refused that explanation twice (_"no matter what you say I don't buy your explanation … I think that you're missing something"_) and was right. `.share-send` is a flex item with `overflow: hidden`, and CSS Flexbox §4.5 removes a flex item's automatic minimum size once its overflow is not `visible` — so in a scrolling flex column it shrank to zero. `flex: none` fixes it. **A DOM test could not see this**: the element was present, mounted, and had the right text.
+- **A shared document downloaded with no extension.** A document's name here is its **title**, and a title has no extension — so the reader saved `כרטיס טיסה TLV`, which the phone has no type for. In the app this never showed, because the viewer fetches bytes and renders them against the `mimeType` it already holds; a download has only the name. `attachmentDisposition` now appends the extension for the served `Content-Type`, skipping it when the title already ends in one.
+
+### What was verified
+
+`pnpm typecheck`, `pnpm test` (all four packages) and `pnpm build` green. Both mockups rendered at both themes and 360/390px with no console errors and their measurements read off the live DOM. Both PDFs re-rendered to page images and inspected. The day photo was rendered into a real A4 page with the route abort in place: five squares, five loaded, **zero failed requests**, header height unchanged at 47px, and the no-photo header collapsing to `48px minmax(0,1fr)`.
+
+Two build hazards are written here because they cost real time and neither could fail a test. **The new print CSS was appended above the original block** and lost silently at equal specificity — a flight's range printed over its own title while the smoke verifier's overprint check passed throughout; the block now sits last in the sheet and a spec asserts that ordering. And **`ltrIsolate` around a duration reorders it**: `14ש׳ 50דק׳` became `שׂ50דק׳ 14`, because the isolate must island the **number**, not the number-and-unit — that is what `measure()` is for.
+
+## Amendment — the fourth pass, corrected in production (2026-08-30, fifth pass)
+
+The fourth pass shipped and the owner read it on their own trip. Seven reports, and one of
+them says that an amendment written above is **wrong about what it did**.
+
+### §1 · The privacy fix did not land, and this ADR said it had
+
+The fourth amendment's §1 claims the notes-linkage defect was "closed with it". It was not.
+`loadOps` was written to filter by linkage and does — but `buildAppendix` was left in place
+beside it, running its own `where: { tripId }` queries for notes, tasks and documents with no
+join at all. So the toggle promising `רק תוכן שמחובר למסלול` went on publishing **every note
+in the trip**, and every note that DID have a host printed **twice**: once on its row and once
+in the appendix. That second copy is what the owner saw as _"the לקראת הטיול section is a
+really badly formatted wall of text"_ — the block was not badly formatted so much as it was
+the whole trip's notes.
+
+**Two things are worth naming, because neither was bad luck.**
+
+The first is that this is [ADR-0096](0096-domain-claude-md-files.md)'s exact anti-pattern —
+two mechanisms answering one question — introduced by the change whose whole purpose was to
+remove one. The rows' ops and the appendix were built from different queries and only one of
+them knew about linkage.
+
+The second is the test. `sharing-projection.service.spec.ts` asserted that the **unattached**
+note appears in the appendix, and never that the **attached** one does not. A one-directional
+assertion passes identically whether the filter exists or not, so the suite was green
+throughout. The missing half is now written, and it is the half that had the value.
+
+The repair deletes `buildAppendix`'s queries entirely: the appendix is `loadOps`'s
+`unattached` — which was already being computed and thrown away — and `travelers`, which is
+not an op and hangs off no row. `sharedAppendixSchema` therefore drops its three per-family
+shapes for one `ops: SharedOp[]`, so a note in the appendix and a note on a row are the same
+shape rendered by the same component on both renderers.
+
+### §2 · English prose is not a value, and §8 over-corrected
+
+The fourth pass's §8 replaced `dir="auto"` with `autoIsolate` wherever a foreign-script value
+sat alone in its element. That is right for a **value** and wrong for a **paragraph**: an
+isolate inherits its container's direction, so an English description sat in an RTL column and
+came out right-aligned and ragged-left (owner: _"English lines are ltr and shouldn't be
+treated differently"_).
+
+The rule, stated properly this time:
+
+> **A value that shares a line with other content is isolated and keeps the line's
+> direction. A standalone block of prose carries `dir="auto"` and picks its own.**
+
+A title is the first kind — it has to line up with the caption beneath it, which is what §8
+measured at 229px of separation. A stop's description and a note's body are the second.
+Verified by rendering: the English caption resolves `direction: ltr`, the Hebrew one `rtl`,
+both at `text-align: start`.
+
+### §3 · A description is capped at the source, and its two-line clamp never existed
+
+_"Too long descriptions, if there's an option to shorten them or cap the length."_ Two
+separate faults. The projection shipped the enrichment summary whole — five lines of Wikipedia
+lede on an A4 column with twelve days to fit — and `.sh-cap`, which the code comment described
+as clamped to two lines, **was never written into the stylesheet**, so the caption inherited
+`.sh-place-line`'s `nowrap` and got exactly one.
+
+So: `capCaption` cuts at a sentence boundary within 150 characters (a word boundary and an
+ellipsis otherwise) in the projection, where both renderers get it — CSS cannot help paper,
+which has no scroll — and `.sh-cap` now exists and clamps to the two lines it always claimed.
+
+### §4 · A journey is chained over the trip, not inside a day
+
+_"Sometimes journeys with layovers aren't recognized properly, for example when it crosses a
+day."_ `withJourneys` walked one day's own event list, so a red-eye departing 22:40 and
+landing 01:15 was two unrelated rows on two days — the shape of flight most likely to have a
+layover was the one case the layover feature could not see. The chain condition never had
+anything to do with the calendar; only the loop did. `chainJourneys` now runs once over every
+scheduled event in trip order, and a journey belongs to the day it **departs** on, which is
+the day a reader is packing for.
+
+### §5 · The bookings block moves under the days and stops teleporting
+
+_"the הזמנות is at the start of the live sharing, and clicking on a booking teleports you down
+which is inconvenient. Does it have to be this way?"_ No. The fourth pass put it above the
+days on the reasoning that a reader looks for flights first — but every row was an
+`href="#day-N"`, so the one gesture the block invited threw the reader down a twelve-day
+document with no way back.
+
+It is a **reference**, not a lede: what is booked, and when. So it sits after the schedule it
+refers to, and each row **states** its day (`יום 4`) rather than scrolling to it. That answers
+the question the anchor was answering without moving anybody. Paper already worked this way
+and needed no change: a printout's reader has the whole document in hand.
+
+### §6 · The stay glyph had no gap, and `gap` was not the reason
+
+`.sh-stay` said `display: inline-flex; gap: 5px`, and `.sh-day-copy span` — one point more
+specific — says `display: block`. The element was never a flex container, so the gap did
+nothing: measured 0px. Winning the specificity fight would have cost the line its ellipsis,
+since `text-overflow` cannot clip an anonymous flex item, so the icon takes a margin instead.
+
+**This is the third defect in this ADR's history caused by an equal-or-higher-specificity
+rule landing on top of a new one**, after the print CSS block and the hover-vs-pressed rule
+in `frontend/CLAUDE.md`. The lesson is not "check specificity"; it is that a declaration
+which silently loses looks exactly like one that was never written, and only a computed-style
+read tells them apart.
+
+### What was verified
+
+Rendered at 390px in the dark theme and measured off the live DOM: the stay gap is 5px (was
+0), the English caption resolves `ltr` and the Hebrew `rtl`, the document link carries
+`download` and still meets ADR-0017's 44px floor, the bookings block follows the days and
+contains zero `#day-` anchors. The cross-day journey has a backend spec of its own.
+
+**And what was not.** The owner also reported _"the links don't work"_ on the documents
+section. The route itself is provably fine — fetched against production, a document id that
+does not exist returns a clean 404 JSON and the PDF (same controller, same
+`attachmentDisposition`) downloads through the apex→www redirect with a correct filename — and
+the rendered anchor now carries the right href, a `download` attribute and a 44px target. What
+could not be reproduced is the owner's actual symptom, because their share was back at `full`
+by the time it was investigated and `full` carries no documents. Recorded as open rather than
+claimed as fixed; the previous amendment's mistake was claiming exactly this kind of thing.
+
+## Amendment — twelve reports, and the same failure three times (2026-08-30, sixth pass)
+
+Twelve from the owner reading the fifth pass on their own trip and its PDF. Several are one
+sentence each; three of them are the same defect in three materials, and that is the entry
+worth reading.
+
+### §1 · A note is prose the app already knows how to render
+
+_"Markup should be formatted the same way as in the notes sheet, urls should be added as well
+similarly."_ The shared page printed a note's body as a flat string, so `- item` stayed a
+hyphen and a url stayed unclickable — while `NoteProse` + `lib/note-markdown.ts` had rendered
+headings, lists, quotes, emphasis and linkified urls since ADR-0202. Reusing it costs nothing
+and is the only way the two surfaces cannot drift about what a marker means (ADR-0096). It
+also answers the direction question better than the fifth pass did: `baseDirection` reads the
+whole body, so a Hebrew note opening with `TL;DR` is not laid out left-to-right by its first
+three Latin characters.
+
+Paper keeps the flat body, with its line breaks preserved (`white-space: pre-line`) and the
+font fixed — the parser lives in `frontend/src/lib` and the backend cannot import it. Moving
+it means moving `bidi.ts` too, which has ~40 consumers; that is a refactor to ask about, not
+one to take silently (root rule 8), and it is a backlog line.
+
+### §2 · Tasks are not a viewer's business
+
+_"tasks should be taken out, they're irrelevant for viewers."_ A task is the group's own chore
+list — who is buying the adapter — and a person reading a shared itinerary is not the person
+doing it. `TASK` leaves `SHARE_OP_KIND` entirely rather than being filtered at a renderer: a
+union member that can never occur is a case every switch still has to carry. The task query is
+deleted too, which is the difference between not showing them and not loading them. The
+`includeNotesAndTasks` column keeps its name (renaming it is a migration) and now governs
+notes alone.
+
+### §3 · A layover names the airport you are sitting in
+
+The line read `המתנה בוינה ← קפלאוויק` — the leg you are about to fly, not the place you are
+waiting. Both renderers composed it from `leg.title`, which is a route. `layoverPlace` joins
+the leg (the previous leg's arrival, which is this leg's departure) and the copy takes that.
+The unit fixture hid this by giving legs bare city names as titles, where composing from the
+title happens to read correctly; the fixture now uses real route titles.
+
+### §4 · A nine-hour wait is not a layover, and treating it as one emptied a day
+
+_"the next flight is only at 11am to 3pm, so well after the previous day, yet it shows on the
+prev day. The last day is then rendered empty."_
+
+The fifth pass chained journeys trip-wide, which was right, and gave the chain no maximum,
+which was not. A journey renders on the day its first leg departs; a 02:00 departure belongs
+to the night before (`sharePreviousNight`). So a leg landing at 02:00 chained to one departing
+at 11:00 dragged the entire return two days back and left the trip's last day blank.
+`MAX_LAYOVER_MINUTES` is six hours: long enough to keep the 110-minute connection the cross-day
+fix was built for, short enough that a wait you could spend in a city stays two rows on the two
+days it occupies.
+
+### §5 · A day is named for where its journey ENDS
+
+_"the title is טיסה לפרנקפורט even though Frankfurt is the connecting flight."_ `flightTo` took
+the day's last flight's arrival, which on a connection is the airport you change planes at —
+a place nobody chose to visit. The chain already knows its own final leg, so the title asks it.
+`returning` moved with it: a return that straddles midnight makes **both** days the way home,
+where an index comparison made only one.
+
+### §6 · Summary carries no booking ledger (owner's question)
+
+_"Should summary mode show bookings? It seems excessive for a summary, no?"_ Correct, and it
+contradicted §1's own levels: inspire / orient / operate. A ledger of dates and providers is
+the middle two. It is not projected at Summary rather than not drawn — this file's rule is that
+the level decides what is **sent**, which is what the spec named _"Summary shows no exact fact
+the projection did not send"_ is for. It had been slipping past that spec because a date is a
+fact nobody thought to check. The PDF's third tile counts events at Summary rather than leaving
+a hole in a three-column grid.
+
+### §7 · Travelers are the trip's identity, not a block at the foot
+
+_"they should just appear on top if they're on the permission list - both live and pdf."_
+`travelers` moves from `appendix` to `trip`, and both renderers print it under the trip's own
+line. A block at the foot is where a fact nobody asked for goes.
+
+### §8 · The type scale, and why this page gets its own
+
+_"Fonts are too small in the details and very hard to read, also the notes, and overall too
+small texts."_ The page was built out of `--text-micro` (10.5px) in fourteen rules. Those steps
+are sized for a dense operational UI held by someone who already knows what every row means;
+this is a **document**, read once by a stranger who is often standing up. Local `--sh-*`
+variables one step up rather than a change to `tokens.css`: the app's density is not this
+page's to re-decide.
+
+### §9 · The same failure, three times, in three materials
+
+This is the entry that matters.
+
+- **A leg's time range wrapped to two lines** because `.sh-leg-row` sized its first column at a
+  fixed `78px`, which fitted `14:30` and not `14:30–18:15`. Now `max-content` with `nowrap`, so
+  a type scale that grows cannot break it again.
+- **The PDF's note body printed as empty rectangles.** `.pdf-ops-line` set the `font` shorthand
+  to JetBrains Mono, which ships **no Hebrew** — while the bold label beside it, which
+  overrides back to Assistant, printed perfectly. That is ADR-0213's own recorded defect
+  (`.pdf-subtitle`, the `font` shorthand replacing the family list) in a second element.
+- **And the size fix silently did nothing**, because `.pdf-op span` — a leftover from the
+  per-family appendix markup deleted in the fifth pass — is (0,1,1) and beat `.pdf-ops-line`
+  at (0,1,0). It held the line at 7.8px however large this file said to set it.
+
+Three surfaces, one shape: **a declaration that loses looks exactly like one that was never
+written.** The fifth pass recorded this after the stay's `gap`, the caption's clamp and the
+appendix's filter; it recurred within one pass. Reading the source that "has" the rule proves
+nothing. Only a computed-style read does, which is how all three of these were found.
+
+### §10 · A heading may not be the last thing on a page
+
+A section title landed alone at the foot of page 4 with its content on page 5.
+`break-after: avoid` on `.pdf-ops-title`, `.pdf-section-title` and `.pdf-part-head`.
+
+### §11 · Paper prints no file
+
+_"why are there documents there? They're unreachable on the pdf."_ A filename on paper is a
+promise the medium cannot keep. The live page keeps them, where they download.
+
+### §12 · The row §8 missed
+
+_"the ltr English rows issue still exists."_ The **Summary** event row still wrote
+`<strong dir="auto">`, so an English title left-aligned out of the column while its own icon
+stayed at the RTL start edge. §8 repaired the detail rows and never touched this path. A title
+beside an icon is a value: it is isolated and keeps the column's direction.
+
+### What was verified
+
+Measured off the live DOM at 390px dark: leg times on **one** line at 21px, the layover reading
+`המתנה בוינה · 165 דקות`, travelers in the masthead, body text at 12.5px (was 10.5), and the
+appendix note rendering 2 list items, 1 linkified url and 1 inline bold run. On the A4 render:
+`.pdf-ops-line` computes `Assistant` at **8.6px** (was JetBrains at 7.8px), `pre-line` holds,
+`break-after: avoid` applies to all three headings, and a `FILE` op prints nothing at all.
+
+Two things the render caught that reading had not: the inline-bold rule above, and a CSS rule
+of mine scoped as `.sh-op-note strong`, which was styling every `**bold**` run inside
+`NoteProse` and breaking each onto its own line.
+
+## Amendment — the report that took four rounds to reproduce (2026-08-31, seventh pass)
+
+Eight reports on the sixth pass. One of them closes something that had been open since the
+first.
+
+### §1 · The document links always worked, and said nothing
+
+_"When clicking on a document to download it, it simply downloads in the background, giving
+no indication that it's downloading or that it was downloaded successfully."_
+
+Three passes carried a backlog line reading "the owner's document-link symptom is unexplained,
+and the route is not the cause". Every measurement said the route was fine — a clean 404 for an
+unknown id, a correct filename through the apex redirect, a 44px target, a `download`
+attribute — and every one of those measurements was right. **The bug was the absence of
+feedback.** A bare `<a download>` hands the file to the browser and the page says nothing at
+all; on a phone the download shelf is a notification you may not even see, so a tap that works
+is indistinguishable from a tap that does nothing.
+
+The lesson is worth more than the fix. Four rounds were spent proving a mechanism correct
+while the report was about the _experience_ of using it, and the two never met because "does
+not work" was read as a claim about the mechanism. **A report about what a control feels like
+is not answered by proving the control functions** — the same shape as ADR-0195 §4's stuck
+hover, where a complaint about appearance was twice closed by asserting state.
+
+The row now fetches the bytes itself and reports the three states it can honestly know:
+`מוריד…`, `ירד`, `לא הצליח`. That costs holding one file in memory — affordable for a
+boarding pass — and it is the only way to say "finished", because a native download tells the
+page nothing. The href and `download` attribute stay, so a long-press "save link" and a
+no-JavaScript reader both still work.
+
+### §2 · A journey that spans midnight makes one card, not one card and a blank one
+
+The sixth pass capped a chain at six hours to stop a return swallowing the trip's last day.
+The owner's actual layover is 05:50 → 11:10 — **five hours twenty**, under the cap — so it
+folded anyway, and the last day still rendered empty.
+
+Shaving the threshold again would only move the seam, because the return genuinely occupies
+both dates: it leaves Iceland at 02:00 and lands in Tel Aviv at 15:25 the next afternoon.
+`SharedDay.endDate` says so, and `absorbSpannedDays` folds a following day into the card **only
+when that day is otherwise empty** — a day with its own morning keeps its own card. The header
+then reads `21–22`, which is where the time actually went. The owner proposed this
+(_"maybe for long journeys like these the days should be combined to one somehow"_) and it is
+a better model than any threshold.
+
+### §3 · Durations are words, and the app already had them
+
+`260 דקות` for a layover. The app has had one duration ladder since ADR-0114
+(`lib/duration.ts`'s `hoursPhrase`) and one zone pill since ADR-0107 (`ZoneShiftPill`); the
+shared page was wording neither. It now spends both, and the projection ships
+`durationMinutes` / `zoneShiftMinutes` as **numbers** so each renderer owns its words — the
+same rule that keeps the day titles renderer-agnostic. Paper gets `pdfSpan` in
+`itinerary-pdf.copy.ts`, which is the file that exists to hold the backend's only Hebrew.
+
+A journey's facts are the JOURNEY's: spreading the head leg gave the row leg one's duration
+and leg one's shift, which on a two-leg return understates most of a day.
+
+### §4 · The note parser moves to `packages/shared`
+
+_"In the pdf, markdown not formatted."_ The sixth pass backlogged this as needing `bidi.ts`
+and its ~40 consumers to move; that turned out to be the right move and a cheap one.
+`bidi.ts`, `external-url.ts` and `note-markdown.ts` are all pure — no DOM, no clock, and
+`note-markdown`'s only Hebrew is a script RANGE in a regex rather than a word — so they belong
+in shared, and re-export shims at the old paths left every existing import untouched. `NoteProse`
+stays in the frontend, because painting is the frontend's half.
+
+One thing had to be declared rather than imported: `packages/shared/tsconfig.json` sets
+`lib: ["ES2022"]` and no `types`, which is what makes `document` and `process` fail to compile
+inside a package whose whole contract is that it talks to neither. Reaching `URL` by adding
+`DOM` or `@types/node` would buy one constructor and open that door for everything else, so
+`platform-url.d.ts` declares exactly the members used and nothing more.
+
+Paper renders the AST rather than the markers, with one divergence from the screen that is a
+property of the medium: **a printed link cannot be tapped**, so it prints its destination —
+except where the label already IS the address, which is what `prettyUrl` produces for a bare
+url and which printed `flydrone.is https://flydrone.is/`, the same thing twice.
+
+### §5 · The title printed twice, and the fourth pass caused it
+
+`fallbackTripTitle` was changed to return `Trip.name` — which fixed a masthead naming two
+transit airports and, unnoticed, made the deterministic narrative title identical to the `<h1>`
+a centimetre above it. Both renderers now skip the lede line when it is the trip's own name; a
+GENERATED narrative still has something of its own to say, so the line stays for that case.
+
+### §6 · The font shorthand, a seventh time
+
+`.pdf-ops-line` set `font: 400 8.6px 'Assistant', sans-serif` — and the body's `'Noto Emoji'`
+went with it, so a note written with 🚁 printed an empty rectangle. This is the same shorthand
+that ate the Hebrew face on `.pdf-subtitle` and again on this very rule one pass ago.
+
+**The rule this file now follows: prefer `font-size` and `font-family` as separate properties.**
+A shorthand that silently drops a family the reader needs is not worth the character count, and
+a spec asserts both that `'Noto Emoji'` is in this stack and that the rule does not use the
+shorthand at all.
+
+### §7 · A Hebrew prefix binds to a Hebrew word
+
+`12 ימים ב-איסלנד` should be `באיסלנד`. The comment that used to sit on that line argued for an
+unconditional MAQAF and was half right: `ב-Iceland` IS the convention before a Latin word, and
+`ב-איסלנד` is simply wrong before a Hebrew one. `bindPrefix` asks `baseDirection` and decides
+per value; it lives in shared beside it, so the screen's copy and the printer's copy cannot
+disagree about a grammar rule.
+
+### §8 · A note is read, not glanced at
+
+Reported twice. `--sh-micro` is this page's smallest step and right for a label beside a value;
+a paragraph somebody wrote for the group to act on is body text and now gets the body step.
+
+### §9 · The reader is a document, and stops inheriting the app's posture
+
+_"The live share should not inherit some of the app's quirks: it should be able to refresh,
+zoom in/out etc."_
+
+ADR-0062 turned zoom off app-wide and `tokens.css` contains overscroll so the browser's
+pull-to-refresh never fires — both to make the app feel native, and both right for the app.
+`/s/<code>` is not the app: it is a page a stranger opens in a browser tab, often standing up,
+sometimes without the reading glasses they need. **A document you cannot enlarge is a document
+some people cannot read**, and a page that swallows a pull looks stuck when the network drops.
+
+Three mechanisms had to agree, which is why this is one switch rather than three edits: the
+viewport meta's `user-scalable=no` (Android honours it), `index.html`'s gesture blocker (iOS
+ignores the meta, so pinch is suppressed in script), and `tokens.css`'s `overscroll-behavior`
+and `touch-action`. `usePublicReaderChrome` sets `data-public-reader` on `<html>` while the
+screen is mounted and swaps the meta; the script and the stylesheet key off that attribute.
+
+Two details are load-bearing. The meta is **swapped and restored**, not removed — this screen
+is a route inside the same SPA, so leaving it has to give the app back the exact string it
+booted with, and an app left zoomable is the same bug in the other direction. And the CSS opt-out
+is a variant block **after** `:root`, never a selector on it: putting one there is how this
+repo once lost its whole token set to `[dir='ltr']` (`frontend/CLAUDE.md`).
+
+The precedent already existed — `.doc-viewer` opts back into pinch for the image preview — so
+this extends an escape hatch rather than inventing one.
+
+### What was verified
+
+Measured off the live DOM at 390px dark: **one** occurrence of the trip title (was two), a day
+header reading `21–22`, `המתנה בפרנקפורט · 5:20 שע׳` (worded, and the prefix bound without a
+hyphen), travel facts reading `13:05 שע׳ · +3 ש׳` on the journey and on each leg, note prose at
+15px, and a download that goes `working` → `done` with `ירד` on the row. On the A4 render:
+`.pdf-ops-line` computes `Assistant, "Noto Emoji", sans-serif` at 9.4px, the note prints as a
+heading, a numbered list, a bold run, a rule and a quote rather than as its markers, and a bare
+url appears exactly once. And a unit spec asserts the chrome switch both ways: mounted, the
+attribute is set and the meta carries neither `user-scalable=no` nor `maximum-scale`;
+unmounted, the app's original string is back verbatim.
+
+## Amendment — a rule the repo had already written down (2026-08-31, eighth pass)
+
+Six owner reports. Five are small; the second is a design correction, and the fourth is the
+one worth reading — a defect class this repo had **documented, guarded and then shipped
+anyway**, in ten places.
+
+### §1 · A card covering two days names both weekdays
+
+`21–22 שני` says the card is Monday when it is also Tuesday. Both renderers derived the
+weekday from the first date only, having been taught the range for the NUMBER in the seventh
+pass and not for the name beside it. Both ends now, one en dash, in both renderers. Two
+Hebrew names need no isolate — which is the whole subject of §4.
+
+### §2 · A journey is a frame with legs, not a peer row plus its legs
+
+> _"Flights have a row for the entire journey (נתב״ג אל קפלאוויק) but also rows for each
+> flight. Both pdf and live. This is confusing and should be changed."_
+
+**The seventh pass caused this.** Giving a leg its own `durationMinutes` and
+`zoneShiftMinutes` — right in isolation, since the app shows both on every event row — put
+**four durations and three zone shifts on one flight**, measured on the reproduction:
+
+|       | route                  | clock       | duration | zone |
+| ----- | ---------------------- | ----------- | -------- | ---- |
+| frame | `Keflavík ← נתב"ג`     | 23:40–11:55 | 11:15    | +3   |
+| leg 1 | `Keflavík ← Frankfurt` | 23:40–02:30 | 2:50     | +2   |
+| wait  | Frankfurt              |             | 5:20     |      |
+| leg 2 | `Frankfurt ← נתב"ג`    | 08:50–11:55 | 3:05     | +1   |
+
+So the totals belong to the **journey**, whose two ends are the pair a reader is actually
+comparing, and a leg answers only when it leaves, when it lands, and which flight it is. The
+wait keeps its minutes, being the one span neither end states. Measured after: two durations,
+one zone shift. Both fields are **gone from `sharedLegSchema`**, not merely unrendered — the
+contract should not carry a value no renderer may use, and typed access now fails to compile,
+which is a stronger guarantee than a spec.
+
+The frame's row survives rather than being replaced by a heading, because the ops, the
+caption and the map link hang off it; dropping it would have cost the booking codes.
+
+### §3 · The absorbed day stops at the day the journey lands on
+
+Found while reproducing §1, not reported. The seventh pass's `absorbSpannedDays` swallowed
+**every** consecutive empty day, so a journey landing on the 8th followed by an unplanned 9th
+printed `07–09`: a three-day card for a two-day flight, telling the reader they are in the air
+for a day nobody has planned yet. Bounded by the journey's own last arrival.
+
+### §4 · `ltrIsolate` around a Hebrew phrase — ten sites, and the rule was already written
+
+> _"The numbers and the Hebrew are reversed sometimes, it shows שע' 3:30 instead of 3:30 שע'.
+> Please do a sweep and find and fix all of these."_
+
+The screenshot's own card carried the answer: the layover line beside it read correctly. Both
+lines hold `number + Hebrew unit`; only one of them was wrapped in `ltrIsolate`, which forces
+its whole run left-to-right so the reader meets the unit first.
+
+**What makes this the interesting one is that nothing here was unknown.** `bidi.ts`'s header
+comment states the rule and names this exact output — _"forcing `dir="ltr"` over the whole
+token lays it out left-to-right, so a Hebrew reader meets the unit before the number (`ק״מ 9`
+for what should read `9 ק״מ`)"_ — the file exports `measure()` to do it correctly, ADR-0118
+swept 75 sites for the attribute form, an ESLint guard blocks that form, and
+`place-summary.ts`'s docblock had already recorded that the guard **cannot see the helper
+form**. Every piece of knowledge was in the repo; ten call sites violated it anyway.
+
+Seven forced Hebrew left-to-right:
+
+- the reader's travel facts (`ltrIsolate(hoursPhrase(…))`) — the screenshot;
+- the PDF's facts line **and** its layover (`ltr(pdfSpan(…))`), so paper had it twice;
+- four task due-labels (`ltrIsolate(\`${due.day} ${due.time}\`)`) — and `dayLabel` returns
+Hebrew in **every** branch (`היום`, `מחר`, `יום 5`), so every task with a due time was
+  reversed, on four surfaces, in the app itself rather than in sharing.
+
+Three used the wrong isolate for text the app did not write, where the rule is to **ask** the
+run rather than force it: a markdown link label in `note-markdown.ts` and `NoteProse.tsx`
+(`[לחץ כאן](…)` laid out from the wrong end — and `NoteProse` was already spending
+`dir="auto"` on its anchor branch and `ltrIsolate` on its inert one, so one string rendered
+two directions), and a Commons attribution in `place-summary.ts`, which is a person's name.
+
+**The guard was extended rather than joined.** Two selectors — a Hebrew letter inside an
+isolated template, and a call to any duration ladder (`hoursPhrase`, `pdfSpan`,
+`approxDuration`, `approxTravelTime`) inside one — now sit beside the `dir="ltr"` selector
+they belong with, composed into one `ISOLATE_SELECTORS` so the frontend and the other two
+packages cannot drift. Scope widened to `backend/src` and `packages/shared/src`: `bidi.ts` and
+the note parser moved into shared in the seventh pass and the print renderer spells its own
+`ltr()`, which is precisely how `ltr(pdfSpan(…))` reached paper unseen. Verified by
+reintroducing all three shipped shapes and watching each get flagged.
+
+### §5 · The download shows how far it has got, and Chrome's overlay is not ours to summon
+
+> _"The download indication is not enough. Why doesnt Google chrome pop up a download overlay
+> like other places? And anyway it should have another animation for downloading."_
+
+The suspicion was mine before it was measured: that intercepting the click and fetching the
+bytes had displaced the browser's own download UI. **Measured, and false.** Driving a plain
+navigation anchor and the fetch-then-blob path side by side in Chromium, each engages the
+download manager identically — `download` fires with the right filename for both. What Chrome
+then _draws_ is its own call, and a page cannot ask for the bubble.
+
+So the row carries the progress instead, and because we already hold the response it can be
+**real**: the body is read through a stream and the bar tracks bytes against `Content-Length`.
+Where the server declares none it runs indeterminate, and deliberately in a different shape —
+a block travelling the track, not a fill growing from the start edge — so "I don't know how
+long" never reads as "I am 30% done". Neutral `--cta`, because amber is time and commitment
+only (rule 4).
+
+### §6 · The reader's own scroller was why refresh stayed broken
+
+The seventh pass opted the public reader out of `overscroll-behavior` and `touch-action` and
+called refresh fixed. It was not, and the reason is that `overscroll-behavior` only decides
+what happens when a **scroll container** runs out of content: `.sh-page` is a `100dvh` inner
+scroller and `html, body` are `overflow: clip`, so the viewport was never a scroll container
+and there was no overscroll for the gesture to read.
+
+The document scrolls now — `:root[data-public-reader]` restores `overflow: visible`, and the
+page is `min-height` rather than a viewport of its own. The two halves are one fix and neither
+works alone, which is also why the earlier round looked done. **The e2e test is the part that
+should have caught it**: it drove `.sh-page`'s own `scrollTo` and passed, asserting that
+something scrolled without ever asking _who_. It now asserts the document scrolls and that
+`.sh-page` is not a scroll container at all.
+
+### §7 · A definite-width block ignores its parent's `text-align`
+
+> _"I feel like the qr and link aren't aligned correctly together."_
+
+Measured in the real A4 rather than adjusted by eye: `.pdf-qr-block` is `text-align: center`,
+but `.pdf-qr` is `display: block` with `width: 46px` — and a block-level box with a definite
+width does not respond to `text-align` at all. So the code sat flush at the inline-start edge
+(`55..101`) while the caption under it was a full-width block of centred text (`0..101`): two
+alignments in one unit, centres 27px apart. `margin-inline: auto` makes the block's own
+declaration mean something for both children; centres now agree within 1px.
+
+### What was verified
+
+- `pnpm typecheck`, `pnpm lint`, `pnpm build` clean; `pnpm test` 505 shared / 1222 backend /
+  4990 frontend.
+- Live DOM at 390px dark: `07–09 שני–רביעי`; one facts line on the frame and two legs with
+  none; two durations on the whole flight card; `11:15 שע׳` with its first character right of
+  its last, so the run reads number-first; `data-public-reader` set, root `overflow-y: visible`
+  / `overscroll-behavior-y: auto` / `touch-action: auto`, document scrolls, `.sh-page` not a
+  scroller.
+- A4: QR centre 50 against caption centre 51; both weekdays; no facts line inside a journey
+  block; `5:20 שע׳` reading number-first off character boxes.
+- e2e 17/17 across `shared-itinerary`, `trip-share-entry` and `shell-does-not-scroll` — the
+  last of these being the proof that the app's own locked posture is untouched by the token
+  change.
+
+## Amendment — drawn before built, and two rules the app had already written (2026-08-31, ninth pass)
+
+Three owner reports, all put to a mockup first because two of them are design questions and
+the third is a correction of the eighth pass. Two files:
+[`a-journey-is-a-flight-plan-v1.html`](../../mockups/a-journey-is-a-flight-plan-v1.html) and
+[`the-reader-hands-you-a-file-v1.html`](../../mockups/the-reader-hands-you-a-file-v1.html).
+
+**Built 2026-08-31**, the same day it was drawn, after the owner approved both files. What
+the build changed, added or corrected is recorded per section below and collected under
+_What the build changed_ at the end — the drawings were right about the shapes and wrong or
+silent about four things.
+
+### §1 · A journey is a container, and the eighth amendment fixed the wrong axis
+
+> _"The flights with connecting flights still show both the full journey and the separate
+> flights in a confusing way, also doesn't show journey leg durations (flights)."_
+
+The eighth amendment read "confusing" as **duplicated numbers** and removed the legs'
+`durationMinutes` and `zoneShiftMinutes`. The numbers were never the complaint. Two facts from
+the code say what is:
+
+- the journey renders through `article.sh-event` — the **same element, class and type scale**
+  as a museum visit — and `.sh-legs` then indents by `padding-inline-start: 30px`. So the whole
+  claim "these two are inside that one" rests on 30px of white space in a 360px column;
+- the frame's title is `routeTitle(first.booking.fromPlaceId, last.booking.toPlaceId)` — the
+  legs' own endpoints concatenated. `נתב"ג ← קפלאוויק` over `נתב"ג ← וינה` and
+  `וינה ← קפלאוויק` is the same two airports three times. **The repetition a reader trips over
+  is the places, not the durations** — which is exactly why counting durations missed it.
+
+So: `.sh-trek`, a real container (teal rail plus a 7% tint, the grammar `.sh-day` already uses
+one level up; teal because a journey is about getting between places, rule 4), and a header
+that drops the glyph column and `--sh-secondary` so it cannot be read as one of the flights
+beneath it. Measured: the journey goes **209.9 → 221px, +11.1px** — clarity, not compaction,
+and the same trade v4 made when its journey block came in 7px taller.
+
+The frame's row survives rather than becoming a bare heading, because `ops`, `caption` and the
+map link all hang off the parent event: deleting it deletes the flight's booking code.
+
+### §2 · A leg says how long it flies; the zone shift stays on the journey
+
+`durationMinutes` comes **back** to `sharedLegSchema`, per leg, at `--sh-micro`.
+`zoneShiftMinutes` does not: the owner asked for flight durations, and three signed numbers
+(`+2`, `+1`, `+3`) describe one clock change, while the shift a traveller acts on is
+origin-to-destination. Duration phrases on the card therefore go **2 → 4**, and that increase
+**is** the request — worth stating plainly, since the eighth amendment's whole argument was
+that four was too many.
+
+### §3 · Paper says the same thing, waits included
+
+The owner's screenshot was of the PDF, where `.pdf-trek` **already** draws a bordered box
+around the legs — and it still read wrong. That is the proof the container alone is not the
+fix: the header above it is what has to stop looking like a complete flight. The mockup's own
+§3 first shipped without the layover line and the owner caught it in review (_"The pdf should
+also show the wait durations"_); both paper columns now run through one leg renderer, so they
+cannot disagree about which facts a leg carries. The wait matters most on paper: a reader
+holding a printout cannot tap anything to find out.
+
+### §4 · The download shows motion, because the app banned the static word in April
+
+> _"The download indication still bad … still the same bad looking מוריד etc instead of a
+> spinner or something."_
+
+`ui/Spinner.tsx`'s docblock: _"The one shared spinner (ADR-0052 §4). Used by the document
+viewer, the list load, and the upload busy state — so every async surface has a motion cue,
+**not a static word**."_ And ADR-0052 §4 names the composition: a busy control shows its label
+**plus** a spinner, with a determinate bar "where the transport allows it".
+
+The shipped row has the bar and the word and no spinner. It implements two thirds of a rule
+written four months before it, and the missing third is the one the owner noticed. So the
+spinner takes the file **glyph's** slot — `FormActions` puts it where the label was; a file row
+has no label to give up, and using the glyph's slot means the row's geometry never moves.
+`--ok`/`--miss` for the two finished states, `--cta` for working, because a file arriving is an
+action and not a status.
+
+Two corrections to what shipped, both from the same rule: reduced motion **slows** the
+indeterminate sweep to 2.6s rather than stopping it (`.spinner` itself slows to 1.6s, and a
+stopped indeterminate bar is indistinguishable from a stalled download), and the row declares
+44px — **measured live at 42px, under ADR-0017's floor**, which the whole download argument had
+been happening on top of without anyone noticing.
+
+### §5 · `shareFileOrDownload` is the mechanism, and the reader used only its silent half
+
+> _"it still doesn't pop up the Google chrome saving, though maybe that'll be fine as long as
+> we have a good looking animation"_
+
+`lib/system-share.ts`'s `shareFileOrDownload` tries `navigator.share({ files })` first and
+falls back to an anchor click. `FileOp` contains **those fallback six lines verbatim** —
+createObjectURL, anchor, download, click, revoke — and never tries the share branch. On Android
+that branch opens the system share sheet, which is a visible, cancellable confirmation a page
+cannot otherwise summon. Measured in the eighth pass: both paths engage Chrome's download
+manager identically, so the missing UI was never suppression — **we asked for the quiet one.**
+
+And the shared helper carries the bug the one-off already fixed: it revokes the object URL in a
+`finally` on the same tick as `click()`, which `FileOp`'s docblock explains can be "a download
+that never starts". Two implementations, each holding half the answer. The repair folds the
+`requestAnimationFrame` into the shared helper and gives the row its share branch — not a third
+copy. The copy follows the mechanism: `ShareOutcome` returns three values, and `נשלח` and
+`ירד` are not the same event.
+
+### §6 · The reader's PDF button is the owner sheet's control, one more host
+
+`.share-outcome` is already the owner's "get the PDF" button — 48px, download icon, the same
+words. The public page gains it rather than a third button. Placement is the one open question
+and is deliberately left to a device pass: the masthead is always reachable and costs 36px of a
+42px bar (with `ValueToken`'s `::after` reaching 44px, ADR-0177, the technique `.sh-ops`
+already uses here), while the foot reads as "take this with you" and costs a twelve-day scroll.
+
+And it carries §4's spinner, because the owner's existing PDF button swaps a word with no
+spinner while `FormActions` two files over does it correctly — so the app currently holds both
+the right pattern and the wrong one for one question.
+
+### What the renders found, beyond the proposals
+
+- **`.icon` is sized per context in this app**, and a new context inherits no size. Unsized,
+  the journey header's flight glyph drew at its own 24px box and the header measured **131px**
+  instead of 34.
+- **`.sh-page` now carries `min-height: 100dvh`** (shipped this morning so the reader's document
+  scrolls and pull-to-refresh can fire), so any mockup wearing that class for its type scale
+  gets a screenful of empty ground under every frame.
+- **A control in `.sh-public-bar` must take the `--on-dark-*` ramp** (ADR-0158 §3). Drawn with
+  `--ink`/`--line`, the PDF button rendered navy on navy: invisible on the page, entirely
+  reasonable in the CSS.
+- **The live file row is 42px**, under ADR-0017's 44px floor.
+
+Both files render in all four theme × width combinations with fonts loaded and no console
+errors.
+
+### What the build changed
+
+The two mockups were right about every shape. Four things they did not settle, and one they
+got wrong:
+
+- **`SharedEvent.journeyTo` is a new contract field, and the mockup did not say so.** The
+  header names the destination, and the destination was not in the projection: `title` is
+  `routeTitle(from, to)` and parsing it back apart is not an option, since it carries bidi
+  isolates. It is derived from the same place-label chain the day titles already use.
+- **The frame's row does not survive — its ATTACHMENTS do.** The amendment above said the row
+  survives "because `ops`, `caption` and the map link hang off it", and the mockup drew the
+  container replacing it entirely. Both are half right: the row goes, and the attachments are
+  hoisted into a fragment that either shape can host, so a journey renders as a container
+  **with the flight's booking code inside it**. Building it revealed the mockup's `after()`
+  had quietly dropped the ops fold; there is now a spec asserting `.sh-trek details.sh-ops`.
+- **`FileOp` and the PDF button became one hook, not two ladders.** The mockup drew them as
+  two controls, which is what they are on screen — but they ask one question (fetch a URL,
+  report progress, hand the file over), so `useFileHandover` serves both. Writing the second
+  as its own `useState` ladder is how they would have drifted on the states, the settle delay
+  or which outcome says `נשלח`.
+- **The PDF button ships in BOTH places, not one.** The mockup left placement as an open feel
+  call with the masthead as its default. Measured live, the masthead pill is 30px on a 43px
+  bar and the foot's `.share-outcome` is 48px — they cost different things and answer
+  different readers, so both ship: the bar for the reader who came to fetch it, the foot for
+  the one who read to the end. This is the same two-entry-point shape ADR-0213 already uses
+  for the owner's share control, so it is not a new pattern.
+- **`signedHours` was extracted** in the print renderer: the journey header became the second
+  caller of the signed-clock formatting that was inline in `travelFactsLine`, and one spelling
+  is what stops a flight's header and a single-leg row reporting the same crossing
+  differently.
+
+Two traps the build hit, both already written down in this repo and both hit anyway:
+
+- **A backtick inside a CSS comment inside a template literal** terminates the literal. Ninth
+  occurrence this session. The template now carries an assertion-by-inspection note; the real
+  guard is that the comment says "micro scale" instead of naming the token in backticks.
+- **`--pdf-sub` does not exist.** The print sheet's tokens are `--pdf-ink/muted/line/soft/
+amber/teal`, and an undefined custom property makes the whole declaration inert — so the
+  header would have printed with no background and looked _almost_ right. Caught by measuring
+  `backgroundColor` on the rendered A4 (`rgb(243, 245, 248)`), which is the only way this
+  class of miss ever surfaces. The catalog records the same shape for a mockup that styled
+  against `--text-meta`.
+
+### What was verified
+
+- `pnpm typecheck`, `pnpm lint`, `pnpm build` clean; `pnpm test` 505 shared / 1222 backend /
+  4991 frontend; sharing e2e 14/14.
+- **Live at 360px dark:** the container exists with no `.sh-event` inside it; the header reads
+  `טיסה לנתב"ג · שתי טיסות · 23:40–11:55 · 11:15 שע׳ +3 ש׳` at 56.7px against an event row's
+  76px; the whole journey is 215.7px (the mockup predicted 221px); four spans on the card —
+  `11:15`, `2:50`, `5:20`, `3:05` — and exactly **one** zone pill; the masthead button is 30px
+  on a 43px bar and the foot's is 48px.
+- **The download row measured against the shipped stylesheet:** 45.5px with `min-height: 44px`
+  (it was 42px, under ADR-0017's floor), the app's own 15px spinner animating at its own 0.7s,
+  a 3px bar, and the indeterminate sweep at 1.1s — slowing rather than stopping under reduced
+  motion.
+- **A4:** the container prints with its header background resolved, no peer row above it, leg
+  spans `2:50` / `3:05`, the wait `המתנה ב-Frankfurt · 5:20 שע׳`, and the same four spans the
+  screen shows.
+
+## Amendment — a link is a policy, not a level (2026-08-31, tenth pass)
+
+Owner, 2026-08-31: _"I want to be able to share with different privacy options (summary, full
+schedule, everything), and not choose only one. Different links, maybe link generated per
+viewing option idk."_ Then, on the first drawing, the same day:
+
+> _"The הכל category could have different levels of detail based on what you allow, so maybe
+> for that there could be multiple different links. Have you taken that into consideration?"_
+
+It had not. [`a-level-is-a-link-not-a-setting-v1.html`](../../mockups/a-level-is-a-link-not-a-setting-v1.html)
+drew a link per **level** and is kept as the dated record of the design that was corrected;
+[`a-link-is-a-policy-not-a-level-v2.html`](../../mockups/a-link-is-a-policy-not-a-level-v2.html)
+replaces it and this amendment is written against v2. **Built 2026-08-31** — see "What
+building it changed" at the foot for the three things the drawing could not see.
+
+This reverses §5's _"one reconfigurable public link per trip"_ and promotes the backlog's
+**Multiple audience links** line, narrowed to policy-keyed rather than named links (§7).
+
+### §1 · A level is not a policy, and that is the whole correction
+
+v1 keyed links on `detailLevel`. But a level does not determine a projection — Summary and
+Full each have exactly one policy because there is nothing in them to tune, while
+**Everything is a family**: `2³` sensitive combinations times every subset of the trip's
+files. A sister who needs confirmation codes and a hotel that should see only names are both
+Everything, and must not share a link.
+
+So the rule is **one link per policy**, and the counts fall out of it instead of being three
+cases somebody wrote down:
+
+| Level      | Policies  | Why                                                  |
+| ---------- | --------- | ---------------------------------------------------- |
+| Summary    | 1         | nothing to tune; the level is the whole policy       |
+| Full       | 1         | nothing to tune; the level is the whole policy       |
+| Everything | `2³ × 2ⁿ` | three sensitive switches × every subset of `n` files |
+
+v1 is the special case where the level happens to be sufficient, not a rule this generalises.
+
+### §2 · The feature removes a mechanism, and under a policy key it removes all of it
+
+§5 made the level a **setting on one link**, and the third pass then had to make that setting
+write immediately — a debounced `upsertTripShare` plus `levelSaved` (`הלינק החי מעודכן ·
+תקציר`), whose only job is to announce that the link just changed under whoever already holds
+it. Both exist solely because one link carries a policy.
+
+v1 deleted half of that and kept the debounce for the Everything toggles, since those still
+mutated a live link. **Under a policy key nothing in the sheet mutates a live link at all**:
+moving a toggle selects the policy you are about to hand over, exactly as moving the level
+does. The write, the announcement and the whole notion of a draft go.
+
+And it inverts the sentence that put them there. The third pass reasoned: _"a link that is
+already live is already showing something to whoever holds it, so the honest model is that
+moving the control moves the link."_ True when a trip had one link. With one link per
+audience it reverses — **a live link is a promise made to a named audience, and a promise
+that changes silently is the defect, not the fix.**
+
+### §3 · One constraint, and it hashes the policy
+
+```prisma
+- tripId String @unique
++ policyHash String
++ @@unique([tripId, policyHash])
+```
+
+`policyHash` is a stable hash of `detailLevel`, the three sensitive booleans and the sorted
+`documentIds` — the technique `ItineraryNarrative.inputHash` already runs in this same module
+(rule 8). A hash rather than a column list because the files live in a join table and cannot
+enter a unique constraint themselves.
+
+It is also what keeps `PUT` idempotent, which the sheet's no-Save design depends on: the same
+policy twice is the same hash, the same row and the same code. Every existing row gets its
+hash computed in the migration and keeps its `code`, so **no shipped `/s/<code>` stops
+resolving**.
+
+The rest of the API barely moves, because `upsertTripShareSchema` already carries every field
+of the policy:
+
+- `PUT /trips/:tripId/share` — unchanged body; the upsert keys on `(tripId, policyHash)`.
+- `GET /trips/:tripId/share` — returns `TripShareConfig[]`. The frontend is its only consumer.
+- `POST /trips/:tripId/share/:code/rotate` — rotate keys on the code, since a policy no longer
+  identifies a link uniquely once its code has been replaced.
+- `DELETE /trips/:tripId/share/:code` stops one link. **`DELETE /trips/:tripId/share` keeps
+  its current meaning** — stop sharing this trip — so the route that exists today is exactly
+  the stop-all in §5.
+
+Authorization is untouched: send is any member's, create/reconfigure/rotate/revoke are the
+admin's. A non-admin sees the live links and may send them, since each is already public.
+
+### §4 · The sheet is asymmetric, and the asymmetry is the table in §1
+
+Summary and Full keep v1's design and today's exactly — one loud send unit, one link, two
+outcomes. Measured at **525.6px against today's 525.6px**: that branch does not move.
+
+Everything renders `ListRow`/`RowManageSheet`, the app's managed-list primitive already
+serving bookings, documents and members (`frontend/CLAUDE.md`). Once one level holds N links
+you must be able to find and revoke the second of three, which is precisely what v1's
+"no list" rejection could not do — that rejection was right for three fixed levels and wrong
+here. Each row's title is the policy **derived** in the app's `·` grammar
+(`קודים · פתקים · 2 קבצים`) and its meta is the address.
+
+**The container already exists.** `.share-send` is a raised, bordered, `overflow: hidden`
+unit and `.wp-listrow` draws its own bottom hairline, so the list costs no CSS. The proposed
+stylesheet is still the 13 lines v1 asked for — the live mark and the stop-all — and the
+primitive needs one field, `Choice.ariaLabel`, so a marked level card is named
+`תקציר · לינק פעיל` (the mark is `aria-hidden`, and `ChoiceGrid` already emits a conditional
+`aria-label` for compact pills).
+
+The level card's dot means "at least one live link here". The exact count is in the list,
+which is where you are already looking.
+
+### §5 · Revocation, per link and total
+
+The `⋯` sheet carries send, copy, PDF, rotate, and — partitioned below the primitive's own
+hairline rather than tinted red in the stack — stop. It names its subject (ADR-0138 §3): the
+policy as its title, the address as the quiet line beneath, so the wrong link cannot be
+revoked unseen.
+
+Above them, a `--miss` **stop-all** that appears only when two or more links are live. With
+one, the row's own stop already ends everything, and two buttons doing the same thing is how
+the wrong one gets pressed.
+
+Minting stays on the send, unchanged: a policy with no link has no address to copy and its
+primary reads `יצירה ושליחה`. Opening the sheet publishes nothing; moving a toggle publishes
+nothing.
+
+**Editing a live link's policy is deliberately not offered.** Under a policy key it is
+incoherent — changing the policy changes the hash, so it is a different link. "Let my sister
+also see notes" is a new link plus stopping the old one, two presses. That cost is the price
+of the §2 inversion, and it is named here rather than hidden.
+
+### §6 · The narrative cache, and a defect found while costing this
+
+`ItineraryNarrative` is keyed by `shareId`, so N links mean up to N generations for one trip.
+Chasing that found something already true with one link: the input is built from **this**
+projection's days (`sharing-projection.service.ts`), and `placeName` is set only _after_ the
+Summary early return — so the same trip already produces a **different generated narrative
+depending on which level opens it**, today.
+
+Two changes, the first required before this ships or the model bill multiplies:
+
+1. Key the cache on `(tripId, locale, inputHash, skillVersion)` instead of `shareId`. The hash
+   already separates genuinely different inputs, so this only deduplicates where they
+   coincide — and it survives rotation and re-share, which per-share keying does not.
+2. Include `placeName` at every level, making the input level-invariant. Place names are
+   already Summary-public and already reach the model at Summary through `routeLabels`, and
+   §2's boundary is about _sensitive_ fields, which a public place's name is not.
+
+### §7 · What stays deferred
+
+**User-typed link names** — "for grandma", "for the hotel". Rejected more firmly than in v1,
+because the policy is now the title: `קודים · פתקים · 2 קבצים` states what the link
+_reveals_, which the app can verify, where a typed name states who it went to, which it
+cannot and which goes stale silently. A name remains a backlog item as an _addition_ to the
+derived title, not a replacement.
+
+**Two links at one policy** — independently revocable per recipient. Still the access-
+management feature the backlog describes, and still not what was asked.
+
+**A known cost, not solved here.** Asking for a PDF at a policy with no link mints that
+link — today's behaviour (`ensureShare` precedes the render), sharper now that every toggle
+combination is a possible address.
+
+### What building it changed
+
+**§1 · `placeName` LEAVES the generator's input; it does not become universal.** §6 above
+said "include `placeName` at every level, making the input level-invariant". Building it
+showed both ways of doing that are wrong: adding it to the Summary _projection_ changes what
+a Summary link publishes, which is a product change and not a cache fix; and projecting a
+second time purely to feed the generator doubles the work on every public read. Removing the
+field is level-invariant by construction, and it is strictly _less_ crossing the model
+boundary, which is the direction this ADR argues in everywhere else.
+
+What settled it is that `summaryNarrativeInputSchema`'s own docblock already claimed
+_"INDEPENDENTLY of the selected share level, so no Everything toggle can widen it"_ — and
+`placeName` was the one copied field that broke it. The schema is strict, so deleting the
+field turns the claim from a promise into a parse failure, which
+`sharing.test.ts` now pins. The trip's principal stops still reach the generator through
+`routeLabels`. Every stored narrative's hash is invalidated by the change; that is what the
+deterministic fallback is for, and no sweeper is needed (the eligibility rule is the key).
+
+**§2 · The primitive needed two fields, not one.** §4 promised `Choice.ariaLabel` alone. A
+mark that renders out of flow cannot be conjured by a name — it needs a slot — so
+`ChoiceGrid.Choice` gained `mark?: ReactNode` beside it. They are genuinely two things: the
+mark is `aria-hidden` paint that the host positions against the card, and the accessible
+name is what a screen reader gets instead of three identically-named cards.
+
+**§3 · A specificity tie hid the danger tone, and this is the third time in this sheet.**
+`.share-stop-all { color: var(--miss) }` lost to `.share-manage { color: var(--muted) }`
+several hundred lines below it — same one-class weight, later rule wins — so the stop-all
+rendered grey in the running app while every test passed. It is `.share-manage.share-stop-all`
+now, which is order-independent. The sheet's `gap` was the same shape of bug twice (see the
+manifest-order note below), so the pattern is worth naming: **a rule that describes a variant
+of an existing class must name both, or it is betting on file order.** Guarded in
+`trip-share-entry.spec.ts` on the _computed_ colour, because only a real engine resolves a
+cascade.
+
+**§4 · A failed read used to say "not shared".** `fetchTripShare`'s rejection was swallowed
+into `undefined`, which was nearly harmless when absent and failed looked the same. With a
+list they are opposite claims, and the dangerous direction is the one that was there: an
+owner told nothing is published while three links are live. The read now reports a failure,
+and the not-shared line is drawn only when a read actually succeeded. Found by a fixture
+whose `documentIds: ['d1']` failed `entityIdSchema`'s 8-character floor — one bad element
+had been dropping every sibling with it, silently.
+
+### What was verified
+
+- `pnpm typecheck`, `pnpm lint`, `pnpm build` clean; `pnpm test` 506 shared / 1232 backend /
+  4994 frontend; sharing e2e 14/14.
+- **Against a real database and a running backend**, on the seeded demo trip: four links on
+  one trip, two of them Everything with different policies; repeating a policy returned the
+  same code (idempotent); the four public reads differ exactly as their levels require
+  (Summary carries no `startLabel`, only Everything carries `ops`); rotate 404s the old code
+  and 200s the new; a per-link revoke 404s that link while its sibling still resolves;
+  re-sharing a revoked policy mints a fresh code and reuses the row (4 rows, not 5); and
+  `DELETE …/share` empties the list.
+- **The migration's agreement with the service is proven, not asserted.** A row inserted with
+  the backfill's own SQL expression (`sha256` over the canonical policy) resolves publicly,
+  and a `PUT` of that same policy returns **that row's code** with one row on the trip — so a
+  link minted before this amendment is found rather than duplicated. `share-policy.spec.ts`
+  additionally pins two literal digests taken from Postgres.
+- **In the running app at 390px:** the Everything branch lists two rows titled by their
+  derived policies (`קודים · פתקים`, `שמות`), two level cards carry the live mark, the scope
+  note reads `2 לינקים חיים · כל אחד עם המדיניות שלו`, the stop-all reads
+  `הפסקת כל השיתופים · 3` and computes to `rgb(194, 88, 78)` (`--miss`), and the `⋯` sheet
+  carries send / copy / PDF / rotate with stop partitioned below the hairline.
+- The mockup renders both themes at 360px and 390px with fonts loaded and **no console
+  errors**. Measured off its live DOM: today's sheet **525.6px**; the proposal at Summary
+  **525.6px** (that branch does not move); at Everything with three links **664.6px**; the
+  create sheet **679.1px**; the `⋯` sheet **384.1px**. List row **61px**, kebab **44px**,
+  level card **58px** and identical across all three (the mark is out of flow), link row
+  **44px**, outcome **48px**, switch row **52px** — all at or above ADR-0017's floor.
+- **A manifest-order defect in the previous sharing mockup, found by rendering v1.**
+  `.modal-form` sets `gap: var(--space-3)` and `.share-sheet` sets `gap: var(--space-4)`, both
+  one class — so the sheet's group rhythm is decided purely by which stylesheet is emitted
+  last. `sharing-and-inviting-are-one-control-v1.html` lists `screens.css` _before_ the
+  primitives, the opposite of the app (`App.tsx` reaches `form-actions.css` through
+  `screens/Home` → `HostTasks` → `TaskSheet` → `FormActions` at :64, long before its own
+  `import './screens.css'` at :113). That file reported 16px only because its proposed block
+  re-declared the rule on top of the inlined cascade.
+- **Not verified:** no device pass. The mark's diameter (7px against 9px) is still a control
+  in the mockup and 7px is what shipped.
+
+## Amendment — the page knows what day it is (2026-08-31, eleventh pass, drawn not built)
+
+Owner, 2026-08-31:
+
+> _"I noticed that the live sharing page opens with the first day expanded. First of all -
+> why? Second, i think that during the trip, i.e. while it's happening, the live sharing page
+> should scroll to and expand the current day. Maybe we should also add an indication to
+> whether it's in the future, is happening right now, or has already happened."_
+
+Drawn in
+[`a-shared-itinerary-knows-what-day-it-is-v1.html`](../../mockups/a-shared-itinerary-knows-what-day-it-is-v1.html).
+**Built 2026-08-31** — what running the real page changed is recorded under _What building it
+changed_ at the foot, and two of the three findings are things no fixture had covered.
+
+**The answer to "why" is that nobody decided it.** `SharedItinerary.tsx` holds
+`useState(0)`, and the three reader mockups the page was built from all shipped `open: 1` —
+a demo state, chosen so a screenshot would show one card's insides. What §1 of this ADR
+decided is the accordion itself (one card open at a time over a stable day spine); which
+card is the open one was never a decision, and that is why this amendment reads as filling
+a hole rather than reversing a choice.
+
+Everything below is one rule with four consequences: **the page opens on the day the reader
+is in, and says which day that is.**
+
+### §1 · Which card opens, and where the page lands
+
+The card that opens is the one whose date is the trip's today, **and only that one**. Before
+the trip and after it there is no such day, so **nothing is open**: the spine of eleven
+closed cards is what the page opens on.
+
+Falling back to the first card is what this amendment's first draft proposed, and the owner
+caught it: it is the same index-pick this section opens by criticising, with a rationale
+bolted on afterwards. `useState(0)` chose an index because one was needed; "the first card,
+since there is no today" chooses the same index for the same non-reason. **The clock is the
+only thing that opens a card. Every other open card is the reader's.** That is also what
+keeps §2's amber mark meaning something — a day that opens itself for no reason makes "open"
+stop being a statement.
+
+A closed spine is not an empty page: every card already carries the day's title and where it
+sleeps, so eleven of them read as the trip's table of contents, which is what a stranger
+opening a link is looking for and what `כל יום לפי חלקיו` under the heading has been
+promising since v3. Measured, the fully closed spine is **1043px** against **1510px** with
+one card open — before the trip the reader sees _more_ of the trip, not less.
+
+The scroll is **not a new rule** — `DayView` already made every decision it needs:
+
+> _"Land on now: scroll the now-line into view once per day-open (today only), a passed
+> event or two left peeking above. Keyed on the viewed day — never on the clock tick — so it
+> doesn't fight a manual scroll. Instant under reduced-motion."_
+
+Applied to a page whose rows are days instead of events, that is: only when a card is
+today, once per link (keyed on `code`, never on a refetch or a clock tick), the previous
+day left peeking above, and instant under `prefersReducedMotion()`. The peek shipped as
+26px in the drawing and stays a device call.
+
+**And the target is the now-line, not the card** (owner, 2026-08-31: _"if we decide to use
+it then it should scroll there, like the day view does"_), which §5 is what makes possible.
+Built as `landAtTop` over today's card, which is that target: see _What building it changed_
+for why the two are one call and not two.
+`DayView`'s call does not translate literally, though: `block: 'center'` there centres
+inside the inner `.body` scroller — **below** the day's header, which is fixed chrome and
+cannot be scrolled away. This page has no chrome; today's card header, carrying the date and
+the `עכשיו` mark, is an ordinary box in the same document. Centre the line and that header
+leaves the screen, so a reader who followed a link lands on event rows with no date on them.
+
+So the faithful translation of "centre it below the chrome" is **pin today's header at the
+top and let the line sit in the space that remains** — and measured, the two targets are the
+**same scroll** on an ordinary day: the line lands at 381px of a 638px viewport with the
+header whole at 27px. Only where a day is long enough to push the line past the fold does
+the choice bite, and there the header stays and the line is one flick down. Targeting the
+line at any cost buys 62px and clips the date row above the fold (header at −35px), which is
+the one variant this amendment rejects by measurement rather than by argument.
+
+`scrollIntoView` is safe here and is not in the app's sheets: the reason it is refused there
+is that it scrolls every scrollable ancestor, and the reader page has exactly one scroller —
+the document — since the ninth amendment §6 made `[data-public-reader]` opt out of the app's
+`overflow: clip`.
+
+**A hash in the URL wins.** A `day-<ordinal>` anchor is already rendered on every card
+and nothing links to it since the seventh amendment stopped the bookings block teleporting;
+a reader handed `/s/<code>#day-9` asked for day nine. The open card is **not** written into
+the URL — it is a disclosure state, not navigation, and it would pollute a document's back
+history.
+
+**`openDay` becomes a nullable ordinal, not an index.** It is index-based today, so a
+refetch that adds or removes a day silently leaves a different card open than the one the
+reader opened — and "nothing is open" needs a state that `0` cannot express.
+
+### §2 · The page has one amber, and it belongs to the day the trip is on
+
+`shared-itinerary.css` already spends the page's rationed hue on the open card, and already
+writes down why it may: _"Amber marks the open day because a day is a span of TIME — the one
+thing amber is for."_ The reasoning is right and the target is wrong. `.open` is a
+**disclosure** state, and three signals already carry it: the caret rotates,
+`--elevation-raised` lifts the card, and the body is open. So `.sh-day.open .sh-day-date` is
+**deleted** and `.sh-day.is-now .sh-day-date` takes the tint. Deleted, not overridden — a
+page with two ambers saying two things is what rule 4 / ADR-0028 exists to prevent.
+
+This is also what makes §1's scroll legible: landing on today's card means the reader never
+sees the masthead, so the mark on the card is load-bearing rather than decorative.
+
+### §3 · A mark on the exception, a treatment on what is behind, nothing on the future
+
+A badge per card (`היה` / `עכשיו` / `בעוד N ימים`) is what the request invites, and this app
+already tried it and deleted it, with the reason recorded in `App.css`: _"There is no
+`.chip.past`: under a `הסתיים` heading, over dates already past, it repeated its own heading
+and told no two cards apart."_ A chronologically sorted spine of twelve dated cards **is**
+that heading. Measured, the badged variant costs 13px per card — 143px of extra spine for no
+fact the card did not already carry.
+
+So:
+
+- **Today** — the amber date column plus the word `עכשיו` under the weekday, inside that
+  column. Not in the copy column: both its lines ellipsise, so a chip there eats the day's
+  title at 360px. The mark adds **no height** (the header's 76px floor absorbs it).
+- **Past** — `filter: saturate(0.82)` and the title dropped to `--muted`: the same two moves
+  `.trip-card.is-past` makes on the All Trips list and `.day-list.archive` makes on a past
+  day. Measured, the title steps from 15.65:1 to 5.57:1 against the card — a visible notch
+  that still clears AA. No layout cost.
+- **Future** — the page's default. Nothing.
+
+### §4 · The trip's phase is said once, in the masthead — and `live` stops being a claim
+
+`t.share.public.kicker` is the constant string `מסלול חי`, printed identically on a trip that
+ended six months ago. That same line carries the phase instead: `עוד N ימים` /
+`יום N מתוך M` / `הסתיים`, beside the shape and destination it already names.
+
+**And `עודכן עכשיו` is true for about a minute.** It is stamped at load, and the page never
+refetches — one `useEffect`, no visibility hook, no poll. A relative who leaves the tab open
+sees a three-hour-old itinerary asserting it is current, which is the exact opposite of what
+this page is for. Two changes: the label becomes elapsed, through **the app's one elapsed
+ladder** (ADR-0114's `formatDuration` + `t.changeFeed.relTime.agoPrefix`, generalised out of
+`noteWhen` rather than written a third time), and the projection is refetched when the tab
+becomes visible again. The public route's own `@Throttle` allows 20 requests a minute, which
+is far above what that costs.
+
+### §5 · Where "now" is inside today's card — in, and cheaper than first drawn
+
+The living-visibility case for this page is a relative following along, and a day-level mark
+does not answer _where are they now_. **Yes, use it**, in the same pass as §1 — it is what
+gives §1's scroll something to aim at.
+
+The marker costs nothing new: the app's `.nowline` (ADR-0043) renders class for class inside
+`.sh-day-body`, needing one margin rule.
+
+**And the derivation costs nothing new either**, which the first draft of this section got
+wrong by reaching for `nowLinePlacement` — that reads instants (`atMs`, `endsAt`), which the
+projection deliberately does not ship. It does not need to. `shareTimeLabel` in
+`@waypoint/shared` is the function that **built** every `startLabel` in the projection
+(`sharing-projection.service.ts` calls it for both ends of every event), so the client calls
+the same function on `Date.now()` in the same zone. Two zero-padded `HH:MM` strings order
+lexicographically exactly as they order chronologically, so placement is a string
+comparison — through the one derivation the pre-formatting rule exists to protect, not
+around it.
+
+- The only field needed is `trip.timezone`, which §6 adds anyway.
+- `zoneShiftMinutes` is already on `sharedEventSchema` (it is the LEG that lost it, ninth
+  amendment §2), so "does this day cross a zone" is derivable client-side with **no new
+  field** — and that day, the one day the primary-zone wall clock cannot be trusted, is where
+  the line is suppressed. It is also the day it adds least.
+- Full and Everything only: Summary carries no times at all, so there is nothing for a clock
+  to sit between.
+
+The placement rule itself: **under the daypart heading, among the rows** — see _What the
+renders found_.
+
+### §6 · Where "today" comes from, and why not from the server
+
+The projection ships pre-formatted times so the zone derivation lives in one place, which
+argues for a server-stamped `today`. It is the wrong call here: a stamped answer goes stale
+in the reader's hand on a page that never refetches. So the projection ships the **input** —
+`trip.timezone`, an IANA name on `sharedItinerarySchema.trip` — and the client runs
+`@waypoint/shared`'s own `todayInTz`, the same function every day surface in the app runs.
+One derivation, re-runnable. The zone is not a secret: it is implied by the destination the
+masthead already prints.
+
+**The PDF renders none of it.** A printed page that says `עכשיו` is lying by tomorrow, and
+unlike the live page it cannot correct itself. Paper keeps printing dates.
+
+### §7 · The derivation is lifted, not written a third time
+
+`type DayScope = 'past' | 'today' | 'future'` already exists — local to `DayView`, computed
+inline there, and computed again in a second spelling inside `DayStrip`'s `pillClass`. That
+is the half-built-twice case rule 8 is about, so the comparison moves to `lib/time.ts`
+beside `relativeDayLabel` as a named `DAY_PHASE` const plus `dayPhase(date, today, endDate?)`,
+and all three surfaces read it. A card that swallowed two days (`SharedDay.endDate`) is today
+while **either** of them is today, and past only once both are behind — which is why the
+helper takes the end date and why comparing ordinals is not enough.
+
+### What the renders found, beyond the proposals
+
+- **The mark carries no ground of its own, and the render decided that.** Drawn first as
+  `.chip.soon`'s recipe — a tint plus `--amber-deep` ink — the tint-inside-a-tint measured
+  **4.53:1** against AA's 4.5 floor for small bold text, passing by 0.03. The column is
+  already the amber ground. Word only: **5.09:1**, beside the shipped `.sh-part-head`'s
+  5.24:1 on the card — so the mark is no worse than the amber the page already prints.
+- **The now-line goes under a daypart heading, not above the section.** Placed above the
+  section — `nowLinePlacement`'s rule taken one altitude up — it landed above `אחר הצהריים`
+  at 14:05, putting a daypart that had already begun on the future side of now. The heading
+  names a span; the marker belongs among the rows it is between.
+- **Phase must compare dates, not day ordinals.** The drawing used ordinals first, with
+  "no today" after the trip, and rendered a finished trip as an unstarted one: every one of
+  its twelve days read `future`. Comparing dates answers all three trip phases with no
+  special case.
+
+### What building it changed
+
+The shapes above all survived. Three things the drawing could not see, and two of them were
+found by opening the real page rather than by reading anything:
+
+1. **The share's "today" has to be dawn-anchored, and `todayInTz` is not.** Opened at 01:48
+   Tokyo time, the page marked _tomorrow_ as `עכשיו` and drew its now-line at the bottom of a
+   day nothing had happened in yet. Both halves of that are one bug: this projection files a
+   pre-dawn hour on the night of the day BEFORE (`sharePreviousNight`, fourth amendment), so
+   at 01:48 the calendar had rolled over while the share's day had not, and a pre-dawn label
+   sorts last. `packages/shared` grows **`shareToday(at, zone)`** — the calendar day, minus
+   one before 05:00 — beside `sharePreviousNight`, so the grouping and the question share one
+   boundary. Every fixture in the suite had pinned a mid-afternoon clock; none had covered
+   the small hours.
+
+2. **The boundary is what has BEGUN, not what has finished.** §5 said the placement rule was
+   `nowLinePlacement`'s (_above the first entry not fully behind now_) reimplemented over
+   labels, and it was — until the real seeded Tokyo day showed what that means here: its
+   first row is a 10:00–16:00 guided tour, still running at 14:30, so the boundary was
+   dragged to the **top of the day**, above a 10:00 row, telling a reader following along
+   that nothing had happened yet. An all-day container as a day's first row is routine on
+   this page. So `shareNowLine` compares each row's **start**: above the line has begun,
+   below it has not. It agrees with the app on every case that does not contain `now` and
+   picks the other side of the one that does — which is exactly the case `now-line.ts`
+   documents as the approximation it exists to replace, so unify them when it grows `inside`.
+
+3. **The landing is `landAtTop`, and it is one call rather than a scroll of its own.**
+   `lib/land-at-top.ts` already encodes every decision §1 quotes from `DayView` — `block:
+'start'` with the row's own `scroll-margin-block-start` as the peek, instant under
+   `prefersReducedMotion`, ends on the first touch — plus one this page needs more than the
+   Map did: it keeps re-aiming while the surface settles. This page settles late twice over
+   (the card does not exist until the fetch resolves, and every day photo is `loading="lazy"`
+   with no intrinsic size, so the extent above the target grows as images arrive), and a
+   one-shot `scrollIntoView` would land short of wherever it had got to. The 26px peek is a
+   `scroll-margin-block-start` on `.sh-day`, so no caller passes a number.
+
+Two smaller things the build settled:
+
+- **`noteWhen` is now a caller of `agoLabel`, not its owner.** The freshness line needed the
+  same sentence, and the two lines that make it are ADR-0114's ladder plus the prefix —
+  neither of which is a note's business. Lifted into `lib/duration.ts` beside
+  `formatDuration`; `noteWhen` is a one-line wrapper.
+- **`openDay` is a nullable ordinal, and `undefined` is a third state.** `undefined` defers
+  to the clock, `null` is a card the reader closed (and where the page starts outside the
+  trip), a number is their explicit pick. An index could express none of the three.
+
+### What was verified
+
+- `pnpm typecheck`, `pnpm build`, `pnpm lint` green. **6761 tests pass** (frontend 5018,
+  backend 1233, shared 510), including 21 new ones: `shareToday`'s dawn boundary and zone,
+  `dayPhase`'s three answers plus the two-day span, `shareNowLine`'s placement and its three
+  refusals, and the reader's own behaviour across all three trip phases.
+- **The real page, at 390×844 in both themes**, against the seeded Tokyo trip with a share
+  minted through the API. Before the trip: `scrollY` 0, nothing open, no mark, kicker
+  `עוד ⁦5⁩ ימים`. During (clock pinned to 14:30 Tokyo on day 3): lands with today's card header
+  at **27px** — the 26px peek — the amber column and `עכשיו` under the weekday, and the
+  now-line at **489px of 844** between the 14:30 row that has begun and the 16:30 row that
+  has not. After: `scrollY` 0, nothing open, all ten cards cooled, kicker `הטיול הסתיים`.
+- **Not verified:** no device pass. The peek is 26px in the stylesheet and the mockup's
+  control still offers 0/26/76.
+
+## Alternatives considered
+
+- **One page with fields progressively removed.** Rejected: less information is not automatically the right emphasis.
+- **A decorative day-rhythm rail.** Rejected by the owner: labels that organize no events are meaningless.
+- **Mandatory titles for every day.** Rejected: creates authoring work and a presentation entity the itinerary does not otherwise need.
+- **AI-generated titles stored as ordinary day labels.** Rejected: hides provenance and makes a failed model look like missing trip data.
+- **Model access to the selected Full/Everything projection.** Rejected: generation does not need operational or sensitive fields.
+- **An approval queue for generated narrative.** Rejected by the owner: valid current output publishes automatically.
+- **Synchronous generation when a public page or PDF opens.** Rejected: latency and provider failure would become sharing failures.
+- **Automatic stock or generated imagery in v1.** Rejected: adds media, licensing, privacy, attribution, and availability work before it improves the schedule.
+- **Print the public HTML.** Rejected: touch targets, shadows, accordions, and web spacing are wrong for paper.
+- **Put sensitive fields inline with each event.** Rejected: harms schedule scanning and makes privacy state visually ambiguous.
+
+## Evidence
+
+- [`a-shared-itinerary-is-organized-by-the-day-v3.html`](../../mockups/a-shared-itinerary-is-organized-by-the-day-v3.html) renders both themes at 360/390px with fonts loaded and no console errors. Its non-empty daypart heading is 30px, Summary event row 38px, and day header 76px.
+- [`a-shared-itinerary-is-printed-by-daypart-v2.html`](../../mockups/a-shared-itinerary-is-printed-by-daypart-v2.html) renders both review themes at 360/390px with no console errors. In the unscaled print DOM, the day header is 47px, daypart header 18px, and event row 31px.
+- The generated Full PDF was rendered back to two page images and inspected with no clipping or overlap.
+- [`a-shared-itinerary-knows-what-day-it-is-v1.html`](../../mockups/a-shared-itinerary-knows-what-day-it-is-v1.html) renders both themes at 360/390px with fonts loaded and no console errors. The day header holds 76px with the `עכשיו` mark and without it; the mark's own box is 14px; `--amber-deep` on the amber date column is 5.09:1 light / 8.22:1 dark against the shipped `.sh-part-head`'s 5.24:1 / 5.84:1; a past day's title steps 15.65:1 → 5.57:1 with no layout change; the rejected per-card badge costs 13px × 11 cards; today's card lands 26px below the scroller's top with 3 of the 4 earlier days above the fold; the app's `.nowline` inside a day body is 19px.
+
+## Amendment — a shared time says what it means, and a peer may send it (2026-08-31, twelfth pass)
+
+Two reports, one about what a link shows and one about who may send it.
+
+> _"The pdf and live sharing currently only shows start times (except bookings and hard events),
+> I'm not sure why we chose to do it this way but I think that whenever there's a time range, we
+> should display it. That also includes flexible times like starting from.. Or until…"_
+
+> _"Today only admins are able to decide what's being shared - I think that non admins should be
+> able to do that too, just not add more links, but they should be able to share a summary, full
+> schedule. Maybe everything is made available by the admins, after they've created links for
+> them."_
+
+Drawn in three files before anything was coded:
+[`a-shared-time-says-what-it-means-v1.html`](../../mockups/a-shared-time-says-what-it-means-v1.html) (reader),
+[`a-shared-time-is-printed-as-a-range-v1.html`](../../mockups/a-shared-time-is-printed-as-a-range-v1.html) (A4),
+[`a-peer-sends-what-the-admins-published-v1.html`](../../mockups/a-peer-sends-what-the-admins-published-v1.html) (the sheet).
+Two files for one rule, deliberately: §7 above is the record of what happens otherwise.
+
+### §1 · Sharing asks `edgeMeaning`, not `event.hard`
+
+**This reverses §6's times rule on the owner's call.** That rule — _the start only, except for
+hard pins and bookings_ — was ADR-0011's **commitment** axis answering a question about
+**meaning**, and [ADR-0184](0184-an-edge-can-be-a-window.md)'s `edgeMeaning` is the derivation
+that actually answers it. Sharing now asks the same question the app's own rows have asked since
+it was written:
+
+| meaning           | prints        | e.g.                                       |
+| ----------------- | ------------- | ------------------------------------------ |
+| `exact`, one end  | `13:00`       | a museum                                   |
+| `exact`, two ends | `09:20–14:05` | a flight, **and a soft two-hour hike**     |
+| `not-before`      | `מ-15:00`     | a room from 15:00, a hire counter at 10:00 |
+| `not-after`       | `עד 11:00`    | out by 11:00, the car back by 18:00        |
+| `window`          | `17:00–21:00` | both bounds authored (ADR-0184 §1)         |
+
+`מ-` and `עד` are `t.day.fromTime`/`untilTime`, the words this app already prints for those two
+meanings. The wording is repeated verbatim in `share.public` and `PDF_COPY` rather than shared,
+because those namespaces are each renderer's own — and identical on purpose, since two words for
+one meaning is how two surfaces begin to disagree. **The same `עד` arrives on the journey block in
+the same session** (ADR-0206 §AJ4.2), which is why the vocabulary is one decision across three
+renderers rather than three.
+
+**Four things reading the code changed, and three of them changed the ask.**
+
+1. **The two renderers already disagreed, and the live page was the lenient one.**
+   `itinerary-pdf.template.ts` implemented §6; `SharedItinerary.tsx` never did — it printed a
+   range whenever `endLabel` differed, with no `hard` test at all. So a soft two-hour hike has
+   read `10:00–12:00` on the phone and `10:00` on paper since §6 shipped. The report is exactly
+   right about paper and half-right about the page, and the **disagreement itself** is the defect
+   ADR-0159 §1 forbids.
+2. **`endLabel` was already projected for every event**, unconditionally at Full and above. The
+   exact half of this ask needed no contract at all; one renderer was handed both ends and threw
+   one away.
+3. **The flexible half could not be drawn at all.** `sharing.select.ts` selected neither
+   `startWindowEnd` nor `endWindowStart`, so ADR-0184's two stored columns had never reached the
+   projection and sharing had no equivalent of `edgeMeaning`.
+4. **The `hard` gate was MASKING a reversed range rather than preventing one.** A multi-day span
+   is listed once, on the day it starts; a car hire is a booking, so it is `hard`, so paper
+   printed its range — and its `endsAt` is days later, so the row read `10:00–18:00` for a
+   week-long hire. That is the same `15:00–11:00` defect the fourth amendment pulled stays out of
+   the schedule over, surviving in a second booking type. The new rule **fixes** it: a `held`
+   resource's start is a floor, so it reads `מ-10:00`.
+
+**The contract is one field, not four.** `SharedEvent.time` is `{ label, endLabel?, meaning }`.
+A renderer needs one string per row, so four flat fields would make each renderer re-derive the
+same choice — and finding 1 is the record of what happens then. `startLabel`/`endLabel` survive
+beside it for the journey header and its legs, whose ends are two moments rather than one edge
+with a meaning.
+
+### §2 · The stay's two moments return to the day's frame
+
+The commonest flexible time this app holds is a hotel check-in window, and sharing showed it
+nowhere — because the fourth amendment moved the stay **out** of the schedule and into `day.stay`,
+a name with no clock. So the fix for "show me the ranges" could not be a rule about rows: the row
+does not exist. `SharedDay` gains `checkIn` (the day the run begins) and `checkOut`
+(`{ place, time }` — the place you are **leaving**, which on a transfer day is not the one the
+frame names, so a day can hold both).
+
+**They get their own line, and that is a measurement.** Appended to the stay's own line they cost
+0px, which is what makes it tempting — and `.sh-day-copy span` is `nowrap` with
+`text-overflow: ellipsis`, where in RTL the cut falls at the **logical end**, exactly where a
+trailing clock sits. A real hotel name measures ⁦275px⁩ of ink in a ⁦206px⁩ box at 360, so the
+check-in vanished with nothing on screen saying it had been there. One line also holds one moment,
+and a transfer day has two.
+
+`.sh-stay-when` is therefore **the only line in that header allowed to wrap**: a trip title and a
+hotel name are unbounded and must be cut, a pair of clocks is bounded and cutting it only costs
+the fact. Measured: ⁦17px⁩ for one moment, ⁦34px⁩ for two, header ⁦76px⁩ → ⁦95px⁩ **either way** — the
+second moment is free, absorbed by the height the date column already takes. Paper's measure is
+half an A4 column, so both moments fit one line there (⁦106px⁩ of ink in ⁦295.5px⁩) at ⁦0px⁩ of paper,
+the header keeping its existing ⁦47px⁩ minimum.
+
+Colour stays on ADR-0028's budget by splitting the two lines: the place keeps teal
+(`.sh-stay`/`.pdf-stay`), the clock takes amber (`.sh-time`/`--pdf-amber`).
+
+**Rejected: the two moments as rows inside the day.** It does not truncate, and that is exactly
+why it is worth saying why not — it puts the stay back in the schedule two amendments removed it
+from, and [ADR-0209](0209-a-stay-is-named-once-in-the-day-it-belongs-to.md) §1 already refused to
+position a stay's bound as a row **in the app**, because _"positioning it read as coming back to
+the hotel after driving away."_
+
+### §3 · The A4 column does not move, and the file expected it to
+
+`.pdf-event` is `grid-template-columns: 56px …` with `nowrap`, and §1's build log records that 56
+came from one measurement of `09:20–14:05` (⁦52.9px⁩ of ink against a ⁦38px⁩ column that broke). The
+print mockup was written to widen it, on the assumption that Hebrew-plus-digits is wider than
+digits. **It is not:** `מ-10:00` measures ⁦34.75px⁩ and `עד 11:00` ⁦38.38px⁩, against `09:20–14:05`
+at ⁦55px⁩. The widest shape is still the one the column was sized for, so paper's whole change is
+one deleted condition in `timeText` and **no CSS**. Recorded because the estimate was wrong and
+only the render said so.
+
+### §4 · A peer sends what the admins published
+
+**Not a permission change — the server already allowed it.** `SharingService`'s own docblock
+states the asymmetry, `GET /trips/:id/share` carries no admin check, `assertTripAdmin` guards only
+create/rotate/revoke, and the PDF is on the **public** route keyed by the code. What the sheet did
+was hide the level `ChoiceGrid` behind `isAdmin` **and** leave `level` pinned at its `FULL`
+default. Together those lie: on a trip published only at `תקציר`, a peer's sheet renders
+`הטיול עדיין לא משותף` — while the list the component had already fetched holds a live Summary
+link — above a primary whose `ensureShare` throws `not shared` before any request leaves, which is
+the dead control [ADR-0150](0150-a-form-refuses-at-the-field.md) §8 forbids. Same class as §9's
+invisible link: the sheet holding a fact and not drawing it.
+
+A peer now gets the admin's own grid **filtered to the levels that hold a link** — same
+`ChoiceGrid`, same `.share-level-live` dot and `Choice.ariaLabel` the tenth amendment §4 added, no
+change to the primitive. The grid comes off entirely at one published level, because a radiogroup
+with a single option is not a choice and the scope note beneath already says what that link shows.
+With nothing published the sheet says so in words and offers no button at all.
+
+**A peer may send an Everything link.** That is the owner's own reading — creating one, with its
+switches set, **is** the decision that the policy may be sent — and it is what the service already
+does, so refusing here would be the sheet lying about the API beneath it. The `⋯`, `לינק נוסף`,
+the policy form, `ניהול הלינק` and stop-all stay the admin's.
+
+**Rejected: showing all three levels with the unpublished ones disabled.** It advertises a level
+the peer cannot open and adds a dead control — both of what §8 forbids — and `ChoiceGrid` disables
+the whole grid rather than one option, so it would have meant extending a primitive for a worse
+answer. Copy follows: `peerNote` states the capability before the boundary, and `notShared` names
+who can fix it.
+
+### What was verified
+
+- `a-shared-time-says-what-it-means-v1.html`, `a-shared-time-is-printed-as-a-range-v1.html` and
+  `a-peer-sends-what-the-admins-published-v1.html` all render every theme × width with fonts
+  loaded and no console errors; every number quoted above is read off those pages' own DOM.
+- The A4 ink figures are measured with a `Range` over the cell's contents rather than
+  `scrollWidth`: the time cell is a **grid item** and stretches to its column, so `scrollWidth`
+  reports the column for every shape and an overflow can never be detected. The file's first
+  render duly called all six ⁦62px⁩ and the widest ⁦6262px⁩.
+- Backend: 1234 specs, including a projection spec that pins `not-before` on a `held` check-in
+  whose `endsAt` is three days later, and a PDF spec that names all four arms individually — the
+  one it replaced ("some rows carry a dash and not all of them") was true under either rule and
+  would have stayed green while the behaviour inverted.
+
+## Amendment — the eighth family the font shorthand ate, and this one reached a reader (2026-08-31, thirteenth pass)
+
+Owner, hours after the twelfth amendment shipped, with a photograph of the PDF printing
+`00:00-□`:
+
+> _"The pdf has some printing format issues, see the tofu"_
+
+`.pdf-event-time` is `font:600 8px 'JetBrains Mono',monospace`. The **shorthand replaces the whole
+family list**, and this file's own header records that JetBrains is declared Latin-only _on
+purpose_ — _"it carries times, codes and money, never prose, so it ships no Hebrew glyphs and must
+not be asked for any"_. Until §1 of the twelfth amendment the cell only ever held digits, so
+nothing noticed. `מ-` and `עד` put prose in it, the container had no face to draw them with, and
+Chromium drew `.notdef` boxes.
+
+This is the **eighth** time the `font` shorthand has eaten a family in this template and the first
+one to reach a reader; the seven before it were caught in review or in a render.
+
+### §1 · The word takes Assistant, the clock stays mono
+
+Wrapping the whole cell in Assistant would fix the boxes and cost the column its grammar: the
+clock would change face on exactly the two rows carrying a flexible edge, beside neighbours still
+in mono. So `sharedTimeText` emits `<span class="pdf-word">` around the word and re-sets
+`.pdf-mono` on the clock inside it — the same shape `.pdf-ops-line` already uses one block down,
+in the opposite direction. Clock-only cells are byte-identical, so §3's measurement of the 56px
+column stands untouched.
+
+**The reader page had the same defect and could never show it.** `.sh-time` is
+`font-family: var(--font-mono)`, the same Latin-only family — but a browser falls back per glyph to
+whatever Hebrew face the device has, so the word merely rendered in an unpredictable face instead
+of vanishing. One defect, one of two media able to reveal it; both are fixed, `.sh-said` carrying
+the hue and the body face with `.sh-time` kept for the number.
+
+### §2 · Widening the guard found an older one
+
+`itinerary-pdf.template.spec.ts` already had _"keeps every Hebrew run out of a mono element"_ — and
+it iterated `.pdf-num` alone, so it was true and useless: `.pdf-event-time` is a second element
+naming a mono face and the loop never looked at it. It now covers every such element, and a
+mixed-script cell must scope the mono to an inner run.
+
+Widening it immediately failed on something that predates the twelfth amendment entirely: an
+**untimed** event's time cell prints `PDF_COPY.dayparts.flexible` — `גמיש`, pure Hebrew — straight
+into the same mono box. That has been printing as a box since §1 of the original ADR. Nobody saw
+it because the nine-day reference trip has no untimed row, so no render, no mockup and no smoke
+check ever produced one. It is wrapped now and pinned by its own spec, separate from the guard, so
+it cannot go quiet again the day the fixture stops rendering one.
+
+### §3 · Why `pdf-smoke` was green through all of it
+
+`verify-pdf-smoke.mjs` asserts the document's Hebrew is **extractable** — `check('hebrew-text',
+HEBREW.test(text), …)`. A missing glyph does not remove the codepoint from the text layer: the PDF
+still says `מ`, it simply has nothing to draw. So the check is structurally blind to tofu in any
+one element, and passing it says only that _some_ Hebrew somewhere had a face. The guard spec is
+where this class of defect is caught, which is why the fix is a widened assertion rather than a
+new smoke rule.
+
+### §4 · Verified by asking Chromium which FACE drew each glyph
+
+Docker is not available in every session, so the container smoke is not always runnable — and it
+would not have answered this anyway (§3). What does answer it is `CSS.getPlatformFontsForNode`
+over the rendered template, which reports the face Chromium actually resolved per run rather than
+the family list that was asked for. Measured on this change:
+
+| element                        | text        | faces that drew it                         |
+| ------------------------------ | ----------- | ------------------------------------------ |
+| `.pdf-word`                    | `מ-⁦10:00⁩` | **Assistant ×2**, JetBrains Mono ×7        |
+| `.pdf-word .pdf-mono`          | `⁦10:00⁩`   | JetBrains Mono ×7                          |
+| the same cell, wrapper removed | `מ-⁦10:00⁩` | **Liberation Serif ×1**, JetBrains Mono ×8 |
+
+The third row is the defect, and it names the production image: `Liberation Serif` is a _system_
+face, the runtime is `node:22-slim` plus `fonts-liberation`, and Liberation ships no Hebrew — so
+what a developer machine rescues with a system font, the container draws as a box. The first two
+rows are the fix: the Hebrew resolves to **Assistant**, which is inlined as a data-URL `@font-face`
+and is therefore present wherever the document is, and the clock beside it still resolves to
+JetBrains so the time column keeps one face for its numbers.
+
+**This probe is the instrument this class of defect actually needs**, and is worth reaching for
+before assuming a font question is settled: the guard spec asserts _markup_, and markup is one
+inference away from what gets drawn.
+
+**And no mockup could have caught it either.** The print mockups inline the renderer's real CSS
+and render in a Chromium that has system Hebrew — so the cell fell back to a sans face and looked
+correct, and `a-shared-time-is-printed-as-a-range-v1.html` duly measured `מ-10:00` at ⁦34.75px⁩ in
+a face the container does not have. This is the same shape the original ADR recorded for emoji:
+_"It looked correct on every developer machine, because a desktop has an emoji font."_ The lesson
+did not transfer because it was written about emoji; it is about **any** face the container lacks.
+
+## Amendment — a day's frame says three things, and the drive across a placeless row (2026-08-31, fourteenth pass)
+
+Two reports, one day apart, both against the shared reader (and §1/§2 against the PDF as well):
+
+> _"the day titles has gotten a little messy: too many line breaks, questionable ordering of the
+> details. This applies to both the live sharing page and the pdf"_
+
+> _"between day parts (morning, noon, afternoon, evening, night), the transit line (driving,
+> walking...) gets omitted. It should be there (on the most fitting part of the day)"_
+
+Drawn and measured in
+[`mockups/the-day-frame-says-three-things-v1.html`](../../mockups/the-day-frame-says-three-things-v1.html).
+Neither report turned out to be about the thing it named.
+
+### §1 · The mess is one missing combinator, not a layout
+
+`.sh-day-copy span` is (0,1,1) and sets `display: block; color: var(--muted); font-size:
+var(--sh-micro)` — exactly right for the header's three **lines**, and as a _descendant_ selector it
+also described every span nested inside one. The twelfth amendment's §2 gave the header a
+`.sh-stay-when` line, and the thirteenth gave `SharedTimeText` a `.sh-said`/`.sh-time` pair to keep
+Hebrew out of the mono face — so `צ׳ק-אאוט עד 11:00 · צ׳ק-אין 15:00–21:00` became **six stacked grey
+blocks**, and the amber a clock is owed (ADR-0028 rule 4) was overwritten by `--muted` on the way.
+Measured on the same fixture: the header is **⁦180px⁩** with the descendant rules and **⁦107px⁩** with
+the child combinator, from **6** stacked boxes down to **4** (three lines, the last of which is
+allowed to wrap). The colour reads `rgb(97, 104, 122)` before and `rgb(145, 94, 30)` after.
+
+The fix is `>` in three rules plus `.sh-day-copy > .sh-stay-when`, and the same four in
+`itinerary-pdf.template.ts`. **Zero new CSS**, which is why the mockup's proposed block is empty.
+
+**This is the third thing that one descendant selector has caught that it never meant to**, and the
+first two are in the sheet already: `.sh-stay .icon` gave up `gap` for a `margin` because
+`.sh-day-copy span`'s `display: block` stopped it being a flex container, and `.sh-stay-when` was
+written (0,2,0) _on purpose_ to outrank it. Both repairs worked **around** the specificity and left
+the wide selector in place to catch the next thing. Narrowing it is the repair the first two should
+have been.
+
+### §2 · The check-out names no place
+
+The one genuine ordering fault, and it is a deletion. `SharedDay.checkOut` carried
+`{ place, time }`, so the frame read tonight's stay → **this morning's** hotel → tonight's hour:
+future → past → future, with a PLACE painted `--amber-deep` inside the clock's run. The place being
+left is the card immediately above, and the reader's accordion collapses day **bodies** and never
+headers, so it is always on screen. `checkOut` is now a bare `SharedTime`; the projection still
+reads `previous` to decide _whether_ there is a check-out, it just no longer ships where. Ink on
+the line: **⁦212px⁩** with the place, **⁦182px⁩** without, in a ⁦248px⁩ box at 360.
+
+### §3 · The journey chain is between PLACED rows, not adjacent ones
+
+Reported against the dayparts and it is not a daypart bug: the sections are cut from the same rows
+`journeyLookup` walks, so a section boundary cannot lose a line. The pairing was
+`events[i - 1] → events[i]`, and a row with **no place at all** (an ice cave with no address, an
+aurora watch) has no coordinate on either side — so it deleted the drive _into_ it and the drive
+_out of_ it. The one leg that survived in the owner's screenshot is the one whose two ends both
+happen to be placed. Carrying the last _placed_ row forward instead restores both, and the line
+renders above the row it leads into, i.e. in that row's own daypart section — "the most fitting part
+of the day" in the report's own words. Measured on the mockup's placed → placeless → placed day:
+**0** journey lines before, **1** after.
+
+**The cost, stated rather than hidden:** the printed leg is then the direct route between two
+_known_ points and does not count a stop the reader can see between them. That is the honest shape
+for a page that may not compute routes (only print stored ones); the alternative is printing
+nothing. The app's own `planLegs` has the identical gap — backlogged, not dragged in here.
+
+### §4 · One moment per line, and the separator is gone (2026-09-01)
+
+A second look at the same header, with a photograph:
+
+> _"The check in text and check in time are separated by a line. It currently reads
+> `Check out <time> · check in` / `<time>` … I guess because of line wrapping. I think that it
+> should read `Check out <time>` / `Check in <time>`"_
+
+Correct, and the diagnosis in it is correct too. §2 gave the pair permission to wrap
+(`white-space: normal`) because cutting a bounded pair of clocks costs the reader a fact — but a
+`·`-joined run wraps wherever it runs out of box, and at 360 that falls between `צ׳ק-אין` and its
+own clock. A noun stranded from the time it names is worse than either failure the wrap was
+introduced to avoid.
+
+Each moment is now its own block (`.sh-moment`), so the break lands at the one place a reader can
+predict and each moment keeps the header's `nowrap` — bounded by construction: a noun plus at most a
+range. The container's `white-space: normal` now permits only the break BETWEEN them. **The height
+is unchanged** — ⁦42px⁩ both ways on the mockup's transfer day, because this line was already two
+lines there.
+
+**Paper changes too, and the first pass at this section said it should not.** That pass reasoned
+from §2's measurement — the longest possible pair is ⁦106px⁩ of ink in a ⁦295.5px⁩ box on A4, so the
+joined run provably never wraps there — concluded there was no defect to repair, and left the `·`.
+The owner's answer (_"I wanted a line break between the check out and check in times"_) is the
+correction, and it is right for a reason the measurement could not reach: **the break is not a wrap
+being repaired, it is how the two moments are meant to read**, so measuring whether paper suffers
+the wrap answers the wrong question. Two surfaces must not teach different shapes for one line
+(ADR-0159 §1); posture may differ, and this is not posture. It costs one line-height on the day
+cards that carry both moments, which is a transfer day, not most days.
+
+The lesson is the one the root `CLAUDE.md` already names: measuring the trade is right, and
+measuring it to avoid making the change is not.
+
+### What was verified
+
+- `sharing-projection.service.spec.ts` gains a placed → placeless → placed day with a stored leg for
+  the two **ends** and none for either adjacent pair, so the assertion can only pass if the pairing
+  skipped the middle row. Sabotaging the carry-forward turns it red (`expected undefined to deeply
+equal { mode, minutes, km }`), which is what makes it load-bearing rather than decorative.
+- `SharedItinerary.test.tsx` counts the header's **direct** children (3), asserts the check-out
+  names no place, and asserts the two moments are two blocks rather than one `·`-joined run.
+- `shared-day-header.contract.test.ts` parses the real stylesheet and refuses any
+  `.sh-day-copy` rule that reaches its children as descendants — the same instrument
+  `tasks-avatar-size.test.ts` established, because jsdom does no layout and this defect lived
+  entirely in the cascade.
+- All four theme × width renders of the mockup: fonts loaded, no console errors.
+
+## Amendment — the journey's clock was leg one's, and paper dropped its confirmation number (2026-09-01, fifteenth pass)
+
+Owner, with a screenshot of each renderer side by side:
+
+> _"The pdf shows on the title row the flight times wrong, it only shows the first flight and not
+> the overall journey. The live sharing page shows this correctly"_
+
+The reader page printed `02:20–15:25`; paper printed `02:20–05:50` for the same journey.
+
+### §1 · The defect is in the projection, and the renderer that was right was right by accident
+
+A chained journey is assembled in `journeyLookup`'s sibling, `chainJourneys`: the row is the first
+leg's projection (`...head`) with the journey's own identity, its `journeyTo`, its recomputed
+`travelFacts`, and **`endLabel` overridden to the last leg's arrival**. `time` was not overridden.
+
+`time` is the field the twelfth amendment §1 made the **single authority** on what a row's clock
+says — introduced precisely so neither renderer would derive a range for itself. So paper, which
+obeys that contract, spelled leg one's window; and the reader page, which was still composing
+`startLabel`–`endLabel` in `Trek`, was correct for a reason that had nothing to do with the
+contract.
+
+**That inversion is the finding.** ADR-0159 §1 forbids two surfaces disagreeing about a fact, and
+the usual next question is which surface is wrong. Here the surface that was wrong was the
+_compliant_ one — which is the tell that the defect is upstream of both templates and that the
+compliant renderer is doing its job by failing visibly.
+
+Two changes, both small: the projection sets the journey's `time` beside the `endLabel` it already
+sets (`journeyClock`, kept next to `sharedTimeOf` because it answers the same question for the one
+row shape that function cannot see — a journey is several events collapsed after the fact). And
+`Trek` stops composing its own span, reading `event.time` through `SharedTimeText` like every other
+clock on the page. No template change on paper at all: `timeText(event)` was already right.
+
+### §2 · Nothing in the repo had a chained journey, and one guard was vacuous because of it
+
+The reason this shipped is the reason it could not be seen: **no fixture in the repo contained a
+journey with `legs`**. `legRows` — the whole `.pdf-trek` block, its head, its layover lines, its
+per-leg times — was rendered by no spec and by no container smoke run. And
+`itinerary-pdf.template.spec.ts`'s _"prints no facts line inside a journey block"_ iterated over
+`html.match(/pdf-trek/)`, which matched **nothing**, so it had been reporting green over zero
+blocks since the ninth amendment.
+
+That is the same vacuous-guard shape the thirteenth amendment §2 found on the mono guard, one
+release later and in the same file. The repair is the same: give the reference trip the thing the
+guard is about. Its return is now the owner's real one — KEF → FRA → TLV, a 4:20 wait in Frankfurt,
++3 on the clock — applied as a post-pass rather than through `DAYS`, whose tuple grammar is one row
+= one event and therefore cannot express a journey by construction.
+
+`pdf-container-smoke` now draws a trek too, which is the first time the block has been rendered by
+anything but a person looking at a PDF.
+
+### §3 · The audit the report asked for, and the worse thing it found
+
+The report ended _"possibly leading to more"_, so the row shape was audited rather than just
+patched: for every field a journey inherits from `...head`, is leg one's value right for the
+journey? Most are (`startLabel` **is** the first departure; the `journey` travel line **is** the
+drive to the first airport; `placeName`/`address`/`mapUrl` are read by neither renderer for this row
+shape, so they are dead rather than wrong). `title`, `journeyTo`, `endLabel`, `travelFacts` and now
+`time` are all overridden.
+
+**The attachments are not, and paper dropped them entirely.** `eventRow` did
+`if (event.legs?.length) return journey + legRows(event)` and stopped — so `event.caption` and
+`opsLines(event.ops)`, which the non-chained branch renders eight lines below, were never reached.
+A printed connecting flight carried **no confirmation number**, which is close to the only thing a
+printout is for; the same journey on screen keeps them, because `Trek` renders them as its children.
+
+The comment immediately above that early return already said the attachments _"ride inside"_.
+Nothing implemented it, review did not catch the gap between the comment and the code, and no
+fixture had a chain to draw it. So `legRows` now takes them and renders them inside the container
+(`.pdf-trek-more`), which is where the comment always said they were — and the reader page's own
+guard, _"keeps a journey row's ops fold inside the container"_, finally has a paper twin.
+
+Worth naming as a pattern rather than a second bug: **a comment describing intent is not a
+guarantee, and a prose claim beside an early return is the easiest place in a file for the two to
+part company.** Both defects in this amendment lived in the same four lines, and the one that
+mattered more is the one the comment said was handled.
+
+### §4 · The mockup had the right answer for a week
+
+`mockups/a-journey-is-a-flight-plan-v1.html` draws `14:30–23:20` — the whole span — on **both** its
+reader and paper columns (`JOURNEY.span`, one constant feeding both, which is why they could not
+disagree). The drawing was correct and the build drifted from it on one surface, and nothing
+compared them because there was no fixture to compare with.
+
+Worth stating plainly, because the mockups are usually defended as the thing that catches defects
+before the build: here one **had** the answer and it still shipped wrong, since a mockup is a
+drawing and not an assertion. What closes that gap is a fixture, not another drawing — so this
+amendment adds no mockup.
+
+### What was verified
+
+- `sharing-projection.service.spec.ts` asserts the journey's `time` beside its `startLabel` and
+  `endLabel`, so the three cannot drift apart again. Suppressing `journeyClock` turns it red.
+- `itinerary-pdf.template.spec.ts` asserts the block head carries `02:20–15:25` and **not**
+  `02:20–05:50`, with the legs still carrying their own clocks. Pointing the fixture's `time` back
+  at leg one fails with `expected 'טיסה לנתב״גשתי טיסות · 02:20–05:50 · …' to contain '02:20–15:25'`
+  — the owner's screenshot, as a test name.
+- The same spec's journey-block list is now asserted non-empty before it is iterated, so the
+  vacuous guard cannot come back.
+- `SharedItinerary.test.tsx` asserts the reader's `.sh-trek-head` shows the whole span and not leg
+  one's, now that it reads the same field.
+- The same spec asserts the block keeps its caption and its ops fold **inside** the container —
+  scoped to the block, since the appendix prints codes too and an unscoped search would pass on a
+  dropped fold. Restoring the early return fails with `expected '…' to contain 'KEF-4821'`.
+- The reference trip's chained return carries a code, a note and a caption, so all three paths are
+  drawn by CI and by the container smoke rather than by a person opening a PDF.
+- `strip` (markup + bidi isolates off a cell) is hoisted to one helper rather than copied a third
+  time.
+
+## Amendment — the clock was right and the zone was not (2026-09-01, sixteenth pass)
+
+> _"The timezone derivation is simply wrong - see how plan day doesn't agree with the times.
+> And how the durations don't add up correctly"_
+
+**The finding is not this feature's, so the record lives in
+[ADR-0107](0107-per-place-timezones-and-multi-zone-time.md)'s 2026-09-01 amendment** — read that
+one. In short: the server resolved an event's clock through `currentZone`, which answers _where
+are you now_ and has no place rung, so every flight departure printed in the DESTINATION's zone
+and an Iceland hotel's check-in printed in Vienna. ADR-0107's own per-end resolver
+(`eventDisplayZones`) was left in the frontend when ADR-0197 §5 promoted the zone primitives to
+`packages/shared`; it is shared now, and the notification sweep — which had the same defect on a
+surface where an hour is worse — moved with it.
+
+What belongs here is only what it says about **this** feature: the shared page and the PDF were
+both wrong, identically, and neither renderer was at fault. Both spell `startLabel`/`endLabel`/
+`time` off the projection, which is what the twelfth amendment §1 asked them to do, so a wrong
+value upstream reached paper and screen alike with no disagreement between them to notice it.
+That is the intended shape — two renderers that cannot differ about a fact (ADR-0159 §1) — and
+its cost is that agreement is no longer evidence of correctness. The evidence has to be a
+fixture that crosses a zone, which the sharing specs did not have and now do.
+
+## Amendment — a deploy took the live links away, and not one of them was revoked (2026-09-01, seventeenth pass)
+
+> _"I noticed that each time after I deployed changes and fixes to the live sharing page,
+> existing links became unavailable. I had to reopen the sharing sheet again and then the link
+> became available. I'm not sure what's the cause and if my steps were related even."_
+
+**The links were live the whole time.** `revokedAt` is written in exactly three places
+(`revoke`, `revokeAll`, and the re-share that reuses a revoked row), all behind
+`assertTripAdmin` and all reached only by a deliberate press; a deploy runs
+`prisma migrate deploy` and touches none of them. Nothing on the server had gone wrong, which
+is why the owner's own steps looked unrelated to it: reopening the sheet is a `PUT` that
+returns the **same** code for the same policy (tenth amendment §3), so it cannot have revived
+anything. What changed between the two attempts was the READER, and the page could not say so
+because it had one sentence for every way a read can fail.
+
+### §1 · Three failures wearing one card
+
+`SharedItinerary` mapped every thrown error to `{ kind: 'unavailable' }`, which draws
+`המסלול לא זמין · יכול להיות שהלינק בוטל או שהטיול כבר לא קיים`. That sentence is true of one
+of the three things that actually happen:
+
+| what happened                                               | what it needs     | what it said      |
+| ----------------------------------------------------------- | ----------------- | ----------------- |
+| the server answered `404`                                   | the terminal card | the terminal card |
+| nobody answered (a rollout's 502, a tunnel, the 20/min cap) | ask again         | the terminal card |
+| the answer did not parse in THIS build                      | a newer document  | the terminal card |
+
+The second row is a deploy. Railway swaps containers behind a healthcheck, so for a few
+seconds `GET /shared-itineraries/:code` does not answer — and the page's first read had no
+second attempt and no way back except a manual reload, which is not a thing you ask of
+somebody's aunt. `shareLoadFailure` now names the three, only the server's own `404` is
+terminal, a transient failure is re-asked up `SHARE_LOAD_RETRY_MS` (1s→16s, five rungs, about
+half a minute, comfortably inside the per-IP cap), and what is left after that is a card that
+says `הלינק לא בוטל, פשוט לא קיבלנו תשובה` with the tap that cures it. **The page may not
+accuse the link of something it has no evidence for.**
+
+### §2 · The precached shell is right for the app and wrong for this page
+
+The third row is this feature's own, and it is the one that made the report periodic rather
+than occasional. `server-routes.ts` said, in as many words, that `/s/<code>` _"must keep
+getting the cached shell"_. It is an ordinary SPA route, so ADR-0185's deliberate wait applies
+to it: a device that already has the worker — the owner, and every reader who has opened a
+link before — is served the **previous** build's `index.html` until the parked build is taken
+at a quiet moment. The app survives that because it is whole while it waits. This page is not:
+it fetches a projection from the server that was just deployed and parses it with
+`sharedItinerarySchema`, which is **strict in both directions** (this file's header), so a
+build that predates one added field cannot read the answer at all. The twelfth amendment added
+`time`, the fourteenth added `checkIn`/`checkOut` — three consecutive sharing deploys each made
+every already-installed reader unable to parse the page they were sent.
+
+So `/s/<code>` now prefers the network for its document, with the precached shell kept as the
+fallback on a throw or a non-2xx — which is what stops a rollout's 502 from putting a proxy's
+error page where the cached document would have rendered and then retried under §1. And an
+unreadable projection is treated as what it is, a stale document: the parked build is taken at
+once (`takeParkedBuild`, through `useAppUpdate`'s own `controllerchange` reload rather than a
+second reload path), else one reload on `guarded-reload.ts`'s existing cooldown, and never a
+retry — the same answer parses the same way every time.
+
+### What this reverses
+
+- `server-routes.ts`'s _"an ordinary SPA route that must keep getting the cached shell"_. It
+  keeps the shell as a fallback only, for the one reason ADR-0185 never had to weigh: this
+  document's correctness depends on the server it is talking to.
+- The suite's `treats a projection this build cannot parse as unavailable`. The intent behind
+  it stands — this page still refuses to render half a projection — but "unavailable" was the
+  wrong verdict to reach for, since the projection's arrival is proof the link is live.
+
+### What was verified
+
+- `scripts/deploy-swap-check.mjs` gained a fourth step, which is the only place this defect was
+  ever observable: two real builds, a rollback as the second deploy, and a fresh `/s/<code>`
+  navigation in its own tab. Run against the fix it reports `/s/<code>` running the **deployed**
+  build; run with the new route removed it reports the **precached** one — the skew, measured.
+- The strictness half was measured directly before anything was written: today's
+  `sharedEventSchema` refuses `{ title, daypart, tomorrowsField }`, which is the exact shape of
+  a projection from a server one deploy ahead. `lib/share-itinerary.test.ts` pins that, and the
+  404-vs-502 boundary under it.
+- `sw.contract.test.ts` covers all three lines that make the new route work (it reads the
+  shared pattern, it matches navigations, it is registered BEFORE the fallback, it falls back to
+  the shell) and each was broken on purpose to see the suite fail: removing the route and
+  registering it after the fallback both turn it red.
+- What is still unmeasured: the retry ladder against a **real** Railway rollout. The suite
+  proves the page re-asks and recovers; it cannot prove half a minute is the right amount of
+  asking for a container swap nobody has timed.
+
+## Amendment — the page's clock was the destination's, not the trip's (2026-09-03, eighteenth pass)
+
+> _"the live sharing page uses the current time in the destination as 'now', instead of deriving
+> the time dynamically by the events, the same way that the app does everywhere else"_
+
+**The zone model half of this is not this feature's, so that record lives in
+[ADR-0107](0107-per-place-timezones-and-multi-zone-time.md)'s 2026-09-03 amendment** — the same
+promotion as the sixteenth pass, stopping one rung short. What belongs here is the sentence in
+this ADR that was wrong, and what the contract does about it.
+
+### §1 · The eleventh amendment §6 got the function right and the zone wrong
+
+§6 shipped `trip.timezone` on the projection and defended it like this:
+
+> _"So the projection ships the **input** — `trip.timezone`, an IANA name on
+> `sharedItinerarySchema.trip` — and the client runs `@waypoint/shared`'s own `todayInTz`, the
+> same function every day surface in the app runs. One derivation, re-runnable."_
+
+Every clause is true except the one that matters. `todayInTz` **is** the same function; it takes
+a zone, and the zone every day surface in the app hands it comes from the itinerary
+(`liveToday` = `todayInTz(liveZone(…))`, ADR-0107 §4 + its session-102 amendment). `trip.timezone`
+is the trip's **primary** zone, which is the destination's. So this page was the one surface in
+the app asking what day it is on a clock nobody on the trip need be reading — and it asked twice,
+for both halves of _now_:
+
+- **which card is `עכשיו`** (`shareToday(now, trip.timezone)`), and
+- **what the marker's clock says** (`shareTimeLabel(now, trip.timezone)`), compared inside
+  `shareNowLine` against labels that were resolved **per event** in their own display zones.
+
+On a trip's first morning — a real day of a real trip, spent at home — the page marked a card and
+drew a marker three hours off every label beside it. That the two renderers agreed about it is
+the cost the sixteenth amendment already named: agreement is not evidence of correctness when
+both sides read one field.
+
+Nothing here is a defence of a stamped `today`, which §6 was right about and which stays refused:
+a stamped answer goes stale in the reader's hand on a page that holds a projection in React
+memory for as long as the tab is open. The correction is to which **input** travels.
+
+### §2 · A day says which zone it is lived in
+
+`SharedDay.timezone` — `dayAmbientZone`, required, at every level. The day's own placed events
+where they agree on an offset, else the itinerary segment at that day's noon, else the trip
+primary; a zone-crossing booking abstains, because the thing that moves you between two places
+cannot testify about either.
+
+**Per day, and not per moment, is the resolution this page needs and the one it can state.** A
+card _is_ a day, so a per-day zone is the zone that card's own labels were resolved in — and on
+every day the marker is drawn, exactly: `shareNowLine` refuses a day carrying `zoneShiftMinutes`,
+so the day it accepts is a day whose every label resolved in that day's ambient. A per-moment
+timeline (`liveZone`'s rungs 1-2, which say where you are standing this second) would buy the
+page nothing it draws and would ship the instants at which a zone changes — which is a flight's
+departure hour, at a level whose whole rule is that it carries no exact times. A day's zone leaks
+nothing the route strip does not already imply.
+
+`trip.timezone` stays on the contract, no longer as the answer to anything about _now_: it is
+what the primary zone means, and the fallback for a moment no day of the trip covers.
+
+### §3 · Which card claims the moment, and the two seams either side
+
+`shareNowZone(days, primaryZone, at)` (`lib/share-now-line.ts`, beside the placement walk it
+feeds) asks the question of the cards rather than of the trip: **which day holds this moment on
+its own clock.** Consecutive days in different zones do not tile, so the two seams are answered
+rather than left to fall out of an array order:
+
+- **An overlap** — flying east, the day you are standing in and the destination's next day both
+  claim the same hours. The **first** card wins, which is the generous reading `isDayOver`
+  already argues for (ADR-0029's session-96/103 amendments): the evening you leave belongs to the
+  day you are still in, not to a calendar six hours ahead of you.
+- **A gap** — flying west, a day in Tokyo ends six hours before the following day in Israel
+  begins, and no card claims those hours. They take the clock of the **last day behind us**,
+  which is the one you just left and are still flying out of.
+- Before the trip and after it, the trip's primary zone — where nothing is marked `עכשיו`
+  anyway, so this only decides what the masthead's phase line reads against. _(Corrected
+  2026-09-10, below: before the trip it is `trip.homeZone`, and the phase line was exactly the
+  thing it got wrong.)_
+
+It walks with `dayPhase`, not a fourth spelling of the comparison: §7 lifted that helper out of
+two surfaces for this exact reason, and it is also what makes a card that swallowed two days
+(`SharedDay.endDate`) today while **either** of them is.
+
+**The PDF reads none of it**, with everything else about now. Paper keeps printing dates.
+
+### What was verified
+
+- **The projection spec's zone fixture gained the day the report is about.** The owner's outbound
+  trip now starts the day _before_ the flight, with one placed dinner in Tel Aviv on it, on a trip
+  whose primary zone stays Iceland's. That day's `timezone` is `Asia/Jerusalem`; the travel day's
+  is `Atlantic/Reykjavik` (both legs are crossings and abstain, so the hotel is the only voter);
+  the day after, which holds nothing, is the segment's. Three assertions, one per rung.
+- **`Event.endDate` had to join `SHARE_EVENT_SELECT`**, and that is the near-miss worth recording:
+  a column absent from a `select` is not a type error, it is a multi-night stay that votes on no
+  night at all and a day that quietly falls back to the trip primary — the defect surviving with
+  all the machinery in place. Pinned by a spec that reads a night nothing else sits on, with the
+  span removed and re-asserted in the same test so the assertion is worth something.
+- **The same near-miss one layer down**: Prisma spells `date`/`endDate` as `Date` and
+  `eventsOnDate` compares day keys as **strings**, which matches nothing and reads as "no event
+  is on this day". Every other array crosses that seam with an `as never` because the shapes
+  already agree; the event rows now go through a named adapter (`zoneEventEvidence`) that says
+  why in its docblock.
+- **Two screen tests that change only `SharedDay.timezone`**, against a fixture whose primary
+  zone stays Iceland's: the marker reads `12:00` (Tel Aviv) rather than `09:00` and falls on the
+  other side of a `09:30` row — a wrong zone here moves the mark, it does not merely misprint it
+  — and at 02:30Z the card marked `עכשיו` is the 30th rather than the 29th, because Reykjavík's
+  pre-dawn hour is filed on the night before while Tel Aviv's 05:30 is past the share's dawn.
+  Both fail against `trip.timezone`.
+- **`shareNowZone`'s own unit tests** cover the claim, the overlap, the gap, the two ends of the
+  trip, an empty spine, and a card that swallowed two days.
+- **The e2e stub needed the field too, and finding out how is the third near-miss.**
+  `e2e/shared-itinerary.spec.ts` mocks a whole projection through `page.route`, and
+  `frontend/tsconfig.json` includes only `src` — so a newly required contract field left that
+  stub short of it with `tsc` green, and the only signal was a zod parse failure in a real
+  browser: eleven tests red at once, none of them pointing at the fixture. Fixed here and
+  re-run locally (11/11, and 1 failing with the field removed again); the tooling hole is a
+  `docs/backlog.md` line under **Testing**, since closing it needs `@types/node` and a dozen
+  unrelated fixes rather than one `include`.
+- **No mockup.** Nothing about the layout changes: the same mark in the same shape, on the right
+  clock and in the right place. What was missing was never a drawing.
+
+## Amendment — two render phases had no bound, and the spec's cap was a budget (2026-09-04, nineteenth pass)
+
+CI went red on `ci` → `@waypoint/backend#test` → `pdf-browser.service.spec.ts`, on a PR whose diff
+was four frontend files and two docs: `Error: Hook timed out in 60000ms`, `1336 passed | 5 skipped`,
+no assertion anywhere near it. Chasing it found one number sized wrong and, underneath it, a
+production defect the number had been hiding.
+
+### §1 · `page.evaluate` and `page.pdf` take no timeout, and `release()` sits below them
+
+`render` bounds `setContent` with `PDF_RENDER_TIMEOUT_MS` and then makes two awaits Playwright
+gives no timeout at all. `page.pdf()`'s options carry no `timeout` field — checked in
+`playwright-core`'s `types.d.ts`, not assumed — and `page.evaluate` has none either. A Chromium
+that stops answering in either one hangs the await for the life of the process.
+
+Which matters far more here than a hung request usually does. `release()` is in the `finally`
+**below** those awaits, so the hung render never gives its slot back: after
+`PDF_RENDER_CONCURRENCY` of them (default two) every later caller queues behind slots nobody will
+return, takes its `ServiceUnavailableException`, and the unauthenticated PDF route is down until
+the process is replaced. The class docblock says the bound exists so a caller gets an honest 503
+rather than a request that never returns; two unbounded phases turned that into a permanent 503
+for everyone.
+
+`withPhaseDeadline` bounds both with the deadline the service already owns, and **names the phase
+it spent** — so the next occurrence reports `PDF render phase 'pdf' did not settle within 15000ms`
+in a second instead of an anonymous hook timeout a minute later. The abandoned call is left to
+reject into the settled `Promise.race`, which is where `frontend/src/lib/deadline.ts` already
+explains why that is handled rather than unhandled; `page.close()` in the caller's `finally` is
+what actually settles it.
+
+### §2 · The cap was measured against a laptop and the runner is not one
+
+Measured on the runner that ships this suite, off a green run and the red one:
+
+|                                     | warm Playwright Chromium       | CI's `ci` job   |
+| ----------------------------------- | ------------------------------ | --------------- |
+| whole spec file                     | ~⁦0.8 s⁩                       | **⁦17,996 ms⁩** |
+| launch / `setContent` / `page.pdf`  | ⁦133 ms⁩ / ⁦190 ms⁩ / ⁦249 ms⁩ | —               |
+| `beforeAll` (launch + first render) | —                              | ~⁦14.5 s⁩       |
+| each later render                   | —                              | ~⁦1.5 s⁩        |
+
+⁦17,996 ms⁩ is the slowest backend spec by **seventeen times** — the next is ⁦1,032 ms⁩. The `ci` job
+installs no browser (the container smoke is the check that owns a provisioned one), so this falls
+through to the system `/usr/bin/chromium` and runs while the frontend suite renders 293 files in
+parallel on the same box.
+
+All three timeouts in the file were the same ⁦60 s⁩. Against the two renders' ⁦1.7 s⁩ that is 35× and
+fine. Against the hook's ⁦14.5 s⁩ it is **4×** — a budget, not a hang-catcher, on the one step in
+the suite that is a process launch rather than JavaScript and therefore degrades hardest exactly
+when the runner is busy. Only the hook moves, to ⁦120 s⁩.
+
+And the number is **derived rather than guessed**, which is the part worth keeping: with §1 in
+place a render can spend at most `PDF_RENDER_TIMEOUT_MS` in each of three phases and a launch at
+most Playwright's own ⁦30 s⁩, so a hook cap above that sum can only ever fire on something no phase
+covers. Everything a phase does cover now fails by name. Re-tightening these to the wall time is
+the repair that brings the outage back.
+
+### What is deliberately not changed
+
+- **The `ci` job still installs no browser.** Two checks drive a real Chromium on purpose and the
+  workflow says which is which: this one on a runner that happens to have one, `pdf-smoke` inside
+  the shipped image. Giving `ci` a provisioned browser would make the fast check slower and the
+  slow check redundant.
+- **`PDF_RENDER_TIMEOUT_MS` stays one number for all three phases.** It already bounded
+  `setContent`; a second knob for the other two would be a number nobody tunes and a second thing
+  to get wrong.
+
+### What was verified
+
+- **The new spec is red on the unfixed code**, checked by removing `withPhaseDeadline` from the
+  `pdf` phase alone: `Test timed out in 5000ms`, the hang itself rather than a wrong value.
+- It asserts **both halves**, because the first without the second is still the bug: the rejection
+  names `phase 'pdf'`, **and** the next caller is admitted and reaches the same wedge — not met
+  with the `ServiceUnavailableException` a slot nobody returned would have produced.
+- Backend 1341 → 1342, whole suite green; typecheck, lint, build and `format:check` clean.
+
+## Amendment (2026-09-05) — the day card's head and shot become the app's `DayHead`, and three derivations move to shared ([ADR-0219](0219-a-day-is-a-place-you-can-see.md))
+
+The reader's day card — `.sh-shot` (§5's photograph) and `.sh-day-head` (the date column, the name, the second line) — is the design the owner pointed at for the app's own day surfaces. ADR-0219 §2 lifts both into `ui/domain/DayHead` (`day-head.css`, `wp-dayhead-*` names) and the reader consumes the component; nothing the reader renders changes, and the fourteenth amendment's child-combinator rule moves with it (its contract test too). Three pure functions the reader owned move to `packages/shared` so the app and the reader name and picture a day identically: `dayPhoto` with its gate (§5), `fallbackDayTitle` with `DayFacts` and the facts builder's pure parts, and the credit's composition (which this ADR's §5 joined server-side and `PlaceKnowledge` composed client-side, in two visual orders). Same move as the fourth pass's `derivedPlaceLabel`, for the same reason.
+
+**Built 2026-09-05 (ADR-0219 phase 2), and one thing the reader publishes DID change.** `dayPhoto` + `PHOTO_CONFIDENCE_FLOOR` and `placeCredit` now live in `packages/shared/src/sharing.ts`; `fallbackDayTitle`, `fallbackDaySummary`, `DayFacts`, `dedupeConsecutive` and the facts builder's two pure parts (`buildDayStopSequence`, `dominantValue`) in `packages/shared/src/day-title.ts`. `itinerary-narrative.fallback.ts` keeps the TRIP's line and the route strip, which are the projection's alone.
+
+The change is `SharedPhoto.credit`. This ADR's §5 composed it as `[attribution, license].join(' · ')` — the raw strings — while `PlaceKnowledge` isolated each run, so the same credit displayed with the photographer at opposite ends on the two surfaces (ADR-0219 Context §4). One composition now wins and it is the app's: the bytes gain U+2068/U+2069 around the attribution and U+2066/U+2069 around the licence. Invisible characters, an unchanged visual result on the reader (the outer `autoIsolate` already resolved that line LTR), and the fix for a real disagreement — so "the reader's output does not change" in the build plan's phase 2 holds for the day titles and the photo URLs and not for this line, deliberately.
+
+The Prisma-row trap this repo has now paid for twice (`packages/shared/CLAUDE.md`) is what the move surfaced, and the compiler caught it rather than a reader: `ShareEventRow.startsAt` is a `Date` where `DayPhotoEvent.startsAt` is an ISO string, and a `Date` handed to `Date.parse` scores every stop at **zero dwell** — the picture would have been chosen by ratings alone, silently. The projection maps its rows (`photoEventOf`, `stopEventOf`, `photoPlaceById`) instead of casting.
+
+**Phase 3 built 2026-09-05, and "the reader looks the same" was measured rather than asserted.** `ui/domain/DayHead` + `day-head.css` hold the head and the shot; the reader renders `<DayHead as="button" lines={[…]} trailing={<Icon name="caret"/>} />` and the sheet keeps only what belongs to the day's CARD — `.sh-day`'s frame, its `is-past` and `open` treatments, the caret's rotation, and the stay lines it passes in. The card's rendered box is **332×403 at 360px** before and after, and the screenshot of the whole day card is **byte-identical** in both themes (a real Chromium at 360×640, with a photo, a stay and an open body).
+
+Two things about the head are the component's now rather than the page's. Its type scale is stated on `.wp-dayhead` (`--dayhead-line: 12.5px`, `--dayhead-caption: 15px`) instead of borrowed from `.sh-page`'s `--sh-micro`/`--sh-secondary`, because the app's head renders outside that page where those resolve to nothing — same numbers today, and a page's decision about its own prose no longer reaches this component. And the shot's caption is an overlay the tap passes through: a `<figcaption>` inside a `<button>` is invalid HTML, so the button holds the image and the caption sits over it with `pointer-events: none`.
+
+The fourteenth amendment's child-combinator guard moved with the rules (`ui/domain/day-head.contract.test.ts`) and now reads **both** sheets, since the combinator is the component's and the stay line it protects is still the reader's.
+
+## Amendment (2026-09-05) — the headers follow the credential, not the feature
+
+[ADR-0220](0220-a-pasted-link-is-the-app-before-the-app-is.md) renames §5's `isPublicSharePath` to
+**`isBearerLinkPath`** and widens it to match `/join/<code>` as well as `/s/<code>`. The four headers
+themselves are unchanged.
+
+Two reasons, and the second is why the name moved with the meaning. The invite's **response
+changed**: until the link preview it was a content-free app shell at a secret URL, and it now
+carries the trip's name and dates at one, so it needs `no-store` and `noindex` for the first time.
+And `no-referrer` was owed the whole time and simply never applied — a reader tapping a map link
+from the join screen hands the destination site the invite code in `Referer`, which is the same leak
+this section closed for `/s/`.
+
+`isPublicSharePath` asked "is this the sharing feature", which made the invite a judgement call.
+**A credential in a path is not one.**
+
+## Amendment — the trip begins at midnight at home (2026-09-10)
+
+Owner, at 00:50 in Tel Aviv on the morning of day one, with the page reading `מתחילים מחר` over
+`11.09–22.09`:
+
+> _"I see that the live sharing page also needs to fix the timezone issues. See screenshot: it
+> says 'starting tomorrow'."_
+
+The app had flipped to Trip mode fifty minutes earlier: its eve's clock counts to midnight of day
+one **at home** (ADR-0221 §3), and `liveZone` reads home as the first crossing's origin for any
+instant before the flight (ADR-0107's 2026-09-10 correction). The page disagreed twice, and both
+halves have to move for it to agree.
+
+### §1 · The hours before day one belong to home, not to the destination
+
+The eighteenth amendment §3's third rung handed "before the trip" to the trip's primary zone, on
+the ground that nothing is marked `עכשיו` there and so it "only decides what the masthead's phase
+line reads against". That is the thing it got wrong: for a westward trip the primary is a clock a
+day behind the travellers, and the phase line is the one sentence on the page that is read before
+the trip. On the owner's trip the travel day's own zone is Iceland's too — its stay is there and
+the flight abstains (§2) — so no card claimed the moment and the fallback was all there was.
+
+The projection ships **`trip.homeZone`**: the first zone crossing's origin, else the primary. Not
+the reader's zone, for the eleventh amendment §6's reason, which still holds; not derived on the
+page, because the page has no origin to derive it from (the contract deliberately carries no
+crossing instants, §2). `shareNowZone` takes it in the primary's place, and its third rung now
+reads: before the trip, home; after it, the last day's own clock, as before. The default fixture
+has no crossing and asserts home is the primary; the zone fixture asserts `Asia/Jerusalem` on a
+trip whose primary is Iceland's.
+
+### §2 · The dawn boundary is the trip's, not the eve's
+
+`shareToday` files an hour before 05:00 on the day **before**, so a 01:00 landing sits on the card
+of the night it belongs to. Before day one there is no card before, and the rule only produced
+`מחר` for fifty minutes past a midnight the app had already crossed. So until the share's own day
+reaches `startDate`, `SharedItinerary` asks the calendar day in that same zone instead; from day
+one on, the dawn rule is unchanged. The masthead and the mark on day one's card come out of the
+same `today`, so they still cannot disagree (eleventh amendment §4).
+
+**Version skew is the ordinary consequence of a grown contract** (`SharedItineraryUnreadable`, the
+seventeenth amendment): a page holding the previous build cannot parse `homeZone` and asks for a
+newer document, never for a retry. The PDF ignores the field with everything else about now.
+
+## Amendment — the landing shipped one of its two arms (2026-09-12)
+
+Owner, reading the shipped page:
+
+> _"The trip sharing now line doesn't autoscroll to it correctly. It does to the day start
+> instead of the now line."_
+
+The eleventh amendment §1 decided this and the build took half of it. It says, in as many
+words, that the target is the now-line; that `DayView`'s `block: 'center'` does not translate
+to a page with no chrome, because today's card header is an ordinary box and centring the line
+pushes the date off the screen; and that the faithful translation is **the header pinned at the
+top with the line in the space that remains — _only where a day is long enough to push the line
+past the fold does the choice bite_**. That last clause is a second arm, and nothing was ever
+written for it: the effect aimed at `#day-<ordinal>` and stopped there.
+
+It survived its own verification honestly. The measurement in _What building it changed_ is the
+seeded Tokyo day at 14:30, where the line lands at 489px of 844 — an ordinary day, where the two
+targets really are the same scroll, which is what the amendment claims and all it checked. Every
+hour after that on a real trip is the other arm, and the report is what a full afternoon of rows
+above the line looks like.
+
+So `shareLanding` measures the two and picks, per frame while `landAtTop` re-aims: **the card
+while the line fits under its header, the line centred when it does not.** The bound is the
+drawing's own — the line needs `SHARE_NOW_LINE_ROOM_PX` (48) of day under it to count as on
+screen — and the centring is `.sh-day-body .now-here`'s `scroll-margin-block-start: 50vh`, which
+is the drawing's `scrollTop = lineTop - vh / 2` said in the stylesheet that owns the mark, since
+`landAtTop` passes no numbers by design. The mockup's third control (`nowHard`, the line at any
+cost) stays rejected for the reason measured there: it clips the date row above the fold.
+
+**And the re-aiming this page's landing was written against was never running here.**
+`landAtTop`'s watch asks `scrollerFor` for the box it is moving; this page has no `overflow:
+auto` ancestor, because the ninth amendment §6 made the reader scroll the DOCUMENT, so the walk
+came back empty and the watch spent its whole window in the "nothing overflows yet" branch —
+one aim, then an idle loop. `land-at-top.ts`'s `movingBox` falls back to the document's
+scrolling element when it genuinely overflows, which every other host reaches past (they find
+`.body` first). The arm above is measured per frame and needed it to be true.
+
+### What was verified
+
+- `pnpm typecheck` green; **5524 frontend tests pass**, and the full `shared-itinerary`
+  e2e (13) plus every other landing spec (`event-arrival-scroll`, `place-arrival-scroll`,
+  `shell-does-not-scroll`, `day-swipe` — 27).
+- **The new arm is asserted in a browser, because jsdom reports every rect as zero.** A
+  fourteen-day fixture whose days carry sixteen timed rows, clock at 17:00 on day 4, 360×640:
+  the mark lands on screen and the card's header goes above the fold. Reverted to the shipped
+  target, the same assertion reads the mark at **1129px of a 640px viewport** — the report,
+  measured.
+- The existing landing spec is untouched and still passes: its day carries one 09:30 row and
+  its clock is 09:00, which is the arm where the card is the answer.

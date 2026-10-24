@@ -215,32 +215,146 @@
   flex: none;
 }
 
-.hero-note {
+/* ── A content block: a glyph column and what it labels ───────────────────────
+   `פתק` and `משימה` are the same shape with a different lead (ADR-0160 §U1), so the shared
+   half is written once.
+
+   **The line height is a variable because the GLYPH reads it.** An `.icon` inside a block
+   is an inline box sitting on a BASELINE, and a baseline is not a centre — so both glyphs
+   hung below the first line of their own text, which was reported from a device as the
+   tick being out of line with its star. Measured before the fix: the clipboard 1.4px low,
+   the checkbox 2.4px. A `margin-top` nudge is what put them there; the fix is to give the
+   column the text's own line box and centre in it, which is self-correcting if the ramp
+   ever changes. Both blocks take it, because fixing one alone would have made the two
+   disagree by 1.4px — the exact defect §U1 exists to prevent. */
+.hero-note,
+.hero-task {
+  --hero-block-line: calc(var(--text-secondary) * 1.55);
   display: flex;
   gap: 9px;
   align-items: flex-start;
 }
-.hero-note-ic {
-  flex: none;
-  color: var(--on-dark-dim);
-  margin-top: 1px;
+/* **UP TO THREE OF THEM NOW** (ADR-0160 §U5, amended 2026-08-16). The stack is a sibling gap
+   rather than a wrapper, so one task renders exactly the box it did before this change and
+   the block's cost stays linear in what is actually there. `space-2` and not the 9px above:
+   that gap separates a glyph from its own words, and rows of different tasks need more air
+   than the parts of one row. */
+.hero-task + .hero-task {
+  margin-top: var(--space-2);
 }
-.hero-note-ic .icon {
+.hero-note-ic,
+.hero-task-ic {
+  flex: none;
+  display: flex;
+  align-items: center;
+  /* The FIRST line's box, not the block's — a note wraps, and the glyph belongs to the
+     line it introduces. */
+  height: var(--hero-block-line);
+  color: var(--on-dark-dim);
+}
+.hero-note-ic .icon,
+.hero-task-ic .icon {
   width: 15px;
   height: 15px;
 }
 .hero-note-tx {
   font-size: var(--text-secondary);
-  line-height: 1.55;
+  line-height: var(--hero-block-line);
   color: var(--on-dark);
 }
-.hero-note-more {
+/* GENERALISED rather than copied when the task block arrived (ADR-0160 §U): one rule, two
+   names. Two consumers on day one is rule 8's own threshold, and the alternative was a second
+   identical block six lines down. */
+.hero-note-more,
+.hero-task-more {
   display: block;
   margin-top: 5px;
   padding-inline-start: 24px;
   font-size: var(--text-caption);
   font-weight: 600;
   color: var(--on-dark-faint);
+}
+
+/* ── משימה — the fourth content type, and a READ (ADR-0160 §U) ─────────────────
+   `.hero-note`'s geometry exactly, because two content blocks inches apart on one surface
+   are one species or they are a defect. ADR-0191 §5 wrote the opposite down for the host
+   surface, shipped, and was reversed on the owner's first look at a 40px indent — measured
+   at 0px of line-start delta here BEFORE the build
+   (`mockups/a-task-in-the-hero-horizon-v1.html` §2).
+
+   Nothing here is pressable. Brief §13 settled that (the owner was offered the tickable
+   version and declined), and it is also what pays §A's constraint at zero cost. */
+.hero-task-main {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+/* `flex: 1 1 0` on the name and NOT `auto` — `.tsk-title-txt`'s own rule, for its own reason:
+   a two-line title still has to start beside the star rather than under it, which a content
+   basis does not give. The line does not wrap, which is what keeps the face ON it: the first
+   draft wrapped, and at 360px the avatar landed alone underneath (ADR-0160 §O — flex breaks
+   lines by hypothetical size, before `flex-shrink` runs). */
+.hero-task-hd {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-secondary);
+  /* The same line box the glyph column is sized to, so the two cannot drift apart. */
+  line-height: var(--hero-block-line);
+  color: var(--on-dark);
+}
+.hero-task-nm {
+  flex: 1 1 0;
+  min-width: 0;
+}
+/* `important` spends NO colour — brief §7's rule (the palette has nothing left), and the
+   screen's own answer. Shape and the board's ink carry it. */
+.hero-task-star {
+  flex: 0 0 auto;
+  display: inline-flex;
+  color: var(--on-dark);
+}
+.hero-task-star .icon {
+  width: 12px;
+  height: 12px;
+  fill: currentColor;
+}
+/* THE DEADLINE OWNS ITS OWN LINE — ADR-0191 §8's shipped answer to the identical crowding,
+   arriving one surface over rather than being re-decided.
+
+   The inks are the BOARD's, and that is a defect repair rather than a preference: `.tsk-due`'s
+   `--amber-deep` / `--miss-deep` are paper inks and measure 2.93:1 and 2.44:1 on this ground
+   in LIGHT mode — under WCAG AA's 4.5 for 11px text, the second under even 3.0. In dark the
+   same tokens are lifted and both are fine, which is exactly why looking at it was not enough.
+   ADR-0158 §15, as ADR-0160 §11 already found for `SettleControl`. Both replacements are
+   shipped values: this file's own `.hero-clockshift` and `settle-control.css`'s board skip. */
+.hero-task-due {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--text-caption);
+  font-weight: 700;
+  color: #f0c785;
+}
+.hero-task-main > .hero-task-due {
+  display: flex;
+  margin-top: 2px;
+}
+.hero-task-due.late {
+  color: #f0a09b;
+}
+.hero-task-due .icon {
+  width: 11px;
+  height: 11px;
+}
+/* The face at the end of the title line (ADR-0190 §6 as amended) — the same 19px the section
+   and the screen already use, pushed to the end the same way. Measured at 0px of extra height:
+   it rides the line it sits on. */
+.hero-task-hd .wp-av {
+  width: 19px;
+  height: 19px;
+  font-size: 9px;
+  flex: 0 0 auto;
+  margin-inline-start: auto;
 }
 
 /* ── A group-split equal ──────────────────────────────────────────────────────
@@ -272,6 +386,15 @@
   font-size: var(--text-caption);
   color: var(--on-dark-dim);
   white-space: nowrap;
+}
+/* **The next stop's peers** (ADR-0225 §6) — the equal row at a second host. The label is
+   `.hero-lbl`'s own and the row's 13px top is the part's, so the two do not stack. Measured
+   at 360: a one-peer block costs the lift 59px. */
+.hero-peers .hero-lbl {
+  margin-bottom: 0;
+}
+.hero-peers .hero-equal-hd {
+  padding-top: 8px;
 }
 /* An equal's parts sit one step in, so "this belongs to that one" reads differently
    from "this is the horizon's next point". Indent rather than a box, and this is
@@ -306,4 +429,124 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* ── THE JOURNEY BETWEEN TWO POINTS (ADR-0206 §V1.2 / §D2) ────────────────────
+   `~23 דק׳ · צאו ב־18:37`, in the slot that is already between two points: this sits under
+   `.wp-board-divider` rather than beside a point, because a journey is a property of neither
+   one. That is what keeps §D2 from becoming a fifth point-depth item and answers ADR-0160
+   §U0's admission rule instead of spending it.
+
+   The recipe is the board's own — a low-alpha semantic fill under a brightened ink, exactly
+   as `.wp-board-countdown`, `.code`, `.tlabel` and `.hero-act` already do it on this
+   always-dark surface — so no new value is minted and rule 4 is untouched. Amber is the
+   travel time (§D1), `--miss` is the risk (§D7), teal is somebody saying where they are
+   (ADR-0141's journey grammar). `--amber-deep` would be wrong here: it is amber's PAPER
+   variant, and this ground is the board.
+
+   §D6 is why there is no animation in this block. The app has one live mark, `.nowline` is
+   it, and a swap is not a second one — so a leave-by that has passed is ink and a word, never
+   a pulse or a glow. */
+.hero-trv {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 10px 0 12px;
+  padding: 7px 11px;
+  border-radius: 11px;
+  font-size: 12px;
+  font-weight: 700;
+  background: rgba(233, 166, 60, 0.12);
+  border: 1px solid rgba(233, 166, 60, 0.26);
+  color: var(--amber);
+}
+.hero-trv .icon {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+}
+/* The runs wrap together rather than the row breaking between the glyph and the words —
+   `זמן היציאה עבר ב־18:37` beside a duration is the widest state and it reaches two lines at
+   360px, which is a scroller's business and not a tile's. */
+.hero-trv-txt {
+  min-width: 0;
+}
+.hero-trv .sep {
+  opacity: 0.55;
+  font-weight: 400;
+}
+/* 7.80:1 over the board under this fill, measured — the same `#f0a0a0` the board's shut-window
+   label uses, and the same reason: `--miss` as a graphic fails what it crosses, so the ink is
+   the brightened variant (§D7's own note that the fill fails AA as ink). */
+.hero-trv.miss {
+  background: rgba(198, 40, 40, 0.18);
+  border-color: rgba(198, 40, 40, 0.42);
+  color: #f0a0a0;
+}
+/* Somebody said `בדרך` (§Z5 §M4). Teal because it is a claim about where they are, which is
+   the only thing rule 4 spends teal on — 8.91:1 over the board under this fill. */
+.hero-trv.on-way {
+  background: rgba(44, 156, 144, 0.14);
+  border-color: rgba(44, 156, 144, 0.34);
+  color: #7fd8cc;
+}
+/* The one control in the block, and it exists so the mark can be withdrawn where it is drawn
+   rather than one tab away. `.hero-act` unchanged, pushed to the row's end. */
+.hero-trv-act {
+  margin-inline-start: auto;
+  min-height: 30px;
+  font-size: 12px;
+}
+/* **What the fix adds** (ADR-0207 §2) — `📍 עדיין כאן` beside a passed leave-by. Teal, because
+   where-you-are is the only thing rule 4 spends teal on, and it sits INSIDE a `--miss` row on
+   purpose: the two are different claims (the clock passed · you are still here), and the mark
+   they justify together is the row's own. Absent whenever the position settles nothing, which is
+   the default. */
+.hero-trv-here {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  color: #7fd8cc;
+  font-weight: 700;
+}
+.hero-trv-here .icon {
+  width: 12px;
+  height: 12px;
+}
+
+/* **A chip STANDING ALONE owes ADR-0017's floor** (ADR-0214 §6), and `.hero-act`'s own comment
+   is why its ⁦34px⁩ is not enough here: that value is licensed for "a row of two or three inside
+   a bounded card", where the row's padding carries the rest of the reach. In the foot this is
+   one control on its own line with nothing beside it, so it takes the floor. Measured, because
+   the render reported ⁦34px⁩ and the floor does not bend for a surface that happens to be dark. */
+.hero-foot .hero-day-act {
+  min-height: 44px;
+  padding-inline: 14px;
+  margin-top: 11px;
+}
+
+/* **THE NOTE IS A PREVIEW HERE TOO, AND ITS BUDGET IS THE SMALLEST** (ADR-0235 §3/§5). This
+   is the app's most contended card: `איפה`, the action row, `פתק`, `משימה` and the settle
+   question all stack inside one `--lift-max-h`, and the reported note took it from 207.4px to
+   400.2px on its own. Three lines rather than the section's six for that reason and no other.
+
+   **A control on this block qualifies ADR-0160 §U rather than contradicting it.** §U settled
+   that the task block is not pressable, and it was right — ticking a task from the board is a
+   commitment. A clipped note is a different thing: the clip DELETES information from the
+   screen, and deleted information must have a way back. The control acts on nothing; it
+   opens a reader.
+
+   `.hero-note-tx` is a `<span>` and a `max-height` needs a box, which `.note-clip`'s own
+   `display: block` supplies. */
+.hero-note-tx.note-clip {
+  --note-clip-lines: 3;
+}
+/* `.hero-note-more`'s own inset, for the same reason it has it: the note's words start past
+   the 15px clipboard glyph and its 9px gap, and a control that says something about those
+   words has to start where they do. Found by rendering the mockup — without it the control
+   sat 20px outside the `ועוד פתק אחד` line directly beneath it. */
+.hero-note .note-more {
+  padding-inline-start: 24px;
+  color: var(--on-dark);
 }

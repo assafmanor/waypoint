@@ -9,16 +9,10 @@ import {
   type DurationUnit,
   type TripEvent,
 } from '@waypoint/shared';
-import { MS_PER_DAY } from '../constants';
-import { todayInTz } from './time';
+import { calendarDaysBetween, todayInTz } from './time';
 import { formatDuration } from './duration';
 import { dayPhrase, nightPhrase } from './hebrew';
 import { t } from '../i18n/he';
-
-/** Calendar-day difference between two YYYY-MM-DD strings (UTC-anchored so DST
- *  never shifts a day count). */
-const dayDiff = (from: string, to: string): number =>
-  Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / MS_PER_DAY);
 
 /** The duration unit for a *booking*, keyed on its type rather than the linked
  *  event's category. A booked event's category is icon-overridable (a hotel given
@@ -54,7 +48,7 @@ export function formatBookingDuration(
   const startDay = event.startsAt ? todayInTz(timeZone, new Date(event.startsAt)) : event.date;
   const endDay =
     event.endDate ?? (event.endsAt ? todayInTz(timeZone, new Date(event.endsAt)) : undefined);
-  const spanDays = startDay && endDay ? dayDiff(startDay, endDay) : 0;
+  const spanDays = startDay && endDay ? calendarDaysBetween(startDay, endDay) : 0;
 
   // Lodging is measured in calendar nights (a stay always crosses days; nights is
   // the traveller's unit), never elapsed hours.

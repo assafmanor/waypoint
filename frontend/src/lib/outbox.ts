@@ -12,11 +12,15 @@ import type {
   CreateDocumentAttachmentInput,
   CreateNoteInput,
   UpdateNoteInput,
+  CreateTaskInput,
+  UpdateTaskInput,
   CreatePlaceInput,
   DocumentType,
+  EventEdge,
   EventStatus,
   MembershipRole,
   MoveEventInput,
+  SetTravelModeOverride,
   UpdateBookingInput,
   UpdateEventInput,
   UpdatePlaceInput,
@@ -32,14 +36,18 @@ import {
   createMaybeItem,
   updateMaybeItem,
   createDocumentAttachment,
+  setTravelMode,
+  clearTravelMode,
   createNote,
   createPlace,
+  createTask,
   deleteBooking,
   deleteEvent,
   deleteMaybeItem,
   deleteDocumentAttachment,
   deleteNote,
   deletePlace,
+  deleteTask,
   deleteTrip,
   moveEvent,
   removeMember,
@@ -49,6 +57,7 @@ import {
   updateEvent,
   updateNote,
   updatePlace,
+  updateTask,
   updateTrip,
   uploadDocument,
 } from './api';
@@ -86,8 +95,13 @@ export const OUTBOX_VERB = {
   CREATE_NOTE: 'createNote',
   UPDATE_NOTE: 'updateNote',
   DELETE_NOTE: 'deleteNote',
+  CREATE_TASK: 'createTask',
+  UPDATE_TASK: 'updateTask',
+  DELETE_TASK: 'deleteTask',
   CREATE_DOCUMENT_ATTACHMENT: 'createDocumentAttachment',
   DELETE_DOCUMENT_ATTACHMENT: 'deleteDocumentAttachment',
+  SET_TRAVEL_MODE: 'setTravelMode',
+  CLEAR_TRAVEL_MODE: 'clearTravelMode',
 } as const;
 
 export type OutboxVerb = (typeof OUTBOX_VERB)[keyof typeof OUTBOX_VERB];
@@ -95,7 +109,9 @@ export type OutboxVerb = (typeof OUTBOX_VERB)[keyof typeof OUTBOX_VERB];
 export type OutboxOp =
   | { verb: typeof OUTBOX_VERB.CREATE; input: CreateEventInput }
   | { verb: typeof OUTBOX_VERB.UPDATE; eventId: string; input: UpdateEventInput; confirm: boolean }
-  | { verb: typeof OUTBOX_VERB.SET_STATUS; eventId: string; status: EventStatus }
+  // `edge` absent = the opening edge, i.e. `status` — what every queued settle meant before
+  // ADR-0224, so an op already sitting in a user's outbox replays unchanged.
+  | { verb: typeof OUTBOX_VERB.SET_STATUS; eventId: string; status: EventStatus; edge?: EventEdge }
   | { verb: typeof OUTBOX_VERB.MOVE; eventId: string; input: MoveEventInput; confirm: boolean }
   | { verb: typeof OUTBOX_VERB.DELETE; eventId: string; confirm: boolean }
   | { verb: typeof OUTBOX_VERB.CONSUME_MAYBE_ITEM; maybeItemId: string }
@@ -136,6 +152,12 @@ export type OutboxOp =
   | { verb: typeof OUTBOX_VERB.CREATE_NOTE; input: CreateNoteInput }
   | { verb: typeof OUTBOX_VERB.UPDATE_NOTE; noteId: string; input: UpdateNoteInput }
   | { verb: typeof OUTBOX_VERB.DELETE_NOTE; noteId: string }
+  // Tasks (tasks brief, ADR-0188) — offline-capable like every other trip write, and the
+  // one whose offline story is load-bearing rather than incidental: ticking a task off is
+  // what somebody does standing in a queue with no signal.
+  | { verb: typeof OUTBOX_VERB.CREATE_TASK; input: CreateTaskInput }
+  | { verb: typeof OUTBOX_VERB.UPDATE_TASK; taskId: string; input: UpdateTaskInput }
+  | { verb: typeof OUTBOX_VERB.DELETE_TASK; taskId: string }
   // Document attachments (ADR-0173) — the same offline story as a note, and the case that
   // NEEDS it: an attachment written beside a fresh upload is queued behind a document that
   // is itself only queued (ADR-0056), and FIFO is what makes its `documentId` resolvable by
@@ -144,7 +166,12 @@ export type OutboxOp =
       verb: typeof OUTBOX_VERB.CREATE_DOCUMENT_ATTACHMENT;
       input: CreateDocumentAttachmentInput;
     }
-  | { verb: typeof OUTBOX_VERB.DELETE_DOCUMENT_ATTACHMENT; attachmentId: string };
+  | { verb: typeof OUTBOX_VERB.DELETE_DOCUMENT_ATTACHMENT; attachmentId: string }
+  // **Declaring how a pair of places is travelled** (ADR-0206 §V1.6/§Z2, keyed per §AM). One SET
+  // verb rather than a create/update pair, because the server's write is an upsert on the pair and
+  // there is nothing at this edge that could tell a first declaration from a second one.
+  | { verb: typeof OUTBOX_VERB.SET_TRAVEL_MODE; input: SetTravelModeOverride }
+  | { verb: typeof OUTBOX_VERB.CLEAR_TRAVEL_MODE; overrideId: string };
 
 export interface OutboxEntry {
   seq?: number;
@@ -169,7 +196,9 @@ export function outboxOpEntityId(op: OutboxOp): string {
     case OUTBOX_VERB.CREATE_PLACE:
     case OUTBOX_VERB.UPLOAD_DOCUMENT:
     case OUTBOX_VERB.CREATE_NOTE:
+    case OUTBOX_VERB.CREATE_TASK:
     case OUTBOX_VERB.CREATE_DOCUMENT_ATTACHMENT:
+    case OUTBOX_VERB.SET_TRAVEL_MODE:
       return op.input.id ?? '';
     case OUTBOX_VERB.UPDATE:
     case OUTBOX_VERB.SET_STATUS:
@@ -190,8 +219,13 @@ export function outboxOpEntityId(op: OutboxOp): string {
     case OUTBOX_VERB.UPDATE_NOTE:
     case OUTBOX_VERB.DELETE_NOTE:
       return op.noteId;
+    case OUTBOX_VERB.UPDATE_TASK:
+    case OUTBOX_VERB.DELETE_TASK:
+      return op.taskId;
     case OUTBOX_VERB.DELETE_DOCUMENT_ATTACHMENT:
       return op.attachmentId;
+    case OUTBOX_VERB.CLEAR_TRAVEL_MODE:
+      return op.overrideId;
     case OUTBOX_VERB.SET_MEMBER_ROLE:
     case OUTBOX_VERB.REMOVE_MEMBER:
       return op.userId;
@@ -646,7 +680,7 @@ async function runOp(tripId: string, op: OutboxOp): Promise<void> {
       await updateEvent(tripId, op.eventId, op.input, op.confirm);
       return;
     case OUTBOX_VERB.SET_STATUS:
-      await setEventStatus(tripId, op.eventId, op.status);
+      await setEventStatus(tripId, op.eventId, op.status, op.edge);
       return;
     case OUTBOX_VERB.MOVE:
       await moveEvent(tripId, op.eventId, op.input, op.confirm);
@@ -717,6 +751,15 @@ async function runOp(tripId: string, op: OutboxOp): Promise<void> {
     case OUTBOX_VERB.DELETE_NOTE:
       await deleteNote(tripId, op.noteId);
       return;
+    case OUTBOX_VERB.CREATE_TASK:
+      await createTask(tripId, op.input);
+      return;
+    case OUTBOX_VERB.UPDATE_TASK:
+      await updateTask(tripId, op.taskId, op.input);
+      return;
+    case OUTBOX_VERB.DELETE_TASK:
+      await deleteTask(tripId, op.taskId);
+      return;
     case OUTBOX_VERB.CREATE_DOCUMENT_ATTACHMENT:
       // Idempotent twice over server-side (the client id, and the `(documentId, host)`
       // unique), so a replayed attach is "already applied" rather than a second row.
@@ -724,6 +767,14 @@ async function runOp(tripId: string, op: OutboxOp): Promise<void> {
       return;
     case OUTBOX_VERB.DELETE_DOCUMENT_ATTACHMENT:
       await deleteDocumentAttachment(tripId, op.attachmentId);
+      return;
+    case OUTBOX_VERB.SET_TRAVEL_MODE:
+      // Idempotent server-side on the pair, so a replayed declaration updates the one row rather
+      // than adding a second (ADR-0206 §AM2).
+      await setTravelMode(tripId, op.input);
+      return;
+    case OUTBOX_VERB.CLEAR_TRAVEL_MODE:
+      await clearTravelMode(tripId, op.overrideId);
       return;
   }
 }

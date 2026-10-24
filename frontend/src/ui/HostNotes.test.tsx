@@ -6,7 +6,7 @@
 // through `NOTE_HOST_FIELD`, so this file drives all five kinds rather than the two phase 5
 // happens to wire: the place case is phase 6's, and the point is that it needs no code.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { BOOKING_TYPE, type Booking, type Note, type TripEvent } from '@waypoint/shared';
 import { wrapNav } from '../test/nav-harness';
 import { setSimulatedNow } from '../lib/useClock';
@@ -30,11 +30,28 @@ let tripNotes: Note[] = [];
 // the same two lists the app reads, so a test case states the world once.
 let tripEvents: TripEvent[] = [];
 let tripBookings: Booking[] = [];
+let tripPlaces: { id: string; name: string }[] = [];
 const createNote = vi.fn(() => Promise.resolve(undefined));
 const updateNote = vi.fn(() => Promise.resolve());
 
+// The section's full screen wears the mode tint, so `HostNotes` reads `useMode` — mocked
+// rather than provided, because `ModeProvider` reads trip state and this spec's trip state is
+// itself a mock. Same reflex as the trip mock below: if the assertion depends on it, the suite
+// states it (frontend/CLAUDE.md).
+vi.mock('../state/mode-state', () => ({ useMode: () => ({ mode: 'trip' }) }));
+
 vi.mock('../state/trip-state', () => ({
   useTrip: () => ({
+    trip: { id: 't1', timezone: 'Asia/Jerusalem', startDate: '2026-08-15', endDate: '2026-08-20' },
+    zoneCrossings: [],
+    // Tasks ride the same snapshot since phase 1; the mark and the sections read them.
+    tasks: [],
+    taskVerbs: {
+      createTask: async () => undefined,
+      updateTask: async () => {},
+      deleteTask: async () => {},
+      tickTask: async () => {},
+    },
     // The one context index every note surface resolves through (ADR-0172 §1);
     // built from this file's own fixtures so pairing is real rather than stubbed.
     hostContexts: buildHostContextIndex(tripEvents, tripBookings),
@@ -44,7 +61,7 @@ vi.mock('../state/trip-state', () => ({
     noteHosts: buildNoteHosts({
       events: tripEvents,
       bookings: tripBookings,
-      places: [],
+      places: tripPlaces,
       maybeItems: [],
       documents: [],
     }),
@@ -61,6 +78,7 @@ vi.mock('../state/trip-state', () => ({
 
 import { HostNotes } from './HostNotes';
 import { t } from '../i18n/he';
+import { DRAG_HOLD_MS } from '../constants';
 import { buildHostContextIndex } from '../lib/host-context';
 import { buildNoteHosts } from '../lib/notes';
 
@@ -99,7 +117,45 @@ describe('HostNotes', () => {
   it('renders a multi-line body with its newlines intact', () => {
     tripNotes = [note({ id: 'n1', body: 'קומה 3\n\nהכניסה מאחור', bookingId: 'b1' })];
     open('booking', 'b1');
-    expect(document.querySelector('.note-item-b')?.textContent).toBe('קומה 3\n\nהכניסה מאחור');
+    const body = document.querySelector('.note-item-b');
+    // A BLANK line is a block break, so these are two paragraphs rather than one with a
+    // `<br />` — which is the distinction `pre-wrap` could not draw and this can.
+    expect(body?.querySelectorAll('.note-prose p')).toHaveLength(2);
+    expect(body?.textContent).toBe('קומה 3הכניסה מאחור');
+  });
+
+  // ADR-0152 §6's 2026-08-16 amendment. This surface rendered `noteTitleText`, which is
+  // `title || body` — so a note with BOTH showed its title and its body appeared nowhere on
+  // any read surface, since the notes screen was pushing it into a meta line that collapsed
+  // it. A line here does not clamp, so this is where a long structured note reads whole.
+  //
+  // **The newline is now a `<br />` rather than a preserved `\n`** (ADR-0202 §6): the body is
+  // rendered by `NoteProse`, which keeps each authored line as its own run. Same pixels, and
+  // a stronger guarantee — the old rule lived in CSS that jsdom cannot see, which is exactly
+  // why `notes.contract.test.ts` had to exist to guard it. This assertion can see it.
+  it('shows a titled note’s body under its title, breaking where the author broke it', () => {
+    tripNotes = [
+      note({
+        id: 'n1',
+        title: 'הזוהר הצפוני',
+        body: 'החלון הטוב: 22:00–02:00\nלא להסתכל רק על KP',
+        bookingId: 'b1',
+      }),
+    ];
+    open('booking', 'b1');
+    const item = document.querySelector('.note-item-b');
+    expect(item?.querySelector('.note-item-t')?.textContent).toBe('הזוהר הצפוני');
+    expect(item?.textContent).toContain('החלון הטוב: 22:00–02:00');
+    expect(item?.textContent).toContain('לא להסתכל רק על KP');
+    expect(item?.querySelectorAll('.note-prose br')).toHaveLength(1);
+    // The title is not also printed as the body — the two are one line apart, not twice.
+    expect(item?.textContent?.match(/הזוהר הצפוני/g)).toHaveLength(1);
+  });
+
+  it('shows a note with a title and no body as just its title', () => {
+    tripNotes = [note({ id: 'n1', title: 'מזומן בלבד', bookingId: 'b1' })];
+    open('booking', 'b1');
+    expect(document.querySelector('.note-item-b')?.textContent).toBe('מזומן בלבד');
   });
 
   it('shows only THIS host’s notes, newest first, with author and when', () => {
@@ -211,7 +267,7 @@ describe('HostNotes', () => {
     tripNotes = [note({ id: 'n1', body: 'קוד הכספת 4417', documentId: 'd1' })];
     open('document', 'd1');
     fireEvent.click(screen.getByRole('button', { name: 'קוד הכספת 4417' }));
-    expect(document.querySelector('.note-open-foot')).toBeTruthy();
+    expect(document.querySelector('.row-open-foot')).toBeTruthy();
     expect(screen.queryByLabelText(t.notes.sheet.bodyLabel)).toBeNull();
   });
 
@@ -221,7 +277,133 @@ describe('HostNotes', () => {
     tripNotes = [note({ id: 'n1', body: 'קוד הכספת 4417', documentId: 'd1' })];
     open('document', 'd1');
     fireEvent.click(screen.getByRole('button', { name: 'קוד הכספת 4417' }));
-    expect(document.querySelector('button.note-open-host')).toBeNull();
+    expect(document.querySelector('button.row-open-lead')).toBeNull();
+  });
+
+  // …and it says NOTHING there rather than something false. `NoteOpenFoot` used to fall
+  // through to `פתק כללי` whenever no host was passed, and this surface passes none because it
+  // IS the host — so every hosted note on a booking, a document or a place was labelled a
+  // general note (ADR-0202's build found this while adding the control below).
+  it('does not call a hosted note general on its own host’s surface', () => {
+    tripNotes = [note({ id: 'n1', body: 'קוד הכספת 4417', documentId: 'd1' })];
+    open('document', 'd1');
+    fireEvent.click(screen.getByRole('button', { name: 'קוד הכספת 4417' }));
+    expect(document.querySelector('.row-open-foot')?.textContent).not.toContain(
+      t.notes.open.general,
+    );
+  });
+
+  // ADR-0202 §1: the same control as on the notes screen, because the foot is the only half
+  // of either surface that can hold a tap target — which is what made this candidate win.
+  it('opens the note on its own screen, from the host’s section', () => {
+    tripNotes = [note({ id: 'n1', body: 'קוד הכספת 4417', documentId: 'd1' })];
+    open('document', 'd1');
+    fireEvent.click(screen.getByRole('button', { name: 'קוד הכספת 4417' }));
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(t.notes.open.full) }));
+    expect(document.querySelector('.note-full')).toBeTruthy();
+    // The screen names the host even though the section behind it is that host: with no chip
+    // in its bar, the foot is the only place it appears at all.
+    expect(document.querySelector('.note-full .row-open-lead')?.textContent).toBeTruthy();
+  });
+
+  // **ADR-0235 §7 — the long-note route moved from an estimate to a MEASUREMENT, and this
+  // spec had to move with it.** It used to seed 14 lines and rely on `noteReadsFullScreen`
+  // counting characters; the section now asks the box whether it hid anything, which jsdom
+  // cannot answer on its own (no layout — both metrics read 0, so the honest answer there is
+  // "nothing was clipped"). So the box is told what it would have measured, the way
+  // `SnapSheet.test.tsx` and `land-at-top.test.ts` already do for their own scrollers.
+  //
+  // ADR-0202 §9c still holds and is still what is being asserted: one gesture must not mean
+  // two different things on two surfaces.
+  //
+  // It has to be on the PROTOTYPE and in place BEFORE the render: the probe runs in a
+  // `useLayoutEffect` keyed on the note's text, so stubbing the element afterwards is never
+  // read. `SnapSheet.test.tsx` writes the same pair the same way, including the `delete` —
+  // `restoreAllMocks` does not undo a prototype property, and leaving it on would make every
+  // later case in this file see a clipped note.
+  const clipEveryBox = () => {
+    Object.defineProperty(HTMLElement.prototype, 'scrollHeight', {
+      configurable: true,
+      get: () => 400,
+    });
+    Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
+      configurable: true,
+      get: () => 120,
+    });
+  };
+
+  describe('a note the box had to cut', () => {
+    beforeEach(clipEveryBox);
+    afterEach(() => {
+      delete (HTMLElement.prototype as { scrollHeight?: number }).scrollHeight;
+      delete (HTMLElement.prototype as { clientHeight?: number }).clientHeight;
+    });
+
+    it('opens it on its own screen instead of adding a foot to a wall', () => {
+      const long = Array.from({ length: 14 }, (_, i) => `שורה ${i} עם עוד קצת טקסט`).join('\n');
+      tripNotes = [note({ id: 'n1', body: long, documentId: 'd1' })];
+      open('document', 'd1');
+      // By element, not by accessible name: the body renders through `NoteProse`, so the
+      // button's name is every line concatenated without the newlines that seeded it.
+      fireEvent.click(document.querySelector('.note-item-b')!);
+      expect(document.querySelector('.note-full')).toBeTruthy();
+      expect(document.querySelector('.note-item.is-open')).toBeNull();
+    });
+
+    // **The named control, and it is the foot's own** (ADR-0235 §4): same class, same words,
+    // because it is the same verb going to the same screen.
+    it('offers the way there as a named control wearing the foot’s chrome', () => {
+      tripNotes = [note({ id: 'n1', body: 'שורה\nשורה\nשורה', documentId: 'd1' })];
+      open('document', 'd1');
+      const control = document.querySelector('.note-item-main > .note-more');
+      expect(control?.className).toContain('row-open-act');
+      expect(control?.textContent).toContain(t.notes.open.full);
+      fireEvent.click(control!);
+      expect(document.querySelector('.note-full')).toBeTruthy();
+    });
+  });
+
+  // **A note that FITS is untouched** (ADR-0235 §3) — no control, and the tap opens the foot,
+  // which is ADR-0153 §4 exactly as written. jsdom reports no overflow, so this is the case
+  // it can prove without being told anything.
+  it('leaves a note that fits its budget alone, control and all', () => {
+    tripNotes = [note({ id: 'n1', body: 'הכניסה מהחצר האחורית', documentId: 'd1' })];
+    open('document', 'd1');
+    fireEvent.click(document.querySelector('.note-item-b')!);
+    expect(document.querySelector('.note-item.is-open')).toBeTruthy();
+    expect(document.querySelector('.note-full')).toBeNull();
+    expect(document.querySelector('.note-more')).toBeNull();
+  });
+
+  // **The body is bounded on this surface at all** — the structural half of §2, which jsdom
+  // can see because it is a class in the DOM rather than a height. The budget itself lives in
+  // `notes.css` and is guarded in `notes.contract.test.ts`.
+  it('bounds the body and hands the probe the element carrying the bound', () => {
+    tripNotes = [note({ id: 'n1', body: 'שורה', documentId: 'd1' })];
+    open('document', 'd1');
+    expect(document.querySelector('.note-item-b .note-prose.note-clip')).toBeTruthy();
+  });
+
+  // The hold reaches the same screen from the host's section (ADR-0202's amendment). Both
+  // surfaces, one gesture — the property that made the foot control win in the first place.
+  //
+  // A real `MouseEvent` named `pointerdown`, because jsdom implements no `PointerEvent` and a
+  // synthetic one arrives with no coordinates for the slop check to read.
+  it('opens the note on its own screen on a hold, without expanding it', () => {
+    vi.useFakeTimers();
+    try {
+      tripNotes = [note({ id: 'n1', body: 'קוד הכספת 4417', documentId: 'd1' })];
+      open('document', 'd1');
+      const body = screen.getByRole('button', { name: 'קוד הכספת 4417' });
+      body.dispatchEvent(
+        new MouseEvent('pointerdown', { clientX: 10, clientY: 10, bubbles: true }),
+      );
+      act(() => vi.advanceTimersByTime(DRAG_HOLD_MS));
+      expect(document.querySelector('.note-full')).toBeTruthy();
+      expect(document.querySelector('.note-item.is-open')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   // The row here prints title-or-body, so a note carrying both a body and a link showed
@@ -268,6 +450,7 @@ describe('an inherited note says where it came from', () => {
     tripNotes = [];
     tripEvents = [];
     tripBookings = [];
+    tripPlaces = [];
   });
   afterEach(() => cleanup());
 
@@ -283,6 +466,23 @@ describe('an inherited note says where it came from', () => {
     const own = screen.getByText('שייך למקום').closest('.note-item');
     const inherited = screen.getByText('הכניסה מהחצר').closest('.note-item');
     expect(inherited?.querySelector('.note-from')?.textContent).toBe('מלון סאקורה');
+    expect(own?.querySelector('.note-from')).toBeNull();
+  });
+
+  // §3's 2026-09-27 amendment (owner's report): a note written on a place from the Map shows
+  // on the event later made there, named for the place, and a new one stays the event's.
+  it('shows the place’s own notes on an event there, named for the place', () => {
+    tripEvents = [{ id: 'ev-1', title: 'מזרקת טרווי', placeId: 'p1' } as TripEvent];
+    tripPlaces = [{ id: 'p1', name: 'Fontana di Trevi' }];
+    tripNotes = [
+      note({ id: 'n-place', placeId: 'p1', body: 'רילס מאינסטגרם' }),
+      note({ id: 'n-own', eventId: 'ev-1', body: 'להגיע מוקדם' }),
+    ];
+    render(wrapNav(<HostNotes host={{ kind: 'event', id: 'ev-1', name: 'מזרקת טרווי' }} />));
+
+    const fromPlace = screen.getByText('רילס מאינסטגרם').closest('.note-item');
+    const own = screen.getByText('להגיע מוקדם').closest('.note-item');
+    expect(fromPlace?.querySelector('.note-from')?.textContent).toBe('Fontana di Trevi');
     expect(own?.querySelector('.note-from')).toBeNull();
   });
 

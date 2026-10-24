@@ -2,9 +2,10 @@
 // stored on the Trip (docs/architecture/data-model.md). The manual override
 // (state/mode-state.tsx) is session-only, in-memory UI state, not persisted —
 // the app always comes back to auto-derived on a fresh load.
-import type { Trip } from '@waypoint/shared';
-import { MS_PER_DAY } from '../constants';
-import { todayInTz } from './time';
+import { eventMidSpan, type Trip, type TripEvent, type ZoneEvidence } from '@waypoint/shared';
+import { DEVICE_TIMEZONE } from '../constants';
+import { liveToday } from './places';
+import { calendarDaysBetween, deriveNow, todayInTz } from './time';
 
 export type Mode = 'plan' | 'trip';
 
@@ -13,35 +14,112 @@ export type Mode = 'plan' | 'trip';
  *  a live-window-only state (ADR-0040) — pre and past are always Plan. */
 export type TripPhase = 'pre' | 'live' | 'past';
 
-export function tripPhase(
-  trip: Pick<Trip, 'startDate' | 'endDate' | 'timezone'>,
+type TripWindow = Pick<Trip, 'startDate' | 'endDate' | 'timezone'>;
+
+/** **The calendar day the trip's clock is on** — the one `liveToday` answers for every other
+ *  surface (ADR-0107 §4, mode-free): home before the outbound flight, the far side after it.
+ *  Reading it off `trip.timezone` instead put the destination's midnight on the countdown, so at
+ *  00:58 at home on the 9th the hero still said the trip was three days out (owner, 2026-09-09).
+ *  `evidence` is optional only for a trip whose itinerary is not loaded — the pre-snapshot
+ *  skeleton's first mode — where the primary zone is all there is to read. A screen with no trip
+ *  loaded at all counts from the device instead (`daysUntilStartOnDevice`). */
+export function tripToday(
+  trip: TripWindow,
   now: Date,
+  evidence?: ZoneEvidence,
+  events?: readonly TripEvent[],
+): string {
+  const today = evidence ? liveToday(now.getTime(), evidence) : todayInTz(trip.timezone, now);
+  // **A trip you are still inside does not end at its last midnight** (ADR-0236 §1). The
+  // clamp fires in ONE direction and only past the end: you can stay in a trip, never
+  // arrive at one early (ADR-0040 §1's principle, intact).
+  if (today <= trip.endDate || !events?.length) return today;
+  return holdingCommitment(trip, events, now)?.date ?? today;
+}
+
+/**
+ * **The commitment still running that BEGAN inside the trip** — or `undefined`, which is
+ * what "the trip is over" means (ADR-0236 §1).
+ *
+ * It asks the board's own question with the board's own filter, rather than deriving a
+ * second answer beside it:
+ *
+ *  - `deriveNow` decides what is running (instant-based, `PLANNED` only — so a leg marked
+ *    `נחתנו` or skipped releases the window, which is the person saying they have arrived);
+ *  - a **held** span you are inside is dropped first (`midSpan.kind === 'held'`, ADR-0227
+ *    §B), because the board drops it too. A hotel whose check-out is the morning after the
+ *    trip ends must not hold Trip mode open with a board that has nothing to stand on —
+ *    the empty shell ADR-0040 §1 refused. A journey is exempt from that filter, which is
+ *    exactly why the flight home holds the window and the hotel does not.
+ *
+ * **`e.date` inside the range is the "began inside" guard**, and it is load-bearing: an
+ * event stranded past `endDate` by a date edit (§6) would otherwise hold a finished trip
+ * live forever.
+ */
+function holdingCommitment(
+  trip: TripWindow,
+  events: readonly TripEvent[],
+  now: Date,
+): TripEvent | undefined {
+  const nowMs = now.getTime();
+  const began = events.filter((e) => e.date >= trip.startDate && e.date <= trip.endDate);
+  const schedule = began.filter(
+    (e) =>
+      !(eventMidSpan(e)?.kind === 'held' && e.startsAt != null && nowMs >= Date.parse(e.startsAt)),
+  );
+  return deriveNow([...schedule], now).now;
+}
+
+export function tripPhase(
+  trip: TripWindow,
+  now: Date,
+  evidence?: ZoneEvidence,
+  events?: readonly TripEvent[],
 ): TripPhase {
-  const today = todayInTz(trip.timezone, now);
+  const today = tripToday(trip, now, evidence, events);
   if (today < trip.startDate) return 'pre';
   if (today > trip.endDate) return 'past';
   return 'live';
 }
 
-/** Trip mode runs the trip's local calendar days [startDate, endDate] inclusive; Plan mode otherwise. */
+/** Trip mode runs the trip's local calendar days [startDate, endDate] inclusive — plus, while
+ *  one is still running, the commitment that began inside them (ADR-0236 §1); Plan otherwise. */
 export function deriveMode(
-  trip: Pick<Trip, 'startDate' | 'endDate' | 'timezone'>,
+  trip: TripWindow,
   now: Date,
+  evidence?: ZoneEvidence,
+  events?: readonly TripEvent[],
 ): Mode {
-  return tripPhase(trip, now) === 'live' ? 'trip' : 'plan';
+  return tripPhase(trip, now, evidence, events) === 'live' ? 'trip' : 'plan';
 }
 
-/** Trip-local calendar days remaining before startDate — null once the trip
- *  has started (or ended), since a countdown to departure stops being
+/** Calendar days remaining before startDate, counted from {@link tripToday} — null once
+ *  the trip has started (or ended), since a countdown to departure stops being
  *  meaningful then, whether or not the mode is currently overridden. */
 export function daysUntilStart(
-  trip: Pick<Trip, 'startDate' | 'endDate' | 'timezone'>,
+  trip: TripWindow,
   now: Date,
+  evidence?: ZoneEvidence,
 ): number | null {
-  const today = todayInTz(trip.timezone, now);
+  const today = tripToday(trip, now, evidence);
   if (today >= trip.startDate) return null;
-  // Plain calendar days (no time-of-day) — UTC-midnight arithmetic diffs the
-  // calendar day correctly without a timezone re-interpreting it.
-  const days = Date.parse(`${trip.startDate}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`);
-  return Math.round(days / MS_PER_DAY);
+  return calendarDaysBetween(today, trip.startDate);
 }
+
+/** Calendar days since the trip's last date, from the trip's own today: what a finished trip's
+ *  header anchor says instead of `יום N/M` (ADR-0240 §3). Zero on the last date itself. */
+export function daysSinceEnd(trip: TripWindow, today: string): number {
+  return Math.max(0, calendarDaysBetween(trip.endDate, today));
+}
+
+/** **Whole calendar days to `startDate` from the DEVICE's today** — for the screens with no
+ *  trip loaded, the all-trips list and the join ticket, where the person is wherever the phone
+ *  is and there is no itinerary to read (ADR-0107, 2026-09-09 amendment). The trip's primary
+ *  zone is the far side's clock: at 00:34 at home the list said `מחרתיים` for a trip that started
+ *  tomorrow (owner, 2026-09-10). Zero on the date itself and negative after it. */
+export function daysUntilStartOnDevice(startDate: string, now: Date): number {
+  return calendarDaysBetween(deviceToday(now), startDate);
+}
+
+/** The DEVICE's calendar date, for the same screens and for the same reason as above. */
+export const deviceToday = (now: Date): string => todayInTz(DEVICE_TIMEZONE, now);

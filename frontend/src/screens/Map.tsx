@@ -32,8 +32,14 @@ import {
   type ReactNode,
 } from 'react';
 import {
-  EVENT_STATUS,
+  defaultLegTravelMode,
+  derivedTravelMode,
+  TRAVEL_MODE,
+  exceedsTravelCeiling,
+  isRoutableMode,
+  legTravelMode,
   matchesAnyTerm,
+  placeCredit,
   type Booking,
   type DeliveredImageValue,
   type EventCategory,
@@ -73,6 +79,7 @@ import {
   mapsPredictionUrl,
   nextDestination,
   referencedPlaceIds,
+  dayZoneContext,
 } from '../lib/places';
 import {
   PLACE_REF_KIND,
@@ -80,18 +87,30 @@ import {
   placeRefSubject,
   placeRefs,
   soleIdeaFor,
+  type PlaceRef,
 } from '../lib/place-refs';
 import { badgePhoto } from '../lib/place-photo';
-import { placeCredit, placeSummary, type PlaceSummary } from '../lib/place-summary';
+import { placeSummary, type PlaceSummary } from '../lib/place-summary';
 import { MediaViewer } from '../ui/MediaViewer';
 import { apiAssetUrl } from '../lib/api-asset';
 import { useCandidateEnrichment } from '../lib/useCandidateEnrichment';
-import { noteCountFor, noteCountForContext, noteCountsByHost } from '../lib/notes';
+import { noteCountFor, hostCountForContext, noteCountsByHost } from '../lib/notes';
+import { openTaskCountsByHost } from '../lib/tasks';
+import { useSettledHosts } from '../ui/HostTasks';
 import { attachmentCountForContext, attachmentCountsByHost } from '../lib/attachments';
 import { resolveHostContext } from '../lib/host-context';
 import { useCenterSelected } from '../lib/useCenterSelected';
+import { nightPhrase } from '../lib/hebrew';
+import { memoryDays } from '../lib/memory-home';
+import { replayReach, type ReplayDay } from '../lib/map-replay';
+import { prefersReducedMotion } from '../lib/motion';
+import { usePlaceLabels } from '../state/place-labels';
 import {
+  amberLegIndex,
   buildDayStopSequence,
+  buildJourney,
+  firstHappenedDate,
+  stayNights,
   buildPinOrderIndex,
   isAsidePin,
   type DayStop,
@@ -115,17 +134,22 @@ import {
   type MapBounds,
 } from '../lib/map-camera';
 import { mapColorScheme, mapPaneAvailable, mapTileUrls } from '../lib/map-config';
+import { useMaybeAuth } from '../state/auth-state';
 import { useMapArchives } from '../lib/useMapArchives';
-import { prefersReducedMotion } from '../lib/motion';
+import { useDayShapes, useDayTravel } from '../lib/travel';
+import type { MapDayLeg } from '../ui/domain/MapPane';
+import { landAtTop } from '../lib/land-at-top';
 import { observeResize } from '../lib/observe-resize';
+import { edgeFadeRef } from '../lib/edge-fade';
 import { usePlaceSearch } from '../lib/usePlaceSearch';
 import { useVerbs, type AddMaybeOptions } from '../state/verbs';
 import { stopHeightCss } from '../lib/snap-sheet';
 import { countVisible, revealRows, visibleItems, type Revealed } from '../lib/filter-reveal';
 import { daySelectTarget, useBackLayer, withBookingFormReturn } from '../state/nav-state';
+import { useNoteHostWayIn } from '../state/note-host-nav';
 import { useNavigate } from 'react-router-dom';
-import { formatTime, relativeDayLabel } from '../lib/time';
-import { eventEdgeTransition } from '../lib/transitions';
+import { dayLabel, dayWindowMs, formatTime, tripDates, tripDayNumber } from '../lib/time';
+import { edgeSettleProps, eventEdgeTransition, relativeDayWord } from '../lib/transitions';
 import { connectionStopKey, connectionStops } from '../lib/day-joins';
 import { bookingWhen } from '../lib/booking-journey';
 import { shortTitleText } from '../lib/route-title';
@@ -152,7 +176,6 @@ import {
   MAP_SHEET_VIEW,
   PLACE_CORPUS,
   PLACE_REFS_CAP,
-  ROW_SCROLL_WAIT_FRAMES,
   type MapRowDisclosure,
   type MapSheetView,
 } from '../constants';
@@ -173,13 +196,15 @@ import { BookingDetail } from '../ui/BookingDetail';
 import { BookingSheet, type BookingSheetDraft } from '../ui/BookingSheet';
 import { EventForm, type EventFormDraft } from '../ui/EventForm';
 import { HostNotes } from '../ui/HostNotes';
+import { HostTasks } from '../ui/HostTasks';
 import { HostDocuments } from '../ui/HostDocuments';
 import { NoteMark } from '../ui/domain/NoteMark';
+import { TaskMark } from '../ui/domain/TaskMark';
 import { DocumentMark } from '../ui/domain/DocumentMark';
 import { PlaceBadge } from '../ui/domain/PlaceBadge';
 import { KNOWLEDGE_DENSITY, PlaceKnowledge } from '../ui/domain/PlaceKnowledge';
 import { RowManageSheet } from '../ui/domain/ListRow';
-import { SettleControl } from '../ui/domain/SettleControl';
+import { SettleControl, type SettleWords } from '../ui/domain/SettleControl';
 import { ConfirmDialog } from '../ui/primitives/ConfirmDialog';
 import { EmptyState, StatusBanner } from '../ui/feedback';
 import { Icon } from '../ui/Icon';
@@ -217,8 +242,14 @@ interface RefEntry {
    *  block already enumerates the references one per row, each labelled in its own words, so
    *  hanging the verb here needs no disambiguator at all. */
   settle?: {
-    /** What a human already said, if they did. Drives tag-plus-undo instead of the pair. */
-    outcome?: PinOutcome;
+    /** **The words this reference's pair asks in** (ADR-0224 §3) — `נכנסנו` / `יצאנו` on a
+     *  stay's two references, `אספנו` / `החזרנו` on a hire's. Absent on a stop, which keeps
+     *  `SettleControl`'s own `היינו` / `דילגנו`. The row already names which end it is
+     *  (`eventEdgeTransition`, in its label); this is that same fact reaching the control. */
+    words?: SettleWords;
+    /** What a human already said **about this edge**, if they did (ADR-0224 §1). Drives
+     *  tag-plus-undo instead of the pair. */
+    outcome?: Exclude<PinOutcome, 'open'>;
     /** The clock has passed it and nobody answered — ADR-0117 §1's third state, and the one
      *  the emphasis is for. Not a gate on the controls: **every** event is settleable here
      *  (ADR-0117 §2 already lets a human close tonight's dinner at 11:00), and gating on the
@@ -264,13 +295,17 @@ export function MapView() {
     indexVerbs,
     notes,
     documentAttachments,
+    travelModeOverrides,
     hostContexts,
     noteVerbs,
     // What the world knows about these places (ADR-0166 §6) — server-owned, and a missing key
     // is the normal "we know nothing" state rather than a loading one.
     enrichments,
+    tasks,
   } = useTrip();
-  const { mode } = useMode();
+  // A finished trip is a memory, not a plan (ADR-0239): the live trip's help withdraws (§3)
+  // and nothing on this tab adds to it (§4). Settling stays, being the one sanctioned write.
+  const { mode, phase, isFinished: finished } = useMode();
   const offline = useIsOffline() || usingCachedSnapshot;
   const nowMs = useClock().getTime();
   const navigate = useNavigate();
@@ -294,12 +329,15 @@ export function MapView() {
     clearFocus,
     locationOffered,
     markLocationOffered,
+    locationGranted,
+    setLocationGranted,
     setChromeReclaimed,
     maybesFacet,
     errand,
     errandResult,
   } = useMapScope();
-  useEffect(() => setAllDays(false), [mode, setAllDays]);
+  // A finished trip opens on all of it (ADR-0239 §2): there is no "day you are on".
+  useEffect(() => setAllDays(finished), [mode, finished, setAllDays]);
   // The other way out of all-days: arriving on a different day (a `daySelectTarget`
   // from another surface, a deep link). Choosing a day on the strip is the INTENT
   // path and clears the scope itself (`useSelectDay`), which is what makes tapping
@@ -599,7 +637,20 @@ export function MapView() {
   // z0–6, which draws a flat landmass at `MAP_ZOOM.PLACE` (corrected 2026-08-14; see
   // `mapTileUrls`). Keyed on the id so switching trips re-reads, which is the one thing that
   // legitimately rebuilds the canvas.
-  const remoteTileUrls = useMemo(() => mapTileUrls(trip?.id), [trip?.id]);
+  // **Which live planet build to read comes from the SERVER** (ADR-0187 §1 amendment). The id
+  // names an upstream object upstream deletes after about a week, so a constant in the bundle is
+  // a URL with an expiry date — and when it expired, every detail tile 404'd and the map lost
+  // every label, road and border while the world layer kept drawing fills. `null` (a server with
+  // no live source, or a `/me` cached before this field) falls back to the world archive.
+  const serverMap = useMaybeAuth()?.me?.map;
+  const liveMapBuild = serverMap?.liveBuild ?? null;
+  // Which vintage of the offline archives the server is cutting — what lets a downloaded map be
+  // REPLACED rather than held forever (ADR-0186 §6 amendment).
+  const archiveVintage = serverMap?.archiveVintage ?? null;
+  const remoteTileUrls = useMemo(
+    () => mapTileUrls(trip?.id, liveMapBuild),
+    [liveMapBuild, trip?.id],
+  );
   const tripEnded = useMemo(
     () => !!trip?.endDate && Date.parse(`${trip.endDate}T23:59:59.999Z`) < nowMs,
     [nowMs, trip?.endDate],
@@ -616,6 +667,7 @@ export function MapView() {
       (place) => savedPlaceIds.has(place.id) && placePoint(place) != null,
     ),
     urls: remoteTileUrls,
+    archiveVintage,
   });
   const tileUrls = mapArchives.urls;
   // The bundled renderer and local archive floor keep this true offline. The capability seam
@@ -630,6 +682,23 @@ export function MapView() {
   // place you are no longer looking at — the state that would otherwise need clearing in the
   // five places `setSelectedId` is called.
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  /** **Is the canvas card folded to its identity row?** (ADR-0122 §7's 2026-08-27 amendment.)
+   *
+   *  Owner report: _"clicking on a stop highlights the route to it, but the place details pops up
+   *  and hides most of the path … sometimes you want to get the details but sometimes you only
+   *  want to see the path"_ — and the same for a place with no path at all, a shelf idea you want
+   *  lit on the canvas without two thirds of the screen explaining it.
+   *
+   *  **A screen-level boolean, unlike `expandedId` right above it, and the difference is the
+   *  point.** The expansion is a state OF a place: carrying it to the next selection would leave
+   *  a research card open on something you are no longer looking at. Folding is a state of the
+   *  READER — "I am reading the map, not the cards" — so it deliberately survives selecting
+   *  another stop, and the owner asked for exactly that (_"sticky for the session"_). Plain
+   *  `useState` **is** that session: this screen unmounts with the tab, so folding is remembered
+   *  for as long as you are on the map and forgotten when you leave it, which is the reset
+   *  nobody has to be given a control for. */
+  const [cardCollapsed, setCardCollapsed] = useState(false);
+  const toggleCardCollapsed = useCallback(() => setCardCollapsed((folded) => !folded), []);
   /** **Did the selection come from this ROW's own tap?** (ADR-0168 §4.)
    *
    *  "Clicking again" means clicking the same thing again, and without this it did not: a
@@ -682,8 +751,9 @@ export function MapView() {
   //     our own reason-first card comes up, which states the on-device promise
   //     (ADR-0006) before anything touches the device;
   //   • already refused → nothing. A refusal is an answer, not an invitation.
-  // Once per session (`locationOffered`), so "לא עכשיו" means not-this-session rather
-  // than a card on every visit to the tab — the nag §6 exists to prevent.
+  // The CARD is once per session (`locationOffered`), so "לא עכשיו" means not-this-session
+  // rather than a card on every visit to the tab — the nag §6 exists to prevent. The FIX is
+  // not: see the effect below.
   //
   // The card is canvas furniture now (ADR-0122 §6), which is why raising it can lower
   // the sheet: a question about a map you cannot see lowers the sheet enough to see it,
@@ -692,26 +762,37 @@ export function MapView() {
     setPromptOpen(true);
     setSheetView((view) => (view === MAP_SHEET_VIEW.full ? MAP_SHEET_VIEW.half : view));
   }, []);
+
+  // **The once-per-session gate covers the CARD and nothing else** (owner, 2026-09-18:
+  // _"the map doesn't always show the current location pin, and sometimes we should click on
+  // the current location button"_). This hook lives in the screen and the screen unmounts on
+  // a tab switch, so the second visit to the tab arrives with no fix and no `nearMe` while
+  // `locationOffered` — which is lifted — is already true. Gating the silent re-request on
+  // it meant the dot came back only if you tapped locate: the exact report, and it was the
+  // WHOLE report on Safari, where `permission` is `unsupported` on every mount and consent
+  // is knowable only from `locationGranted`.
+  //
+  // So consent short-circuits the gate. It cannot raise a dialog — that is what consent
+  // means — and §6's invariant is untouched: the card is still the only thing that asks.
   useEffect(() => {
-    if (locationOffered || offline || nearMe) return;
+    if (finished || offline || nearMe) return;
     // `unknown` means the Permissions API query is still in flight — wait for it,
     // rather than showing a card we may not need. `unsupported` is the settled
     // "nothing better is coming" answer, handled below.
     if (geo.permission === 'unknown') return;
-    if (geo.permission === 'denied') {
-      markLocationOffered();
-      return;
-    }
-    if (geo.permission === 'granted') {
-      markLocationOffered();
+    if (geo.permission === 'granted' || locationGranted) {
       setNearMe(true);
       geo.request();
       return;
     }
+    if (locationOffered) return;
     markLocationOffered();
+    if (geo.permission === 'denied') return;
     openPrompt();
   }, [
+    finished,
     locationOffered,
+    locationGranted,
     offline,
     nearMe,
     geo.permission,
@@ -719,6 +800,16 @@ export function MapView() {
     geo.request,
     openPrompt,
   ]);
+
+  // The session's memory of consent, written from the one place that actually knows: the
+  // outcome of a request. `granted` is the standing permission a later visit re-uses;
+  // `denied` withdraws it, so a permission revoked in browser settings costs one silent
+  // refusal rather than one per visit for the rest of the session. `unavailable` writes
+  // nothing — a radio that is off is not an answer about consent (ADR-0126 §6).
+  useEffect(() => {
+    if (geo.status === 'granted') setLocationGranted(true);
+    else if (geo.status === 'denied') setLocationGranted(false);
+  }, [geo.status, setLocationGranted]);
 
   // ONE RULE, three callers (ADR-0126 §7): a canvas control whose answer lives in the
   // list normalises the sheet to `half`. A row tap already did it; the area sort and a
@@ -810,9 +901,20 @@ export function MapView() {
     return byPlace;
   }, [geo.coords, places]);
 
+  // **The trip's window, because a day scope is only as honest as its days** (ADR-0236 §4,
+  // reaching the map 2026-09-20). Both derivations below read it, so the pin and the row put
+  // one landing on one day; without it the flight home's destination has a day facet the
+  // strip has no chip for and the map draws the departure airport alone.
+  const tripRange = useMemo(
+    () =>
+      trip?.startDate && trip?.endDate
+        ? { startDate: trip.startDate, endDate: trip.endDate }
+        : undefined,
+    [trip?.startDate, trip?.endDate],
+  );
   const usageIndex = useMemo(
-    () => buildPlaceUsageIndex(events, bookings, maybeItems, places),
-    [events, bookings, maybeItems, places],
+    () => buildPlaceUsageIndex(events, bookings, maybeItems, places, tripRange),
+    [events, bookings, maybeItems, places, tripRange],
   );
   const placeById = useMemo(() => new Map(places.map((p) => [p.id, p])), [places]);
   const allUsages = useMemo(() => [...usageIndex.values()], [usageIndex]);
@@ -830,7 +932,7 @@ export function MapView() {
   // per call site. `today` is the trip-local date, which is what lets a whole passed
   // day count as behind you even where nothing carries a clock.
   const today = liveToday(nowMs, zoneEvidence);
-  const dayCtx = { onDate: scopedDate, nowMs, today };
+  const dayCtx = { onDate: scopedDate, nowMs, today, phase };
 
   // …AND A LIVE QUERY WIDENS THE LIST THE SAME WAY `כל הימים` DOES.
   //
@@ -852,7 +954,7 @@ export function MapView() {
   // untouched — it has always named the day of anything out of scope through `forceDay`,
   // which is why this defect could be checked on a real device and read as fixed.
   const listSpansTrip = allDays || searching;
-  const listCtx = { onDate: listSpansTrip ? undefined : activeDate, nowMs, today };
+  const listCtx = { onDate: listSpansTrip ? undefined : activeDate, nowMs, today, phase };
 
   // ADR-0119's coupling rule, now on THREE axes: each facet's count is what the
   // OTHER facets leave visible, so no chip ever claims rows the list won't show.
@@ -863,7 +965,7 @@ export function MapView() {
   const leftOk = (u: PlaceUsage) => !leftOnly || isPlaceLeft(u, dayCtx);
   const countScope = useMemo(
     () => dayScoped.filter((u) => shelfOk(u) && leftOk(u)),
-    [dayScoped, maybesOnly, leftOnly, scopedDate, nowMs, today],
+    [dayScoped, maybesOnly, leftOnly, scopedDate, nowMs, today, phase],
   );
   const categoryCounts = useMemo(() => countPlacesByCategory(countScope), [countScope]);
   const hasMaybes = allUsages.some(isOnShelf);
@@ -1062,10 +1164,19 @@ export function MapView() {
   // time-anchor cue the map's colour budget allows (ADR-0109 §6) — an amber tag on
   // one row, and the SAME cue as an outline on one pin (ADR-0121 §6). Only in Trip
   // mode: a live "next" says nothing while you're planning.
-  const nextStopId = useMemo(() => {
+  //
+  // **A stop can be several places** (ADR-0225 §4): `nextStopId` is the peer the stop is
+  // entered through and carries the WORD; `nextStopIds` is every place of the stop and carries
+  // the ring. One amber cue on one stop — the population the budget counts is stops.
+  const nextStop = useMemo(() => {
     if (mode !== 'trip') return undefined;
-    return nextDestination(events, bookings, places, nowMs)?.place.id;
+    return nextDestination(events, bookings, places, nowMs);
   }, [mode, events, bookings, places, nowMs]);
+  const nextStopId = nextStop?.place.id;
+  const nextStopIds = useMemo(
+    () => new Set([nextStopId, ...(nextStop?.peers.map((peer) => peer.place.id) ?? [])]),
+    [nextStopId, nextStop],
+  );
 
   // Where you ARE — the second time-anchor, and the one the tab was missing. Read
   // off `currentDestination`, which asks `deriveNow`: the board's own resolver, so
@@ -1073,10 +1184,15 @@ export function MapView() {
   // Trip mode only, for the same reason `nextStopId` is: a live "now" says nothing
   // while you're planning. The two are mutually exclusive per place — `eventPhase`
   // is `now` or `upcoming`, never both — so no row and no pin ever carries both cues.
-  const nowStopId = useMemo(() => {
+  const nowStop = useMemo(() => {
     if (mode !== 'trip') return undefined;
-    return currentDestination(events, bookings, places, nowMs)?.place.id;
+    return currentDestination(events, bookings, places, nowMs);
   }, [mode, events, bookings, places, nowMs]);
+  const nowStopId = nowStop?.place.id;
+  /** **Where the journey you are inside is taking you**, or `undefined` when "now" is a place
+   *  you are standing in (`currentDestination`'s `inTransit`). A plain string rather than the
+   *  object, so the amber leg's memo below can depend on it without rebuilding on every tick. */
+  const transitStopId = nowStop?.inTransit ? nowStop.place.id : undefined;
 
   // **Which places are connection stops** (ADR-0159), from the same rule the day list
   // draws its bands from — so the pin, the row beneath it and the day's own band say
@@ -1084,14 +1200,14 @@ export function MapView() {
   // airport you change planes at on the way out is a plain destination on the way home.
   const connectionWordAt = useMemo(() => {
     const words = new Map<string, string>();
-    for (const stop of connectionStops(bookings, events, bookingWhen(events))) {
+    for (const stop of connectionStops(bookings, events, bookingWhen(events), tripRange)) {
       words.set(
         connectionStopKey(stop.placeId, stop.date),
         t.day.join.word[stop.type] ?? t.day.join.word.flight,
       );
     }
     return (placeId: string, date: string) => words.get(connectionStopKey(placeId, date));
-  }, [bookings, events]);
+  }, [bookings, events, tripRange]);
 
   // ── The pins (ADR-0121 §6) ────────────────────────────────────────────────
   // The number is the index in the scoped day sequence, computed over the whole
@@ -1113,6 +1229,25 @@ export function MapView() {
   // pins and the sequence the card steps through are the same derivation asked twice, so
   // they cannot disagree about what a stop is — which is the failure ADR-0121 §6's
   // 2026-08-06 amendment was written to end, reached from a second direction.
+  // **WHERE THIS DAY'S MORNING STARTS**, so the route can tell a night arrival from an early
+  // start (ADR-0054's 2026-08-26 second amendment). A wall-clock hour needs a zone, which the
+  // derivation deliberately has none of — so the screen resolves it, in the DAY's own ambient
+  // zone rather than the live one, the same rule every other day-scoped read here follows.
+  //
+  // **MEMOIZED, and that is not a micro-optimisation on this screen.** `dayAmbientZone` builds
+  // an `Intl.DateTimeFormat` per event of the day and `zonedIso` up to three more, and this
+  // screen re-renders EVERY SECOND on the clock (ADR-0121 §4) — so in the render body it was
+  // that whole cost per tick, for a value that changes only when the day or the itinerary's
+  // zone evidence does. The same rule the pins array, the handlers and `defaultCentre` here
+  // already follow, and the shape §AC6 was written about: the work was never the problem, WHEN
+  // it lands is.
+  const dawnMs = useMemo(
+    () =>
+      scopedDate
+        ? dayWindowMs(scopedDate, dayZoneContext(scopedDate, zoneEvidence).ambientZone).startMs
+        : undefined,
+    [scopedDate, zoneEvidence],
+  );
   const dayStopCtx = {
     nameOf,
     onDate: scopedDate,
@@ -1120,10 +1255,11 @@ export function MapView() {
     // The same lookup the pin's WORD reads (ADR-0159 §6), so a place cannot be a
     // layover in one sentence and two stops in the other.
     isConnectionStop: (placeId: string, date: string) => connectionWordAt(placeId, date) != null,
+    dawnMs,
   };
   const orderIndex = useMemo(
     () => buildPinOrderIndex(dayScoped, { ...dayStopCtx, nowMs: nowRef.current }),
-    [dayScoped, scopedDate, placeById, orderMinute],
+    [dayScoped, scopedDate, placeById, orderMinute, dawnMs],
   );
   /** **The day's stops, in order** — what the card's track steps through (ADR-0182 §1).
    *  Clock-free by construction, so it is NOT keyed on `orderMinute`: a tick must not
@@ -1131,7 +1267,7 @@ export function MapView() {
    *  which is why there is no traversal there and nothing to disable (§11). */
   const dayStops = useMemo(
     () => buildDayStopSequence(dayScoped, dayStopCtx),
-    [dayScoped, scopedDate, placeById],
+    [dayScoped, scopedDate, placeById, dawnMs],
   );
 
   // `planning` withdraws the behind-you tier in Plan mode (ADR-0130 §2): the clock still
@@ -1142,11 +1278,12 @@ export function MapView() {
   // the pin is read as, and the mark reports on THAT day (`pinOutcome`'s rule 2). Built in
   // the render body, not memoized — `nowMs` ticks every second, so a memo would rebuild it
   // anyway, and it is only ever read here.
-  const pinCtx: PinContext = { onDate: scopedDate, nowMs, today, planning: mode === 'plan' };
-  // `planning` withdraws the behind-you tier in Plan mode (ADR-0130 §2): the clock still
-  // resolves which day a place is read as, but a day you are arranging has no past — and
-  // the pins you can least afford to fade are the ones you came to rearrange. It sits
-  // beside `nextStopId`/`nowStopId`, which are Trip-only for the mirror-image reason.
+  //
+  // **A finished trip passes `finished` instead** (ADR-0241 §1): its mode is `plan`, and
+  // `planning` silenced every outcome mark on the one trip whose outcomes are the point.
+  const pinCtx: PinContext = finished
+    ? { onDate: scopedDate, nowMs, today, finished: { eventById: eventLookup } }
+    : { onDate: scopedDate, nowMs, today, planning: mode === 'plan' };
   const pinTier = (usage: PlaceUsage): PinTier => placePinTier(usage, pinCtx);
 
   // Built every render (it is cheap), then memoized on its own CONTENT below: the
@@ -1179,7 +1316,7 @@ export function MapView() {
       const tier = pinTier(usage);
       // Hoisted out of the object because the phase word reads them too: an amber pin's
       // word survives the day scope where every other pin's does not (see `transition`).
-      const isNext = nextStopId === usage.placeId && !isAsidePin(tier);
+      const isNext = nextStopIds.has(usage.placeId) && !isAsidePin(tier);
       const isNow = nowStopId === usage.placeId && !isAsidePin(tier);
       // Hoisted for the same reason those two are: the object below reads it once, and a ghost
       // (which draws no fill) has to be able to opt out without asking the resolver twice.
@@ -1222,6 +1359,8 @@ export function MapView() {
         // whole distinction, and writing it as one query-aware predicate would have
         // changed five behaviours silently, two of them wrongly.
         nextStop: isNext,
+        // A peer of the next stop wears the ring and not the word (ADR-0225 §4).
+        nextPeer: isNext && nextStopId !== usage.placeId,
         nowStop: isNow,
         // WHICH TRANSITION IS NEXT HERE (ADR-0141) — the word the row's own meta line
         // already leads with, so `צ׳ק-אאוט` stops being something only the list knows.
@@ -1240,10 +1379,15 @@ export function MapView() {
         //
         // An ASIDE pin is excluded for the reason it carries no amber either: it is not
         // what you are looking at.
-        transition:
-          (scopedDate || isNext || isNow) && !isAsidePin(tier)
-            ? pinTransition(usage, pinCtx, eventLookup, connectionWordAt)
-            : undefined,
+        // **On a finished trip a stay says how long we slept there** (ADR-0241 §1), in the same
+        // neutral tag: there is no next transition left for the slot to name.
+        transition: isAsidePin(tier)
+          ? undefined
+          : finished && stayNights(usage, eventLookup) > 0
+            ? nightPhrase(stayNights(usage, eventLookup))
+            : scopedDate || isNext || isNow
+              ? pinTransition(usage, pinCtx, eventLookup, connectionWordAt)
+              : undefined,
         selected: selectedId === usage.placeId,
         label: place.name,
       });
@@ -1276,6 +1420,7 @@ export function MapView() {
         // while the tab is open changes the tag and nothing else about the pin.
         p.transition,
         p.nextStop,
+        p.nextPeer,
         p.nowStop,
         p.selected,
       ].join('|'),
@@ -1344,16 +1489,312 @@ export function MapView() {
   // on the pins, the line's one remaining job is revealing the day's SHAPE, which
   // is a planning question; in Trip mode you are living the day and need "where is
   // next", so its canvas stays quieter.
-  const dayShapeVisible = !allDays && mode === 'plan';
-  const orderedStops = useMemo(
+  //
+  // **A finished trip's all days draws the JOURNEY** (ADR-0241 §1, amending ADR-0182 §11): what
+  // happened, every day's sequence by date, in the connector's neutral ink.
+  const journey = finished && allDays;
+  const dayShapeVisible = journey || (!allDays && mode === 'plan');
+  // **THE ROUTE IS THE DAY'S SEQUENCE, NOT THE DAY'S NUMBERS** (ADR-0054's 2026-08-25
+  // amendment). This filtered on `pin.order != null`, which quietly made the visible NUMBER
+  // the gate on the line — so the two stops you can be surest of, the hotel you woke in and
+  // the one you are sleeping in, were the two the route could never reach, and a car
+  // collected "from 09:00" was drawn nowhere at all. `dayStops` is the same derivation the
+  // numbers come from ({@link buildDayStopSequence}), read one step earlier: a stop holds a
+  // position whether or not it can defend a number.
+  //
+  // The tail is still out — a place pencilled to the day with no event is not somewhere the
+  // line can claim you went — and so are the aside pins, which is what `ghostsInArea` below
+  // relies on.
+  const pinByPlace = useMemo(() => new Map(pins.map((pin) => [pin.placeId, pin])), [pins]);
+  const placeLabels = usePlaceLabels();
+
+  // ── Replay (ADR-0241 §2) ──────────────────────────────────────────────────
+  // The days with a record, by the contact sheet's own rule and name (`memoryDays`), each its
+  // `buildDayStopSequence` in order — skipped and unmarked stops included, since they light with
+  // their marks. Under reduced motion there is no replay at all: the static journey is the answer.
+  const replayNow = useMemo((): ReplayDay[] | undefined => {
+    if (!journey || !hasMap || prefersReducedMotion() || !trip.startDate || !trip.endDate)
+      return undefined;
+    const startDate = trip.startDate;
+    const { days } = memoryDays({
+      trip: { ...trip, startDate, endDate: trip.endDate },
+      events,
+      bookings,
+      places,
+      placeLabels,
+      enrichments,
+    });
+    return days
+      .map((day) => ({
+        caption: t.map.replay.caption(tripDayNumber(day.date, startDate), day.name),
+        stops: buildDayStopSequence(dayScoped, {
+          ...dayStopCtx,
+          onDate: day.date,
+          dawnMs: dayWindowMs(day.date, dayZoneContext(day.date, zoneEvidence).ambientZone).startMs,
+        })
+          .filter((stop) => !stop.tail)
+          .map((stop) => pinByPlace.get(stop.usage.placeId))
+          .filter((pin): pin is MapPin => pin != null && !isAsidePin(pin.tier))
+          .filter((pin, i, all) => i === 0 || pin.placeId !== all[i - 1]!.placeId)
+          .map(({ placeId, lat, lng }) => ({
+            placeId,
+            reach: replayReach(day.date, placeId),
+            lat,
+            lng,
+          })),
+      }))
+      .filter((day) => day.stops.length > 0);
+  }, [
+    journey,
+    hasMap,
+    trip,
+    events,
+    bookings,
+    places,
+    placeLabels,
+    enrichments,
+    dayScoped,
+    pinByPlace,
+    zoneEvidence,
+  ]);
+  const replayKey = JSON.stringify(replayNow ?? null);
+  const replayDays = useMemo(() => replayNow, [replayKey]);
+  /** The sheet drops to the map while a replay plays, and returns to where it was after. */
+  const sheetBeforeReplay = useRef<MapSheetView | null>(null);
+  const onReplayChange = useCallback((playing: boolean) => {
+    if (playing) {
+      setSheetView((view) => {
+        sheetBeforeReplay.current = view;
+        return MAP_SHEET_VIEW.map;
+      });
+      return;
+    }
+    const before = sheetBeforeReplay.current;
+    sheetBeforeReplay.current = null;
+    if (before) setSheetView(before);
+  }, []);
+  // **The route keeps its STOPS beside its pins, and that is what fixes a reported defect.** A
+  // place visited twice is two stops and one pin — since M7c's bookends, routinely: a middle
+  // night's stay is the day's first stop and its last. Mapping straight to pins threw away which
+  // occurrence each entry was, so `findIndex` on a place id answered the FIRST one and the amber
+  // leg was drawn into the morning visit when the evening one was selected.
+  const journeyStops = useMemo(
     () =>
-      pins
-        .filter((pin) => pin.order != null && !isAsidePin(pin.tier))
-        .sort((a, b) => a.order! - b.order!)
-        .map(({ lat, lng }) => ({ lat, lng })),
-    [pins],
+      journey && trip.startDate && trip.endDate
+        ? buildJourney(dayScoped, tripDates(trip.startDate, trip.endDate), {
+            nameOf,
+            eventById: eventLookup,
+            isConnectionStop: dayStopCtx.isConnectionStop,
+            dawnMsOf: (date) =>
+              dayWindowMs(date, dayZoneContext(date, zoneEvidence).ambientZone).startMs,
+          })
+        : undefined,
+    [
+      journey,
+      dayScoped,
+      trip.startDate,
+      trip.endDate,
+      placeById,
+      zoneEvidence,
+      eventLookup,
+      connectionWordAt,
+    ],
   );
-  const dayRouteUrl = dayShapeVisible ? mapsDayRouteUrl(orderedStops) : null;
+  const orderedRoute = useMemo(
+    () =>
+      (journeyStops ?? dayStops)
+        .filter((stop) => !stop.tail)
+        .map((stop) => ({ stop, pin: pinByPlace.get(stop.usage.placeId) }))
+        .filter((entry): entry is { stop: DayStop; pin: MapPin } => {
+          return entry.pin != null && !isAsidePin(entry.pin.tier);
+        })
+        // A stay that bookends both ends of a day with nothing else on it would otherwise
+        // ask for a leg from a place to itself.
+        .filter((entry, i, all) => i === 0 || entry.pin.placeId !== all[i - 1]!.pin.placeId),
+    [journeyStops, dayStops, pinByPlace],
+  );
+  const orderedPins = useMemo(() => orderedRoute.map(({ pin }) => pin), [orderedRoute]);
+  const orderedStops = useMemo(
+    () => orderedPins.map(({ lat, lng }) => ({ lat, lng })),
+    [orderedPins],
+  );
+  const dayRouteUrl = dayShapeVisible && !finished ? mapsDayRouteUrl(orderedStops) : null;
+
+  // **The one leg the amber is spent on** (ADR-0206 §D8): the journey INTO the stop you are
+  // asking about — the selected one, or the next one in Trip mode. Into rather than out of,
+  // because that is the question both reads answer (§V1.2's `~23 דק׳ · צאו ב־18:37` is the travel
+  // TO where you are going), and §AC2 keeps the two answers from diverging.
+  //
+  // **There is no third arm, and its deletion is the point** (§AC1). It used to fall back to the
+  // day's first leg, because Plan mode drew nothing at all otherwise — a reason §AB5 removed in
+  // the same PR by making every leg draw its real path. With nothing selected and no live "next",
+  // Plan mode now spends **no amber**, which is §D8 as it was always written.
+  //
+  // **Which OCCURRENCE is `relevantMoment`'s**, the same rule that decides the number the pin
+  // wears (`buildPinOrderIndex`) — so the line and the badge agree, which is exactly what a reader
+  // checks when they tap `5` and look for a line from `4`. The decision itself is
+  // `lib/map-pins.ts`'s, because `frontend/CLAUDE.md` puts what the canvas draws in a pure
+  // function rather than in a `useMemo` here; this is where it got the twice-visited day wrong.
+  const amberLeg = useMemo(() => {
+    if (allDays) return -1;
+    return amberLegIndex(
+      orderedRoute.map(({ stop }) => stop),
+      {
+        selectedPlaceId: orderedRoute.find(({ pin }) => pin.selected)?.pin.placeId,
+        // **The leg you are ON outranks the stop past it** — see `amberLegIndex`.
+        transitPlaceId: transitStopId,
+        nextStopPlaceId: orderedRoute.find(({ pin }) => pin.nextStop)?.pin.placeId,
+        eventById: eventLookup,
+        nowMs: nowRef.current,
+      },
+    );
+  }, [orderedRoute, allDays, eventLookup, orderMinute, transitStopId]);
+
+  // **What kind of trip this is** (ADR-0206 §Z2), derived rather than stored. Not a constant: a
+  // hardcoded `walking` drew footpath routes over legs the trip drives, which is a wrong line
+  // rather than an imprecise one.
+  //
+  // **The trip's answer is only the FLOOR under each leg's** since §AU2 — see `legModes` below.
+  const travelMode = useMemo(() => derivedTravelMode(bookings), [bookings]);
+
+  /** **The day's DURATIONS, which this screen reads for one reason: the walk's own length is what
+   *  decides whether a leg is a walk** (ADR-0206 §AV1).
+   *
+   *  Not a second source of truth and not a second request in the ordinary case: it is the same
+   *  hook, the same `routeLegKey` and the same Dexie table `useDayShapes` below already reads, and
+   *  a day whose numbers the day surface has fetched answers this from the cache with no network
+   *  at all. What it buys is that the canvas and the list decide a leg's mode from the same fact —
+   *  the crow floor alone would have this screen calling Bjólfur a walk while the day, holding the
+   *  ⁦4:18⁩ estimate, correctly calls it a drive. That is §AM8's divergence with a new cause. */
+  const dayTravel = useDayTravel({ tripId: trip.id, stops: orderedStops });
+
+  /** **Each leg's own mode** (ADR-0206 §AM), in the day's order — the same three derivations the
+   *  day list makes, in the same order, so one leg cannot be a drive in the list and a walk on the
+   *  canvas.
+   *
+   *  **`defaultLegTravelMode` is the half added by §AU2**, and leaving it out here is exactly the
+   *  divergence §AM8 already reported once from the other side: the day list would call the ⁦127 km⁩
+   *  hop a drive and this canvas would ask for its PEDESTRIAN geometry, which is a different road
+   *  and — past walking's ⁦15 km⁩ ceiling — no road at all. Two call sites, one set of rules. */
+  const legModes = useMemo(
+    () =>
+      orderedStops
+        .slice(0, -1)
+        .map((_, i) =>
+          legTravelMode(
+            travelModeOverrides,
+            orderedPins[i]?.placeId,
+            orderedPins[i + 1]?.placeId,
+            defaultLegTravelMode(
+              orderedStops[i],
+              orderedStops[i + 1],
+              travelMode,
+              orderedStops[i] && orderedStops[i + 1]
+                ? dayTravel.estimateFor(orderedStops[i]!, orderedStops[i + 1]!, TRAVEL_MODE.WALKING)
+                    ?.durationSeconds
+                : null,
+            ),
+          ),
+        ),
+    [orderedStops, orderedPins, travelModeOverrides, travelMode, dayTravel],
+  );
+
+  // **ONE request for the whole day's geometry** (ADR-0206 §Z5 §M3), read back through the same
+  // `routeLegKey` the day's numbers use, so the lines and the numbers cannot disagree about a leg.
+  // The per-leg `/route` calls are the server's, paced and cached — from here it is one ask.
+  //
+  // **The modes are the LEGS', deduped, and asking with ONE was a reported defect** (§AM8): a leg
+  // overridden to driving on a walking trip drew the WALK's geometry, which is a different road —
+  // the report was a drive entering a one-way street from the wrong end. Declared legs are filtered
+  // out because nothing routes them (§AA4); no re-ask is needed to keep this stable, since
+  // `useDayShapes` gates its own effect on a fingerprint of the keys rather than on this array.
+  const shapeModes = useMemo(
+    () => [...new Set(legModes.filter(isRoutableMode))].sort(),
+    [legModes],
+  );
+  const dayShapes = useDayShapes({ tripId: trip.id, stops: orderedStops, modes: shapeModes });
+
+  // **Every leg drawn along the route it describes**, with the straight segment as the floor for
+  // one whose shape has not arrived (§D4) — §D8 rations the SOLID AMBER, not the truth of the
+  // line. Emphasis is §AC2: the amber leg, the one departing the same stop at weight only, and
+  // everything else pushed back. With no amber leg there is nothing to recede FROM, so no leg is
+  // dimmed and a Plan day reads as one even set.
+  const dayLegs = useMemo<MapDayLeg[]>(() => {
+    const legs: MapDayLeg[] = [];
+    // **No leg inside a stop** (ADR-0225 §3). Two consecutive stops that are peers of one
+    // cluster are one place you are at, not a journey: the day has no join between them
+    // (`dayBlocks`), so there is no duration to give a leg and no amber to spend on it. The
+    // pane is handed a TETHER instead — a short neutral dash that says only "one stop".
+    const isTether = (i: number) => {
+      const a = orderedRoute[i]?.stop.peerKey;
+      return a != null && a === orderedRoute[i + 1]?.stop.peerKey;
+    };
+    // `near` is the leg departing the amber one's stop (§AC2) — the first real leg after it,
+    // which is not the tether when the stop has two places.
+    let nearLeg = amberLeg + 1;
+    while (amberLeg >= 0 && isTether(nearLeg)) nearLeg += 1;
+    for (let i = 0; i + 1 < orderedStops.length; i++) {
+      const from = orderedStops[i]!;
+      const to = orderedStops[i + 1]!;
+      // The stop this leg reaches, as replay keys it (ADR-0241 §2).
+      const reached = orderedRoute[i + 1];
+      const reach =
+        journey && reached
+          ? { reach: replayReach(reached.stop.day.date, reached.pin.placeId) }
+          : {};
+      if (isTether(i)) {
+        legs.push({ path: [from, to], from, to, tether: true, ...reach });
+        continue;
+      }
+      const emphasis =
+        amberLeg < 0
+          ? undefined
+          : i === amberLeg
+            ? ('route' as const)
+            : i === nearLeg
+              ? ('near' as const)
+              : ('dim' as const);
+      // **A DECLARED leg draws its own straight segment, never the road route** (ADR-0206 §AA4's
+      // 2026-08-27 amendment). This is §Z5's live defect: a train booking's two ends were drawn as
+      // a road route whenever the pair sat under the mode's ceiling — Senso-ji → Tokyo Station is
+      // 4.6 km, well inside walking's 15 km — so the canvas made a false claim about the PATH, the
+      // same failure as the false NUMBER the declaration silences. `pathFor` is not consulted at
+      // all here, which is what makes the claim impossible rather than merely unlikely.
+      // **Asked with the LEG's mode** (§AM8) — a walk and a drive between two stops are different
+      // roads, so a shape read under the wrong mode is a false claim about the path even where both
+      // modes have one. A declared leg is not asked at all: `pathFor` is never reached for it.
+      const legMode = legModes[i] ?? travelMode;
+      const routed = isRoutableMode(legMode) ? dayShapes.pathFor(from, to, legMode) : null;
+      // **A leg the GATE refuses draws the same disclaiming line a declared one does** (ADR-0206
+      // §AM10). `pathFor` answers `null` for it exactly as it does for a leg still warming, and
+      // the two must not be drawn the same way: a warming leg gets its road in a moment, while a
+      // 40 km walk never will — so painting the straight segment between its ends in solid amber
+      // asserts a road journey nobody can make. `exceedsTravelCeiling` is the gate's own ceiling
+      // (the same one the day surfaces read through `refusedFor`), asked here rather than plumbed
+      // because this screen holds coordinates and the day surfaces hold rows.
+      const refused = isRoutableMode(legMode) && exceedsTravelCeiling(legMode, from, to);
+      legs.push({
+        path: [...(routed ?? [from, to])],
+        from,
+        to,
+        emphasis,
+        // The journey spends no amber (ADR-0241 §1): a leg with no shape is the plain dash.
+        ...((!isRoutableMode(legMode) || refused) && !journey ? { unrouted: true } : {}),
+        ...reach,
+      });
+    }
+    return legs;
+  }, [orderedStops, orderedRoute, dayShapes, amberLeg, legModes, travelMode, journey]);
+
+  // The dashed ORDER is Plan mode + day scope only (ADR-0121 §10); the one amber leg draws in
+  // either mode, because it answers "where is next" rather than "what shape is this day"
+  // (ADR-0206 §AB1). So Trip mode is handed that leg alone — plus the tethers (ADR-0225 §3),
+  // which say which pins are one stop, a fact both modes' numbers already assert.
+  const paneLegs = useMemo(
+    () =>
+      dayShapeVisible ? dayLegs : dayLegs.filter((leg) => leg.emphasis === 'route' || leg.tether),
+    [dayShapeVisible, dayLegs],
+  );
 
   const areaCount = useMemo(
     () => (viewBounds ? countPointsInBounds(pins, viewBounds) : null),
@@ -1482,59 +1923,33 @@ export function MapView() {
   const showRowInList = useRef<(placeId?: string | null, resultId?: string | null) => void>(
     () => {},
   );
-  /** The one frame this may have pending. **At most one scroll is ever in flight**, and both
-   *  reasons are behavioural rather than tidiness: two transitions in quick succession (tap a row,
-   *  then change the stop) would otherwise fire two scrolls, the first aimed at a target the
-   *  second has already replaced; and a frame that outlives the screen would scroll a row that is
-   *  no longer on it. */
-  const pendingScroll = useRef<number | undefined>(undefined);
-  useEffect(() => () => cancelAnimationFrame(pendingScroll.current ?? 0), []);
+  /** The landing this may have in flight. **At most one, ever**, and both reasons are
+   *  behavioural rather than tidiness: two transitions in quick succession (tap a row, then
+   *  change the stop) would otherwise leave two watchers aiming at different rows, and one that
+   *  outlived the screen would scroll a row that is no longer on it. */
+  const pendingLanding = useRef<() => void>(() => {});
+  useEffect(() => () => pendingLanding.current(), []);
   showRowInList.current = (placeId, resultId) => {
-    // Deferred a frame so a row that has just grown is measured at its real height, and so a stop
-    // change has committed the sheet's new box before we scroll inside it.
+    pendingLanding.current();
+    // **THE AIM IS WATCHED, NOT FIRED AND FORGOTTEN** (`lib/land-at-top.ts`, which carries the
+    // whole reasoning and the measurements). Three things this screen used to own are its now:
+    // the deferred frame, waiting for a row that the same gesture's `setAllDays` has not
+    // committed yet, and re-aiming once the extent the row needs actually exists.
     //
-    // **AND IT WAITS FOR A ROW THAT IS NOT THERE YET** (owner, 2026-08-06: _"when clicking on the
-    // icon to go to the map, it sometimes doesn't go to the map list row. I can see that it's
-    // expanded, but it just doesn't land there."_). One frame is enough when the row is already
-    // rendered — which is why it worked most of the time — and it is not when the same gesture
-    // widened the list to find it: an arrival from another day calls `setAllDays` and this in one
-    // pass, and whether React has committed the wider list by the next frame is a race. So it
-    // retries for a bounded handful of frames rather than scrolling to nothing once.
-    cancelAnimationFrame(pendingScroll.current ?? 0);
-    let framesLeft = ROW_SCROLL_WAIT_FRAMES;
-    const findAndScroll = () => {
-      // The sheet where there IS one, the document otherwise — because the graceful-absence path
-      // renders this list straight into the shell's scrolling body with no sheet at all (§8).
-      // Scoping to a null ref there meant a selected card could open below the fold and nothing
-      // moved, which is the same defect this function exists for.
-      //
-      // **That path is reached by being OFFLINE now, and by nothing else** (ADR-0186 §8): a
-      // missing Maps key used to be its other cause, and there is no build configuration left to
-      // be missing. Worth naming, because the two layouts put this list in different scrollers and
-      // `scrollIntoView` acts on whichever one it is in — `e2e/place-know.spec.ts` measured the
-      // wrong box for exactly that reason until Phase 2 made the split e2e's default.
+    // The scope is the sheet where there IS one, the document otherwise — because the
+    // graceful-absence path renders this list straight into the shell's scrolling body with no
+    // sheet at all (§8), and the two layouts put the list in different scrollers.
+    // **That path is reached by being OFFLINE now, and by nothing else** (ADR-0186 §8): a
+    // missing Maps key used to be its other cause, and there is no build configuration left to
+    // be missing. Worth naming, because `e2e/place-know.spec.ts` measured the wrong box for
+    // exactly that reason until Phase 2 made the split e2e's default.
+    pendingLanding.current = landAtTop(() => {
       const scope: ParentNode = sheetRef.current ?? document;
-      const row =
-        (placeId ? scope?.querySelector(`[data-place="${placeId}"]`) : null) ??
-        (resultId ? scope?.querySelector(`[data-result="${resultId}"]`) : null);
-      // The gap above the card is `scroll-margin-top` on `.place` (map.css), not a number here:
-      // it is a property of the row's own box, and CSS is where the sheet's edges already live.
-      //
-      // **AND IT ANIMATES** (owner, 2026-08-06: _"it's a little confusing when it doesn't do the
-      // animation"_ — ADR-0168 §3). The offset was right and the arrival was instant, so the list
-      // was simply somewhere else the next frame and nothing said a row had been brought to you.
-      // Reduced motion drops the easing and keeps the move, which is this app's one rule about
-      // animation everywhere else (ADR-0098 §4) — and `motion.ts` is where that question is
-      // answered, never a media query written out again here.
-      if (!row) {
-        // Not rendered yet — try again next frame, up to the budget. `pendingScroll` still holds
-        // at most one frame, so the "one scroll in flight" rule above is unchanged.
-        if (framesLeft-- > 0) pendingScroll.current = requestAnimationFrame(findAndScroll);
-        return;
-      }
-      row.scrollIntoView({ block: 'start', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
-    };
-    pendingScroll.current = requestAnimationFrame(findAndScroll);
+      return (
+        (placeId ? scope.querySelector(`[data-place="${placeId}"]`) : null) ??
+        (resultId ? scope.querySelector(`[data-result="${resultId}"]`) : null)
+      );
+    });
   };
 
   // Tapping the canvas background clears the selection — the map idiom, and the place
@@ -1934,6 +2349,10 @@ export function MapView() {
 
   const openDraft = useRef<(next: MapDraft, frameAt?: LatLng) => void>(() => {});
   openDraft.current = (next, frameAt) => {
+    // Every source stops here on a finished trip (ADR-0239 §4: settling is its only write).
+    // Their controls are already absent, rename's included, but a long press on blank canvas
+    // has no control to withhold.
+    if (finished) return;
     // **EXACTLY ONE CARD ON THIS CANVAS** (ADR-0125 §6, ADR-0122 §7). A canvas gesture lands
     // on something that is not ours, so it replaces the selection outright — which is also
     // what every map app does when you tap something else. The other two sources are ABOUT
@@ -2242,6 +2661,19 @@ export function MapView() {
       finishErrand(placeId);
       return;
     }
+    // **AND WHERE THERE IS NOTHING TO COMMIT TO, THE SECOND TAP FOLDS THE CARD** (ADR-0122 §7's
+    // 2026-08-27 amendment). Same reading of the same gesture the branch above takes: the first
+    // tap already said "this one", so a second one on the SAME pin cannot mean that again — here
+    // it means "and now let me look at the map". Gated on the map extreme because that is the
+    // only stop where a card is what a pin tap raises; at `half` and `full` the row is in the
+    // list and folding it would fold something you are not looking at.
+    //
+    // It is a second way in, never the only one: nothing about a repeat tap is discoverable, so
+    // the caret on the card is the affordance and this is the shortcut for a thumb already there.
+    if (selectedId === placeId && sheetView === MAP_SHEET_VIEW.map) {
+      toggleCardCollapsed();
+      return;
+    }
     const usage = usageIndex.get(placeId);
     // An aside pin's row is not in the sheet, so the tap surfaces that one row instead.
     // Keyed on the REASON rather than on one tier: what makes the row missing is that the
@@ -2350,6 +2782,7 @@ export function MapView() {
     onDate: opts.forceDay ? undefined : listCtx.onDate,
     nowMs,
     today,
+    phase,
   });
 
   const dayMeta = (
@@ -2365,7 +2798,8 @@ export function MapView() {
     // Which day only matters when the list spans several: day-scoped, the strip and
     // the scope hint already name it, so `היום ·` on every row would be pure noise.
     // A surfaced ghost row is the exception — naming its day is the whole point.
-    const day = listSpansTrip || opts.forceDay ? relativeDayLabel(usageDay.date, today) : undefined;
+    const day =
+      listSpansTrip || opts.forceDay ? dayLabel(usageDay.date, { trip, today }) : undefined;
     const event = usageDay.eventId ? eventById.get(usageDay.eventId) : undefined;
     // No event owns this day, so the day came from an idea's pencilled-in target
     // (ADR-0116 §1). It's named, not claimed: amber is time & commitment (ADR-0028)
@@ -2417,6 +2851,37 @@ export function MapView() {
   // event's half is not lost with its row — its clock is on the entry's own meta line
   // and its outcome is the settle pair beside it (ADR-0139 §1), which is everything
   // that second row could do except leave the tab.
+  /** **Is this place already on the itinerary FOR THE DAY IN SCOPE?** (owner, 2026-08-16:
+   *  _"שיבוץ ליום should be hidden if already linked to an event/booking to save space"_,
+   *  narrowed the same day to _"only when in day scope"_.)
+   *
+   *  The narrowing is what makes the rule safe, and the first attempt showed why it was
+   *  needed: unscoped, this hides the verb almost always, because the Map's list is BUILT
+   *  from places that events and bookings already use — ten shipped specs encoding
+   *  ADR-0135 §1 failed on it. Day-scoped it says something much narrower and true: this
+   *  place already has a slot on the day you are looking at, so a second `שיבוץ ליום` here
+   *  offers to give it another one, on the card whose space ADR-0182 §9 says is scarce.
+   *
+   *  **In all-days scope the verb always stands**, because "already scheduled" has no
+   *  meaning without a day to be scheduled on — a place visited on Tuesday is a perfectly
+   *  good thing to schedule for Thursday.
+   *
+   *  An IDEA never counts: a place on the shelf is precisely one with no day yet, which is
+   *  the one state this verb exists to answer. */
+  const placeIsScheduledInScope = (placeId: string) =>
+    listCtx.onDate != null &&
+    placeRefs(
+      placeId,
+      { events, bookings, maybeItems },
+      { onDate: listCtx.onDate, range: tripRange },
+    ).some((ref) => ref.kind !== PLACE_REF_KIND.idea);
+
+  /** **The way in to what a reference is about**, shared with the note surfaces
+   *  (`useNoteHostWayIn`): the day plus the id that opens and lands the one card. Held at the
+   *  component level because it is a hook — `refEntriesFor` below is a plain function called
+   *  per row. */
+  const wayIn = useNoteHostWayIn(today);
+
   const refEntriesFor = (usage: PlaceUsage, opts: { forceDay?: boolean } = {}): RefEntry[] => {
     const { onDate } = metaCtx(opts);
     const goToDay = (date: string) => {
@@ -2427,66 +2892,107 @@ export function MapView() {
     // already names it and `היום ·` on every entry is noise. A reference with no day
     // at all says so in either scope: inside a scoped block, silence would read as
     // "on this day".
-    const dayLabel = (date: string | undefined): string | undefined =>
-      date == null ? t.map.noDay : onDate != null ? undefined : relativeDayLabel(date, today);
+    // …**unless the moment does not land on the day it is drawn on** (ADR-0236 §4, on this row
+    // 2026-09-20). A hosted arrival is exactly the case where day-scoped silence would read as
+    // "on this day": the flight home's landing sits on the trip's last day and happens the
+    // morning after it. `relativeDayWord` is the transition row's own vocabulary, so the map
+    // row and the day row say the same thing about the same landing.
+    const refDayLabel = (ref: PlaceRef): string | undefined =>
+      ref.dayOffset
+        ? relativeDayWord(ref.dayOffset)
+        : ref.date == null
+          ? t.map.noDay
+          : onDate != null
+            ? undefined
+            : dayLabel(ref.date, { trip, today });
 
-    const entries = placeRefs(usage.placeId, { events, bookings, maybeItems }, { onDate }).map(
-      (ref): Omit<RefEntry, 'rank'> => {
-        const event = ref.eventId ? eventById.get(ref.eventId) : undefined;
-        const booking = ref.bookingId ? bookings.find((b) => b.id === ref.bookingId) : undefined;
-        if (ref.kind === PLACE_REF_KIND.idea) {
-          // The shelf, which both day surfaces render (Trip's day view and Plan's
-          // builder), so this needs no mode switch. Labelled with the idea's OWN name:
-          // two ideas on one place are two intentions (`soleIdeaFor` turns on exactly
-          // that) and the entry used to read `על המדף · <day>` for both of them.
-          const idea = maybeItems.find((m) => m.id === ref.maybeId);
-          return {
-            key: ref.key,
-            kind: t.map.refs.idea,
-            label: idea?.title || t.map.shelfTag,
-            day: dayLabel(ref.date),
-            onOpen: () => goToDay(ref.date ?? today),
-          };
-        }
-        const title = event ? shortTitleText(event.title) : (booking?.title ?? '');
-        const edgeWord = event && ref.edge ? eventEdgeTransition(event, ref.edge) : undefined;
-        // The time renders in the reference's own zone, each end of a bracketed booking
-        // in its own — the same resolution the row's meta line makes one line up.
-        const zones = event && eventZones(event, zoneCtx);
-        const zone = zones && (ref.edge === 'end' ? zones.endZone : zones.startZone);
-        const settled =
-          event?.status === EVENT_STATUS.DONE
-            ? ('done' as const)
-            : event?.status === EVENT_STATUS.SKIPPED
-              ? ('skipped' as const)
-              : undefined;
-        // The emphasis is the CLOCK's question, asked only of a day that has passed with
-        // nothing said about it — the same `isDayUsagePast` the tier, the block header and
-        // `מה נשאר` all read, so the four cannot disagree about whether a day is closed.
-        const usageDay = usage.days.find((d) => d.date === (ref.date ?? event?.date));
+    const entries = placeRefs(
+      usage.placeId,
+      { events, bookings, maybeItems },
+      { onDate, range: tripRange },
+    ).map((ref): Omit<RefEntry, 'rank'> => {
+      const event = ref.eventId ? eventById.get(ref.eventId) : undefined;
+      const booking = ref.bookingId ? bookings.find((b) => b.id === ref.bookingId) : undefined;
+      if (ref.kind === PLACE_REF_KIND.idea) {
+        // The shelf, which both day surfaces render (Trip's day view and Plan's
+        // builder), so this needs no mode switch. Labelled with the idea's OWN name:
+        // two ideas on one place are two intentions (`soleIdeaFor` turns on exactly
+        // that) and the entry used to read `על המדף · <day>` for both of them.
+        const idea = maybeItems.find((m) => m.id === ref.maybeId);
         return {
           key: ref.key,
-          // The booking leads when there is one: it is what a traveller standing at the
-          // place wants first, and it is `PlaceRef.kind`'s own answer rather than a
-          // second opinion about which entity names this reference.
-          kind: booking ? t.map.refs.booking : t.map.refs.event,
-          label: [title, edgeWord].filter(Boolean).join(` ${DOT_SEPARATOR} `),
-          day: dayLabel(ref.date),
-          time: ref.at != null && zone ? formatTime(new Date(ref.at), zone) : undefined,
-          at: ref.at,
-          onOpen: booking
-            ? () => setDetailBooking(booking)
-            : () => goToDay(ref.date ?? event?.date ?? today),
-          settle: event && {
-            outcome: settled,
-            asking: !settled && !!usageDay && isDayUsagePast(usageDay, nowMs, today),
-            onDone: () => verbs.done(event),
-            onSkip: () => verbs.skip(event),
-            onUndo: () => verbs.restore(event),
-          },
+          kind: t.map.refs.idea,
+          label: idea?.title || t.map.shelfTag,
+          day: refDayLabel(ref),
+          onOpen: () => goToDay(ref.date ?? today),
         };
-      },
-    );
+      }
+      const title = event ? shortTitleText(event.title) : (booking?.title ?? '');
+      const edgeWord = event && ref.edge ? eventEdgeTransition(event, ref.edge) : undefined;
+      // The time renders in the reference's own zone, each end of a bracketed booking
+      // in its own — the same resolution the row's meta line makes one line up.
+      const zones = event && eventZones(event, zoneCtx);
+      const zone = zones && (ref.edge === 'end' ? zones.endZone : zones.startZone);
+      // **THIS END of the booking, not the booking** (ADR-0224 §1, wired here 2026-09-16).
+      // A stay lists twice on its hotel — `צ׳ק-אין` and `צ׳ק-אאוט`, and a hire twice on its
+      // counter — and both rows read the span's `status`, so answering either one ticked both
+      // and said `היינו` about a check-out. `ref.edge` is already in hand: it picks the row's
+      // own word and its own zone two lines up, and had simply never reached the verb.
+      const settleEdge = ref.edge ?? 'start';
+      const settle = event ? edgeSettleProps(event, settleEdge) : undefined;
+      const settled = settle?.outcome;
+      // The emphasis is the CLOCK's question, asked only of a day that has passed with
+      // nothing said about it — the same `isDayUsagePast` the tier, the block header and
+      // `מה נשאר` all read, so the four cannot disagree about whether a day is closed.
+      const usageDay = usage.days.find((d) => d.date === (ref.date ?? event?.date));
+      // **AND A RECORD IS ABOUT A DAY YOU HAVE REACHED** (owner, 2026-09-16, the same report
+      // as the day list's: _"it's only relevant for the current day, not for future days"_).
+      // ADR-0139 §2's "every event is settleable here" was written against the CLOCK — it
+      // protects ADR-0117 §2's early mark on tonight's dinner, which is a claim about today —
+      // and this row has always carried references from every day of the trip, so it read
+      // that rule as covering Thursday too. Asked per REFERENCE rather than per screen,
+      // because all-days puts several days' references in one block; the emphasis above is
+      // the mirror question about a day already behind you.
+      //
+      // An ANSWERED reference keeps its controls, which is the rest of §2: with `outcome`
+      // set the control is the record plus its undo, never the pair, so nothing is stranded.
+      const refDate = ref.date ?? event?.date;
+      const unreached = !settled && !!refDate && refDate > today;
+      return {
+        key: ref.key,
+        // The booking leads when there is one: it is what a traveller standing at the
+        // place wants first, and it is `PlaceRef.kind`'s own answer rather than a
+        // second opinion about which entity names this reference.
+        kind: booking ? t.map.refs.booking : t.map.refs.event,
+        label: [title, edgeWord].filter(Boolean).join(` ${DOT_SEPARATOR} `),
+        day: refDayLabel(ref),
+        time: ref.at != null && zone ? formatTime(new Date(ref.at), zone) : undefined,
+        at: ref.at,
+        // **AND THE EVENT'S OWN CARD IS WHAT IT OPENS** (owner, 2026-08-20: _"going from a
+        // place to the event … doesn't scroll correctly"_). It used to land on the DAY and
+        // stop there: on a full day that leaves you looking at whatever the day opens on,
+        // with nothing saying which of its rows you came for. `wayIn.goTo` is the channel
+        // that already answers this for a note's host — the day, plus `?event=`, which both
+        // day surfaces now open and land on — so this is a second caller rather than a
+        // second rule (the booking below is unchanged: its detail opens HERE, without
+        // leaving the place you are standing on).
+        onOpen: booking
+          ? () => setDetailBooking(booking)
+          : event
+            ? () => wayIn.goTo({ kind: 'event', id: event.id, name: event.title, date: event.date })
+            : () => goToDay(ref.date ?? today),
+        settle:
+          event && settle && !unreached
+            ? {
+                ...settle,
+                asking: !settled && !!usageDay && isDayUsagePast(usageDay, nowMs, today),
+                onDone: () => verbs.done(event, settleEdge),
+                onSkip: () => verbs.skip(event, settleEdge),
+                onUndo: () => verbs.restore(event, settleEdge),
+              }
+            : undefined,
+      };
+    });
 
     // **WHICH ONES SURVIVE THE FOLD** (`PLACE_REFS_CAP`), and it is a different order from
     // the one they are drawn in. Chronological is right for READING a place's history, and
@@ -2512,11 +3018,30 @@ export function MapView() {
   // Built once per note-list change rather than filtered per row: this list can be the whole
   // trip's places, and the mark is on every row that has one (ADR-0152 §6c).
   const noteCounts = useMemo(() => noteCountsByHost(notes), [notes]);
+  // The third mark's tally (ADR-0191 §2) — OPEN tasks only, unlike the two beside it.
+  const settledHosts = useSettledHosts();
+  const taskCounts = useMemo(
+    () => openTaskCountsByHost(tasks, settledHosts),
+    [tasks, settledHosts],
+  );
   // Its twin for attachments (ADR-0174 §1), built once per link-list change.
   const docCounts = useMemo(
     () => attachmentCountsByHost(documentAttachments),
     [documentAttachments],
   );
+
+  /** The finished trip's row button (ADR-0241 §1): the first day this place happened on. */
+  const openDayOf = (usage: PlaceUsage) => {
+    const date = finished && trip.startDate ? firstHappenedDate(usage, eventLookup) : undefined;
+    if (!date || !trip.startDate) return undefined;
+    return {
+      day: tripDayNumber(date, trip.startDate),
+      onOpen: () => {
+        const target = daySelectTarget(date, today, 'days');
+        navigate(target.to, { replace: target.replace });
+      },
+    };
+  };
 
   const renderRow =
     (opts: {
@@ -2543,6 +3068,11 @@ export function MapView() {
        *  card only, and only for the slide that IS the selection: a `✕` on a neighbour would
        *  close a card you are not on. */
       onClose?: () => void;
+      /** **The card folded to its identity row** — see `PlaceRow`'s own note. Passed by the
+       *  canvas card only, and it is what `revealed` is derived from there, so a folded card is
+       *  the row the list already draws rather than a second small card of its own. */
+      collapsed?: boolean;
+      onToggleCollapsed?: () => void;
     }) =>
     (usage: PlaceUsage) => {
       const place = placeById.get(usage.placeId);
@@ -2582,7 +3112,7 @@ export function MapView() {
           distanceStale={staleDistances}
           selected={selected}
           rowRef={opts.slideRef}
-          notes={noteCountForContext(
+          notes={hostCountForContext(
             noteCounts,
             resolveHostContext(hostContexts, { kind: 'place', id: usage.placeId }),
           )}
@@ -2594,12 +3124,27 @@ export function MapView() {
             docCounts,
             resolveHostContext(hostContexts, { kind: 'place', id: usage.placeId }),
           )}
+          tasks={hostCountForContext(
+            taskCounts,
+            resolveHostContext(hostContexts, { kind: 'place', id: usage.placeId }),
+          )}
           // Connected here rather than inside the row, which stays presentational — and gated
           // on `selected` for the same reason the refs are: the list can hold dozens of rows,
           // and a note section per unselected row is a section nobody is looking at.
+          tasksSlot={
+            revealed ? (
+              <HostTasks
+                host={{ kind: 'place', id: place.id, name: place.name }}
+                canAdd={!finished}
+              />
+            ) : undefined
+          }
           notesSlot={
             revealed ? (
-              <HostNotes host={{ kind: 'place', id: place.id, name: place.name }} />
+              <HostNotes
+                host={{ kind: 'place', id: place.id, name: place.name }}
+                canAdd={!finished}
+              />
             ) : undefined
           }
           // Above the notes, the order every other read surface uses. Gated on `selected`
@@ -2635,28 +3180,42 @@ export function MapView() {
             // Absent under a place errand (ADR-0134 §3 / ADR-0135 §7): the tab is answering
             // one question, so the verb changes rather than accumulating — exactly as `נווט`
             // gives its slot to `בחירה` on the same row.
-            selected && !pendingErrand ? () => openScheduleForm(usage.placeId) : undefined
+            selected && !pendingErrand && !finished && !placeIsScheduledInScope(usage.placeId)
+              ? () => openScheduleForm(usage.placeId)
+              : undefined
           }
-          onEnrich={() =>
-            setRowErrand({
-              target: { kind: 'place', id: place.id },
-              // The row names itself, which is all the banner needs: you are standing on
-              // the thing you are answering, so there is no reference to name it by.
-              label: place.name,
-            })
+          onEnrich={
+            finished
+              ? undefined
+              : () =>
+                  setRowErrand({
+                    target: { kind: 'place', id: place.id },
+                    // The row names itself, which is all the banner needs: you are standing on
+                    // the thing you are answering, so there is no reference to name it by.
+                    label: place.name,
+                  })
           }
+          navigable={!finished}
+          openDay={openDayOf(usage)}
           onFrame={opts.onFrame}
           onChoose={opts.onChoose && (() => opts.onChoose!(usage.placeId))}
           // Selected only, and never under an errand: the tab is then answering one question,
           // and ADR-0134 §3 has the verbs CHANGE rather than accumulate — the same rule that
           // takes `נווט` and the schedule verb off this row.
+          // Never on a finished trip: settling is its only write (ADR-0239 §4).
           onRename={
-            selected && !pendingErrand ? () => beginRename.current(usage.placeId) : undefined
+            selected && !pendingErrand && !finished
+              ? () => beginRename.current(usage.placeId)
+              : undefined
           }
           // Selection-gated on the same rule as the pencil (ADR-0157 §2), so the trash is
           // wherever the row is — the sheet's list AND the canvas card, one `renderRow`.
-          onDelete={selected && !pendingErrand ? () => setDeletingId(usage.placeId) : undefined}
+          onDelete={
+            selected && !pendingErrand && !finished ? () => setDeletingId(usage.placeId) : undefined
+          }
           onClose={opts.onClose}
+          collapsed={opts.collapsed}
+          onToggleCollapsed={opts.onToggleCollapsed}
         />
       );
     };
@@ -2685,7 +3244,12 @@ export function MapView() {
     const headerFor = new Map<string, string>();
     if (labelled) {
       shown.forEach((usage, i) => {
-        if (blocks[i] !== blocks[i - 1]) headerFor.set(usage.placeId, t.map.blockHeader[blocks[i]]);
+        // A finished trip has nothing ahead of it: its dated rows are the trip itself, and
+        // only `ללא יום` needs naming (ADR-0239 §2).
+        const unnamed = finished && blocks[i] === PLACE_BLOCK.ahead;
+        if (blocks[i] !== blocks[i - 1] && !unnamed) {
+          headerFor.set(usage.placeId, t.map.blockHeader[blocks[i]]);
+        }
       });
     }
     // The area sort needs TWO headers where near-me needs one: a distance is legible on
@@ -2731,7 +3295,7 @@ export function MapView() {
   // (ADR-0109 §7 / ADR-0121 §11's "absent, not disabled"). At the map extreme it stays
   // mounted and CSS hides it — two different facts, two different mechanisms, and
   // neither borrows the other's (§5).
-  const nearChip = !offline && (
+  const nearChip = !offline && !finished && (
     <ToggleChip
       on={distanceOrder}
       // Teal is what this control is ABOUT (location), so it holds in both states; a
@@ -2789,7 +3353,7 @@ export function MapView() {
     <div className={'map-controls' + (hasMap ? '' : ' in-flow')}>
       {facetsOpen ? (
         <>
-          <div className="map-facetstrip">
+          <div className="map-facetstrip edge-fade" ref={edgeFadeRef}>
             <ChoiceGrid
               options={typeOptions}
               value={activeCategory}
@@ -3118,9 +3682,15 @@ export function MapView() {
           // **One density across the track, one selection in it.** The neighbours read as
           // cards rather than as short rows floating at the bottom of a tall one, which is
           // what the peek has to show for the edge to mean anything.
-          revealed: true,
+          // **One density across the track — and folding folds the whole track**, because the
+          // neighbours exist to say what is either side of the card you are on: three
+          // identity rows is that statement at the folded size, where one folded card between
+          // two full ones would read as a broken slide rather than a choice you made.
+          revealed: !cardCollapsed,
           slideRef: isCurrent ? trackSlideRef : undefined,
           onClose: isCurrent ? clearSelection : undefined,
+          collapsed: cardCollapsed,
+          onToggleCollapsed: isCurrent ? toggleCardCollapsed : undefined,
         })(usage)}
       </Fragment>
     );
@@ -3142,6 +3712,9 @@ export function MapView() {
             onFrame: frameSelected,
             onChoose: errandTakesOurPlaces ? finishErrand : undefined,
             onClose: clearSelection,
+            revealed: !cardCollapsed,
+            collapsed: cardCollapsed,
+            onToggleCollapsed: toggleCardCollapsed,
           })(cardUsage)}
     </div>
   );
@@ -3237,6 +3810,17 @@ export function MapView() {
         onConfirm={(value) => commitDraft.current(value)}
         onCancel={cancelDraft}
         onValueChange={(value) => setDraftLook({ icon: value.icon, category: value.category })}
+        renderNotes={
+          draft.kind === 'rename'
+            ? (slot) => (
+                <HostNotes
+                  host={{ kind: 'place', id: draft.place.id, name: draft.place.name }}
+                  canAdd={!finished}
+                  {...slot}
+                />
+              )
+            : undefined
+        }
       />
     </div>
   );
@@ -3249,6 +3833,8 @@ export function MapView() {
   // ALREADY OWNS sets both ids deliberately (session 167), and the place card is the richer
   // of the two — it carries the day, the distance and the way in to every reference. So the
   // place we own wins, which is also the honest answer to "what is this": ours.
+  // Under an errand the verb is `בחירה`, which answers a form rather than adding to the trip.
+  const resultAddable = !finished || pendingErrand != null;
   const cardResult =
     sheetView === MAP_SHEET_VIEW.map && selectedResultId && !cardUsage && !draft
       ? research.predictions.find((r) => r.googlePlaceId === selectedResultId)
@@ -3263,7 +3849,7 @@ export function MapView() {
         image={candidateKnowledge.image}
         summary={candidateKnowledge.summary}
         onFullPicture={showCandidatePicture}
-        onAdd={() => onResultAdd(cardResult)}
+        onAdd={resultAddable ? () => onResultAdd(cardResult) : undefined}
       />
     </div>
   );
@@ -3364,7 +3950,7 @@ export function MapView() {
       onFullPicture={showCandidatePicture}
       addingId={addingResultId}
       addFailed={addResultFailed}
-      onAdd={onResultAdd}
+      onAdd={resultAddable ? onResultAdd : undefined}
     />
   );
 
@@ -3520,6 +4106,7 @@ export function MapView() {
             setDetailBooking(null);
             setEditBooking(booking);
           }}
+          frozen={finished}
         />
       )}
       {(editBooking || bookingDraft) && (
@@ -3571,7 +4158,12 @@ export function MapView() {
   // genuinely unavailable, and preserves the useful list without inventing a broken frame.
   if (!hasMap) {
     return (
-      <div className="map-screen" data-mode={mode} data-offline={offline || undefined}>
+      <div
+        className="map-screen"
+        data-mode={mode}
+        data-phase={phase}
+        data-offline={offline || undefined}
+      >
         {offline && <StatusBanner tone="offline">{t.header.offlineNow}</StatusBanner>}
         {controlsRow}
         {geoPrompt}
@@ -3586,6 +4178,7 @@ export function MapView() {
     <div
       className="map-screen is-split"
       data-mode={mode}
+      data-phase={phase}
       data-view={sheetView}
       data-scope={allDays ? 'all' : 'day'}
       // EVERY TRIP PIN IS CONTEXT WHILE AN ERRAND IS LIVE (owner, session 166). One
@@ -3665,7 +4258,7 @@ export function MapView() {
           results={results}
           onSelectResult={selectResult}
           me={me}
-          connector={dayShapeVisible ? orderedStops : undefined}
+          connector={paneLegs}
           setSignal={cameraSignal}
           defaultCentre={defaultCentre}
           onSelectPin={selectPin}
@@ -3674,7 +4267,9 @@ export function MapView() {
           areaCount={areaCount}
           areaSorted={areaSorted}
           onAreaSort={toggleAreaSort}
-          onLocate={locateFromCanvas}
+          onLocate={finished ? undefined : locateFromCanvas}
+          replay={replayDays}
+          onReplayChange={onReplayChange}
           arrival={arrival}
           // The MEASURED reserve, not "a card is open": the constant it replaced was sized
           // for a selected row and the form is nearly twice that, which put a freshly
@@ -3795,7 +4390,9 @@ function PlaceRow({
   selected,
   notes,
   documents,
+  tasks,
   documentsSlot,
+  tasksSlot,
   notesSlot,
   summary,
   expanded,
@@ -3809,11 +4406,15 @@ function PlaceRow({
   onSelect,
   onDeselect,
   onEnrich,
+  navigable,
+  openDay,
   onFrame,
   onChoose,
   onRename,
   onDelete,
   onClose,
+  collapsed,
+  onToggleCollapsed,
 }: {
   /** Attached by the card's track to the slide that is the current selection, so
    *  `useCenterSelected` can scroll it to the centre (ADR-0182). Absent in the list. */
@@ -3893,6 +4494,8 @@ function PlaceRow({
    *  can never host an attachment of its own (ADR-0173 §4). The mark reads exactly what the
    *  section below it lists, because both resolve through the same context. */
   documents?: number;
+  /** OPEN tasks on this row's context — the third mark (ADR-0191). */
+  tasks?: number;
   /** **Where a place's inherited documents are read** — the connected `<HostDocuments>`,
    *  present only while selected, above the notes. */
   documentsSlot?: ReactNode;
@@ -3901,6 +4504,8 @@ function PlaceRow({
    *  of its own — the pin's long-press menu holds verbs, not content (ADR-0157 §2) — and this
    *  same row IS its card at the `map` stop (ADR-0153 §8's amendment). One node, two surfaces,
    *  because `renderRow` is shared. */
+  /** The host's tasks, connected by the screen (ADR-0191 §5). */
+  tasksSlot?: ReactNode;
   notesSlot?: ReactNode;
   /** The way in to each reference, present only while selected. */
   refs?: RefEntry[];
@@ -3928,8 +4533,16 @@ function PlaceRow({
   /** Present only while a place errand is live: choose THIS place for the form that sent
    *  it, and return (ADR-0134 §3). */
   onChoose?: () => void;
-  /** Open the picker to give a coordless Place-lite real coordinates. */
-  onEnrich: () => void;
+  /** Open the picker to give a coordless Place-lite real coordinates. Absent on a finished
+   *  trip, which adds nothing (ADR-0239 §4) — the slot then stays empty. */
+  onEnrich?: () => void;
+  /** Whether the row offers `נווט`. Not on a finished trip: directions are the live trip's
+   *  help (ADR-0239 §3). */
+  navigable: boolean;
+  /** **The day this place happened on, as the trailing slot's way in** (ADR-0241 §1). A
+   *  finished trip's only: it takes the slot `נווט` leaves, and opens the first day we were
+   *  there. `--cta`, never teal: a day is not a location. */
+  openDay?: { day: number; onOpen: () => void };
   /** **Give this place your own name** (ADR-0147 §3). Present only while selected, which is
    *  what makes it free: every other slot on this row is measured-spent, and a selected row is
    *  already the object that reveals its verbs. */
@@ -3951,6 +4564,16 @@ function PlaceRow({
    *  It is `clearSelection` itself and not a handler beside it: whatever dismisses a surface runs
    *  the same function system back does (ADR-0103's 2026-07-29 amendments). */
   onClose?: () => void;
+  /** **Is the card folded to its identity row?** (ADR-0122 §7's 2026-08-27 amendment.) The card's
+   *  own `onClose` note already quoted the half of the owner's ask that was built — _"a way to
+   *  close the card **and/or collapse it**"_ — and this is the other half. The content is not
+   *  hidden here but never asked for: `renderRow` passes `revealed: !collapsed`, so a folded card
+   *  renders exactly the row every list already renders, rather than a second, smaller card
+   *  beside the real one. What this flag decides is the CHROME — which way the caret points, and
+   *  whether the body's own tap opens it again. */
+  collapsed?: boolean;
+  /** Fold the card away, or bring it back. The canvas card's only, like `onClose`. */
+  onToggleCollapsed?: () => void;
 }) {
   // **THE WAY-IN BLOCK IS FOLDED BY DEFAULT** (ADR-0121 §8's 2026-08-05 amendment). A hub
   // place carries a reference per leg, and the block sits between the notes and the row's
@@ -3973,7 +4596,7 @@ function PlaceRow({
   const glyph = placeGlyph(place, usage.pin.category);
   const isHard = usage.pin.commitment === 'hard';
   const isPureIdea = usage.isMaybe && !usage.isScheduled;
-  const dirUrl = mapsDirectionsUrl(place);
+  const dirUrl = navigable ? mapsDirectionsUrl(place) : undefined;
   // What the meta line says, in priority order (ADR-0109 §1): what happens here,
   // else the address, else the category. The address is the fallback rather than the
   // headline — on a scheduled row it says nothing about why the place is on the list.
@@ -4023,7 +4646,13 @@ function PlaceRow({
   // ADR-0122 §7) and no `onDeselect`, but it does pass `onCollapse` — so an expanded card
   // there becomes tappable to return, and a collapsed one stays inert, with no branch about
   // which host we are in.
-  const onBodyTap = expanded ? onCollapse : (selected && onDeselect) || onSelect;
+  // A FOLDED card opens on its own tap, which is the whole of what a one-line bar is for — and
+  // it is safe to give the body a second job here because it has none: `onSelect`/`onDeselect`
+  // are deliberately absent on the canvas card (see `onSelect`'s note), and the two controls
+  // inside it that mean something else (the badge, the `✕`) both stop the event themselves.
+  const onBodyTap = expanded
+    ? onCollapse
+    : (collapsed && onToggleCollapsed) || (selected && onDeselect) || onSelect;
   // **EXPANDED, THE BODY IS A TARGET AND NOT A CONTROL** — no `role`, no `tabIndex`, no name.
   // `‹ חזרה לפרטי המקום` is inside it and is the named, focusable way back, so announcing the
   // body as a second button with the same label reads it out twice; the keyboard path is that
@@ -4151,6 +4780,9 @@ function PlaceRow({
               context, not one of this row's claims (ADR-0028 has no colour to lend it). */}
           <NoteMark count={notes} />
           <DocumentMark count={documents} />
+          {/* LAST of the three, for the same reason the note mark was last of two: this line
+              drops its tail first, and a semantic tag must never be what goes. */}
+          <TaskMark count={tasks} />
         </span>
       </span>
       <span className="map-right">
@@ -4190,15 +4822,51 @@ function PlaceRow({
           >
             <Icon name="navigate" /> {t.actions.navigate}
           </a>
-        ) : (
-          <AddLocationButton
+        ) : openDay ? (
+          <button
+            type="button"
+            className="map-addmaybe"
             onClick={(e) => {
               e.stopPropagation();
-              onEnrich();
+              openDay.onOpen();
             }}
-          />
+          >
+            <Icon name="calendar" /> {t.map.openDay(openDay.day)}
+          </button>
+        ) : (
+          onEnrich && (
+            <AddLocationButton
+              onClick={(e) => {
+                e.stopPropagation();
+                onEnrich();
+              }}
+            />
+          )
         )}
       </span>
+      {/* **AND ITS WAY OUT OF THE WAY** (ADR-0122 §7's 2026-08-27 amendment; owner report:
+          _"sometimes you want to get the details but sometimes you only want to see the path"_).
+          Beside the `✕` and in the same identity row for the same reason it is: the card becomes
+          a scroller once its pinned rows exceed the cap, and a corner overlay scrolls away
+          exactly when the card is tallest. One control both ways rather than a fold and an
+          unfold — the caret turns, which is the same grammar every disclosure in the app uses.
+          `stopPropagation` because the folded body's own tap now means "open me". */}
+      {onToggleCollapsed && (
+        <button
+          type="button"
+          className="map-cardfold"
+          data-folded={collapsed ? '' : undefined}
+          aria-expanded={!collapsed}
+          aria-label={collapsed ? t.map.expandCard : t.map.collapseCard}
+          title={collapsed ? t.map.expandCard : t.map.collapseCard}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleCollapsed();
+          }}
+        >
+          <Icon name="caret" />
+        </button>
+      )}
       {/* **THE CARD'S ONE VISIBLE WAY OUT** (ADR-0182's device pass). A fourth column of the
           identity row rather than a corner overlay, and that is what keeps it PINNED: the card
           becomes a scroller once its pinned rows alone exceed the cap (§9's amendment), and an
@@ -4245,7 +4913,27 @@ function PlaceRow({
           one arrangement no surface here uses. A full-width line in a row that has wrapped
           one of those since it shipped (`.map-refs`), so it needs one declaration. */}
       {!expanded && documentsSlot}
-      {!expanded && notesSlot}
+      {/* **ONE SCROLLING REGION FOR BOTH SECTIONS** (ADR-0191 §7, owner 2026-08-16: _"place
+          tasks take up a lot of space where a map should be visible … what happens when
+          there's notes, events, and multiple tasks?"_).
+
+          Measured, and the worry was exact: with the tasks section PINNED on its own grid row
+          the card read **411px against its own 420px cap** on a place carrying one task, one
+          note, one reference and neither a summary nor a document. That is ADR-0182 §9's
+          documented failure with nine pixels of slack — once the pinned rows alone exceed the
+          cap the `1fr` track is already at 0, and `שיבוץ ליום` goes under the fold.
+
+          So the flexible track is this wrapper rather than the note list: what the group
+          wrote about this place, tasks and notes together, shrinking and scrolling as one.
+          **The cost is that the notes HEADER no longer pins** (ADR-0167 §9.5 pinned it when it
+          was the only section) — with two sections there is no arrangement that pins both, and
+          losing the way in to the place is worse than losing a sticky header. */}
+      {!expanded && (tasksSlot || notesSlot) && (
+        <div className="map-cardwrote">
+          {tasksSlot}
+          {notesSlot}
+        </div>
+      )}
       {/* Full-width and ≥40px, so it is a real touch target (ADR-0017) — which is
           also why the meta line's own 11.5px tags are not the link. */}
       {!expanded && refs && refs.length > 0 && (
@@ -4303,6 +4991,7 @@ function PlaceRow({
                 {ref.settle && (
                   <SettleControl
                     variant="compact"
+                    words={ref.settle.words}
                     outcome={ref.settle.outcome}
                     onDone={ref.settle.onDone}
                     onSkip={ref.settle.onSkip}

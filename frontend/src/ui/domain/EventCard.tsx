@@ -7,33 +7,44 @@
 // never stored, ADR-0043) and passed in, so the card stays presentational.
 //
 // A passed-but-unmarked soft event settles inline ("we did this / skip"); a done
-// event's ✓ doubles as one-tap undo; the ±nudge adapts to phase; Tier-2 edits
+// event's `היינו ✓` CHIP doubles as one-tap undo (ADR-0230); the ±nudge adapts to phase; Tier-2 edits
 // (swap/edit/delete) sit behind the `⋯` sheet (ADR-0025). Verbs arrive as
 // callbacks — no `verbs` hook, no trip-state.
 //
 // Domain UI may use the shared copy/icon/time helpers (not state); it does.
-import { useState, type ReactNode } from 'react';
+import { useState, type KeyboardEvent, type ReactNode } from 'react';
 import { clockRange, formatTime, crossesMidnightZoned } from '../../lib/time';
+import type { EventKind, EventPhaseName } from './event-phase';
 import type { EventZones } from '../../lib/places';
 import { ZoneShiftPill } from '../ZoneShiftPill';
-import { CONTROL_ICON, DELAY_STEP_MINUTES, DOT_SEPARATOR } from '../../constants';
+import { CONTROL_ICON, DOT_SEPARATOR } from '../../constants';
 import { Icon } from '../Icon';
 import { HardLock } from '../HardLock';
 import { TitleLabel } from '../TitleLabel';
 import { RowManageSheet, type RowAction } from './ListRow';
+import { EventActions } from './EventActions';
 import { PlaceBadge } from './PlaceBadge';
 import { SettleControl } from './SettleControl';
+import { DoneChip } from './DoneChip';
 import { NoteMark } from './NoteMark';
+import { TaskMark } from './TaskMark';
 import { DocumentMark } from './DocumentMark';
 import { t } from '../../i18n/he';
 import './event-card.css';
 
-export type EventKind = 'hard' | 'soft';
-export type EventPhaseName = 'upcoming' | 'now' | 'passed' | 'done';
+export type { EventKind, EventPhaseName } from './event-phase';
 
 export interface EventCardProps {
   /** Event icon (emoji content). */
   icon: ReactNode;
+  /** **A fetched photograph to fill the badge's interior** (ADR-0219 §1), or absent for the
+   *  glyph — which is most rows and looks exactly as it always did (0px either way, since
+   *  `PlaceBadge` clips it in flow inside the square it already occupies).
+   *
+   *  Resolved by the screen through `lib/place-photo`'s `rowPhoto`, because only it knows
+   *  whether the glyph beside it was PICKED — on the event or on the place — and a picked
+   *  icon beats a photo (ADR-0167 §2). This card is presentational and takes the URL. */
+  photoUrl?: string;
   /** Title node — screen passes <EventTitle/> or a string. */
   title: ReactNode;
   /** The plain stored title, for the Tier-2 menu header — rendered there through
@@ -54,6 +65,17 @@ export interface EventCardProps {
   unsynced?: boolean;
   /** A read-only past day (ADR-0029): create/edit/move locked; settle stays. */
   readOnly?: boolean;
+  /** **Whether this row's DAY is today** (ADR-0228's 2026-09-15 amendment) — the axis
+   *  `phase` cannot supply, since a future day's rows and this afternoon's are both
+   *  `upcoming` and only one of them is on the ground. It gates the live verbs, so it
+   *  defaults FALSE: a host that has not thought about it gets the calm row, never a
+   *  waterfall two days out offering `בדרך`. */
+  today?: boolean;
+  /** **How the DOM names this card**, so something sent to one event can find it — the
+   *  `?event=` arrival lands on the row this stamps (`EVENT_ROW_ATTR`, `state/nav-state`).
+   *  Spread rather than a bare id prop, so the host owns the attribute's spelling and this
+   *  layer stays free of a second copy of it. */
+  anchor?: Record<string, string>;
   isOpen: boolean;
   onToggle: () => void;
   startsAt?: string;
@@ -72,6 +94,20 @@ export interface EventCardProps {
    *  passes it for transport + zone-shifted rows, where the raw start–end can
    *  misread the real span; absent otherwise. */
   duration?: string;
+  /** **What is LEFT of this row, when the moment is inside it** (ADR-0217 §3) — it REPLACES
+   *  `duration` rather than joining it. The range above already says how long; inside the
+   *  thing you want what remains, and the two together wrap `.wp-event-time`'s grid cell for
+   *  ⁦19px⁩ of card height at ⁦360px⁩ (`remainingPhrase`, `lib/duration.ts`, carries the
+   *  measurement). Only the day's ONE running row ever gets it. */
+  remaining?: string | null;
+  /** **How far a carried leg goes** (ADR-0212), already formatted — `carriedLegMeters` through
+   *  `formatDistance`. Present only on a booking whose span is spent in motion, so a hire and
+   *  every non-transport row pass nothing and are untouched.
+   *
+   *  It sits beside `duration` because it is the same kind of fact about the same object, and
+   *  neither is hedged: both are read off a booking somebody filled in rather than computed
+   *  (ADR-0206 §D5, from its other end). */
+  distance?: string;
   /** The first hard conflict, if any (drives the amber conflict flag). */
   conflict?: { title: string; startsAt: string };
   /** "כולל N" contents count on an envelope event that nests others. */
@@ -85,12 +121,26 @@ export interface EventCardProps {
    *  since a linked pair is one context. Same rule as `notes`: a count only past 1, and the
    *  mark is a read-only indicator whose reach is this card's own expansion. */
   documents?: number;
+  /** How many OPEN tasks this event (and its context) carries — the third mark (ADR-0191). */
+  tasks?: number;
   /** **Where an event's attached documents are READ** (ADR-0174 §3) — the connected
    *  `<HostDocuments>`, rendered inside the card this row expands, ABOVE the notes.
    *
    *  A node rather than the component, for `notesSlot`'s reason: this file is `ui/domain/`.
    *  Above the notes because a document is a thing you need and a note is something about
    *  it, and because the app must not teach one order on the form and another on the read. */
+  /** **The way into the read** (ADR-0229 §2) — `ReadBand`, connected by the screen, which is
+   *  the only layer that knows the place, its photograph and whether there is a booking.
+   *
+   *  It renders after the verbs and the hard-edit warning and ABOVE the documents: the read
+   *  surface's own sequence (knowledge → guard → facts → documents → tasks → notes) with the
+   *  facts compressed to one band, re-entered after the verbs because Trip mode is doing-first.
+   *
+   *  **Not in the verb band, and that is structural rather than stylistic.** Every entry in
+   *  `event-actions.ts` is gated on `today && !readOnly`, so a row on tomorrow or on a past day
+   *  renders no band at all — and those are exactly the rows whose facts you want (ADR-0040's
+   *  browsable archive). Absent on a card with nothing to read. */
+  readSlot?: ReactNode;
   documentsSlot?: ReactNode;
   /** **Where an event's notes are READ and WRITTEN** (ADR-0152 §6's 2026-08-02 amendment) —
    *  the connected `<HostNotes>`, rendered inside the card this row EXPANDS, under its verbs.
@@ -103,6 +153,8 @@ export interface EventCardProps {
    *  content read from inside a menu is content nobody finds. What put it there was
    *  `.wp-event-actions`'s fixed `max-height: 220px`, which clips three notes — so the cap
    *  moved instead (`event-card.css`), which is the change that actually had to happen. */
+  /** The event's tasks, connected by the screen (ADR-0191 §5). */
+  tasksSlot?: ReactNode;
   notesSlot?: ReactNode;
   // Verbs (callbacks; presence + phase gate which buttons show, faithfully).
   // `onNavigate` (directions) and `onShowOnMap` (view the place) are the two
@@ -110,11 +162,16 @@ export interface EventCardProps {
   // (coordinates); absent → that button is dropped, since there's nowhere to go.
   onNavigate?: () => void;
   onShowOnMap?: () => void;
+  /** The settle pair. On a passed row the strip asks in words; on a `now` row the band
+   *  carries it; on an upcoming row it is the ⋯ sheet's early mark (ADR-0228 §5c), which is
+   *  how a commitment that was cancelled on you leaves the day without losing its record. */
   onDone?: () => void;
   onSkip?: () => void;
   onDelay?: () => void;
   onEarlier?: () => void;
   onOnWay?: () => void;
+  /** Take a settled row back to `planned`. Wired, it makes the `היינו ✓` chip the control
+   *  that does it (ADR-0230 §1); absent, the chip stays the plain label it always was. */
   onRestore?: () => void;
   /** `החלף` — open the slot's own chooser: pick a replacement, this event goes to the shelf,
    *  the replacement takes its exact start and length (ADR-0161 §6). Soft events only, and
@@ -126,6 +183,13 @@ export interface EventCardProps {
   onPark?: () => void;
   onEdit?: () => void;
   onRemove?: () => void;
+  /** **The time is the move** (ADR-0231 §1, the Trip-mode sentence of ADR-0161 §7 built). Wired,
+   *  the when line is a `role="button"` opening the day's positions; absent, it is the readout
+   *  it always was. The screen decides when to wire it — a planned row with a clock, on a day
+   *  that can be written — and this component only draws what it was handed, like every other
+   *  verb here. A `role="button"` span and never a `<button>`: the face is one, and a nested
+   *  button reparents the whole face (ADR-0230's first render). */
+  onPickTime?: () => void;
 }
 
 /* **THE ROW'S META LINE CARRIES NO TEXT AT ALL** (owner, 2026-08-09: _"events and bookings
@@ -152,6 +216,7 @@ export interface EventCardProps {
 export function EventCard(props: EventCardProps) {
   const {
     icon,
+    photoUrl,
     title,
     titleText,
     code,
@@ -160,6 +225,8 @@ export function EventCard(props: EventCardProps) {
     sync,
     unsynced,
     readOnly = false,
+    today = false,
+    anchor,
     isOpen,
     onToggle,
     startsAt,
@@ -167,11 +234,16 @@ export function EventCard(props: EventCardProps) {
     tz,
     zones,
     duration,
+    remaining,
+    distance,
     conflict,
     nestedCount,
     notes,
     documents,
+    tasks,
+    readSlot,
     documentsSlot,
+    tasksSlot,
     notesSlot,
     onNavigate,
     onShowOnMap,
@@ -185,20 +257,32 @@ export function EventCard(props: EventCardProps) {
     onPark,
     onEdit,
     onRemove,
+    onPickTime,
   } = props;
 
   const isHard = kind === 'hard';
   const isDone = phase === 'done';
   const isNow = phase === 'now';
   const isPassed = phase === 'passed';
-  // A passed-but-unmarked soft event settles inline (the honest "still on?"
-  // moment, ADR-0027/0043); hard events aren't settled this way.
-  const showSettle = !isHard && isPassed;
+  // **A passed-but-unmarked event settles inline, WHATEVER ITS KIND** (ADR-0228 §2).
+  // The gate used to read `!isHard && isPassed`, and nothing decided the `!isHard`: no ADR
+  // withholds a record from a commitment, the write path (`applySetStatus` → the backend)
+  // never looked at the kind, and every other surface that settles — the Map's reference
+  // row, the lifted hero, `StayRow`, `TransitionRow` — has always offered it on a booking.
+  // The day card was the one place a booking could not be marked done.
+  const showSettle = isPassed;
 
   const [menuOpen, setMenuOpen] = useState(false);
   const runAction = (fn?: () => void) => {
     setMenuOpen(false);
     fn?.();
+  };
+  // The `⋯` sits INSIDE the face button now, so opening the sheet must not also toggle
+  // the row — the same two calls the done-✓ below makes, for the same reason.
+  const openMenu = (e: { preventDefault: () => void; stopPropagation: () => void }) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setMenuOpen(true);
   };
 
   // **THE KIND CHIP IS GONE; THE STATUS CHIP STAYS** (ADR-0178 §4). The hard mark moved
@@ -213,19 +297,25 @@ export function EventCard(props: EventCardProps) {
   //
   // The when line is where the lock lives now, so a card with no time at all would lose
   // the mark entirely — an unplaced commitment is exactly that row. It keeps the chip.
+  //
+  // **AND THE RECORD IS READ BEFORE THE KIND** (ADR-0228 §2). `לא סומן` used to sit inside
+  // the soft arm, so a passed booking — the row that now carries the same open question —
+  // said nothing about it. Status first, kind second: the ladder below is the order the
+  // slot's own job implies, not a per-kind list.
+  //
+  // The done arm is `DoneChip`, which is also the undo (ADR-0230 §1) and is shared with Plan's
+  // archive row (ADR-0240 §5).
   const hasWhenSlot = !!startsAt;
   const tag = isDone ? (
-    <span className="wp-event-tag-done">
-      <Icon name="check" /> {t.event.didThis}
-    </span>
+    <DoneChip onUndo={onRestore} />
+  ) : isPassed ? (
+    <span className="wp-event-tag-phase">{t.event.notMarked}</span>
   ) : isHard ? (
     hasWhenSlot ? null : (
       <span className="wp-event-tag-hard">
         <Icon name="lock" /> {t.event.hard}
       </span>
     )
-  ) : isPassed ? (
-    <span className="wp-event-tag-phase">{t.event.notMarked}</span>
   ) : isNow ? (
     <span className="wp-event-tag-soft">{t.event.softNow}</span>
   ) : null;
@@ -237,7 +327,10 @@ export function EventCard(props: EventCardProps) {
     isDone ? 'done' : '',
     isPassed && !isDone ? 'passed' : '',
     unsynced ? 'unsynced' : '',
-    isOpen && !showSettle ? 'open' : '',
+    // A settle-strip card EXPANDS like every other one now (ADR-0228 §3) — the `&&
+    // !showSettle` that used to be here paired with the early return that swallowed the
+    // card, and with that gone it only kept the panel shut on the rows that need it most.
+    isOpen ? 'open' : '',
   ]
     .filter(Boolean)
     .join(' ');
@@ -272,6 +365,7 @@ export function EventCard(props: EventCardProps) {
         {sync}
         <NoteMark count={notes} />
         <DocumentMark count={documents} />
+        <TaskMark count={tasks} />
       </span>
       {conflict && (
         <span className="wp-event-conflict-flag">
@@ -285,8 +379,27 @@ export function EventCard(props: EventCardProps) {
 
   const startZone = zones?.startZone ?? tz;
   const endZone = zones?.endZone ?? tz;
+  // The `⋯`'s two calls (below), for the same reason: the control sits inside the face
+  // button, so its tap must not also toggle the row.
+  const pickTime = (e: { preventDefault: () => void; stopPropagation: () => void }) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onPickTime?.();
+  };
+  const timeControl = onPickTime
+    ? {
+        className: 'wp-event-time is-token',
+        role: 'button' as const,
+        tabIndex: 0,
+        'aria-label': t.planDay.slotMoveTitle(titleText),
+        onClick: pickTime,
+        onKeyDown: (e: KeyboardEvent) => {
+          if (e.key === 'Enter' || e.key === ' ') pickTime(e);
+        },
+      }
+    : { className: 'wp-event-time' };
   const timeBlock = startsAt && (
-    <span className="wp-event-time">
+    <span {...timeControl}>
       {isHard && <HardLock />}
       <span dir="auto">
         {formatTime(startsAt, startZone)}
@@ -297,32 +410,45 @@ export function EventCard(props: EventCardProps) {
           </sup>
         )}
       </span>
-      {(duration || zones?.deltaMinutes != null) && (
+      {(remaining || duration || distance || zones?.deltaMinutes != null) && (
         <span className="wp-event-timemeta">
-          {duration && <span className="when-dur wp-event-dur">{duration}</span>}
+          {/* `remaining` REPLACES the total (ADR-0217 §3) — same class, same width, amber
+              instead of `--muted`, so the row is unchanged and the hue says which it is. */}
+          {remaining ? (
+            <span className="when-dur wp-event-dur wp-event-left">{remaining}</span>
+          ) : (
+            duration && <span className="when-dur wp-event-dur">{duration}</span>
+          )}
+          {/* The distance follows the duration and never leads it: this row is a WHEN slot, and
+              a carried leg's length is context on it — the same order and the same `--muted`
+              standing `.day-trv-dist` gives it one row family over (ADR-0212). */}
+          {distance && <span className="wp-event-dist">{distance}</span>}
           {zones?.deltaMinutes != null && <ZoneShiftPill minutes={zones.deltaMinutes} />}
         </span>
       )}
     </span>
   );
 
-  // Settle variant: a calm, non-expanding card + the inline settle strip.
-  if (showSettle) {
-    return (
-      <div className={cls}>
-        <div className="wp-event-face static">
-          <PlaceBadge className="wp-event-badge" onShowOnMap={onShowOnMap}>
-            {icon}
-          </PlaceBadge>
-          {titleBlock}
-          {timeBlock}
-        </div>
-        <SettleControl variant="prompt" onDone={() => onDone?.()} onSkip={() => onSkip?.()} />
-      </div>
-    );
-  }
-
   const menuActions: RowAction[] = [];
+  // **THE EARLY MARK LIVES HERE, AHEAD OF THE LINE** (ADR-0228 §5c, built by its 2026-09-16
+  // amendment). Behind the line the strip asks in words and inside the event the band
+  // carries the pair; ahead of it the pair was promised to `⋯` and never given to it — so a
+  // booking cancelled on you this morning had no way to be taken off the day short of
+  // `מחיקה`, which throws away the code you will want for the refund. Both kinds: a
+  // commitment is settled through the same write (ADR-0228 §2), and `skipped` is exactly the
+  // status that keeps the row while telling the day it is not happening.
+  if (phase === 'upcoming' && onDone && onSkip) {
+    menuActions.push({
+      label: t.actions.done,
+      icon: CONTROL_ICON.done,
+      onSelect: () => runAction(onDone),
+    });
+    menuActions.push({
+      label: t.actions.skip,
+      icon: CONTROL_ICON.skip,
+      onSelect: () => runAction(onSkip),
+    });
+  }
   // **`החלף` needs a slot to be taken on** (ADR-0161 §6), and an untimed row has none —
   // §10 says so outright: an untimed event holds no position of its own. Offering it anyway
   // asked the shelf to be ranked against a slot with no clock, and the day view went blank on
@@ -370,136 +496,86 @@ export function EventCard(props: EventCardProps) {
     .filter(Boolean)
     .join(` ${DOT_SEPARATOR} `);
 
-  // `ניווט` stays in the action row: it is a live, on-the-ground verb, so it belongs
-  // with the verbs, and it renders only when the event has a mappable place
-  // (ADR-0109 amendment). `מפה` left this row for the badge (`PlaceBadge`), so it is
-  // reachable without expanding the card.
-  const navAct = onNavigate && (
-    <button type="button" className="wp-event-act go" onClick={onNavigate}>
-      {t.actions.navigate}
-    </button>
-  );
+  // Unchanged gate, new home: a past day locks create/edit (ADR-0029), so the face
+  // carries no `⋯` there and the sheet has nothing to show.
+  const showMenu = !readOnly && menuActions.length > 0;
 
   return (
-    <div className={cls}>
+    <div className={cls} {...anchor}>
       <button type="button" className="wp-event-face" onClick={onToggle} aria-expanded={isOpen}>
-        <PlaceBadge className="wp-event-badge" onShowOnMap={onShowOnMap}>
+        <PlaceBadge className="wp-event-badge" onShowOnMap={onShowOnMap} photoUrl={photoUrl}>
           {icon}
         </PlaceBadge>
         {titleBlock}
-        {/* The done ✓ doubles as one-tap undo (ADR-0043): a role=button inside
-            the face that stops propagation so it restores without toggling. */}
-        {isDone && onRestore && (
+        {timeBlock}
+        {/* **TIER-2 LIVES ON THE FACE** (ADR-0228's 2026-09-15 amendment). It was the last
+            item of the verb band, which made its position depend on how many verbs the row
+            happened to carry — and once the band is allowed to be EMPTY (a row on another
+            day offers no quick action) it would have been a strip of padding holding one
+            glyph. Here it is in the same place on every card, and reachable without
+            expanding, which is what `עריכה` and `מחיקה` always wanted.
+            A `role="button"` span rather than a `<button>`, for `PlaceBadge`'s reason one
+            element over: nested buttons are invalid HTML, and the tap must not also
+            toggle the row. */}
+        {showMenu && (
           <span
-            className="wp-event-check btn"
+            className="wp-event-menu"
             role="button"
             tabIndex={0}
-            aria-label={t.actions.undoDone}
-            title={t.actions.undoDone}
-            onClick={(e) => {
-              e.stopPropagation();
-              onRestore();
-            }}
+            aria-label={t.actions.more}
+            title={t.actions.more}
+            onClick={openMenu}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                e.stopPropagation();
-                onRestore();
-              }
+              if (e.key === 'Enter' || e.key === ' ') openMenu(e);
             }}
           >
-            <span className="mark" aria-hidden="true">
-              <Icon name="check" />
-            </span>
-            <span className="undo" aria-hidden="true">
-              <Icon name="undo" />
-            </span>
+            <Icon name={CONTROL_ICON.more} />
           </span>
         )}
-        {timeBlock}
         <span className="wp-event-chev" aria-hidden="true">
           <Icon name="caret" dir="down" />
         </span>
       </button>
+      {/* **THE ASK SITS ON THE CARD, NOT INSTEAD OF IT** (ADR-0228 §3). It used to REPLACE
+          the whole expandable card — a static face plus this strip — which is why a passed
+          soft stop had no reachable documents, notes or tasks, and why a passed BOOKING
+          could not be given the strip at all without losing its code and its receipt. The
+          card keeps its chevron; the strip is a band under the face, so ADR-0043 §2's
+          one tap "exactly where you glance back" is unchanged and costs nothing. */}
+      {showSettle && (
+        <SettleControl variant="prompt" onDone={() => onDone?.()} onSkip={() => onSkip?.()} />
+      )}
       <div className="wp-event-actions">
         {/* One wrapper, and it is load-bearing: a collapsing grid track can only shrink a
             child that is allowed to, so this carries `min-height: 0` and the overflow the
             old `max-height` rule owned. */}
         <div className="wp-event-actions-in">
-          <div className="wp-event-act-row">
-            {isDone ? (
-              <>
-                <button type="button" className="wp-event-act" onClick={onRestore}>
-                  {t.actions.restore}
-                </button>
-                {navAct}
-              </>
-            ) : isHard ? (
-              <>
-                {navAct}
-                {!readOnly && (
-                  <>
-                    <button type="button" className="wp-event-act" onClick={onOnWay}>
-                      {t.actions.onWay}
-                    </button>
-                    <button type="button" className="wp-event-act" onClick={onDelay}>
-                      {t.actions.delayBy(DELAY_STEP_MINUTES)}
-                    </button>
-                  </>
-                )}
-              </>
-            ) : (
-              <>
-                <button type="button" className="wp-event-act" onClick={onDone}>
-                  {t.actions.done}
-                </button>
-                <button type="button" className="wp-event-act" onClick={onSkip}>
-                  {t.actions.skip}
-                </button>
-                {/* The nudge adapts to phase (ADR-0043): both ways upcoming; +30
-                  only for a now event (can't pull it into the past). */}
-                <div className="wp-event-act stepper">
-                  {!isNow && (
-                    <button
-                      type="button"
-                      className="step"
-                      onClick={onEarlier}
-                      aria-label={t.actions.earlierBy(DELAY_STEP_MINUTES)}
-                    >
-                      −
-                    </button>
-                  )}
-                  <span className="step-label">{t.actions.stepMinutes(DELAY_STEP_MINUTES)}</span>
-                  <button
-                    type="button"
-                    className="step"
-                    onClick={onDelay}
-                    aria-label={t.actions.delayBy(DELAY_STEP_MINUTES)}
-                  >
-                    +
-                  </button>
-                </div>
-                {navAct}
-              </>
-            )}
-            {!readOnly && menuActions.length > 0 && (
-              <span className="wp-event-act-row-end">
-                <button
-                  type="button"
-                  className="wp-event-act icon-only more"
-                  onClick={() => setMenuOpen(true)}
-                  aria-label={t.actions.more}
-                >
-                  <Icon name="more" />
-                </button>
-              </span>
-            )}
-          </div>
+          {/* ONE ROW, ONE ORDER, BOTH KINDS (ADR-0228). What used to be three hand-written
+              arms in this file is a spec + a renderer: which verbs this row carries is
+              `event-actions.ts`, what each looks like is `EventActions`. */}
+          <EventActions
+            kind={kind}
+            phase={phase}
+            today={today}
+            readOnly={readOnly}
+            settleAsked={showSettle}
+            onDone={onDone}
+            onSkip={onSkip}
+            onDelay={onDelay}
+            onEarlier={onEarlier}
+            onOnWay={onOnWay}
+            onNavigate={onNavigate}
+          />
           {isHard && (
             <div className="wp-event-hard-warn">
               <Icon name="warn" /> {t.event.hardWarn} {code && <span dir="auto">{code}</span>}
             </div>
           )}
+          {/* **WHAT THIS IS, BEFORE WHAT THE GROUP ATTACHED TO IT** (ADR-0229 §2). Mounted only
+              while open, for `notesSlot`'s own reason one comment down — and it is the one band
+              here that a row on ANOTHER day still carries, since the verbs above it are gated
+              on `today` and this is not. */}
+          {isOpen && readSlot}
           {/* The body, under the verbs: what the group knows about this event, where the row
               that carries the mark opens. Mounted only while the card is open, because the
               strip is in the DOM at every height — a day of twelve events would otherwise
@@ -509,6 +585,8 @@ export function EventCard(props: EventCardProps) {
               strip is in the DOM at every height, so a day of twelve events would otherwise
               hold twelve connected sections nobody is looking at. */}
           {isOpen && documentsSlot}
+          {/* Documents → TASKS → notes (ADR-0191 §5), the order every host surface uses. */}
+          {isOpen && tasksSlot}
           {isOpen && notesSlot}
         </div>
       </div>

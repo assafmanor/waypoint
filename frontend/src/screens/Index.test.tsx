@@ -59,10 +59,15 @@ vi.mock('../state/trip-state', () => ({
     // normal state for most places, and the fact is simply absent.
     enrichments: {},
     notes: [],
+    tasks: [],
+    // The tasks tile derives its preview against the trip's own crossings (brief §10).
+    zoneCrossings: [],
     users: [],
   }),
 }));
-vi.mock('../lib/useClock', () => ({ useClock: () => new Date('2026-07-20T00:00:00Z') }));
+const LIVE_NOW = '2026-07-20T00:00:00Z';
+let clockNow = LIVE_NOW;
+vi.mock('../lib/useClock', () => ({ useClock: () => new Date(clockNow) }));
 vi.mock('../lib/outbox', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../lib/outbox')>();
   return { ...actual, usePendingUploads: () => [], useIsOffline: () => false };
@@ -91,6 +96,38 @@ describe('Index landing (ADR-0098)', () => {
   afterEach(() => {
     cleanup();
     tripDocuments = [];
+    clockNow = LIVE_NOW;
+  });
+
+  const bookingsSub = () =>
+    screen
+      .getByRole('button', { name: new RegExp(t.index.bookingsTitle) })
+      .querySelector('.wp-idx-tile-sub')?.textContent;
+
+  it('names the next booking on the bookings tile of a live trip', () => {
+    render(wrap(<Index />));
+    expect(bookingsSub()).toContain(t.index.tile.nextPrefix);
+  });
+
+  // F7: on a finished trip the tile said `אין עדיין הזמנות` beside its own count. It names
+  // what the trip had instead (ADR-0239 §4). The trip ended 07-25.
+  it('names what a finished trip had on the bookings tile', () => {
+    clockNow = '2026-07-30T03:00:00Z';
+    render(wrap(<Index />));
+    expect(bookingsSub()).toBe(t.index.bookingType.flight);
+  });
+
+  // ADR-0049 §2's banner, as ADR-0240 §6 builds it: Trip's past-day banner in the archive's
+  // hue, above the tiles, and only after the trip.
+  it('shows the archive banner on a finished trip, and not on a live one', () => {
+    render(wrap(<Index />));
+    expect(document.querySelector('.archive-banner')).toBeNull();
+    cleanup();
+    clockNow = '2026-07-30T03:00:00Z';
+    render(wrap(<Index />));
+    const banner = document.querySelector('.archive-banner.is-memory')!;
+    expect(banner.textContent).toBe(t.index.archiveBanner);
+    expect(banner.querySelector('.ab-back')).toBeNull();
   });
 
   it('renders a bookings tile and a documents tile with their counts', () => {
@@ -98,6 +135,32 @@ describe('Index landing (ADR-0098)', () => {
     expect(screen.getByRole('button', { name: new RegExp(t.index.bookingsTitle) })).toBeTruthy();
     expect(screen.getByRole('button', { name: new RegExp(t.docs.title) })).toBeTruthy();
     expect(screen.getByText('1')).toBeTruthy(); // bookings count
+  });
+
+  // The order is an owner decision (2026-08-15) and nothing else in the app enforces it, so
+  // a re-order during an unrelated edit would be silent. After the spine, the rule is
+  // whether a tile can be LATE.
+  it('orders the tiles bookings · tasks · documents · notes', () => {
+    render(wrap(<Index />));
+    const titles = [...document.querySelectorAll('.wp-idx-tile-t')].map((e) => e.textContent);
+    expect(titles).toEqual([t.index.bookingsTitle, t.tasks.title, t.docs.title, t.notes.title]);
+  });
+
+  // **The tile may not contradict its own count** (field report, 2026-09-20; backlog line
+  // opened 2026-08-16). This fixture's trip has no manual tasks and nothing prepared, so
+  // every open row is a readiness check — the exact state that printed `אין משימות פתוחות`
+  // beside a count of five, because `taskPreview.next` can only ever name a DATED task.
+  it('names the leading readiness check rather than claiming nothing is open', () => {
+    render(wrap(<Index />));
+    const tile = screen.getByRole('button', { name: new RegExp(t.tasks.title) });
+    const sub = tile.querySelector('.wp-idx-tile-sub')?.textContent ?? '';
+    const count = Number(tile.querySelector('.wp-idx-tile-count')?.textContent);
+
+    expect(count).toBeGreaterThan(0);
+    expect(sub).not.toBe(t.tasks.tile.empty);
+    // The flights check leads `orderTaskRows` here — nothing manual is urgent, so the
+    // checks are the top of the list on the screen behind this tile too.
+    expect(sub).toBe(t.tasks.tile.next(t.planHome.checklist.flightsTitle));
   });
 
   // The Index is trip-wide, and a remembered `?day=` rides along on its URL now (field

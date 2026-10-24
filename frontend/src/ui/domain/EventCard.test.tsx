@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, it, expect, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { wrapNav } from '../../test/nav-harness';
 import { EventCard, type EventCardProps } from './EventCard';
 import { SyncBadge } from '../feedback';
@@ -19,6 +19,10 @@ const base: EventCardProps = {
   onToggle: () => {},
   tz: TZ,
   onNavigate: () => {},
+  // The quick actions are scoped to today (ADR-0228's 2026-09-15 amendment), and the
+  // fixture is the on-the-ground row every spec below is about. The amendment's own
+  // "another day" cases pass `today={false}` explicitly.
+  today: true,
 };
 
 describe('EventCard', () => {
@@ -45,8 +49,9 @@ describe('EventCard', () => {
     // and keeps the chip — the fallback ADR-0178 §4 leaves for an unplaced commitment.
     expect(container.querySelector('.wp-event-tag-hard')?.textContent).toContain(t.event.hard);
     expect(container.querySelector('.hard-lock')).toBeNull();
-    // Hard events have no ±nudge stepper.
-    expect(container.querySelector('.wp-event-act.stepper')).toBeNull();
+    // The nudge is the SAME control a soft row gets (ADR-0228 §1) — a hard event's
+    // confirm gate lives in the verb, not in a different button.
+    expect(container.querySelector('.wp-event-act.stepper')).toBeTruthy();
     // The edit-guard warning shows the code.
     expect(container.querySelector('.wp-event-hard-warn')?.textContent).toContain('WP-ABC123');
   });
@@ -129,27 +134,138 @@ describe('EventCard', () => {
     expect(onToggle).toHaveBeenCalledTimes(1);
   });
 
-  it('passed soft event → the inline settle strip (we did this / skip)', () => {
-    const onDone = vi.fn();
-    const onSkip = vi.fn();
+  it('passed event → the inline settle strip (we did this / skip), either kind', () => {
+    for (const kind of ['soft', 'hard'] as const) {
+      const onDone = vi.fn();
+      const onSkip = vi.fn();
+      const { container } = render(
+        wrapNav(<EventCard {...base} kind={kind} phase="passed" onDone={onDone} onSkip={onSkip} />),
+      );
+      expect(container.querySelector('.wp-settle.prompt')).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: new RegExp(t.actions.wasThere) }));
+      expect(onDone).toHaveBeenCalledTimes(1);
+      cleanup();
+    }
+  });
+
+  // ADR-0228 §3: the strip used to REPLACE the card, which is why a passed row's
+  // documents, notes and tasks were unreachable — on a booking, its confirmation code
+  // with them. It is a band on the card now, and the card still opens.
+  it('a settle-strip card still expands, so its documents stay reachable', () => {
     const { container } = render(
-      wrapNav(<EventCard {...base} phase="passed" onDone={onDone} onSkip={onSkip} />),
+      wrapNav(
+        <EventCard
+          {...base}
+          kind="hard"
+          phase="passed"
+          isOpen
+          code="WP-ABC123"
+          onDone={() => {}}
+          onSkip={() => {}}
+          documentsSlot={<div className="docr-sec">docs</div>}
+        />,
+      ),
     );
-    expect(container.querySelector('.wp-settle.prompt')).toBeTruthy();
-    // The settle card doesn't expand (no toggle button face).
-    expect(container.querySelector('.wp-event-face.static')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: new RegExp(t.actions.wasThere) }));
+    expect(container.querySelector('.wp-event-face.static')).toBeNull();
+    expect(screen.getByRole('button', { expanded: true })).toBeTruthy();
+    expect(container.querySelector('.docr-sec')).toBeTruthy();
+    expect(container.querySelector('.wp-event-hard-warn')?.textContent).toContain('WP-ABC123');
+  });
+
+  // The `לא סומן` chip is the STATUS slot, so it reads the status before the kind.
+  it('a passed booking wears the same לא סומן chip a passed stop does', () => {
+    const { container } = render(
+      wrapNav(<EventCard {...base} kind="hard" startsAt="2026-07-20T02:00:00Z" phase="passed" />),
+    );
+    expect(container.querySelector('.wp-event-tag-phase')?.textContent).toBe(t.event.notMarked);
+  });
+
+  // ADR-0228 §1, read off the DOM rather than off the spec: the order is one list, so the
+  // rendered rows have to come out identical too.
+  it('the action row reads the same on a booking as on a stop', () => {
+    const labels = (kind: 'hard' | 'soft') => {
+      const { container } = render(
+        wrapNav(
+          <EventCard
+            {...base}
+            kind={kind}
+            phase="upcoming"
+            isOpen
+            onDone={() => {}}
+            onSkip={() => {}}
+            onDelay={() => {}}
+            onEarlier={() => {}}
+            onOnWay={() => {}}
+            onEdit={() => {}}
+          />,
+        ),
+      );
+      const row = [...container.querySelectorAll('.wp-event-act-row > *')].map(
+        (n) => n.className + '|' + (n.textContent ?? '').trim(),
+      );
+      cleanup();
+      return row;
+    };
+    expect(labels('hard')).toEqual(labels('soft'));
+    // Ahead of you the row is moves and the way there — the record is not offered for a
+    // thing that has not happened (ADR-0043 §2, restored by the amendment).
+    expect(labels('soft').join('|')).toContain(t.actions.onWay);
+    expect(labels('soft').join('|')).not.toContain(t.actions.done);
+  });
+
+  it('a booking can be marked done from its action row (ADR-0228 §2)', () => {
+    const onDone = vi.fn();
+    render(
+      wrapNav(
+        <EventCard {...base} kind="hard" phase="now" isOpen onDone={onDone} onSkip={() => {}} />,
+      ),
+    );
+    fireEvent.click(screen.getByRole('button', { name: t.actions.done }));
     expect(onDone).toHaveBeenCalledTimes(1);
   });
 
-  it('done event: the ✓ doubles as one-tap undo (keyboard-operable, restores)', () => {
-    const onRestore = vi.fn();
-    render(wrapNav(<EventCard {...base} phase="done" onRestore={onRestore} />));
-    const undo = screen.getByRole('button', { name: t.actions.undoDone });
-    fireEvent.keyDown(undo, { key: 'Enter' });
-    expect(onRestore).toHaveBeenCalledTimes(1);
-    fireEvent.click(undo);
-    expect(onRestore).toHaveBeenCalledTimes(2);
+  // ADR-0230 §1 — ONE done mark, and it is the undo. The `היינו ✓` chip was the label of
+  // three affordances for one verb; it is now the only one, and these four assertions are
+  // what that sentence means: it restores, it says so, the other two are gone, and it goes
+  // back to being a label where there is nothing to restore into.
+  describe('a settled row (ADR-0230)', () => {
+    const done = (over = {}) =>
+      render(wrapNav(<EventCard {...base} phase="done" onRestore={() => {}} {...over} />));
+
+    it('the `היינו ✓` chip IS the undo: tappable and keyboard-operable', () => {
+      const onRestore = vi.fn();
+      done({ onRestore });
+      const chip = screen.getByRole('button', { name: t.actions.undoDone });
+      expect(chip.className).toContain('wp-event-tag-done');
+      expect(chip.textContent).toContain(t.event.didThis);
+      fireEvent.keyDown(chip, { key: 'Enter' });
+      expect(onRestore).toHaveBeenCalledTimes(1);
+      fireEvent.click(chip);
+      expect(onRestore).toHaveBeenCalledTimes(2);
+    });
+
+    // The tap must not also collapse the row it settles — the same two calls the `⋯` makes,
+    // and the reason both are `role="button"` spans inside the face rather than buttons.
+    it('undoes without toggling the card it sits on', () => {
+      const onToggle = vi.fn();
+      done({ onToggle });
+      fireEvent.click(screen.getByRole('button', { name: t.actions.undoDone }));
+      expect(onToggle).not.toHaveBeenCalled();
+    });
+
+    // The two the chip replaces: the face's ✓ circle and the band's `שחזור`. Asserted by
+    // COUNT rather than by a stale class name, which an absence assertion would let rot.
+    it('carries no second undo — no ✓ circle, no verb band', () => {
+      const { container } = done({ isOpen: true });
+      expect(screen.getAllByRole('button', { name: t.actions.undoDone })).toHaveLength(1);
+      expect(container.querySelector('.wp-event-act-row')).toBeNull();
+    });
+
+    it('is a plain label, not a control, where nothing can restore it', () => {
+      const { container } = done({ onRestore: undefined });
+      expect(screen.queryByRole('button', { name: t.actions.undoDone })).toBeNull();
+      expect(container.querySelector('.wp-event-tag-done')!.textContent).toContain(t.event.didThis);
+    });
   });
 
   it('renders the conflict flag when a hard conflict is passed', () => {
@@ -268,23 +384,142 @@ describe('EventCard', () => {
     });
   });
 
-  it('read-only past day: forward verbs hidden, no ⋯ menu (settle/navigate still allowed)', () => {
+  // **THE EARLY MARK** (ADR-0228 §5c, built by its 2026-09-16 amendment). The band asks on a
+  // `now` row and the strip on a passed one; ahead of the line the pair belongs to `⋯`, and the
+  // sheet never had it — so a booking cancelled on you had only `מחיקה`, which throws away the
+  // code. Owner, with the boat tour that was cancelled: "the app doesn't have a way to say that,
+  // especially because it's a hard event."
+  describe('the settle pair in the ⋯ sheet', () => {
+    const menu = (props: Partial<Parameters<typeof EventCard>[0]>) => {
+      cleanup();
+      const onDone = vi.fn();
+      const onSkip = vi.fn();
+      render(
+        wrapNav(
+          <EventCard
+            {...base}
+            isOpen
+            phase="upcoming"
+            onEdit={() => {}}
+            onDone={onDone}
+            onSkip={onSkip}
+            {...props}
+          />,
+        ),
+      );
+      fireEvent.click(screen.getByRole('button', { name: t.actions.more }));
+      const sheet = document.querySelector('.wp-row-actions') as HTMLElement;
+      return { onDone, onSkip, sheet };
+    };
+
+    it('an upcoming HARD row offers סיימנו and דילוג, and דילוג fires the skip', () => {
+      const { onSkip, sheet } = menu({ kind: 'hard' });
+      expect(within(sheet).getByRole('button', { name: t.actions.done })).toBeTruthy();
+      fireEvent.click(within(sheet).getByRole('button', { name: t.actions.skip }));
+      expect(onSkip).toHaveBeenCalledTimes(1);
+    });
+
+    it('an upcoming soft row carries the identical pair — a kind is not a branch (ADR-0228)', () => {
+      const { onDone, sheet } = menu({ kind: 'soft' });
+      expect(within(sheet).getByRole('button', { name: t.actions.skip })).toBeTruthy();
+      fireEvent.click(within(sheet).getByRole('button', { name: t.actions.done }));
+      expect(onDone).toHaveBeenCalledTimes(1);
+    });
+
+    it('the pair leads the sheet: what happened, before what to do about the row', () => {
+      const { sheet } = menu({ kind: 'soft', onReplace: () => {}, onPark: () => {} });
+      const labels = within(sheet)
+        .getAllByRole('button')
+        .map((b) => b.textContent?.trim());
+      expect(labels.slice(0, 2)).toEqual([t.actions.done, t.actions.skip]);
+    });
+
+    it('is not in the sheet on a passed row — the strip is already asking, in words', () => {
+      const { sheet } = menu({ phase: 'passed' });
+      expect(within(sheet).queryByRole('button', { name: t.actions.done })).toBeNull();
+      expect(within(sheet).queryByRole('button', { name: t.actions.skip })).toBeNull();
+    });
+
+    it('is not in the sheet on a now row — the band carries it there', () => {
+      const { sheet } = menu({ phase: 'now', today: true });
+      expect(within(sheet).queryByRole('button', { name: t.actions.done })).toBeNull();
+      expect(within(sheet).queryByRole('button', { name: t.actions.skip })).toBeNull();
+    });
+
+    it('is not in the sheet once the row is done — the chip is the undo (ADR-0230)', () => {
+      const { sheet } = menu({ phase: 'done' });
+      expect(within(sheet).queryByRole('button', { name: t.actions.skip })).toBeNull();
+    });
+
+    it('needs BOTH handlers, like every other host of the pair', () => {
+      const { sheet } = menu({ onSkip: undefined });
+      expect(within(sheet).queryByRole('button', { name: t.actions.done })).toBeNull();
+    });
+  });
+
+  // ADR-0029 hides create/edit on a past day; the amendment takes the live verbs with them,
+  // because a day that is over has no "now" for a quick action to act in. What answers a
+  // past row is the settle strip (ADR-0043 §4's retrospective job), and `מפה` on the badge.
+  it('read-only past day: no quick actions at all and no ⋯ menu', () => {
     const { container } = render(
       wrapNav(
         <EventCard
           {...base}
           kind="hard"
-          phase="now"
+          phase="passed"
+          today={false}
           isOpen
           readOnly
           onNavigate={() => {}}
+          onDone={() => {}}
+          onSkip={() => {}}
           onEdit={() => {}}
         />,
       ),
     );
-    // navigate stays; the more menu is gone (create/edit gated, ADR-0029).
-    expect(container.querySelector('.wp-event-act.more')).toBeNull();
-    expect(screen.getByRole('button', { name: t.actions.navigate })).toBeTruthy();
+    expect(container.querySelector('.wp-event-menu')).toBeNull();
+    expect(container.querySelector('.wp-event-act-row')).toBeNull();
+    // The ask is still there, in the one place that asks in words.
+    expect(container.querySelector('.wp-settle.prompt')).toBeTruthy();
+  });
+
+  // THE REPORT THE AMENDMENT ANSWERS: day 16 browsed on day 15, a waterfall at 06:30
+  // offering `סיימנו`, `בדרך` and a ±30 nudge. `eventPhase` calls every future row
+  // `upcoming`, exactly like this afternoon's — so the row asked what-now about a day
+  // nobody is living yet.
+  it('a future day carries no quick actions, and keeps its ⋯', () => {
+    const { container } = render(
+      wrapNav(
+        <EventCard
+          {...base}
+          phase="upcoming"
+          today={false}
+          isOpen
+          startsAt="2026-07-20T02:00:00Z"
+          onDone={() => {}}
+          onSkip={() => {}}
+          onDelay={() => {}}
+          onEarlier={() => {}}
+          onOnWay={() => {}}
+          onEdit={() => {}}
+        />,
+      ),
+    );
+    expect(container.querySelector('.wp-event-act-row')).toBeNull();
+    expect(screen.getByRole('button', { name: t.actions.more })).toBeTruthy();
+  });
+
+  // The `⋯` left the band for the face, so it is in one place on every card and reachable
+  // without expanding — and it must not toggle the row on its way to the sheet.
+  it('the ⋯ sits on the face, opens the sheet, and does not toggle the row', () => {
+    const onToggle = vi.fn();
+    const { container } = render(
+      wrapNav(<EventCard {...base} onToggle={onToggle} onEdit={() => {}} />),
+    );
+    expect(container.querySelector('.wp-event-face .wp-event-menu')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: t.actions.more }));
+    expect(onToggle).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: t.actions.edit })).toBeTruthy();
   });
 
   it('no location → no ניווט / מפה buttons (handlers omitted, Phase 2)', () => {
@@ -556,5 +791,86 @@ describe('EventCard — the meta line and the note mark (ADR-0152 §6c)', () => 
       showCard({ code: 'MN-4471', kind: 'hard', isOpen: true });
       expect(screen.getByText(/MN-4471/)).toBeTruthy();
     });
+  });
+
+  // **THE BADGE IS THE THUMBNAIL'S FRAME** (ADR-0167 §1, extended to the day rows by
+  // ADR-0219 §1). The card takes a URL and nothing else: whether the glyph beside it was
+  // PICKED is the screen's question (`lib/place-photo`'s `rowPhoto`), not this layer's.
+  describe('the badge photo (ADR-0219 §1)', () => {
+    const photoImg = (c: HTMLElement) =>
+      c.querySelector('.wp-event-badge .wp-placebadge-photo img') as HTMLImageElement | null;
+
+    it('fills the badge with the photo it is given, on the expandable card', () => {
+      const { container } = render(
+        wrapNav(<EventCard {...base} photoUrl="/enrichment/images/enr_1" />),
+      );
+      expect(photoImg(container)?.getAttribute('src')).toBe('/enrichment/images/enr_1');
+      expect(container.querySelector('.wp-event-badge')!.hasAttribute('data-photo')).toBe(true);
+      // The glyph and the photo are alternatives, never stacked.
+      expect(container.querySelector('.wp-event-badge')!.textContent).not.toContain('🍜');
+    });
+
+    // The settle variant returns before the expandable tree exists, which is exactly how it
+    // came to be the one host with no way to the map (see `PlaceBadge`'s docblock). Both
+    // call sites take the photo, so neither can drift again.
+    it('fills it on the settle variant too', () => {
+      const { container } = render(
+        wrapNav(
+          <EventCard
+            {...base}
+            phase="passed"
+            onDone={() => {}}
+            onSkip={() => {}}
+            photoUrl="/enrichment/images/enr_2"
+          />,
+        ),
+      );
+      expect(container.querySelector('.wp-settle.prompt')).toBeTruthy();
+      expect(photoImg(container)?.getAttribute('src')).toBe('/enrichment/images/enr_2');
+    });
+
+    it('renders the glyph and no image at all without one — most rows, unchanged', () => {
+      const { container } = render(wrapNav(<EventCard {...base} />));
+      expect(photoImg(container)).toBeNull();
+      expect(container.querySelector('.wp-event-badge')!.hasAttribute('data-photo')).toBe(false);
+      expect(container.querySelector('.wp-event-badge')!.textContent).toContain('🍜');
+    });
+  });
+});
+
+describe('the time is the move (ADR-0231 §1)', () => {
+  const timed = { ...base, startsAt: '2026-09-16T07:30:00Z', endsAt: '2026-09-16T10:30:00Z' };
+
+  it('the when line is a role="button" when the screen wires it, and a readout otherwise', () => {
+    const { container, unmount } = render(wrapNav(<EventCard {...timed} onPickTime={() => {}} />));
+    const time = container.querySelector('.wp-event-time')!;
+    expect(time.getAttribute('role')).toBe('button');
+    expect(time.classList.contains('is-token')).toBe(true);
+    expect(time.getAttribute('aria-label')).toBe(t.planDay.slotMoveTitle(base.titleText));
+    // Never a nested <button>: the face is one (ADR-0230's first render).
+    expect(container.querySelectorAll('.wp-event-face button').length).toBe(0);
+    unmount();
+    const plain = render(wrapNav(<EventCard {...timed} />));
+    expect(plain.container.querySelector('.wp-event-time')!.getAttribute('role')).toBeNull();
+  });
+
+  it('opens the positions without toggling the row, by tap and by keyboard', () => {
+    const onPickTime = vi.fn();
+    const onToggle = vi.fn();
+    const { container } = render(
+      wrapNav(<EventCard {...timed} onPickTime={onPickTime} onToggle={onToggle} />),
+    );
+    const time = container.querySelector('.wp-event-time')!;
+    fireEvent.click(time);
+    fireEvent.keyDown(time, { key: 'Enter' });
+    expect(onPickTime).toHaveBeenCalledTimes(2);
+    expect(onToggle).not.toHaveBeenCalled();
+  });
+
+  it('a hard row keeps its lock inside the control', () => {
+    const { container } = render(
+      wrapNav(<EventCard {...timed} kind="hard" onPickTime={() => {}} />),
+    );
+    expect(container.querySelector('.wp-event-time.is-token .hard-lock')).toBeTruthy();
   });
 });

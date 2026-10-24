@@ -48,10 +48,14 @@ import {
   fitPaddingFor,
   mapFitPadding,
   cameraFrame,
+  boundsOfPoints,
   focusBoundsFor,
+  normalizeBearing,
   recentreInBand,
   panShiftForReserve,
   searchCameraTarget,
+  shortestTurn,
+  zoomNoTighterThan,
   zoomStepIn,
   type CameraAt,
   type CameraTarget,
@@ -94,6 +98,13 @@ export interface MapCamera {
   /** Frame a place together with what is around it — the arrival, and the place card's
    *  way in to its own pin (ADR-0129 §1/§2). Returns whether it moved. */
   frameOn: (point: LatLng) => boolean;
+  /** **Frame a PATH — the amber leg — rather than the stop at the end of it** (ADR-0206 §AC8).
+   *  Returns `false` when the leg is too long to be worth framing (the fit would drop below
+   *  `MAP_ZOOM.DOT_BELOW`, where every pin degrades to a dot and the leg is unreadable anyway) —
+   *  and then pans to `anchor`, the stop the selection is on, at no tighter than that same floor
+   *  (§AC8's 2026-08-28 amendment). The refusal is about the LEG, never a reason to keep a zoom
+   *  chosen for the previous one. */
+  framePath: (path: readonly LatLng[], anchor: LatLng) => boolean;
   /** **Keep `point` in the middle of what you can actually SEE, as that changes underneath it**
    *  (ADR-0122 §7's 2026-08-06 amendment). The same target `focus` pans a new selection to —
    *  so the two agree by construction — re-applied when the CARD or the CANVAS changes rather
@@ -121,6 +132,16 @@ export interface MapCamera {
    *  zoom there** — restoring what Google's own double-click zoom did before we suppressed
    *  it. Omitted (or with no projection yet) it anchors at the centre. */
   stepZoomIn: (offsetPx?: WorldPoint) => void;
+  /** **Turn the map to an angle and change nothing else** (ADR-0234 §4) — eased, because a
+   *  reset is a discrete move the user asked for once. Centre and zoom are re-stated from
+   *  the live camera so the ease moves on one axis only. */
+  orientTo: (bearing: number) => void;
+  /** The same turn without the ease, for heading-up: the device reports a heading many
+   *  times a second and each one is a jump, not a journey (ADR-0234 §7). It records the
+   *  write so an in-flight ease does not mistake it for a finger. */
+  turnTo: (bearing: number) => void;
+  /** Which way is up, `[0, 360)`, or `undefined` before the map has a camera. */
+  readBearing: () => number | undefined;
 }
 
 export function useMapCamera(
@@ -245,7 +266,17 @@ export function useMapCamera(
       // No camera to interpolate FROM (a map that has not rendered) is not a failure —
       // there is simply nothing to ease across, so land on the target.
       if (!fromCenter || fromZoom == null || prefersReducedMotion()) {
-        map.moveCamera({ center: to.center, zoom: to.zoom });
+        // **`to.bearing` belongs here too, and leaving it out is a move that silently does
+        // nothing** (ADR-0234 §4). This branch is the whole of a reset for anyone with
+        // reduced motion on, and for a map that has not rendered yet — so dropping the one
+        // axis the reset is ABOUT means the compass turns the needle and not the map. The
+        // key stays absent when the caller stated none, which is what keeps every pan and
+        // fit bearing-blind.
+        map.moveCamera({
+          center: to.center,
+          zoom: to.zoom,
+          ...(to.bearing != null ? { bearing: to.bearing } : {}),
+        });
         going.current = null;
         wrote.current = null;
         return;
@@ -384,7 +415,17 @@ export function useMapCamera(
    *  `false` also covers "the map is not ready to be fitted", which is what lets the
    *  caller retry rather than record a framing that never happened. */
   const apply = useCallback(
-    (candidates: readonly LatLng[], view: MapBounds | null, want?: MapBounds): boolean => {
+    (
+      candidates: readonly LatLng[],
+      view: MapBounds | null,
+      want?: MapBounds,
+      /** **The zoom below which this fit is not worth making**, for a caller that would
+       *  rather do something else than be pulled back that far (`framePath`). The fit is
+       *  learned from `fitBounds` either way, so the only way to ask is to try it and put
+       *  the camera back — which is exactly what happens below, and costs no frame because
+       *  both calls are synchronous inside one. */
+      floorZoom?: number,
+    ): boolean => {
       if (!map) return false;
       // An explicit `want` is a caller that has already decided the extent (`frameOn`'s
       // neighbour-derived box). It skips the "does the view already frame this" guard on
@@ -430,6 +471,12 @@ export function useMapCamera(
       const fitted = map.getZoom();
       const centre = map.getCenter();
       if (fitted == null || !centre) return true;
+      if (floorZoom != null && fitted < floorZoom) {
+        if (before && beforeZoom != null) {
+          map.moveCamera({ center: { lat: before.lat(), lng: before.lng() }, zoom: beforeZoom });
+        }
+        return false;
+      }
       const to: CameraAt = {
         center: { lat: centre.lat(), lng: centre.lng() },
         zoom: Math.min(fitted, tune(TUNE.zoomMaxFit, MAP_ZOOM.MAX_FIT)),
@@ -540,6 +587,38 @@ export function useMapCamera(
   const frameOnRef = useRef(frameOn);
   frameOnRef.current = frameOn;
 
+  /** **A selected stop's subject is its LEG, not its dot** (ADR-0206 §AC8; owner report,
+   *  2026-08-27: _"clicking on a stop highlights the route to it … but the place details pops up
+   *  and hides most of the path"_). Centring the one point is what put the amber leg under the
+   *  card: the camera knew the card was there (`bottomReserve`, ADR-0128 §2) and did not know a
+   *  leg was. Framing the path answers both at once, because a fit already reserves the card's
+   *  band.
+   *
+   *  **The floor is `DOT_BELOW` and it is reused rather than minted** (rule 8): that is already
+   *  the zoom at which a pin stops being a pin, so a leg that cannot be framed above it is one
+   *  you could not read after the move either — and being pulled to country zoom for a train
+   *  journey is worse than not framing at all. Below the floor the leg is not framed and `false`
+   *  says so — but the camera still moves: it pans to `anchor`, the stop, and caps the zoom at
+   *  that same floor rather than keeping one the previous leg earned. */
+  const framePath = useCallback(
+    (path: readonly LatLng[], anchor: LatLng) => {
+      const bounds = boundsOfPoints(path);
+      if (!bounds) return false;
+      const floor = tune(TUNE.zoomDotBelow, MAP_ZOOM.DOT_BELOW);
+      if (apply(path, null, bounds, floor)) return true;
+      // **A refused leg still says how tight the camera may be** (§AC8's 2026-08-28 amendment).
+      // The pan itself is the one this always fell back to; what it may no longer do is inherit
+      // the zoom. Below the floor the leg leaves the canvas at any zoom tighter than it, and
+      // since AC8 that tight zoom is one the CAMERA chose for the previous, shorter leg — so
+      // walking a day from two stops on one street to two an hour apart stayed at street zoom.
+      // The zoom the ease is heading for, when one is in flight, for `locate`'s reason: a second
+      // selection during the first move's 480ms must not read an interpolated value.
+      moveTo(anchor, zoomNoTighterThan(going.current?.zoom ?? map?.getZoom(), floor));
+      return false;
+    },
+    [map, apply, moveTo],
+  );
+
   /**
    * **A SETTLED RESULT SET MOVES THE CAMERA** (ADR-0168 §1), which is a narrow reversal of
    * ADR-0131 §5 rather than a general one: typing still moves nothing, because this is
@@ -639,7 +718,78 @@ export function useMapCamera(
     [map, easeTo],
   );
 
-  return { reframe, focus, frameOn, keepCentred, showResults, locate, zoomTo, stepZoomIn };
+  /**
+   * **Turn the map to an angle, and change nothing else** (ADR-0234 §4).
+   *
+   * Not the centre, not the zoom — that is the whole difference between "put the map back"
+   * and "move the map", and every other verb in this hook does the second. It reads the
+   * live centre and zoom and re-states them so the ease has a `from` and a `to` that differ
+   * on one axis only.
+   *
+   * It goes through `easeTo` rather than easing itself, because ADR-0129 §3's invariant is
+   * ONE eased driver: a second rAF loop writing bearing while this one writes centre would
+   * be two drivers on one map, and the "a finger wins" check would see each as the other's
+   * finger.
+   */
+  const orientTo = useCallback(
+    (bearing: number) => {
+      if (!map) return;
+      const at = readCamera(map);
+      if (!at) return;
+      easeTo({ center: at.center, zoom: at.zoom, bearing: normalizeBearing(bearing) });
+    },
+    [map, easeTo],
+  );
+
+  /**
+   * **Follow: the same turn, without the ease and without losing the argument about who
+   * moved the map** (ADR-0234 §7).
+   *
+   * Heading-up writes a bearing at whatever rate the device reports it, so easing each one
+   * would queue eases on top of each other and never settle. This jumps — and then records
+   * the write in `wrote`, which is the part that is not optional: `sameCamera` is how an
+   * in-flight ease decides a finger has taken over, and an unrecorded bearing write is
+   * indistinguishable from a two-finger twist. Without this line, following the compass
+   * while a pin-tap pan is still easing would cancel the pan on its first heading sample.
+   *
+   * It deliberately does NOT cancel a running ease: a pan and a turn are about different
+   * axes and can honestly happen at once (tap a pin while following, and the map should
+   * both travel and stay heading-up). `easeTo`'s own frames re-state the bearing they were
+   * given, so the two do not fight — the ease carries `bearing: undefined` unless it was
+   * asked for one, and `moveCamera` leaves the angle alone in that case.
+   */
+  const turnTo = useCallback(
+    (bearing: number) => {
+      if (!map) return;
+      const to = normalizeBearing(bearing);
+      map.moveCamera({ bearing: to });
+      if (wrote.current) wrote.current = { ...wrote.current, bearing: to };
+    },
+    [map],
+  );
+
+  /** The angle the map is at now, `[0, 360)`, or `undefined` before it has one. Read on
+   *  demand rather than held in state: the compass needle is CSS reading a custom property,
+   *  and a bearing in React state would re-render the pane on every frame of a turn. */
+  const readBearing = useCallback(() => {
+    const raw = map?.getBearing();
+    return raw == null ? undefined : normalizeBearing(raw);
+  }, [map]);
+
+  return {
+    reframe,
+    focus,
+    frameOn,
+    framePath,
+    keepCentred,
+    showResults,
+    locate,
+    zoomTo,
+    stepZoomIn,
+    orientTo,
+    turnTo,
+    readBearing,
+  };
 }
 
 /** The map's camera as our own shape, or `null` before it has one. */
@@ -647,7 +797,12 @@ function readCamera(map: CameraMap): CameraAt | null {
   const centre = map.getCenter();
   const zoom = map.getZoom();
   if (!centre || zoom == null) return null;
-  return { center: { lat: centre.lat(), lng: centre.lng() }, zoom };
+  const bearing = map.getBearing();
+  return {
+    center: { lat: centre.lat(), lng: centre.lng() },
+    zoom,
+    ...(bearing != null ? { bearing: normalizeBearing(bearing) } : {}),
+  };
 }
 
 /** Is the camera still where we put it? Compared with a tolerance, because a round trip
@@ -658,7 +813,14 @@ function sameCamera(a: CameraAt | null, b: CameraAt): boolean {
   return (
     Math.abs(a.zoom - b.zoom) < 0.001 &&
     Math.abs(a.center.lat - b.center.lat) < 1e-6 &&
-    Math.abs(a.center.lng - b.center.lng) < 1e-6
+    Math.abs(a.center.lng - b.center.lng) < 1e-6 &&
+    // **The angle joins the comparison, and it has to** (ADR-0234 §7). This function is how
+    // "a finger wins" is enforced, and a two-finger twist moves ONLY the bearing — so
+    // without this line the ease would read a turning map as untouched and keep writing
+    // over the gesture, which is the exact defect ADR-0121 §7 wrote this check for, on the
+    // one axis nothing had ever read. Compared the short way round, so 359.9999 and 0.0001
+    // are the same camera rather than a full turn apart.
+    Math.abs(shortestTurn(a.bearing ?? 0, b.bearing ?? 0)) < 0.01
   );
 }
 

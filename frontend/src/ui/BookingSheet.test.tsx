@@ -11,6 +11,31 @@ import {
   type Place,
 } from '@waypoint/shared';
 
+/**
+ * **THE SLOWEST FILE IN THE SUITE GETS ITS OWN BUDGET** (2026-08-27).
+ *
+ * Vitest's default `testTimeout` is ⁦5s⁩, and it is the right default for ~4,800 tests that run in
+ * milliseconds. This file is the one that does not: its journey specs drive a multi-step form
+ * through a whole chain — a date, then eight moments, each `fireEvent` re-rendering the sheet and
+ * its rail — so the work is real jsdom rendering rather than a wait, and there is no artificial
+ * delay to delete instead.
+ *
+ * **Measured before the number was picked, rather than after it failed a second time.** Of the ten
+ * slowest tests in the entire suite, **nine are in this file** and eight are in the chain describe
+ * below; the only outsider is `ZonePicker`'s suggested-zones spec at ⁦1.6s⁩. So the exposure is here
+ * and a global raise would spend everyone's hang-detection on one file's problem.
+ *
+ * **Why the default was not enough.** Slowest here: ⁦3.1s⁩ locally, ⁦2.6s⁩ on a CI runner — about half
+ * the budget, which reads as comfortable and is not. A contended runner stretched a ⁦1.9s⁩ test past
+ * ⁦5s⁩ (~2.7×) and turned a green PR red with no code path to this file; at that factor the ⁦2.6s⁩ one
+ * needs ⁦7s⁩. ⁦20s⁩ is ~6× the measured worst case, which absorbs a considerably worse runner.
+ *
+ * **This hides no hang.** Every test still runs and still asserts everything — a test that genuinely
+ * stops making progress fails here in ⁦20s⁩ instead of ⁦5s⁩, against a file that already takes ~⁦29s⁩ on
+ * CI. Nothing is skipped, disabled or quarantined; the budget moved, not the coverage.
+ */
+vi.setConfig({ testTimeout: 20_000 });
+
 Element.prototype.scrollIntoView = vi.fn();
 
 // The one thing this sheet says to the Map (ADR-0134 §1): "find me a place for this field".
@@ -92,8 +117,18 @@ const trip = {
   endDate: '2026-07-30',
 };
 
+vi.mock('../state/mode-state', () => import('../test/mode-from-trip'));
 vi.mock('../state/trip-state', () => ({
   useTrip: () => ({
+    zoneCrossings: [],
+    // Tasks ride the same snapshot since phase 1; the mark and the sections read them.
+    tasks: [],
+    taskVerbs: {
+      createTask: async () => undefined,
+      updateTask: async () => {},
+      deleteTask: async () => {},
+      tickTask: async () => {},
+    },
     // The one context index every note surface resolves through (ADR-0172 §1);
     // built from this file's own fixtures so pairing is real rather than stubbed.
     hostContexts: buildHostContextIndex([], tripBookings),
@@ -127,9 +162,23 @@ import { BookingSheet } from './BookingSheet';
 import { bookingSheetDraft, type BookingSheetDraft } from '../lib/booking-draft';
 import { routeTitle } from '../lib/route-title';
 import { zonedIso } from '../lib/time';
+import { timingLabels } from '../lib/booking-timing';
 import { setSimulatedNow } from '../lib/useClock';
 import { t } from '../i18n/he';
 import { buildHostContextIndex } from '../lib/host-context';
+
+/** **The notes box is revealed by `＋ פתק`** (ADR-0192 §2's 2026-08-16 reversal), so a test
+ *  that types a note presses it first — the same gesture a person makes. Module scope because
+ *  the leg and round-trip blocks below write notes too, and a helper per describe is how two
+ *  of them end up pressing different things. */
+const openNoteBox = () => {
+  const section = document.querySelector('.note-sec:not(.tsk-sec)') as HTMLElement;
+  fireEvent.click(section.querySelector('.add') as HTMLElement);
+};
+const composer = () => {
+  if (!document.querySelector('.note-compose-in')) openNoteBox();
+  return document.querySelector('.note-compose-in') as HTMLTextAreaElement;
+};
 
 // **The sheet is stepped now** (ADR-0155 §5): `שמירה` lives on the LAST step, and the
 // primary is `הבא` until then. These are the whole diff to this file — every assertion
@@ -159,6 +208,57 @@ const toLastStep = () => {
 const pastTypeStep = () => {
   if (onTypeStep()) press(t.common.steps.next);
 };
+/* ── Driving the JOURNEY RAIL (ADR-0203 §1/§3/§7/§9) ─────────────────────────────────
+   A journey is no longer two captioned legs with a date each. It is ONE calendar date and a
+   clock per moment, all on one step — so the specs below fill it through the rail's own
+   controls rather than through `.wf-leg`, which a hire and a hotel still use and which these
+   helpers deliberately do not touch. */
+
+/** The rail's nodes, in journey order. Segments carry the leg durations and are skipped. */
+const railNodes = () => [...document.querySelectorAll<HTMLElement>('.jf-row:not(.jf-seg)')];
+
+/** The journey's ONE date. There is exactly one such input in the rail, which is the whole
+ *  design: a return flight would need a second and there is none to mistake it for. */
+const setJourneyDate = (value: string) =>
+  fireEvent.change(document.querySelector('.jf .vt-date input') as HTMLInputElement, {
+    target: { value },
+  });
+
+/** Open node `i` if it is summarised, so its real controls are on screen (§9). */
+const openRailNode = (i: number) => {
+  const summary = railNodes()[i]?.querySelector<HTMLElement>('.jf-sum-tok');
+  if (summary) fireEvent.click(summary);
+};
+
+/** Set one moment's clock. `which` picks between an interior node's two — its arrival is the
+ *  first `TimeField` in the node, its departure the second. Through the panel's exact
+ *  `<input type="time">`, the same precise path the span helpers use. */
+const setNodeTime = (i: number, which: 'arrive' | 'depart', value: string) => {
+  openRailNode(i);
+  const node = railNodes()[i];
+  const tokens = [...node.querySelectorAll<HTMLElement>('button.vt-time')];
+  // Node 0 only departs and the last only arrives, so each has one token; an interior node
+  // has both, arrival first.
+  const token = tokens.length === 1 ? tokens[0] : which === 'arrive' ? tokens[0] : tokens[1];
+  fireEvent.click(token);
+  fireEvent.change(node.querySelector('.tp-time-input') as HTMLInputElement, {
+    target: { value },
+  });
+};
+
+/** Fill a whole journey: its date, then every moment in rail order. `times` is
+ *  `[depart0, arrive1, depart1, arrive2, …]` — exactly the order the rail lays them out. */
+const fillJourney = (date: string, times: string[]) => {
+  setJourneyDate(date);
+  let m = 0;
+  const nodes = railNodes().length;
+  for (let i = 0; i < nodes; i++) {
+    if (i > 0) setNodeTime(i, 'arrive', times[m++]);
+    else setNodeTime(0, 'depart', times[m++]);
+    if (i > 0 && i < nodes - 1) setNodeTime(i, 'depart', times[m++]);
+  }
+};
+
 const save = () => fireEvent.click(screen.getByText(t.common.save));
 const saveFrom = (step: 'what' | 'when' | 'more') => {
   if (step === 'what') toLastStep();
@@ -363,18 +463,115 @@ describe('BookingSheet — refusing a save', () => {
     );
   });
 
-  it('marks only the leg that falls outside the trip', () => {
+  /** **A journey may LAND after the trip's last day, and this spec used to assert the
+   *  opposite** (owner report, 2026-09-20). It was written when both ends of a span were dates
+   *  a person picked and ADR-0083 bounded each of them; §2 made the arrival a DERIVED moment,
+   *  and the bound came along with it — so the ordinary flight home, leaving at ⁦20:00⁩ on the
+   *  last day and landing the next morning, was refused at a field no control can move. ADR-0037
+   *  §1 is what makes it harmless: a span is filed under the day it STARTS, so the booking sits
+   *  on the 30th and carries the 31st as `endDate`. `EventForm` has always said so in its own
+   *  words and bounds the date alone, which is why a night out ending at ⁦02:00⁩ on that same day
+   *  has always saved. */
+  it('lets a journey land after the trip’s last day — the date is what is bounded', () => {
     render(wrapNav(<BookingSheet booking={flight} onClose={() => {}} />));
     next();
-    const [depDate, arrDate] = [...document.querySelectorAll<HTMLInputElement>('.vt-date input')];
-    fireEvent.change(depDate, { target: { value: '2026-07-20' } });
-    fireEvent.change(arrDate, { target: { value: '2026-08-30' } });
+    // Tel Aviv 20:00 on the trip's last day lands in Tokyo at 14:00, which on instants cannot
+    // be that same day — so the arrival is the 31st and the trip ended on the 30th.
+    fillJourney('2026-07-30', ['20:00', '14:00']);
     next();
-    expect(fieldOf(depDate)?.hasAttribute('data-invalid')).toBe(false);
-    expect(fieldOf(arrDate)?.hasAttribute('data-invalid')).toBe(true);
-    expect(fieldOf(arrDate)?.querySelector('.field-error')?.textContent).toBe(
-      t.index.form.dateOutOfRange,
+    // Nothing is marked, and the step advanced rather than refusing.
+    expect(document.querySelector('.jf [data-invalid]')).toBeNull();
+    expect(screen.getByText(t.index.sheet.codeLabel)).toBeTruthy();
+  });
+
+  /** The other half of the same rule: a moment that DATES a booking stays bounded, because a
+   *  leg filed outside [startDate, endDate] is one no day surface can show. A layover's own
+   *  departure is such a moment — it opens the leg after it. */
+  it('still marks a leg that would DEPART outside the trip', () => {
+    render(
+      wrapNav(
+        <BookingSheet
+          booking={null}
+          draft={{
+            ...bookingSheetDraft({
+              booking: null,
+              seed: { type: BOOKING_TYPE.FLIGHT },
+              trip,
+              events: [],
+              places,
+            }),
+            fromPlaceId: 'pl-tlv',
+            toPlaceId: 'pl-nrt',
+            stopPlaceIds: ['pl-dxb'],
+            roundTrip: false,
+          }}
+          onClose={() => {}}
+        />,
+      ),
     );
+    pastTypeStep();
+    next();
+    // Tel Aviv 20:00 on the last day, Dubai at 02:00 — the 31st — and the leg out of Dubai
+    // then departs on a day the trip does not have.
+    fillJourney('2026-07-30', ['20:00', '02:00', '03:00', '11:00']);
+    next();
+    // Marked on the stop's own DEPARTURE — the moment that dates the leg after it — and on
+    // nothing else: neither the journey's date, which is inside the trip, nor either arrival.
+    const [origin, stop, destination] = railNodes();
+    expect(fieldOf(origin.querySelector('.vt-date'))?.hasAttribute('data-invalid')).toBe(false);
+    expect(destination.querySelector('[data-invalid]')).toBeNull();
+    const marks = stop.querySelectorAll('.field[data-invalid]');
+    expect(marks).toHaveLength(1);
+    expect(marks[0].querySelector('.field-error')?.textContent).toBe(t.index.form.dateOutOfRange);
+    // The stop's two clocks are arrival then departure; the mark is on the second.
+    expect(marks[0].querySelector('button.vt-time')?.textContent).toContain('03:00');
+  });
+});
+
+// **THE JOURNEY THE RAIL DRAWS IS THE JOURNEY IT SAVES** (ADR-0203 §2). The rail re-resolves
+// every moment on every render; `LegTimes` only ever learned the day of the moment being
+// typed. So moving a clock that something FOLLOWS left the moments after it on the day they
+// were first resolved onto — the rail said `למחרת` and the stored leg still said today.
+describe('BookingSheet — a moment that moves takes the ones after it with it', () => {
+  afterEach(() => {
+    cleanup();
+    indexVerbs.updateBooking.mockClear();
+  });
+
+  it('re-resolves the arrival when the departure moves past it', async () => {
+    render(wrapNav(<BookingSheet booking={flight} onClose={() => {}} />));
+    next();
+    // Tel Aviv 09:00 → Tokyo 18:00: forward on instants, so the arrival is the same day.
+    fillJourney('2026-07-19', ['09:00', '18:00']);
+    // The departure moves to the evening, which 18:00 in Tokyo can no longer follow: on
+    // instants the arrival is now tomorrow, and the rail says so.
+    setNodeTime(0, 'depart', '23:00');
+    expect(railNodes()[1].textContent).toContain(t.journey.nextDay);
+
+    next();
+    save();
+    await waitFor(() => expect(indexVerbs.updateBooking).toHaveBeenCalled());
+    const [, payload] = indexVerbs.updateBooking.mock.calls[0];
+    // The saved span is the one on screen — not a backwards leg the refusal had to catch.
+    expect(payload.event.startsAt).toBe(zonedIso('2026-07-19', '23:00', 'Asia/Jerusalem'));
+    expect(payload.event.endsAt).toBe(zonedIso('2026-07-20', '18:00', 'Asia/Tokyo'));
+  });
+
+  it('re-resolves it when the arrival is typed before the departure it follows', async () => {
+    render(wrapNav(<BookingSheet booking={flight} onClose={() => {}} />));
+    next();
+    setJourneyDate('2026-07-19');
+    // The arrival first, with no departure above it to resolve against...
+    setNodeTime(1, 'arrive', '18:00');
+    // ...and the departure after it, which the arrival cannot follow on the same day.
+    setNodeTime(0, 'depart', '23:00');
+    expect(railNodes()[1].textContent).toContain(t.journey.nextDay);
+
+    next();
+    save();
+    await waitFor(() => expect(indexVerbs.updateBooking).toHaveBeenCalled());
+    const [, payload] = indexVerbs.updateBooking.mock.calls[0];
+    expect(payload.event.endsAt).toBe(zonedIso('2026-07-20', '18:00', 'Asia/Tokyo'));
   });
 });
 
@@ -404,7 +601,6 @@ describe('BookingSheet — notes written on the way', () => {
   // a note is committed, so a placeholder lookup would find nothing on the second one.
   // The composer rides the last step, with the fields shared across the whole form
   // (ADR-0155 §4) — so every test here names the booking, walks to the end, and writes.
-  const composer = () => document.querySelector('.note-compose-in') as HTMLTextAreaElement;
 
   it('writes no note when the composer was never touched', async () => {
     indexVerbs.createBooking.mockResolvedValue({ id: 'b-new' });
@@ -438,7 +634,10 @@ describe('BookingSheet — notes written on the way', () => {
     nameIt();
     toLastStep();
     fireEvent.change(composer(), { target: { value: 'הראשון' } });
-    fireEvent.click(screen.getByLabelText(t.notes.composer.add));
+    // **`＋ פתק` starts the next one** (ADR-0192 §2's reversal): the box has no `＋` of its own
+    // on a host form, so the header's control both reveals the first box and commits it to
+    // open a second. This used to press a button inside the box.
+    openNoteBox();
     fireEvent.change(composer(), { target: { value: 'השני' } });
     save();
 
@@ -468,7 +667,9 @@ describe('BookingSheet — notes written on the way', () => {
   it('writes nothing at all when the booking itself is refused', () => {
     openHotel();
     next();
-    expect(composer()).toBeNull();
+    // The whole notes SECTION is on the last step, so a refused form never reaches it — the
+    // section is absent, not merely closed, which is why this asks for it rather than the box.
+    expect(document.querySelector('.note-sec:not(.tsk-sec)')).toBeNull();
     expect(screen.queryByText(t.common.save)).toBeNull();
     expect(indexVerbs.createBooking).not.toHaveBeenCalled();
     expect(noteVerbs.createNote).not.toHaveBeenCalled();
@@ -517,15 +718,15 @@ describe('BookingSheet — notes written on the way', () => {
       tripNotes = [hostedNote('n1', 'קוד הכספת 4417', { bookingId: 'bk-h' })];
       editHotel();
 
-      const section = document.querySelector('.note-sec') as HTMLElement;
+      const section = document.querySelector('.note-sec:not(.tsk-sec)') as HTMLElement;
       expect(section).not.toBeNull();
       expect(section.textContent).toContain('קוד הכספת 4417');
-      // ONE way to add, and it is the box below — the section's own `＋ פתק` would open a
-      // second sheet over a form already asking for a save.
-      expect(section.querySelector('.add')).toBeNull();
-      expect(
-        section.compareDocumentPosition(composer()) & Node.DOCUMENT_POSITION_FOLLOWING,
-      ).toBeTruthy();
+      // **ONE way to add, and it is the header's `＋ פתק`** (ADR-0192 §2's reversal) — which
+      // reveals the box below rather than opening a second sheet over a form already asking
+      // for a save.
+      expect(document.querySelector('.note-compose-in')).toBeNull();
+      expect(section.querySelector('.add')).not.toBeNull();
+      expect(section.contains(composer())).toBe(true);
     });
 
     it('shows only THIS booking’s notes, not another host’s', () => {
@@ -537,7 +738,7 @@ describe('BookingSheet — notes written on the way', () => {
       ];
       editHotel();
 
-      const section = document.querySelector('.note-sec') as HTMLElement;
+      const section = document.querySelector('.note-sec:not(.tsk-sec)') as HTMLElement;
       expect(section.textContent).toContain('קוד הכספת 4417');
       for (const other of ['של הזמנה אחרת', 'של האירוע', 'פתק כללי'])
         expect(section.textContent).not.toContain(other);
@@ -568,15 +769,23 @@ describe('BookingSheet — notes written on the way', () => {
       );
     });
 
-    // A create has no host yet, so there is nothing to list — and the heading would
-    // otherwise read `פתקים` twice, once empty.
-    it('shows no section at all on a create', () => {
+    // **ONE section on a create too** (ADR-0192 §2). This used to assert the opposite — no
+    // section at all — because the composer sat in a `Field` of its own and rendering the
+    // section beside it would have headed `פתקים` twice. The composer is a ROW of the section
+    // now, so there is one heading, and the create differs from the edit only in having no
+    // rows above the box. What must not come back is the empty-state line: with a composer
+    // present, `אין פתקים על זה` states the obvious directly above the invitation.
+    it('shows one notes section on a create — the composer, and no rows', () => {
       tripNotes = [hostedNote('n1', 'קוד הכספת 4417', { bookingId: 'bk-h' })];
       openHotel();
       nameIt();
       toLastStep();
-      expect(document.querySelector('.note-sec')).toBeNull();
+      const section = document.querySelector('.note-sec:not(.tsk-sec)');
+      expect(section).toBeTruthy();
       expect(composer()).toBeTruthy();
+      // Another booking's note is not this create's.
+      expect(section!.querySelectorAll('.note-item')).toHaveLength(0);
+      expect(section!.textContent).not.toContain(t.notes.section.empty);
     });
   });
 });
@@ -614,29 +823,17 @@ describe('BookingSheet — a round trip is one save and two bookings', () => {
     pastTypeStep();
   };
   const goRoundTrip = () => fireEvent.click(screen.getByText(t.index.form.roundTrip));
-  /** The span legs ON THE CURRENT STEP. There are two of them either way now: the outbound
-   *  span is step `when`, the return span is step `more` (ADR-0155 §5). */
-  const legs = () => [...document.querySelectorAll<HTMLElement>('.wf-leg')];
-  const setDate = (leg: HTMLElement, value: string) =>
-    fireEvent.change(leg.querySelector('.vt-date input') as HTMLInputElement, {
-      target: { value },
-    });
-  // Through the panel's exact <input type="time">, which is the picker's own precise
-  // path — the 15-minute list can't express every instant these assertions need.
-  const setTime = (leg: HTMLElement, value: string) => {
-    fireEvent.click(leg.querySelector('button.vt-time') as HTMLElement);
-    fireEvent.change(leg.querySelector('.tp-time-input') as HTMLInputElement, {
-      target: { value },
-    });
-  };
-  /** Fill the outbound span on step `when`, then advance to `more`. */
-  const fillOut = (d1: string, t1: string, d2: string, t2: string) => {
-    const [a, b] = legs();
-    setDate(a, d1);
-    setTime(a, t1);
-    setDate(b, d2);
-    setTime(b, t2);
-  };
+  // The per-leg `legs`/`setDate`/`setTime` helpers are gone with the blocks they drove: a
+  // journey's schedule is the module-level rail helpers above, and a `.wf-leg` on a flight's
+  // `מתי` step no longer exists to address (ADR-0203 §1).
+  /** Fill one side of the journey on its own step (ADR-0203 §7).
+   *
+   *  **The arrival's DATE is gone and that is the design** (§2): a journey carries one
+   *  calendar date and the arrival is a clock whose day is derived. The parameter is kept so
+   *  every call site below reads unchanged, and ignored — if a spec needs the arrival on
+   *  another day it says so with a clock that cannot follow the departure, which is exactly
+   *  what a reader would have to understand anyway. */
+  const fillOut = (d1: string, t1: string, _d2: string, t2: string) => fillJourney(d1, [t1, t2]);
 
   it('offers the direction control on a transport create, with NEITHER preselected', () => {
     open({ roundTrip: undefined });
@@ -661,9 +858,10 @@ describe('BookingSheet — a round trip is one save and two bookings', () => {
 
     fireEvent.click(screen.getByText(t.index.form.oneWay));
     press(t.common.steps.next);
-    // One-way is what it always was: one schedule step, no leg heading, details last.
-    expect(legs().length).toBe(2);
-    expect(document.querySelectorAll('.bs-leg-head').length).toBe(0);
+    // One-way is one schedule step with a two-node rail and no journey heading — headings
+    // arrive in pairs or not at all (ADR-0154 §4), and one journey needs no name.
+    expect(railNodes().length).toBe(2);
+    expect(document.querySelectorAll('.jf-head').length).toBe(0);
     next();
     expect(screen.getByText(t.common.save)).toBeTruthy();
   });
@@ -682,31 +880,194 @@ describe('BookingSheet — a round trip is one save and two bookings', () => {
     expect(screen.queryByText(t.index.form.roundTrip)).toBeNull();
   });
 
-  // **The two legs are two STEPS now** (ADR-0155 §5), so the headings are never adjacent.
-  // ADR-0154 §4's "in pairs or not at all" still holds — what it forbids is an unlabelled
-  // block beside a labelled one, and each step now has exactly one. Each heading also
-  // carries its own `RouteLabel`, which is the part the step name cannot say: which way
-  // this leg goes.
+  // **The two journeys are two STEPS** (ADR-0155 §5, ADR-0203 §7), so the headings are never
+  // adjacent. ADR-0154 §4's "in pairs or not at all" still holds — what it forbids is an
+  // unlabelled block beside a labelled one, and each step now has exactly one. The heading is
+  // the RAIL's own (`.jf-head`) rather than the span block's, and it still carries a
+  // `RouteLabel`, which is the part the step name cannot say: which way this journey goes.
   it('names the outbound on its step and the return on the next, one heading each', () => {
     open();
     goRoundTrip();
     next();
-    let heads = [...document.querySelectorAll('.bs-leg-head > span:first-child')].map(
-      (e) => e.textContent,
-    );
-    expect(heads).toEqual([t.index.form.legOut]);
-    expect(legs().length).toBe(2);
+    const heads = () =>
+      [...document.querySelectorAll('.jf-head > span:first-child')].map((e) => e.textContent);
+    expect(heads()).toEqual([t.index.form.legOut]);
+    expect(railNodes().length).toBe(2);
 
     next();
-    heads = [...document.querySelectorAll('.bs-leg-head > span:first-child')].map(
-      (e) => e.textContent,
-    );
-    expect(heads).toEqual([t.index.form.legBack]);
-    expect(legs().length).toBe(2);
+    expect(heads()).toEqual([t.index.form.legBack]);
+    expect(railNodes().length).toBe(2);
   });
 
   // **A leg is a step** (ADR-0159), so the return has one of its own and the shared
   // fields keep the last. Four steps for a round trip, and one more for every stop.
+  /** **The way home is offered the trip's LAST day, not its first** — reported from the
+   *  field. Every side but this one already read `pointsFor(side)`; the suggestion read the
+   *  outbound's endpoints on both, so `tripEdgeFor` saw a journey towards the destination
+   *  twice and offered `תחילת הטיול` for the flight home. */
+  it('offers the trip start for the way there and the trip end for the way back', () => {
+    open();
+    goRoundTrip();
+    next();
+    expect(document.querySelector('.jf-offer button')!.textContent).toContain(
+      t.journey.suggest.tripStart,
+    );
+    next();
+    expect(document.querySelector('.jf-offer button')!.textContent).toContain(
+      t.journey.suggest.tripEnd,
+    );
+  });
+
+  /** **The way home is offered the trip's LAST day, not its first** — reported from the
+   *  field. Every other side-dependent read already went through the outbound-or-reversed
+   *  points; the suggestion read `routePoints` directly on both sides, so `tripEdgeFor` saw a
+   *  journey towards the destination twice and offered `תחילת הטיול` for the flight home.
+   *  Five call sites spelled that conditional out inline before this one forgot it, which is
+   *  why the fix names it once (`pointsFor`). */
+  it('offers the trip start for the way there and the trip end for the way back', () => {
+    open();
+    goRoundTrip();
+    next();
+    const offer = () => document.querySelector('.jf-offer button')!.textContent;
+    expect(offer()).toContain(t.journey.suggest.tripStart);
+    next();
+    expect(offer()).toContain(t.journey.suggest.tripEnd);
+  });
+
+  /* ── The way home is its own route (ADR-0203 §6) ────────────────────────────────────
+     Reported from the field: "when doing a round trip with layovers, theres a good chance
+     that it isn't going to be the same stops exactly - it could be different stops and/or a
+     different number of stops. Right now after you chose round-trip you can't change it per
+     journey, and that's bad ux." */
+
+  /** The way-back section's two pills, and which is on. */
+  const backPills = () =>
+    [...document.querySelectorAll('.rf-back .choice-pill')].map((b) => ({
+      label: b.textContent,
+      on: b.getAttribute('aria-checked') === 'true',
+    }));
+  const pressPill = (label: string) =>
+    fireEvent.click(
+      [...document.querySelectorAll('.rf-back .choice-pill')].find((b) =>
+        b.textContent?.includes(label),
+      )!,
+    );
+  const backStopRows = () => document.querySelectorAll('.rf-back .place-picker-stop');
+
+  it('offers nothing about the way back until a round trip is chosen', () => {
+    open();
+    expect(document.querySelector('.rf-back')).toBeNull();
+    goRoundTrip();
+    expect(document.querySelector('.rf-back')).not.toBeNull();
+    // And it opens as a MIRROR: a statement, no second list. Most round trips do come home
+    // the same way, so the common case costs one line.
+    expect(backPills().find((p) => p.on)!.label).toContain(t.index.form.returnSameWay);
+    expect(backStopRows().length).toBe(0);
+    expect(document.querySelector('.rf-back-same')!.textContent).toBe(t.index.form.returnMirrors);
+  });
+
+  /** **Seeded from the outbound reversed, so `דרך אחרת` opens on a route to EDIT** — §6's own
+   *  wording, and the difference between offering a change and demanding re-entry. */
+  it('seeds a diverging return from the outbound reversed', () => {
+    open({ stopPlaceIds: ['pl-dxb'] });
+    goRoundTrip();
+    pressPill(t.index.form.returnOtherWay);
+    expect(backStopRows().length).toBe(1);
+    expect(backStopRows()[0].textContent).toContain('דובאי');
+  });
+
+  /** The reported case: a DIFFERENT NUMBER of stops, which `reversed` could never express —
+   *  it was one array read backwards, and `legCount` was one number for both journeys. */
+  /** **Why four specs in this file carry their own budget, stated once here.** Since ADR-0203
+   *  §10 every time picker renders the whole rotated 96-slot list plus its day divider on each
+   *  open, so a spec that drives several of them costs ~1.3-1.5s locally — and CI hardware runs
+   *  roughly TWICE as slow, which is how one of them passed here at ~2.4s and timed out at the
+   *  5s default there. The numbers were read per spec rather than inferred, after the first CI
+   *  failure showed that fixing only the reported one would have shipped two more.
+   *
+   *  Budgeted rather than thinned wherever the picker opens ARE the thing being proved — a real
+   *  save across two journeys of different depth, here. Where they were not (the summarised-node
+   *  refusal filled two clocks past what staged its case) the spec was trimmed instead.
+   *
+   *  **If a fifth one needs this, raise the list's cost rather than the number** — on the
+   *  backlog: the panel renders 96 rows to show five. */
+  it(
+    'lets the two journeys have a different number of stops, and writes a leg for each',
+    { timeout: 15_000 },
+    async () => {
+      indexVerbs.createBooking.mockResolvedValue({ id: 'b' });
+      open({ stopPlaceIds: ['pl-dxb'] });
+      goRoundTrip();
+      pressPill(t.index.form.returnOtherWay);
+      // Drop the seeded stop: the way home is direct, while the way out has one.
+      fireEvent.click(backStopRows()[0].querySelector('.pp-clear')!);
+      expect(backStopRows().length).toBe(0);
+
+      next();
+      fillJourney('2026-07-19', ['00:30', '06:10', '08:50', '11:35']);
+      next();
+      // The return is ONE leg now, so its rail has two nodes rather than three.
+      expect(railNodes().length).toBe(2);
+      fillJourney('2026-07-22', ['09:00', '15:00']);
+      next();
+      save();
+
+      // Two legs out (one stop) plus one leg back = three bookings, from one save.
+      await waitFor(() => expect(indexVerbs.createBooking).toHaveBeenCalledTimes(3));
+      const routes = indexVerbs.createBooking.mock.calls.map(([b]) => [b.fromPlaceId, b.toPlaceId]);
+      expect(routes).toEqual([
+        ['pl-tlv', 'pl-dxb'],
+        ['pl-dxb', 'pl-nrt'],
+        // One leg home, over the two ends only — the way back is direct.
+        ['pl-nrt', 'pl-tlv'],
+      ]);
+    },
+  );
+
+  /** **The flag and the list are separate**, which is what makes the pill non-destructive and
+   *  is why no confirm dialog has to ask. */
+  it('remembers a diverged return when you go back to the same way and return to it', () => {
+    open({ stopPlaceIds: ['pl-dxb'] });
+    goRoundTrip();
+    pressPill(t.index.form.returnOtherWay);
+    fireEvent.click(backStopRows()[0].querySelector('.pp-clear')!);
+    expect(backStopRows().length).toBe(0);
+
+    pressPill(t.index.form.returnSameWay);
+    expect(backStopRows().length).toBe(0);
+    expect(document.querySelector('.rf-back-same')).not.toBeNull();
+
+    // Back again: the emptied list is restored, NOT re-seeded from the outbound.
+    pressPill(t.index.form.returnOtherWay);
+    expect(backStopRows().length).toBe(0);
+  });
+
+  it('refuses a return stop with no place, at the route, in its own words', () => {
+    open();
+    goRoundTrip();
+    pressPill(t.index.form.returnOtherWay);
+    fireEvent.click(screen.getAllByText(t.index.form.addStop)[1]);
+    press(t.common.steps.next);
+    expect(screen.getByText(t.index.form.returnStopRequired)).toBeTruthy();
+    // Still on the route step: the refusal is at the field it names.
+    expect(document.querySelector('.form-steps-label')!.textContent).toBe(t.index.form.stepWhat);
+  });
+
+  /** **The ends stay mirrored**, and the section says so rather than offering an edit that
+   *  would write to the outbound. Scope decision, not an omission: an open-jaw trip is a
+   *  different feature. */
+  it('states the return’s two ends and offers no picker for them', () => {
+    open();
+    goRoundTrip();
+    pressPill(t.index.form.returnOtherWay);
+    const ends = document.querySelector('.rf-back-ends')!;
+    // The outbound's two ends, SWAPPED: this fixture flies תל אביב → טוקיו.
+    expect(ends.textContent).toBe('טוקיותל אביב');
+    expect(ends.querySelector('.place-picker')).toBeNull();
+    // The arrow is the real `NavArrow` SVG, never a Bidi_Mirrored character (ADR-0118).
+    expect(ends.querySelector('svg.nav-arrow')).not.toBeNull();
+  });
+
   it('names the two steps for the journey they ask about', () => {
     open();
     goRoundTrip();
@@ -759,6 +1120,33 @@ describe('BookingSheet — a round trip is one save and two bookings', () => {
     expect(back.event.endsAt).toBe(zonedIso('2026-07-28', '18:00', 'Asia/Jerusalem'));
   });
 
+  /** **THE FLIGHT HOME, AS REPORTED** (owner, 2026-09-20). It leaves at ⁦22:10⁩ on the trip's last
+   *  day and lands at ⁦02:30⁩ the next morning — the ordinary shape of a return, and the one the
+   *  form could not save: the rail drew `למחרת` while the leg was stored as same-day, and once
+   *  the days agreed the arrival was refused for falling outside the trip. Both halves are what
+   *  this spec holds down, and the assertion is the SAVE rather than the absence of a mark,
+   *  because what a reader needs to know is that the journey on screen is the one written. */
+  it('saves the flight home that lands the morning after the trip ends', async () => {
+    indexVerbs.createBooking.mockResolvedValue({ id: 'b-out' });
+    open();
+    goRoundTrip();
+    next();
+    fillOut('2026-07-19', '09:00', '2026-07-19', '18:00');
+    next();
+    fillOut('2026-07-30', '22:10', '2026-07-31', '02:30');
+    next();
+    save();
+
+    await waitFor(() => expect(indexVerbs.createBooking).toHaveBeenCalledTimes(2));
+    const back = indexVerbs.createBooking.mock.calls[1][0];
+    expect(back.event.startsAt).toBe(zonedIso('2026-07-30', '22:10', 'Asia/Tokyo'));
+    expect(back.event.endsAt).toBe(zonedIso('2026-07-31', '02:30', 'Asia/Jerusalem'));
+    // Filed under the day it DEPARTS, carrying the later day as `endDate` (ADR-0037 §1) —
+    // which is why landing past the trip's end places nothing outside it.
+    expect(back.event.date).toBe('2026-07-30');
+    expect(back.event.endDate).toBe('2026-07-31');
+  });
+
   it('refuses a return that leaves before the outbound has landed, on that field', async () => {
     open();
     goRoundTrip();
@@ -772,15 +1160,17 @@ describe('BookingSheet — a round trip is one save and two bookings', () => {
     fillOut('2026-07-20', '03:00', '2026-07-20', '10:00');
     next();
 
-    // Each span leg wears its own `Field`, which is what carries the mark (ADR-0150).
-    const [back1, back2] = legs();
-    const marked = (leg: HTMLElement) => leg.closest('.field');
-    expect(marked(back1)?.hasAttribute('data-invalid')).toBe(true);
-    expect(marked(back1)?.querySelector('.field-error')?.textContent).toBe(
+    // **The return's DEPARTURE is its date and its clock in one `Field`** (ADR-0203 §2), which
+    // is what carries the mark (ADR-0150) — and it is the right box, because either control
+    // in it fixes the refusal.
+    const [departure, arrival] = railNodes();
+    const marked = (node: HTMLElement) => node.querySelector('.field');
+    expect(marked(departure)?.hasAttribute('data-invalid')).toBe(true);
+    expect(marked(departure)?.querySelector('.field-error')?.textContent).toBe(
       t.index.form.returnBeforeArrival,
     );
-    // The leg beside it is fine and is not marked, and nothing was written.
-    expect(marked(back2)?.hasAttribute('data-invalid')).toBe(false);
+    // The arrival is fine and is not marked, and nothing was written.
+    expect(marked(arrival)?.hasAttribute('data-invalid')).toBe(false);
     expect(indexVerbs.createBooking).not.toHaveBeenCalled();
     // Still on the return's step — a refused step does not advance.
     expect(document.querySelector('.form-steps-label')?.textContent).toBe(t.index.form.legBack);
@@ -799,7 +1189,7 @@ describe('BookingSheet — a round trip is one save and two bookings', () => {
     next();
     fillOut('2026-07-28', '11:00', '2026-07-28', '18:00');
     next();
-    fireEvent.change(document.querySelector('.note-compose-in') as HTMLTextAreaElement, {
+    fireEvent.change(composer(), {
       target: { value: 'מושב ליד החלון בשתי הטיסות' },
     });
     save();
@@ -899,7 +1289,7 @@ describe('BookingSheet — three steps', () => {
     expect(stepLabel()).toBe(t.index.form.stepDetails);
     expect(screen.getByText(t.index.sheet.codeLabel)).toBeTruthy();
     expect(screen.getByText(t.index.sheet.roomLabel)).toBeTruthy();
-    expect(document.querySelector('.note-compose-in')).toBeTruthy();
+    expect(composer()).toBeTruthy();
     expect(document.querySelector('.wf')).toBeNull();
   });
 
@@ -934,17 +1324,14 @@ describe('BookingSheet — three steps', () => {
   it('refuses at the step that owns the field, before it can be paged past', () => {
     render(wrapNav(<BookingSheet booking={flight} onClose={() => {}} />));
     next();
-    // Push the outbound's departure outside the trip, then page past it.
-    const [dep] = [...document.querySelectorAll<HTMLInputElement>('.vt-date input')];
-    fireEvent.change(dep, { target: { value: '2026-07-20' } });
+    // Push the journey's date outside the trip, then page past it.
+    setJourneyDate('2026-07-20');
     next();
     expect(screen.getByText(t.index.sheet.codeLabel)).toBeTruthy();
 
     // Now break it from the step that cannot show it, and save.
     fireEvent.click(screen.getByText(t.common.steps.back));
-    fireEvent.change(document.querySelector('.vt-date input') as HTMLInputElement, {
-      target: { value: '2026-08-30' },
-    });
+    setJourneyDate('2026-08-30');
     next();
     // Refused at the gate rather than paged past — which is the earlier half of §3.
     expect(stepLabel()).toBe(t.index.form.stepWhen);
@@ -956,7 +1343,9 @@ describe('BookingSheet — three steps', () => {
   it('keeps `שבץ במסלול` a shortcut — it opens ON the schedule step', async () => {
     render(wrapNav(<BookingSheet booking={flight} focus="when" onClose={() => {}} />));
     await waitFor(() => expect(stepLabel()).toBe(t.index.form.stepWhen));
-    expect(document.querySelector('.wf')).toBeTruthy();
+    // A flight's schedule is the rail, not the span block (ADR-0203 §1) — the shortcut has to
+    // land on whichever one the type actually gets.
+    expect(document.querySelector('.jf')).toBeTruthy();
   });
 });
 
@@ -990,47 +1379,121 @@ describe('BookingSheet — a stop makes one save a chain of bookings', () => {
     render(wrapNav(<BookingSheet booking={null} draft={withStop(over)} onClose={() => {}} />));
     pastTypeStep();
   };
-  const legs = () => [...document.querySelectorAll<HTMLElement>('.wf-leg')];
-  const setDate = (leg: HTMLElement, value: string) =>
-    fireEvent.change(leg.querySelector('.vt-date input') as HTMLInputElement, {
-      target: { value },
-    });
-  const setTime = (leg: HTMLElement, value: string) => {
-    fireEvent.click(leg.querySelector('button.vt-time') as HTMLElement);
-    fireEvent.change(leg.querySelector('.tp-time-input') as HTMLInputElement, {
-      target: { value },
-    });
-  };
-  const fillLeg = (d1: string, t1: string, d2: string, t2: string) => {
-    const [a, b] = legs();
-    setDate(a, d1);
-    setTime(a, t1);
-    setDate(b, d2);
-    setTime(b, t2);
-  };
+  /** Fill the WHOLE journey on its one step (ADR-0203 §7): its date, then every moment in
+   *  rail order. The per-leg `fillLeg` this replaces cannot exist any more — there is no
+   *  per-leg step to fill on, and no second date to fill it with. */
+  const fillChain = (date: string, times: string[]) => fillJourney(date, times);
+  /** The moment words for a flight, from the table the component reads — never retyped, so a
+   *  copy change cannot make this spec pass for the wrong reason. */
+  const labelsFor = timingLabels(BOOKING_TYPE.FLIGHT);
   const label = () => document.querySelector('.form-steps-label')!.textContent;
 
-  it('gives every leg a step of its own, named for it', () => {
+  /** **This spec asserted the opposite until ADR-0203 §7, which reverses ADR-0159 §5.** That
+   *  section chose a step per leg out of the 492px a span schedule cost; a rail leg is two
+   *  lines, so the whole journey fits one step — and that is what lets the layover's wait be
+   *  stated while you type it, which two steps can never do because the legs are never on
+   *  screen together. */
+  it('gives the whole journey ONE step, and every leg a node on its rail', () => {
     open();
     expect(label()).toBe(t.index.form.stepWhat);
     next();
-    expect(label()).toBe(t.index.form.stepLeg(1));
-    expect(document.querySelector('.bs-leg-head > span:first-child')?.textContent).toBe(
-      t.index.form.legNumber(1),
-    );
-    next();
-    expect(label()).toBe(t.index.form.stepLeg(2));
+    expect(label()).toBe(t.index.form.stepWhen);
+    // Three points, two legs, one step.
+    expect(railNodes().length).toBe(3);
+    /** **A segment row states a leg's cost, so it exists once there IS one** — reported as
+     *  spacing ("the line spacing seems off… for the layover"), and it was a blank band
+     *  reserved for a measurement that could not be taken yet. Empty: no rows. Filled: one
+     *  per leg. The rail stays unbroken either way — every row paints its own full-height
+     *  line, so dropping the one between two nodes just makes them adjacent. */
+    expect(document.querySelectorAll('.jf-seg').length).toBe(0);
+    fillChain('2026-07-19', ['00:30', '06:10', '08:50', '11:35']);
+    expect(document.querySelectorAll('.jf-seg').length).toBe(2);
     next();
     expect(label()).toBe(t.index.form.stepDetails);
+  });
+
+  /** **A refusal on a node the rail has SUMMARISED is still delivered** — the defect a
+   *  layover made reachable, reported from the field. Every moment filled puts the open node
+   *  at the last one (§9), so the leg whose arrival rolls past the trip's end is behind a
+   *  summary; the form declined to advance and said nothing at all, which is the single
+   *  failure `useFormErrors` exists to prevent.
+   *
+   *  **Two stops, not one** — the threshold moved (§9, 2026-08-24): a one-stop journey fits
+   *  the fold, so it no longer summarises and could no longer stage this. The defect is
+   *  unchanged; the shape that reaches it is one stop deeper.
+   *
+   *  **Filled to the FIRST moment that stages the case, not to the end.** Four clocks leave
+   *  the last node's departure empty, so the open node is node 2 and nodes 0–1 summarise —
+   *  which is all this needs, since the refusal lands on leg 0's end (node 1's arrival) and
+   *  that is behind a summary either way. Filling all six cost two more picker opens, and
+   *  each open renders §10's whole rotated 96-slot list: it passed locally and timed out at
+   *  5s on CI. Trimmed rather than blanket-budgeted, because the two extra clocks were never
+   *  part of what this proves. */
+  it(
+    'delivers a refusal that lands on a summarised node, and opens it',
+    { timeout: 15_000 },
+    () => {
+      open({ stopPlaceIds: ['pl-dxb', 'pl-tlv'] });
+      next();
+      fillChain('2026-07-30', ['20:00', '02:00', '03:00', '05:00']);
+      expect(document.querySelectorAll('.jf-sum-tok').length).toBeGreaterThan(0);
+
+      next();
+      // It refuses — the journey's date is the trip's last day, so the arrival rolls past it.
+      expect(label()).toBe(t.index.form.stepWhen);
+      // ...and it SAYS so, in the box that owns the field, which the refusal itself reopened.
+      expect(screen.queryByText(t.index.form.dateOutOfRange)).not.toBeNull();
+      const marked = document.querySelector('.jf [data-invalid]');
+      expect(marked).not.toBeNull();
+      // The node it names is open now: its controls are back, not a summary pill.
+      expect(marked!.closest('.jf-row')!.querySelector('.jf-sum-tok')).toBeNull();
+    },
+  );
+
+  /** **A stop's two clocks name themselves** — reported from the field: "you are asked to
+   *  pick the time of arrival and of departure to the next destination, but the form doesn't
+   *  explain what each time is". Two identical `הוספת שעה` triggers, stacked, with nothing
+   *  between them. The plan had `ConnectionBand` doing this, and it measures the WAIT, so it
+   *  renders only once both clocks exist — absent for exactly as long as the pair is
+   *  ambiguous. */
+  it('names both of a layover’s moments, before either is filled', () => {
+    open();
+    next();
+    const stop = railNodes()[1];
+    const captions = [...stop.querySelectorAll('.jf-moment-lbl')].map((e) => e.textContent);
+    expect(captions).toEqual([labelsFor.end, labelsFor.start]);
+    // And the heading no longer names one of the two, which is what made the other read as
+    // the unlabelled line.
+    expect(stop.querySelector('.jf-node-lbl')!.textContent).not.toContain(labelsFor.end);
+    // An endpoint keeps its heading: it has one clock and the heading is already its caption.
+    expect(railNodes()[0].querySelector('.jf-moment-lbl')).toBeNull();
+    expect(railNodes()[0].querySelector('.jf-node-lbl')!.textContent).toContain(labelsFor.start);
+  });
+
+  /** **A clock offers forward from the moment before it** (ADR-0203 §10), through the rail —
+   *  the list opened at 00:00 whatever the departure was. The rotation itself is specced on
+   *  the primitive; this is the wiring: the anchor arrives, and so does the day turn. */
+  it('opens a later moment’s list just after the moment before it', () => {
+    open();
+    next();
+    setJourneyDate('2026-07-19');
+    setNodeTime(0, 'depart', '20:30');
+    // Open the stop's ARRIVAL panel without setting it, and read what it offers.
+    openRailNode(1);
+    const stop = railNodes()[1];
+    fireEvent.click(stop.querySelectorAll('button.vt-time')[0]);
+    const offered = [...stop.querySelectorAll('.tp-list button')].map((e) => e.textContent);
+    expect(offered[0]).toBe('20:45');
+    expect(offered[offered.length - 1]).toBe('20:30');
+    // The day turns inside the list, so the derived day is visible while choosing.
+    expect(stop.querySelector('.tp-list-turn')).not.toBeNull();
   });
 
   it('writes a booking per leg, chained through the stop, in one change group', async () => {
     indexVerbs.createBooking.mockResolvedValue({ id: 'b-leg1' });
     open();
     next();
-    fillLeg('2026-07-19', '00:30', '2026-07-19', '06:10');
-    next();
-    fillLeg('2026-07-19', '08:50', '2026-07-19', '11:35');
+    fillChain('2026-07-19', ['00:30', '06:10', '08:50', '11:35']);
     next();
     save();
 
@@ -1050,9 +1513,7 @@ describe('BookingSheet — a stop makes one save a chain of bookings', () => {
     indexVerbs.createBooking.mockResolvedValue({ id: 'b-leg1' });
     open();
     next();
-    fillLeg('2026-07-19', '00:30', '2026-07-19', '06:10');
-    next();
-    fillLeg('2026-07-19', '08:50', '2026-07-19', '11:35');
+    fillChain('2026-07-19', ['00:30', '06:10', '08:50', '11:35']);
     next();
     save();
 
@@ -1067,26 +1528,116 @@ describe('BookingSheet — a stop makes one save a chain of bookings', () => {
     expect(second.event.endsAt).toBe(zonedIso('2026-07-19', '11:35', 'Asia/Jerusalem'));
   });
 
-  it('refuses a leg that leaves before the one before it landed, on that field', async () => {
+  /** **The refusal this spec was named for no longer exists, and that is ADR-0203 §2.**
+   *
+   *  `legBeforeArrival` could fire because two absolute dates let you enter a departure
+   *  before the previous arrival. A journey now carries ONE date and every later moment
+   *  resolves to the nearest FORWARD instant, so a stop leaving at 05:40 after landing at
+   *  06:10 is not an error to refuse — it is tomorrow, and the leg's own duration states what
+   *  that costs. Prevented rather than refused, which is ADR-0150 §8's own rule and the one
+   *  `TimeField`'s `minTime` already follows.
+   *
+   *  `returnBeforeArrival` survives untouched, because a return carries an absolute date of
+   *  its own and so genuinely can leave before the outbound lands — the spec for it is in the
+   *  round-trip describe above. */
+  it('rolls a stop’s departure to the next day rather than refusing it', async () => {
+    indexVerbs.createBooking.mockResolvedValue({ id: 'b-leg1' });
     open();
     next();
-    fillLeg('2026-07-19', '00:30', '2026-07-19', '06:10');
-    next();
-    // 05:40 Dubai time is before the 06:10 arrival — a real instant comparison across
-    // two zones, which a date-only check would wave through.
-    fillLeg('2026-07-19', '05:40', '2026-07-19', '08:25');
-    next();
+    fillChain('2026-07-19', ['00:30', '06:10', '05:40', '08:25']);
 
-    const [start, end] = legs();
-    const marked = (leg: HTMLElement) => leg.closest('.field');
-    expect(marked(start)?.hasAttribute('data-invalid')).toBe(true);
-    expect(marked(start)?.querySelector('.field-error')?.textContent).toBe(
-      t.index.form.legBeforeArrival('דובאי'),
+    // No refusal anywhere on the step, and the step advances.
+    expect(document.querySelector('.field[data-invalid]')).toBeNull();
+    next();
+    expect(label()).toBe(t.index.form.stepDetails);
+    save();
+
+    await waitFor(() => expect(indexVerbs.createBooking).toHaveBeenCalledTimes(2));
+    const [, second] = indexVerbs.createBooking.mock.calls.map(([b]) => b);
+    // The rolled day, in the stop's OWN zone — a real instant, not a date-only guess.
+    expect(second.event.startsAt).toBe(zonedIso('2026-07-20', '05:40', 'Asia/Dubai'));
+    expect(second.event.endsAt).toBe(zonedIso('2026-07-20', '08:25', 'Asia/Jerusalem'));
+  });
+
+  /** **§9, wired**: nobody picks a node, so the form derives which one is open — the first
+   *  whose moments are still empty — and the ones BEHIND it collapse to the line they read as.
+   *  That is what keeps a deep journey inside a fold instead of the 708px §7 measured, and it
+   *  is why the ADR's compaction claim is about filling rather than about arriving.
+   *
+   *  **At two stops, which is where compaction starts earning its keep** (§9's threshold,
+   *  corrected 2026-08-24). The spec used one stop until a field report pointed out that a
+   *  one-stop form never overflowed, so collapsing it was all cost. */
+  it('walks the rail as you fill it, summarising only what is behind you', () => {
+    open({ stopPlaceIds: ['pl-dxb', 'pl-tlv'] });
+    next();
+    const summarised = () => railNodes().map((node) => node.querySelector('.jf-sum-tok') != null);
+    // On arrival nothing is filled, so nothing is compacted: an empty node has no line to
+    // read as, and a blank pill where a clock should be is worse than the height.
+    expect(summarised()).toEqual([false, false, false, false]);
+
+    setJourneyDate('2026-07-19');
+    setNodeTime(0, 'depart', '00:30');
+    // The departure is answered, so the rail moves on and the node behind it summarises.
+    expect(summarised()).toEqual([true, false, false, false]);
+
+    setNodeTime(1, 'arrive', '06:10');
+    setNodeTime(1, 'depart', '08:50');
+    expect(summarised()).toEqual([true, true, false, false]);
+
+    // A summarised node is still a control (§9): tapping its line reopens it, and the rail
+    // does not lose the journey's one date by collapsing the node that holds it.
+    openRailNode(0);
+    expect(summarised()).toEqual([false, true, false, false]);
+    expect((document.querySelector('.jf .vt-date input') as HTMLInputElement).value).toBe(
+      '2026-07-19',
     );
-    expect(marked(end)?.hasAttribute('data-invalid')).toBe(false);
-    expect(indexVerbs.createBooking).not.toHaveBeenCalled();
-    // A refused step does not advance.
-    expect(label()).toBe(t.index.form.stepLeg(2));
+  });
+
+  /** **The threshold itself, pinned** — reported from the field: "the lines collapsing under
+   *  your fingers could be a little confusing and so maybe do it only when the form is very
+   *  long". §9's own fold table already said so: 0–1 stops are inside the fold on both a
+   *  390×844 and a 360×640 phone, and the cases compaction was written for are two stops
+   *  (718.5px all-open against 675px) and three (894px). The code shipped the threshold one
+   *  stop too low, so a journey that never overflowed paid for the fix anyway.
+   *
+   *  Both arms in one spec on purpose: the number is only meaningful as the line between them,
+   *  and a spec that asserted just the quiet side would pass with compaction deleted. */
+  it('never summarises at one stop, and still does at two', { timeout: 15_000 }, () => {
+    const anySummarised = () => document.querySelectorAll('.jf-sum-tok').length > 0;
+
+    open({ stopPlaceIds: ['pl-dxb'] });
+    next();
+    expect(railNodes().length).toBe(3);
+    fillChain('2026-07-19', ['00:30', '06:10', '08:50', '11:35']);
+    // Everything filled, and every node still open: the form fits, so there is nothing to buy.
+    expect(anySummarised()).toBe(false);
+    cleanup();
+
+    open({ stopPlaceIds: ['pl-dxb', 'pl-tlv'] });
+    next();
+    expect(railNodes().length).toBe(4);
+    fillChain('2026-07-19', ['00:30', '06:10', '08:50', '11:35', '13:00', '15:20']);
+    expect(anySummarised()).toBe(true);
+  });
+
+  /** **A tap does not survive the rail shrinking under it.** `openNode[side]` is the node you
+   *  PICKED, and it used to be read before the threshold — so tapping a summary at two stops
+   *  and then removing a stop brought the pick back to a rail that no longer summarises, and a
+   *  pick left pointing past the end matched no node and collapsed every one of them. Found by
+   *  re-reading the diff, not by a report. */
+  it('drops a node pick when the rail falls back below the threshold', { timeout: 15_000 }, () => {
+    open({ stopPlaceIds: ['pl-dxb', 'pl-tlv'] });
+    next();
+    fillChain('2026-07-19', ['00:30', '06:10', '08:50', '11:35', '13:00', '15:20']);
+    // Pick the LAST node explicitly, which is the pick that would dangle once one goes.
+    fireEvent.click([...document.querySelectorAll('.jf-sum-tok')].slice(-1)[0]);
+
+    // Back to the route, drop a stop, and return: three nodes, and nothing compacted.
+    press(t.common.steps.back);
+    fireEvent.click(document.querySelectorAll('.place-picker-stop .pp-clear')[1]);
+    next();
+    expect(railNodes().length).toBe(3);
+    expect(document.querySelectorAll('.jf-sum-tok').length).toBe(0);
   });
 
   it('refuses a stop with no place, at the route', () => {
@@ -1106,11 +1657,9 @@ describe('BookingSheet — a stop makes one save a chain of bookings', () => {
       .mockResolvedValueOnce({ id: 'b-leg2' });
     open();
     next();
-    fillLeg('2026-07-19', '00:30', '2026-07-19', '06:10');
+    fillChain('2026-07-19', ['00:30', '06:10', '08:50', '11:35']);
     next();
-    fillLeg('2026-07-19', '08:50', '2026-07-19', '11:35');
-    next();
-    fireEvent.change(document.querySelector('.note-compose-in') as HTMLTextAreaElement, {
+    fireEvent.change(composer(), {
       target: { value: 'הכבודה עוברת ישירות' },
     });
     save();
@@ -1485,7 +2034,13 @@ describe('BookingSheet — the type step, the derived name and the offered sched
     expect(within(checkOut).getByText('10:00')).toBeTruthy();
   });
 
-  it('offers a flight the arrival DAY and never a clock', () => {
+  /** **The arrival's date is gone, so the offer is that there is nothing to offer** (ADR-0203
+   *  §2). This spec pinned the mirror: setting the departure's day copied it onto the arrival's,
+   *  which is the second identical date+time block the reported misread was made of. What
+   *  survives is the half that still exists and still matters — **no clock is ever invented** —
+   *  plus the fact that replaced the mirror: a journey has exactly ONE date, before the day is
+   *  set and after. */
+  it('gives a flight one date and never invents a clock', () => {
     // Routed through the errand-return `draft`, because a flight with no endpoints is
     // refused at the identity step and never reaches its schedule.
     render(
@@ -1510,12 +2065,14 @@ describe('BookingSheet — the type step, the derived name and the offered sched
     );
     pastTypeStep();
     press(t.common.steps.next);
-    const [depart, arrive] = [...document.querySelectorAll<HTMLElement>('.wf-leg')];
-    fireEvent.change(depart.querySelector('.vt-date input') as HTMLInputElement, {
-      target: { value: '2026-07-26' },
-    });
-    expect((arrive.querySelector('.vt-date input') as HTMLInputElement).value).toBe('2026-07-26');
+    const dates = () => document.querySelectorAll('.jf .vt-date input');
+    expect(dates().length).toBe(1);
+    setJourneyDate('2026-07-26');
+    // Still one. A return flight would need a second and there is none to mistake it for.
+    expect(dates().length).toBe(1);
+    expect((dates()[0] as HTMLInputElement).value).toBe('2026-07-26');
     // No time was invented at either end — a departure is the commitment itself.
+    const [depart, arrive] = railNodes();
     expect(within(depart).getByText(t.whenField.addTime)).toBeTruthy();
     expect(within(arrive).getByText(t.whenField.addTime)).toBeTruthy();
   });
@@ -1524,7 +2081,7 @@ describe('BookingSheet — the type step, the derived name and the offered sched
 /* ── WHAT WOULD ANSWER THIS ERRAND (field report #6) ───────────────────────────────────────
    A flight leg wants an AIRPORT, so the tab's search is restricted to one. The sheet is the
    only thing that knows the question; the Map owns the search (ADR-0134 §1). */
-describe('BookingSheet — a flight leg asks the Map for an airport', () => {
+describe('BookingSheet — a route leg asks the Map for the kind it boards at', () => {
   afterEach(() => {
     cleanup();
     startErrand.mockReset();
@@ -1555,13 +2112,30 @@ describe('BookingSheet — a flight leg asks the Map for an airport', () => {
     expect(startErrand).toHaveBeenCalledWith(expect.objectContaining({ kind: 'airport' }));
   });
 
-  // A train's stop is a station and a car's is a rental desk — neither is an airport, and the
-  // restriction has no type for them yet. Naming one anyway would hide every right answer.
-  it('names NO kind on a train’s origin', () => {
+  /** **This spec used to assert the opposite, and that is the point of ADR-0203 §8.** It
+   *  pinned "names NO kind on a train's origin" — the gap `findPlace`'s own comment named
+   *  ("a train's stop is a station this restriction has no type for yet"), which left a
+   *  train, a bus and a ferry searching the whole corpus. The kind now comes off
+   *  `BOOKING_TYPE_PROFILE`, so the type is not asked at this call site at all. */
+  it('names the station kind on a train’s origin, and the wider one on a bus', () => {
     openCreate(BOOKING_TYPE.TRAIN);
     tapOrigin();
+    expect(startErrand).toHaveBeenCalledWith(expect.objectContaining({ kind: 'train_station' }));
+    startErrand.mockReset();
+    cleanup();
+    openCreate(BOOKING_TYPE.TRANSIT);
+    tapOrigin();
+    expect(startErrand).toHaveBeenCalledWith(expect.objectContaining({ kind: 'transit_station' }));
+  });
+
+  /** A hire's two ends are rental COUNTERS, so it restricts nothing — the one route-shaped
+   *  type with no search kind, and the reason the profile axis keys on being CARRIED
+   *  (`inMotion`) rather than on carrying a route. */
+  it('names no kind on a hire’s counters, though a hire carries a route', () => {
+    openCreate(BOOKING_TYPE.CAR);
+    tapOrigin();
     expect(startErrand).toHaveBeenCalledTimes(1);
-    expect(startErrand.mock.calls[0][0]).not.toHaveProperty('kind');
+    expect(startErrand.mock.calls[0][0].kind).toBeUndefined();
   });
 
   // A hotel's single place is the hotel. The restriction is about the ROUTE fields only, even

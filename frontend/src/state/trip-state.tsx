@@ -21,6 +21,7 @@ import {
   ENTITY_TYPE,
   EVENT_STATUS,
   NOTE_SOURCE,
+  TASK_STATUS,
   type Booking,
   type Change,
   type EntityType,
@@ -28,11 +29,17 @@ import {
   type CreateDocumentAttachmentInput,
   type CreateNoteInput,
   type CreatePlaceInput,
+  type CreateTaskInput,
   type DocumentSummary,
+  type Forecast,
   type FxRates,
   type MaybeItem,
   type Membership,
   type DocumentAttachment,
+  type LegTravelMode,
+  type EventEdge,
+  type TravelModeOverride,
+  travelOverridePair,
   type Note,
   type MembershipRole,
   type Trip,
@@ -40,11 +47,13 @@ import {
   type TripEvent,
   type Place,
   type ResolvePlaceInput,
+  type Task,
   type TripSnapshot,
   type UpdateBookingInput,
   NOTE_HOST_KEYS,
   type UpdateNoteInput,
   type UpdatePlaceInput,
+  type UpdateTaskInput,
   type UpdateTripInput,
   type User,
 } from '@waypoint/shared';
@@ -53,11 +62,15 @@ import {
   createDocumentAttachment as apiCreateDocumentAttachment,
   createNote as apiCreateNote,
   createPlace as apiCreatePlace,
+  createTask as apiCreateTask,
   deleteMaybeItem as apiDeleteMaybeItem,
   deletePlace as apiDeletePlace,
   deleteBooking as apiDeleteBooking,
   deleteDocumentAttachment as apiDeleteDocumentAttachment,
+  setTravelMode as apiSetTravelMode,
+  clearTravelMode as apiClearTravelMode,
   deleteNote as apiDeleteNote,
+  deleteTask as apiDeleteTask,
   deleteTrip as apiDeleteTrip,
   evictDocumentBlob,
   fetchChanges,
@@ -69,6 +82,7 @@ import {
   setMemberRole as apiSetMemberRole,
   updateBooking as apiUpdateBooking,
   updateNote as apiUpdateNote,
+  updateTask as apiUpdateTask,
   updatePlace as apiUpdatePlace,
   updateTrip as apiUpdateTrip,
   type RippleSuggestion,
@@ -84,10 +98,17 @@ import {
 } from '../lib/cache';
 import { generateId } from '../lib/id';
 import { buildNoteHosts, dropNotesForHostChange, type NoteHostRef } from '../lib/notes';
+import { dropTasksForHostChange, planSubtaskTick, splitSubtasks, tickedStatus } from '../lib/tasks';
 import { attachmentsForHost, dropAttachmentsForHostChange } from '../lib/attachments';
 import { derivedPlaceLabel, type PlaceLabels } from '../lib/place-label';
 import { PlaceLabelsProvider } from './place-labels';
-import { clearPlaceRefs, deletedPlaceId, placeLinks, type PlaceLink } from '../lib/place-refs';
+import {
+  clearPlaceRefs,
+  deletedPlaceId,
+  dropOverridesForPlace,
+  placeLinks,
+  type PlaceLink,
+} from '../lib/place-refs';
 import {
   flushOutbox,
   getSyncFailures,
@@ -96,7 +117,7 @@ import {
   restOrQueue,
   subscribeSyncFailures,
 } from '../lib/outbox';
-import { liveToday, tripZoneCrossings, type ZoneCrossing, type ZoneEvidence } from '../lib/places';
+import { tripZoneCrossings, type ZoneCrossing, type ZoneEvidence } from '../lib/places';
 import { buildHostContextIndex, type HostContextIndex } from '../lib/host-context';
 import { openTripStream } from '../lib/ws';
 import {
@@ -111,13 +132,14 @@ import { observeVisibility } from '../lib/visibility';
 import { clampDate, shiftIso } from '../lib/time';
 import { bookingLinkedEventChange } from '../lib/outbox-effects';
 import { useToast } from '../ui/Toast';
-import { CONTROL_ICON, type TabId } from '../constants';
+import { standInAfter } from '../lib/deadline';
+import { CONTROL_ICON, STAND_IN_AFTER_MS, type TabId } from '../constants';
 import { EVENTS, MAYBE_ITEMS } from '../fixtures';
 import { useAuth } from './auth-state';
 import { DAY_PARAM, HOME_TAB, TAB_PARAM, daySelectTarget, resolveActiveDate } from './nav-state';
 import { AppShell } from '../ui/layout';
 import { ChromeSkeleton, ErrorState, HomeSkeleton, LoadingState } from '../ui/feedback';
-import { deriveMode } from '../lib/mode';
+import { tripPhase, tripToday } from '../lib/mode';
 import { t } from '../i18n/he';
 
 export type { RippleSuggestion };
@@ -176,7 +198,13 @@ export const TRIP_ACTION = {
 export type TripActionType = (typeof TRIP_ACTION)[keyof typeof TRIP_ACTION];
 
 export type Action =
-  | { type: typeof TRIP_ACTION.SET_STATUS; id: string; status: TripEvent['status'] }
+  | {
+      type: typeof TRIP_ACTION.SET_STATUS;
+      id: string;
+      status: TripEvent['status'];
+      /** Absent = the opening edge, i.e. `status` (ADR-0224 §1). */
+      edge?: EventEdge;
+    }
   | { type: typeof TRIP_ACTION.DELAY; id: string; minutes: number }
   | { type: typeof TRIP_ACTION.SCHEDULE; event: TripEvent; maybeId: string }
   // Consume an idea WITHOUT an event of our own (ADR-0135 §5). A booking creates its
@@ -271,8 +299,11 @@ export function initialState(seed: Snapshot = { events: EVENTS, maybeItems: MAYB
 export function reducer(state: State, action: Action): State {
   switch (action.type) {
     case TRIP_ACTION.SET_STATUS: {
+      // One action, two columns (ADR-0224 §1): a stop and a span's opening edge write
+      // `status`, its closing edge `endStatus`.
+      const field = action.edge === 'end' ? 'endStatus' : 'status';
       const events = state.events.map((e) =>
-        e.id === action.id ? { ...e, status: action.status } : e,
+        e.id === action.id ? { ...e, [field]: action.status } : e,
       );
       return { ...state, events, ripple: null, undo: snapshotOf(state) };
     }
@@ -409,10 +440,15 @@ export function reducer(state: State, action: Action): State {
   }
 }
 
-/** `change.after` is the wire input the actor sent (partial), not the full
- *  persisted entity — the backend Change log doesn't carry server-computed
- *  fields (e.g. a ripple-shifted `endsAt`). Good enough at this trip's scale;
- *  a richer Change payload is a backend change, out of T-014's scope. */
+/** `change.after` is the persisted ROW (`sync-and-offline.md` §3), merged over what we hold.
+ *
+ *  **It used to be the wire input the actor sent, and this docblock used to call that good enough**
+ *  — naming a ripple-shifted `endsAt` as the known cost. It was not a cost, it was the defect
+ *  (owner, 2026-09-01): a peer's drag persists a shifted `endsAt` server-side and broadcast only
+ *  the new `startsAt`, so every other device silently changed the event's DURATION — and `endsAt`
+ *  is the instant a hole is measured from, so that day's journeys, free time and total were all
+ *  derived from a time the server had already replaced. `events.service.ts` now publishes
+ *  `toEventChangePayload`, which is what §3 asked for all along. */
 function applyRemoteEventChange(events: TripEvent[], change: Change): TripEvent[] {
   // Event-only by construction: this is the `event` channel's applier, and the shelf's
   // is `REMOTE_MAYBE_CHANGE` beside it. It used to say maybe-items had no consuming UI
@@ -420,7 +456,12 @@ function applyRemoteEventChange(events: TripEvent[], change: Change): TripEvent[
   // applier is not a note the registry can act on.
   if (change.entityType !== ENTITY_TYPE.EVENT) return events;
   if (change.action === 'delete') return events.filter((e) => e.id !== change.entityId);
-  const partial = change.after as Partial<TripEvent> | undefined;
+  // Through `coerceClearedFields` for the reason its own docblock gives — a field the server
+  // CLEARED crosses the wire as `null` (an event's place, once it is linked to a booking), and a
+  // raw spread would put that `null` in state where the entity type says `undefined`. The Dexie
+  // mirror has always coerced it (`cache.ts`'s `applyToRow`); this is the memory half, which had
+  // been left to disagree with it.
+  const partial = coerceClearedFields<TripEvent>(change.after);
   if (!partial) return events;
   const existing = events.find((e) => e.id === change.entityId);
   if (existing) {
@@ -464,11 +505,39 @@ export function applyControlChangeToMembers(members: Membership[], change: Chang
  *  next resync — the Index reads only type/title/code/place, so it renders fine. */
 export function applyControlChangeToList<T extends { id: string }>(list: T[], change: Change): T[] {
   if (change.action === 'delete') return list.filter((x) => x.id !== change.entityId);
-  const partial = change.after as Partial<T> | undefined;
+  // Coerced like the event applier above and the cache mirror: one answer to "what does a `null`
+  // in a patch mean", not three.
+  const partial = coerceClearedFields<T>(change.after);
   if (!partial) return list;
   const existing = list.find((x) => x.id === change.entityId);
   const next = { ...(existing as T), ...partial, id: change.entityId } as T;
   return existing ? list.map((x) => (x.id === change.entityId ? next : x)) : [...list, next];
+}
+
+/** **Only the keys the caller actually submitted**, with `null` read as cleared — the
+ *  optimistic half of `updateTaskSchema`'s sparse patch. `noteHostPatch` is the same idea
+ *  over a note's five host keys; a task's whole payload reads that way, so this is over the
+ *  whole payload. Spreading `input` raw instead would put an explicit `undefined` on every
+ *  field a settle did not send, which erases exactly what the sparse patch protects. */
+function taskPatch(input: UpdateTaskInput): Partial<Task> {
+  return Object.fromEntries(
+    Object.entries(input)
+      .filter(([, v]) => v !== undefined)
+      .map(([k, v]) => [k, v ?? undefined]),
+  ) as Partial<Task>;
+}
+
+/** Who settled and when, optimistically — the server stamps the real values and the echo
+ *  reconciles them, but the row has to read as settled the instant the tick is pressed, and
+ *  reopening has to leave no residue. Mirrors `TasksService`'s `settlement`. */
+function optimisticSettlement(
+  status: UpdateTaskInput['status'],
+  authorId: string,
+  stamp: () => string,
+): Partial<Task> {
+  if (status === undefined) return {};
+  if (status === TASK_STATUS.OPEN) return { settledAt: undefined, settledBy: undefined };
+  return { settledAt: stamp(), settledBy: authorId };
 }
 
 /** Admin-governed trip-settings writes (ADR-0039): optimistic, data-plane
@@ -503,6 +572,26 @@ export interface NoteVerbs {
   deleteNote: (noteId: string) => Promise<void>;
 }
 
+/** Task write verbs (tasks brief, ADR-0188). The same three moves as the note verbs above,
+ *  over the `tasks` list.
+ *
+ *  **`updateTask` is sparse, which is the whole reason the tick can be one call.** Settling
+ *  a task sends `{ status }` and nothing else, and the row keeps its words, its deadline and
+ *  its host — see `updateTaskSchema`, which parts company with the note patch here and says
+ *  why. */
+export interface TaskVerbs {
+  createTask: (input: CreateTaskInput) => Promise<Task | undefined>;
+  updateTask: (taskId: string, input: UpdateTaskInput) => Promise<void>;
+  deleteTask: (taskId: string) => Promise<void>;
+  /** **What a tick means, in ONE place** (ADR-0196 §3, reversed 2026-08-19 on the owner's
+   *  _"you should be able to tick the parent task to mark all as complete"_). A leaf task
+   *  settles itself; a parent has no completion of its own, so its tick settles its steps —
+   *  and once they are all settled, reopens them. It lives here rather than at the six
+   *  surfaces that draw a tick, because "unless it holds a checklist" is a clause six call
+   *  sites would each have to remember, which is exactly how ADR-0193 §2's count went wrong. */
+  tickTask: (task: Task) => Promise<void>;
+}
+
 /** Attachment write verbs (ADR-0173). Optimistic + reconcile/rollback and queued offline,
  *  the same three moves as the note verbs beside them. Two verbs only: a link has no
  *  content, so there is nothing to update. */
@@ -519,6 +608,22 @@ export interface AttachmentVerbs {
   /** Detach. Removes the LINK; the document is untouched and stays in the trip's list —
    *  which is why no surface asks the user to confirm this (§3). */
   detachDocument: (attachmentId: string) => Promise<void>;
+}
+
+/** **Declaring how a pair of places is travelled** (ADR-0206 §V1.6/§Z2, keyed per §AM).
+ *
+ *  Two verbs, and the second is not a delete of a mode but a return to the DERIVED one — there is
+ *  no "no mode" state, only "nobody said otherwise" (§Z2). Which is why `setLegMode` takes the
+ *  pair rather than a row id: the caller is a day surface that knows two places, and has no reason
+ *  to know whether a row already exists. */
+export interface TravelModeVerbs {
+  setLegMode: (
+    fromPlaceId: string,
+    toPlaceId: string,
+    mode: LegTravelMode,
+  ) => Promise<TravelModeOverride | undefined>;
+  /** Back to the derivation. A no-op when the pair was never overridden. */
+  clearLegMode: (fromPlaceId: string, toPlaceId: string) => Promise<void>;
 }
 
 export interface IndexVerbs {
@@ -582,11 +687,29 @@ interface TripContextValue {
   /** The trip's notes, newest first (ADR-0152/0153). One list for general and hosted
    *  notes alike — what a note is about is a field on the row, not a separate store. */
   notes: Note[];
+  /** The trip's **top-level** tasks (tasks brief §5, ADR-0196 §2). One list for general and
+   *  hosted tasks alike, and **unsorted** — the screen's order is
+   *  `overdue → due today → due later → undated`, which is a derivation against a clock
+   *  rather than a property of the list.
+   *
+   *  **Sub-tasks are NOT in here, and each parent's `status` is already resolved from its
+   *  steps.** That is the whole of ADR-0196's exclusion, paid once: every derivation in
+   *  `lib/tasks.ts` reads this list and is therefore correct about children without knowing
+   *  they exist, and the next derivation written is correct by default. A surface that wants
+   *  a parent's steps asks `subtasks` below. */
+  tasks: Task[];
+  /** `parentTaskId` → its steps, in creation order (ADR-0196 §2). Two surfaces read it: the
+   *  tasks screen's open region, and the editor's checklist field. */
+  subtasks: Map<string, Task[]>;
   /** **Which documents are attached to which host** (ADR-0173 §1). The links only — the
    *  DOCUMENTS are `documents` above, and resolving one against the other is what keeps an
    *  attachment from widening visibility (§6): a link whose document this reader cannot see
    *  resolves to nothing. */
   documentAttachments: DocumentAttachment[];
+  /** **Only the legs somebody actually declared** (ADR-0206 §Z2/§AM). Empty on an untouched trip,
+   *  because the default is derived — so a reader that never sees one reads exactly as it did
+   *  before this existed. */
+  travelModeOverrides: TravelModeOverride[];
   /** **What the world knows about the trip's places, keyed by `placeId`** (ADR-0166 §6).
    *  Server-owned: no surface writes it, and a missing key is the normal "we know nothing"
    *  state rather than a loading one — most places have nothing and never will (§11.3). */
@@ -595,6 +718,14 @@ interface TripContextValue {
    *  Global and server-owned like `enrichments`, and read the same way: age is not a
    *  state — a set of any age renders, and only absence removes the surfaces. */
   fxRates: FxRates | null;
+  /** **The forecast over the trip's coordinate cells, or `null`** (ADR-0218 §6). Global and
+   *  server-owned like `fxRates` above, arriving on the same snapshot and refreshed by the same
+   *  resync — there is no route to ask for it, because nobody taps a forecast.
+   *
+   *  Unlike `fxRates`, **age IS a state here** (§4): the surfaces read `isForecastFresh` and go
+   *  absent past it, rather than rendering whatever they hold. That inversion is deliberate and
+   *  is the one ADR-0180 §4 does not cover. */
+  forecast: Forecast | null;
   /** The `as of` control's action (§4): awaits a fetch and adopts what it answers.
    *  Rejects only on a refused request; a source that is down resolves with the
    *  set unchanged, which is what leaves the date where it was. */
@@ -612,7 +743,9 @@ interface TripContextValue {
   settings: SettingsVerbs;
   indexVerbs: IndexVerbs;
   noteVerbs: NoteVerbs;
+  taskVerbs: TaskVerbs;
   attachmentVerbs: AttachmentVerbs;
+  travelModeVerbs: TravelModeVerbs;
   // Group change-feed (ADR-0081, U-09): a bounded, newest-first list of recent
   // SHARED peer edits, narrated (not re-applied) off the same WS `change` stream.
   // Own edits are filtered out; resets on trip switch (TripReady remounts).
@@ -628,7 +761,12 @@ interface TripContextValue {
   usingCachedSnapshot: boolean;
 }
 
-const TripContext = createContext<TripContextValue | null>(null);
+/** **Exported for exactly one consumer** — `state/day-preview.tsx`, which re-provides this
+ *  same value with `activeDate` swapped so the day swipe's peek can render a real day surface
+ *  for the neighbouring day (ADR-0200 §7). Not a general seam: anything else wanting trip
+ *  state uses `useTrip`, and a second provider of this context would be two answers to "what
+ *  day is it". */
+export const TripContext = createContext<TripContextValue | null>(null);
 
 // Bootstraps from GET /trips/:tripId/snapshot (T-034); the tripId prop is the
 // seam T-027 fills with a real switcher. Verbs still mutate local state only —
@@ -660,15 +798,39 @@ export function TripProvider({
     let cancelled = false;
     setSnapshot(null);
     setError(null);
-    fetchSnapshot(tripId).then(
+    // **A read that is merely SLOW never reaches the fallback below** (owner report, low
+    // reception abroad). That one runs on a rejection, and a crawling link does not reject —
+    // it delivers, twenty seconds later, with the skeleton up for every one of them. So the
+    // cache stands in at `STAND_IN_AFTER_MS` and the trip is usable from there, offline-cued
+    // (`usingCachedSnapshot`) until the catch-up says otherwise.
+    //
+    // The live read is **aborted** when that happens rather than merged, because `TripReady`
+    // seeds its whole reactive state from this snapshot exactly once: a later one would change
+    // nothing on screen. What replaces it is the catch-up `TripReady` already runs on mount —
+    // `/changes?sinceSeq=` off the cached cursor, then the socket — which is smaller than a
+    // second snapshot and is also what clears the offline cue (`onReconnected`).
+    const controller = new AbortController();
+    let stoodIn = false;
+    standInAfter(
+      STAND_IN_AFTER_MS,
+      fetchSnapshot(tripId, controller.signal),
+      () => readCachedSnapshot(tripId),
+      (cached) => {
+        if (cancelled) return;
+        stoodIn = true;
+        controller.abort();
+        setSnapshot(cached);
+        setUsingCachedSnapshot(true);
+      },
+    ).then(
       (s) => {
+        if (cancelled || stoodIn) return;
         void cacheSnapshot(tripId, s);
-        if (!cancelled) {
-          setSnapshot(s);
-          setUsingCachedSnapshot(false);
-        }
+        setSnapshot(s);
+        setUsingCachedSnapshot(false);
       },
       (e: unknown) => {
+        if (cancelled || stoodIn) return;
         // Offline read (sync-and-offline.md "Read"): fall back to the last-cached
         // snapshot rather than showing the boot-error screen. The error screen is
         // the true last resort — nothing was ever cached for this trip.
@@ -690,6 +852,7 @@ export function TripProvider({
     );
     return () => {
       cancelled = true;
+      controller.abort(); // a trip switch (or a retry) has no use for the read it left behind
     };
   }, [tripId, reloadNonce]);
 
@@ -713,9 +876,14 @@ export function TripProvider({
     // The one tier that needs a mode variant (ADR-0105): the chrome is already
     // mode-themed by the time this shows, so the skeleton shape-matches what
     // Home resolves into rather than popping from a mismatched shape.
-    const mode = knownTrip ? deriveMode(knownTrip, new Date(getNow())) : 'trip';
+    const phase = knownTrip ? tripPhase(knownTrip, new Date(getNow())) : 'live';
+    const mode = phase === 'live' ? 'trip' : 'plan';
     return (
-      <AppShell mode={mode} header={<ChromeSkeleton mode={mode} trip={knownTrip} />}>
+      <AppShell
+        mode={mode}
+        phase={phase}
+        header={<ChromeSkeleton mode={mode} phase={phase} trip={knownTrip} />}
+      >
         <LoadingState label={t.snapshot.loading} skeleton={<HomeSkeleton mode={mode} />} />
       </AppShell>
     );
@@ -773,12 +941,29 @@ function TripReady({
   // Notes ride the snapshot as a reactive list (ADR-0152), so a peer's note and our own
   // optimistic write both reflect live through the one applier below.
   const [notes, setNotes] = useState<Note[]>(snapshot.notes);
+  const [tasks, setTasks] = useState<Task[]>(snapshot.tasks);
+  /** **The one place children are split off** (ADR-0196 §2). The raw `tasks` array above stays
+   *  whole — the verbs patch it, the cache mirrors it, and the sync appliers need every row —
+   *  and what leaves this provider is the split: top-level tasks with each parent's status
+   *  resolved, plus the steps keyed by parent.
+   *
+   *  Filtering inside each of `lib/tasks.ts`'s derivations instead would be twenty-odd places
+   *  that must remember, plus every derivation written afterwards. Here it is one. */
+  const taskTree = useMemo(() => splitSubtasks(tasks), [tasks]);
 
   // The document↔host links (ADR-0173), a reactive list beside the notes for the same
   // reason: a peer's attach and our own optimistic one both reflect live through the one
   // applier below.
   const [documentAttachments, setDocumentAttachments] = useState<DocumentAttachment[]>(
     snapshot.documentAttachments,
+  );
+
+  // **The per-leg travel-mode overrides** (ADR-0206 §V1.6/§Z2, keyed per §AM). A reactive list for
+  // the same reason the links are: a peer's declaration and our own optimistic one both have to
+  // reach every day surface through the one applier below, or the list and the map disagree about
+  // what a leg IS — the divergence ADR-0159 §1 forbids.
+  const [travelModeOverrides, setTravelModeOverrides] = useState<TravelModeOverride[]>(
+    snapshot.travelModeOverrides,
   );
 
   // Enrichment rides the snapshot as a reactive map keyed by placeId (ADR-0166 §6), updated
@@ -790,6 +975,8 @@ function TripReady({
   // no optimistic path. The one client-initiated write is `refreshFx`, which is a request
   // for a NEW set rather than an edit to this one.
   const [fxRates, setFxRates] = useState<FxRates | null>(snapshot.fxRates);
+  // Same shape, and simpler: the forecast has no client-initiated write at all (§6, no route).
+  const [forecast, setForecast] = useState<Forecast | null>(snapshot.forecast);
   const refreshFx = useCallback(async () => {
     setFxRates(await refreshFxRatesRequest(tripId));
   }, [tripId]);
@@ -835,8 +1022,8 @@ function TripReady({
   // question twelve times, and a per-surface derivation is how the mark on a row ends up
   // disagreeing with the section inside it (which it did, `hero-horizon.ts` vs `EventCard`).
   const hostContexts = useMemo<HostContextIndex>(
-    () => buildHostContextIndex(state.events, bookings),
-    [state.events, bookings],
+    () => buildHostContextIndex(state.events, bookings, state.maybeItems),
+    [state.events, bookings, state.maybeItems],
   );
 
   // **Every hostable entity's name and lent category** (ADR-0152 §5's amendment), for the
@@ -891,7 +1078,15 @@ function TripReady({
   // the midnight of the day you're in — the itinerary segment, refined by that
   // day's own events — so crossing a zone re-anchors "today" via the itinerary,
   // never GPS. Falls back to the trip primary when nothing evidences a zone.
-  const defaultDay = clampDate(liveToday(getNow(), zoneEvidence), trip.startDate, trip.endDate);
+  // The trip's own today (ADR-0236 §1), so the day a fresh open lands on is the day the
+  // trip is still living — the last one, while the commitment that began inside it runs.
+  // A finished trip opens on its first day (ADR-0239 §2): this provider sits above
+  // `ModeProvider`, so it reads the phase off the same today `tripPhase` would.
+  const tripTodayNow = tripToday(trip, new Date(getNow()), zoneEvidence, state.events);
+  const defaultDay =
+    tripTodayNow > trip.endDate
+      ? trip.startDate
+      : clampDate(tripTodayNow, trip.startDate, trip.endDate);
   // Derived, tab-aware: the Home tab is today-anchored (both modes), so it ALWAYS
   // resolves to today regardless of any `?day=` — even a stray or hand-crafted one
   // can't make Home show a past/future day. Off Home, the day comes from `?day=`,
@@ -946,8 +1141,11 @@ function TripReady({
       [ENTITY_TYPE.MAYBE_ITEM]: (change) =>
         dispatch({ type: TRIP_ACTION.REMOTE_MAYBE_CHANGE, change }),
       [ENTITY_TYPE.NOTE]: (change) => setNotes((prev) => applyControlChangeToList(prev, change)),
+      [ENTITY_TYPE.TASK]: (change) => setTasks((prev) => applyControlChangeToList(prev, change)),
       [ENTITY_TYPE.DOCUMENT_ATTACHMENT]: (change) =>
         setDocumentAttachments((prev) => applyControlChangeToList(prev, change)),
+      [ENTITY_TYPE.TRAVEL_MODE_OVERRIDE]: (change) =>
+        setTravelModeOverrides((prev) => applyControlChangeToList(prev, change)),
       [ENTITY_TYPE.DOCUMENT]: (change) => {
         // A replace/delete invalidates the client blob cache: the /content URL is
         // reused across a replace with no fresh updatedAt to re-key it (ADR-0055/0058).
@@ -981,6 +1179,7 @@ function TripReady({
       // list — belongs to no single host's channel and would otherwise be five branches.
       // A no-op unless this is a host delete that actually hosted something.
       setNotes((prev) => dropNotesForHostChange(prev, change));
+      setTasks((prev) => dropTasksForHostChange(prev, change));
       // The third member of that family (ADR-0173 §7), here for the same reason and in the
       // same position: a deleted booking, event or DOCUMENT takes its links, and Postgres
       // says nothing about it.
@@ -992,6 +1191,9 @@ function TripReady({
       const gonePlaceId = deletedPlaceId(change);
       if (gonePlaceId) {
         setBookings((prev) => clearPlaceRefs(prev, ENTITY_TYPE.BOOKING, gonePlaceId));
+        // The one FK in that family that CASCADES rather than nulls (ADR-0206 §AM1): a declared
+        // leg is its pair of places, so a deleted end leaves no row to clear.
+        setTravelModeOverrides((prev) => [...dropOverridesForPlace(prev, gonePlaceId)]);
         dispatch({ type: TRIP_ACTION.REMOTE_PLACE_DELETED, placeId: gonePlaceId });
       }
       memoryChannels[change.entityType](change);
@@ -1039,9 +1241,12 @@ function TripReady({
           setPlaces(s.places);
           setDocuments(s.documents);
           setNotes(s.notes);
+          setTasks(s.tasks);
           setDocumentAttachments(s.documentAttachments);
+          setTravelModeOverrides(s.travelModeOverrides);
           setEnrichments(s.enrichments);
           setFxRates(s.fxRates);
+          setForecast(s.forecast);
           onReconnected();
         },
         () => {}, // ponytail: transient refetch failure — next change/hello retries the resync.
@@ -1072,6 +1277,13 @@ function TripReady({
         // The socket reopened itself after a silent foreground drop (F-04); run
         // the same catch-up handleOnline does, but don't reopen — ws.ts owns it.
         onReconnect: () => void catchUp().catch(() => {}),
+        // **The socket is live and our cursor is current, so we are not offline** — the only
+        // signal that says so with nothing to fetch. It matters because the two paths that
+        // used to clear the cue are both network reads that a bad link can lose: the mount
+        // catch-up swallows its failure, and `onResync` fires only when the server is AHEAD.
+        // A boot that stood in on cached data, connected first try and missed nothing would
+        // otherwise read offline for the rest of the session while fully connected.
+        onLive: onReconnected,
         // Enrichment landed for a place we hold (ADR-0166 §6). Deliberately NOT routed through
         // `applyEntityChange`: it is not a `Change`, so it narrates nothing into the change
         // feed (nobody did it), advances no cursor, and needs no reconciliation — the server is
@@ -1539,6 +1751,7 @@ function TripReady({
         const previousNotes = notes;
         setPlaces((prev) => prev.filter((p) => p.id !== placeId));
         setBookings((prev) => clearPlaceRefs(prev, ENTITY_TYPE.BOOKING, placeId));
+        setTravelModeOverrides((prev) => [...dropOverridesForPlace(prev, placeId)]);
         // Both cascades at once: the place's own notes, and the idea's — the idea is being
         // deleted, so Postgres takes its notes exactly as it takes the place's.
         setNotes((prev) =>
@@ -1650,6 +1863,116 @@ function TripReady({
     };
   }, [tripId, notes, toast, authorId]);
 
+  // Tasks (tasks brief, ADR-0188). The same three moves as the note verbs above, over the
+  // `tasks` list.
+  const taskVerbs = useMemo<TaskVerbs>(() => {
+    const stamp = () => new Date(getNow()).toISOString();
+    const updateTask = async (taskId: string, input: UpdateTaskInput): Promise<void> => {
+      const previous = tasks;
+      setTasks((prev) =>
+        prev.map((x) =>
+          x.id === taskId
+            ? {
+                ...x,
+                // **Only the submitted keys**, which is the optimistic half of the sparse
+                // patch the server applies: a tick sends `{ status }`, so a spread of the
+                // whole input would be the one thing that erases the row's own words.
+                ...taskPatch(input),
+                ...optimisticSettlement(input.status, authorId, stamp),
+                updatedAt: stamp(),
+                updatedBy: authorId,
+              }
+            : x,
+        ),
+      );
+      try {
+        const canonical = await restOrQueue(
+          tripId,
+          { verb: OUTBOX_VERB.UPDATE_TASK, taskId, input },
+          () => apiUpdateTask(tripId, taskId, input),
+        );
+        if (canonical) setTasks((prev) => prev.map((x) => (x.id === taskId ? canonical : x)));
+      } catch (err) {
+        setTasks(previous);
+        toast(CONTROL_ICON.warn, t.toast.writeFailed);
+        throw err;
+      }
+    };
+    return {
+      createTask: async (input) => {
+        const id = input.id ?? generateId();
+        const withId = { ...input, id };
+        const optimistic = {
+          ...withId,
+          tripId,
+          dueHasTime: input.dueHasTime ?? false,
+          important: input.important ?? false,
+          status: TASK_STATUS.OPEN,
+          createdBy: authorId,
+          createdAt: stamp(),
+          updatedAt: stamp(),
+          updatedBy: authorId,
+        } as Task;
+        // Appended, not prepended: the screen sorts by urgency rather than by recency
+        // (brief §13), so where a fresh task lands is the sort's answer and not the list's.
+        const previous = tasks;
+        setTasks((prev) => [...prev, optimistic]);
+        try {
+          const canonical = await restOrQueue(
+            tripId,
+            { verb: OUTBOX_VERB.CREATE_TASK, input: withId },
+            () => apiCreateTask(tripId, withId),
+          );
+          if (canonical) setTasks((prev) => prev.map((x) => (x.id === id ? canonical : x)));
+          return canonical ?? optimistic;
+        } catch (err) {
+          setTasks(previous);
+          toast(CONTROL_ICON.warn, t.toast.writeFailed);
+          throw err;
+        }
+      },
+      updateTask,
+      /** The parent case is HERE and nowhere else — see `TaskVerbs.tickTask`. */
+      tickTask: async (task) => {
+        const steps = taskTree.byParent.get(task.id) ?? [];
+        if (steps.length === 0) return updateTask(task.id, { status: tickedStatus(task) });
+        const plan = planSubtaskTick(steps);
+        if (plan.steps.length === 0) return;
+        // Sequential rather than concurrent: the outbox is FIFO and every step is its own op,
+        // which is the shape `EventForm`'s multi-write verb already uses — one press behind
+        // one toast and one undo (ADR-0012's LWW ceiling is why the undo has to be there).
+        for (const step of plan.steps) await updateTask(step.id, { status: plan.status });
+        const settling = plan.status === TASK_STATUS.DONE;
+        toast(
+          settling ? CONTROL_ICON.done : CONTROL_ICON.restore,
+          settling
+            ? t.tasks.subtasks.allTicked(plan.steps.length)
+            : t.tasks.subtasks.allReopened(plan.steps.length),
+          () => {
+            // **Statuses, not attributions.** `updateTask` sends `{ status }` and the server
+            // stamps `settledBy`/`settledAt`, so an undone reopen comes back settled by
+            // whoever pressed undo. Named in ADR-0196's amendment rather than hidden: it is
+            // the residue of the harm that ADR first rejected the bulk verb on.
+            for (const step of plan.steps) void updateTask(step.id, { status: step.status });
+          },
+        );
+      },
+      deleteTask: async (taskId) => {
+        const previous = tasks;
+        setTasks((prev) => prev.filter((x) => x.id !== taskId));
+        try {
+          await restOrQueue(tripId, { verb: OUTBOX_VERB.DELETE_TASK, taskId }, () =>
+            apiDeleteTask(tripId, taskId),
+          );
+        } catch (err) {
+          setTasks(previous);
+          toast(CONTROL_ICON.warn, t.toast.writeFailed);
+          throw err;
+        }
+      },
+    };
+  }, [tripId, tasks, taskTree, toast, authorId]);
+
   // Attachments (ADR-0173). The same three moves as the note verbs above, over the
   // `documentAttachments` list — and only two verbs, because a link has no content to edit.
   const attachmentVerbs = useMemo<AttachmentVerbs>(
@@ -1674,6 +1997,74 @@ function TripReady({
     [tripId, documentAttachments, toast, authorId],
   );
 
+  // **The mode of one leg** (ADR-0206 §AM). The same optimistic shape as every other verb here:
+  // write the list, queue or POST, roll back on failure. The pair is canonicalised by
+  // `travelOverridePair` so the optimistic row is the one `legTravelMode` will find — the read
+  // keys on the sorted pair, and a row in the caller's order would be invisible.
+  const travelModeVerbs = useMemo<TravelModeVerbs>(
+    () => ({
+      setLegMode: async (fromPlaceId, toPlaceId, mode) => {
+        const pair = travelOverridePair(fromPlaceId, toPlaceId);
+        const previous = travelModeOverrides;
+        const existing = previous.find(
+          (o) => o.fromPlaceId === pair.fromPlaceId && o.toPlaceId === pair.toPlaceId,
+        );
+        const at = new Date(getNow()).toISOString();
+        const optimistic: TravelModeOverride = {
+          id: existing?.id ?? generateId(),
+          tripId,
+          ...pair,
+          mode,
+          createdBy: existing?.createdBy ?? authorId,
+          createdAt: existing?.createdAt ?? at,
+          updatedAt: at,
+        };
+        setTravelModeOverrides((prev) =>
+          existing
+            ? prev.map((o) => (o.id === existing.id ? optimistic : o))
+            : [...prev, optimistic],
+        );
+        try {
+          const saved = await restOrQueue(
+            tripId,
+            { verb: OUTBOX_VERB.SET_TRAVEL_MODE, input: { id: optimistic.id, ...pair, mode } },
+            () => apiSetTravelMode(tripId, { id: optimistic.id, ...pair, mode }),
+          );
+          if (saved) {
+            setTravelModeOverrides((prev) => prev.map((o) => (o.id === saved.id ? saved : o)));
+          }
+          return saved ?? optimistic;
+        } catch (err) {
+          setTravelModeOverrides(previous);
+          toast(CONTROL_ICON.warn, t.toast.writeFailed);
+          throw err;
+        }
+      },
+      clearLegMode: async (fromPlaceId, toPlaceId) => {
+        const pair = travelOverridePair(fromPlaceId, toPlaceId);
+        const previous = travelModeOverrides;
+        const existing = previous.find(
+          (o) => o.fromPlaceId === pair.fromPlaceId && o.toPlaceId === pair.toPlaceId,
+        );
+        // Nothing to take back — the leg is already on the derived mode.
+        if (!existing) return;
+        setTravelModeOverrides((prev) => prev.filter((o) => o.id !== existing.id));
+        try {
+          await restOrQueue(
+            tripId,
+            { verb: OUTBOX_VERB.CLEAR_TRAVEL_MODE, overrideId: existing.id },
+            () => apiClearTravelMode(tripId, existing.id),
+          );
+        } catch (err) {
+          setTravelModeOverrides(previous);
+          toast(CONTROL_ICON.warn, t.toast.writeFailed);
+          throw err;
+        }
+      },
+    }),
+    [tripId, travelModeOverrides, toast, authorId],
+  );
+
   const value = useMemo<TripContextValue>(
     () => ({
       trip,
@@ -1687,9 +2078,13 @@ function TripReady({
       noteHosts,
       documents,
       notes,
+      tasks: taskTree.roots,
+      subtasks: taskTree.byParent,
       documentAttachments,
+      travelModeOverrides,
       enrichments,
       fxRates,
+      forecast,
       refreshFx,
       activeDate,
       setActiveDate,
@@ -1701,7 +2096,9 @@ function TripReady({
       settings,
       indexVerbs,
       noteVerbs,
+      taskVerbs,
       attachmentVerbs,
+      travelModeVerbs,
       changeFeed,
       dismissChange,
       clearChangeFeed,
@@ -1721,14 +2118,19 @@ function TripReady({
       noteHosts,
       documents,
       notes,
+      taskTree,
       documentAttachments,
+      travelModeOverrides,
       enrichments,
       fxRates,
+      forecast,
       refreshFx,
       settings,
       indexVerbs,
       noteVerbs,
+      taskVerbs,
       attachmentVerbs,
+      travelModeVerbs,
       changeFeed,
       dismissChange,
       clearChangeFeed,

@@ -87,7 +87,15 @@
   /* Contain overscroll so hitting the top/bottom of the scroll area doesn't
      trigger the browser's pull-to-refresh (see tokens.css). */
   overscroll-behavior-y: contain;
-  padding: 16px 16px 92px;
+  /* The tail is 92px because of the TOAST, not because of the tab bar. The nav is
+     in flow (a flex child of `.app`), so it takes its own room and needs none here —
+     but `.toast` is `position: fixed; bottom: 78px`, i.e. it floats over the body's
+     last ~56px. Trim this and a confirmation covers the row that produced it. */
+  /* **Named because something reaches for it**: the day head bleeds its photograph out of this
+     padding to hang off the day strip (ADR-0219 §3), which is a negative margin of exactly this
+     value. A literal in two files is how the two drift. */
+  --body-pad: 16px;
+  padding: var(--body-pad) var(--body-pad) 92px;
   animation: fade 0.32s ease;
 }
 /* A surface that owns its own layout instead of scrolling inside the body
@@ -247,8 +255,10 @@
   cursor: pointer;
   transition: background-color var(--t-quick) var(--ease-standard);
 }
-.hdr-trip:hover {
-  background: color-mix(in srgb, var(--chrome-ink) 15%, transparent);
+@media (hover: hover) and (pointer: fine) {
+  .hdr-trip:hover {
+    background: color-mix(in srgb, var(--chrome-ink) 15%, transparent);
+  }
 }
 .hdr-trip:focus-visible {
   outline: 2.5px solid var(--teal);
@@ -380,9 +390,11 @@
 .gear-btn {
   flex: 0 0 auto;
 }
-.gear-btn:hover,
-.chrome-ghost-btn:hover {
-  color: var(--chrome-ink);
+@media (hover: hover) and (pointer: fine) {
+  .gear-btn:hover,
+  .chrome-ghost-btn:hover {
+    color: var(--chrome-ink);
+  }
 }
 .gear-btn:focus-visible,
 .chrome-ghost-btn:focus-visible {
@@ -560,6 +572,12 @@
   font-weight: 700;
   color: var(--chrome-ink-num);
   line-height: 1.1;
+}
+/* A finished trip's age (`4 ימים`, `שנה`) is words, not a counter (ADR-0240 §3). */
+.hdr-anchor .num.is-words {
+  font-family: var(--font-body);
+  font-size: 12.5px;
+  white-space: nowrap;
 }
 /* An OPAQUE warm chip, not a translucent amber veil — and the difference is the
    whole reason this looked wrong the moment the chrome went light. Amber sits at
@@ -1361,6 +1379,7 @@
   height: 20px;
   border-radius: 50%;
   flex: 0 0 auto;
+  box-shadow: 0 0 0 1px var(--mark-edge);
 }
 .join-hero {
   margin-top: 30px;
@@ -1600,7 +1619,7 @@
   border-radius: 50%;
   flex: 0 0 auto;
   object-fit: cover;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.15);
+  box-shadow: 0 0 0 1px var(--mark-edge);
 }
 .land-hero {
   margin-top: 52px;
@@ -1844,6 +1863,63 @@
   letter-spacing: 0.04em;
   margin: 2px 4px 9px;
 }
+/* The lifetime line sits under `הסתיים`, closer to its heading than to the cards
+   (ADR-0240 §7). */
+.trips-life {
+  font-size: 12px;
+  color: var(--muted);
+  margin: -5px 4px 10px;
+}
+/* **A year ago today** (ADR-0240 §7): the one place `/trips` spends a wide cover, once a year.
+   Its small line is `--memory-deep`, not amber: an anniversary is not a deadline. */
+.trip-anniv {
+  --press-scale: var(--press-scale-lg);
+  display: block;
+  width: 100%;
+  padding: 0;
+  margin-bottom: 14px;
+  font: inherit;
+  color: inherit;
+  text-align: start;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-16);
+  overflow: hidden;
+  background: var(--card);
+  cursor: pointer;
+}
+.trip-anniv .wp-photoband {
+  border-radius: 0;
+}
+/* No cover: the line the scrim would carry heads the card instead. */
+.trip-anniv-line {
+  display: block;
+  padding: 12px 14px 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.trip-anniv-foot {
+  display: grid;
+  gap: 2px;
+  padding: 10px 14px 12px;
+}
+.trip-anniv-line + .trip-anniv-foot {
+  padding-top: 4px;
+}
+.trip-anniv-foot b {
+  font-family: var(--font-head);
+  font-weight: 400;
+  font-size: 16px;
+  color: var(--ink);
+}
+.trip-anniv-dates {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--memory-deep);
+}
+/* The card IS the row again — the share entry that briefly wrapped both in a grid is gone
+   (ADR-0033's 2026-08-30 amendment §1), so the section label follows the card itself. */
 .trip-card + .sec,
 .trip-hero + .sec {
   margin-top: 16px;
@@ -1870,9 +1946,11 @@
     transform var(--t-quick) var(--ease-standard),
     box-shadow var(--t-quick) var(--ease-standard);
 }
-.trip-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 10px 24px -16px rgba(22, 35, 61, 0.5);
+@media (hover: hover) and (pointer: fine) {
+  .trip-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 24px -16px rgba(22, 35, 61, 0.5);
+  }
 }
 .trip-card:focus-visible,
 .trip-hero:focus-visible {
@@ -1888,6 +1966,14 @@
   place-items: center;
   font-size: 23px;
   flex: 0 0 auto;
+}
+.trip-card .flag[data-photo] {
+  overflow: hidden;
+}
+.trip-card .flag img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 .trip-card .main,
 .trip-hero .main {
@@ -1930,18 +2016,6 @@
   font-size: 12px;
 }
 
-/* finished trips read one notch quieter */
-.trip-card.is-past {
-  background: var(--card);
-}
-.trip-card.is-past .flag {
-  filter: saturate(0.7);
-  opacity: 0.9;
-}
-.trip-card.is-past .t {
-  color: var(--muted);
-}
-
 /* Active-trip hero (ADR-0033) — the single loud element on a paper page. Uses
    the chrome-base indigo (NOT the darker --board), with no glow, no pulse and
    no now/next hero, so it reads as a prominent nav card, not the rationed
@@ -1968,8 +2042,10 @@
     transform var(--t-quick) var(--ease-standard),
     box-shadow var(--t-quick) var(--ease-standard);
 }
-.trip-hero:hover {
-  transform: translateY(-2px);
+@media (hover: hover) and (pointer: fine) {
+  .trip-hero:hover {
+    transform: translateY(-2px);
+  }
 }
 .trip-hero .flag {
   width: 52px;
@@ -2005,6 +2081,21 @@
   height: 1em;
   flex: 0 0 auto;
 }
+/* **A glyph with a FACING mirrors with the reading direction** (ADR-0138 §10, drawn in
+   `mockups/the-mode-set-and-transit-declared-v1.html` §5). Owner: the walker and the bike should
+   face LEFT in Hebrew, i.e. the way the reader is going.
+
+   One declaration and no new mechanism: `--dir` is `tokens.css`'s own "the one place a direction is
+   named" (−1 RTL / 1 LTR, with the `[dir='ltr']` override after the `:root` block), so a path
+   authored right-facing — the icon-set convention, and what already ships — mirrors in RTL and is
+   left alone in LTR. Nothing here writes a sign.
+
+   WHICH glyphs is `Icon.tsx`'s `MIRRORED` allowlist, not a rule of thumb: `clock` is asymmetric and
+   mirrored it reads a different time. `.icon` is the `<svg>` root, an ordinary replaced box, so the
+   origin is already its centre. */
+.icon[data-mirror] {
+  transform: scaleX(var(--dir));
+}
 .nav-arrow-back {
   transform: scaleX(-1);
 }
@@ -2029,26 +2120,31 @@
   font-size: 18px;
 }
 
-/* soon / past chips — date-derived, neutral family (shell chrome, ADR-0028) */
-.chip {
+/* **The countdown chip, and it is the card's loud element** (ADR-0033's 2026-08-30
+   amendment §2). With the share control gone the trailing slot is free, and `בעוד 12 ימים`
+   is the one fact that varies INSIDE a section — the heading above already says the state,
+   so what tells two cards apart is how soon.
+
+   It spends **amber**, which the colour budget files countdowns under (ADR-0028), at the
+   recipe `.hdr-anchor.is-back` already uses rather than a new one: a tinted ground with
+   `--amber-deep` for edge and ink, because `--amber` written as TEXT on paper is 1.31:1 and
+   is a fill, never ink. No glow and no pulse — the card stays a nav card and must not start
+   reading as the rationed board.
+
+   There is no `.chip.past`: under a `הסתיים` heading, over dates already past, it repeated
+   its own heading and told no two cards apart, so it is deleted rather than promoted (§3). */
+.chip.soon {
   flex: 0 0 auto;
   align-self: flex-start;
   margin-top: 2px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   border-radius: 8px;
-  padding: 4px 9px;
+  padding: 5px 10px;
   white-space: nowrap;
-}
-.chip.soon {
-  color: var(--ink);
-  background: var(--card);
-  border: 1px solid var(--soft-line);
-}
-.chip.past {
-  color: var(--muted);
-  background: transparent;
-  border: 1px solid var(--line);
+  color: var(--amber-deep);
+  background: color-mix(in srgb, var(--amber) 10%, var(--paper));
+  border: 1px solid color-mix(in srgb, var(--amber-deep) 45%, var(--paper));
 }
 .trips-body .spacer {
   flex: 1;
@@ -2194,8 +2290,10 @@
   background: var(--plan-tint);
   border-color: rgba(110, 89, 214, 0.28);
 }
-.app[data-mode='plan'] .hdr-trip:hover {
-  background: rgba(110, 89, 214, 0.16);
+@media (hover: hover) and (pointer: fine) {
+  .app[data-mode='plan'] .hdr-trip:hover {
+    background: rgba(110, 89, 214, 0.16);
+  }
 }
 .app[data-mode='plan'] .hdr-swap {
   background: rgba(110, 89, 214, 0.16);
@@ -2210,9 +2308,11 @@
 .mode-chrome[data-mode='plan'] .chrome-ghost-btn {
   color: var(--plan-deep);
 }
-.app[data-mode='plan'] .gear-btn:hover,
-.mode-chrome[data-mode='plan'] .chrome-ghost-btn:hover {
-  color: var(--plan);
+@media (hover: hover) and (pointer: fine) {
+  .app[data-mode='plan'] .gear-btn:hover,
+  .mode-chrome[data-mode='plan'] .chrome-ghost-btn:hover {
+    color: var(--plan);
+  }
 }
 .app[data-mode='plan'] .gear-btn:focus-visible,
 .mode-chrome[data-mode='plan'] .chrome-ghost-btn:focus-visible {
@@ -2234,6 +2334,64 @@
 }
 .app[data-mode='plan'] .hdr-mode {
   background: var(--plan-tint);
+}
+
+/* ============================================================
+   The archive's chrome — a finished trip (ADR-0240 §3, mockups/past-trip-v1.html).
+   A finished trip still reads `data-mode='plan'` for its light-band layout; `data-phase`
+   swaps the hue. On `.mode-chrome` as well as `.app`: plan sets `--chrome-bg` on the header
+   ITSELF, so an `.app`-level value never reaches it. No drafting grid — a record is not
+   being drafted. The ink ramp is shared and clears on this band too.
+   ============================================================ */
+.app[data-phase='past'],
+.mode-chrome[data-phase='past'] {
+  --chrome-bg: var(--chrome-bg-memory);
+}
+.app[data-phase='past'] .header::before,
+.mode-chrome[data-phase='past']::before {
+  opacity: 0;
+}
+.app[data-phase='past'] .hdr-trip {
+  background: var(--memory-tint);
+  border-color: color-mix(in srgb, var(--memory) 28%, transparent);
+}
+@media (hover: hover) and (pointer: fine) {
+  .app[data-phase='past'] .hdr-trip:hover {
+    background: color-mix(in srgb, var(--memory) 16%, transparent);
+  }
+}
+.app[data-phase='past'] .hdr-swap {
+  background: color-mix(in srgb, var(--memory) 16%, transparent);
+}
+.app[data-phase='past'] .hdr-trip:focus-visible {
+  outline-color: var(--memory);
+}
+.app[data-phase='past'] .gear-btn,
+.mode-chrome[data-phase='past'] .chrome-ghost-btn {
+  color: var(--memory-deep);
+}
+@media (hover: hover) and (pointer: fine) {
+  .app[data-phase='past'] .gear-btn:hover,
+  .mode-chrome[data-phase='past'] .chrome-ghost-btn:hover {
+    color: var(--memory);
+  }
+}
+.app[data-phase='past'] .gear-btn:focus-visible,
+.mode-chrome[data-phase='past'] .chrome-ghost-btn:focus-visible {
+  outline-color: var(--memory);
+}
+.app[data-phase='past'] .av.is-me {
+  box-shadow:
+    0 0 0 2px var(--chrome-ring),
+    0 0 0 3.5px color-mix(in srgb, var(--memory) 60%, transparent);
+}
+.app[data-phase='past'] .av.more {
+  background: var(--memory-tint);
+  color: var(--memory-deep);
+}
+.app[data-phase='past'] .nav {
+  --nav-accent: var(--memory-deep);
+  --nav-tint: var(--memory-tint);
 }
 /* The Plan-mode day-strip re-skin (light pills, violet selection, dashed
    empty-day markers) moved into the DayStrip component, keyed off its own

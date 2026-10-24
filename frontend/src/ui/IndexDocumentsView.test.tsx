@@ -21,6 +21,16 @@ let tripDocuments: DocumentSummary[] = [];
 
 vi.mock('../state/trip-state', () => ({
   useTrip: () => ({
+    zoneCrossings: [],
+    users: [],
+    // Tasks ride the same snapshot since phase 1; the mark and the sections read them.
+    tasks: [],
+    taskVerbs: {
+      createTask: async () => undefined,
+      updateTask: async () => {},
+      deleteTask: async () => {},
+      tickTask: async () => {},
+    },
     trip: { id: 't1', name: 'יפן · אביב', timezone: 'Asia/Tokyo' },
     documents: tripDocuments,
     // The rows carry a note mark now (ADR-0152 §6), so the section reads the note list.

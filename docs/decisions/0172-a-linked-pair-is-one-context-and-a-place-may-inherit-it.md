@@ -65,6 +65,8 @@ A Place with exactly one relevant Booking/Event context **displays** that contex
 
 A transport booking whose origin and destination are both this place is still **one** context: the unit is the referencing entity, not the FK.
 
+**Amended 2026-09-27 (owner's report) — a place's OWN notes read on every use of it; the one-way rule now binds writes only.** The report: notes typed on a place from the Map, which then became an event, never showed on the event. That is the one-way rule doing exactly what it said, and it was the wrong default — a note written on the place is _about the place_, and the Map-first flow (place, then notes, then schedule it) is common enough that the event is where the note is needed. So every Event, Booking and **idea** at a place (authority rule applied: a linked pair reads its booking's `placeId`/`fromPlaceId`/`toPlaceId`, never the event's column) now lists that place as a **display member** of its context; the anchor is unchanged, so nothing written on the event ever lands on the place. The leak the paragraph above feared does not arise: rows written on the place _while it resolved_ went to the anchor and stay with that use; only rows written on the place itself travel, to every use, which is what "written on the place" means. A place never reads **another** place's rows through an inherited transport leg. Ideas still do not count toward "relevant" — they only read. The event/idea surface names the source place on such a note (§9's chip).
+
 ### 4. Rule 4 costs nothing, because the row never moves
 
 The owner's fourth rule — a place that starts unique and later becomes reused keeps its already-shared notes with the original context — needs **no mechanism at all** under §2 and §3. There is nothing to detach, no transition to capture, no second-reference trigger, no live mutation fired by an unrelated write, and nothing for the offline outbox to replay out of order.
@@ -102,13 +104,13 @@ Existing notes hosted on an `eventId` whose event is linked to a booking resolve
 
 ### 9. What this does NOT do
 
-A note still cannot have two hosts. There is no host picker, and attachment is still established from the host's side (ADR-0152 §2's phase-5b amendment, ADR-0153 §5). A **Place** still cannot be a member of a context, only an inheritor (§3). Deleting the anchor still destroys the context's notes; only unlink is special (§5). Nothing here touches `MaybeItem` or `TripDocument` hosting, and no strategy is registered (ADR-0152 §8 remains reserved).
+A note still cannot have two hosts. There is no host picker, and attachment is still established from the host's side (ADR-0152 §2's phase-5b amendment, ADR-0153 §5). A **Place** is never an anchor, only an inheritor and — since §3's 2026-09-27 amendment — a display member of each use (§3). Deleting the anchor still destroys the context's notes; only unlink is special (§5). Nothing here touches `MaybeItem` or `TripDocument` hosting, and no strategy is registered (ADR-0152 §8 remains reserved).
 
 **Amended same day (session 225, owner's call) — an inherited note SAYS where it came from, and this paragraph is what it reverses.** This section shipped reading "deliberately not built: a visual distinction between a place's own notes and its inherited ones… if the ambiguity turns out to matter on a real device, it is a design change to one component." The mockup the owner asked for before #26 was built ([`notes-and-documents-in-context-v1.html`](../../mockups/notes-and-documents-in-context-v1.html) §2) measured it instead of waiting for the device: the source chip rides the meta line the author and the elapsed time already share, so it costs **2px per note** (111px flush against 115px marked, two notes) and opens no new line.
 
 At that price the deferral was the wrong call, and **the reason is not decorative**. Deleting the anchoring booking destroys these notes, and a booking delete has no undo (§2's amendment). A reader looking at a place card cannot otherwise tell that the note in front of them is hostage to a booking somewhere else — the place is precisely the surface where a note's origin is least guessable, because it is the one host that never authored it. A 2px chip is what makes the Consequences entry below ("a place that gains a second reference silently stops showing inherited notes") legible rather than mysterious.
 
-Still deliberately not built: any distinction on the **Booking/Event** side. There is nothing to mark there — §3 is one-way, so everything those surfaces show is their own.
+On the **Event/Booking/idea** side, a place's own note (§3's 2026-09-27 amendment) carries the same chip, naming the place.
 
 ## Reuse audit (ADR-0096 / root `CLAUDE.md` rule 8)
 

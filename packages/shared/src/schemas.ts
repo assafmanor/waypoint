@@ -8,19 +8,30 @@ import {
   bookingTypeSchema,
   documentTypeSchema,
   eventCategorySchema,
+  eventEdgeSchema,
   eventKindSchema,
   eventSourceSchema,
   eventStatusSchema,
   membershipRoleSchema,
   placeSearchKindSchema,
+  TASK_HOST_KEYS,
+  taskDerivedKeySchema,
+  taskStatusSchema,
   type NoteHostKey,
+  type TaskHostKey,
 } from './entities';
 import { currencyCodeSchema } from './currency';
 import { geoBoundsSchema } from './geo';
 import { avatarChoiceSchema, identityHueSchema } from './identity';
 import {
   MAX_DISPLAY_NAME_LENGTH,
+  MAX_PUSH_ENDPOINT_LENGTH,
+  MAX_PUSH_KEY_LENGTH,
+  PUSH_KEY_BYTES,
+  MAX_USER_AGENT_LENGTH,
   MAX_PLACE_NICKNAME_LENGTH,
+  MAX_SERVICE_NUMBER_LENGTH,
+  MAX_GATE_LENGTH,
   MAX_TRIP_NAME_LENGTH,
 } from './constants';
 
@@ -131,8 +142,17 @@ export const moveEventSchema = z.object({
 });
 export type MoveEventInput = z.infer<typeof moveEventSchema>;
 
-/** Set an event's status (done/skipped). */
-export const eventStatusUpdateSchema = z.object({ status: eventStatusSchema });
+/** Set an event's status (done/skipped) — on ONE of its two edges (ADR-0224 §1).
+ *
+ *  `edge` is optional and absent means `'start'`, which is what every caller before this
+ *  ADR meant and what `status` has always written. A bracketed span's CLOSING edge passes
+ *  `'end'` and lands in `endStatus` instead; the verb, the outbox op and the change payload
+ *  are otherwise identical, so a check-out settles through the path a check-in already uses
+ *  rather than through a second one. */
+export const eventStatusUpdateSchema = z.object({
+  status: eventStatusSchema,
+  edge: eventEdgeSchema.optional(),
+});
 export type EventStatusUpdateInput = z.infer<typeof eventStatusUpdateSchema>;
 
 /** Optional event to auto-create/update alongside a booking (ADR-0047 §1). Present
@@ -160,6 +180,10 @@ export const createBookingSchema = z.object({
   title: z.string().min(1),
   confirmationCode: z.string().optional(),
   provider: z.string().optional(),
+  // The service's number and where you board it (ADR-0222 §1). Bounded because both are
+  // hand-typed; see the constants for why the caps are deliberately short.
+  flightNumber: z.string().max(MAX_SERVICE_NUMBER_LENGTH).optional(),
+  gate: z.string().max(MAX_GATE_LENGTH).optional(),
   placeId: z.string().optional(), // single-place types; mutually exclusive with from/to
   fromPlaceId: z.string().optional(), // transport origin (ADR-0048)
   toPlaceId: z.string().optional(), // transport destination (ADR-0048)
@@ -188,6 +212,13 @@ export const updateBookingSchema = createBookingSchema.partial().extend({
   placeId: z.string().nullish(),
   fromPlaceId: z.string().nullish(),
   toPlaceId: z.string().nullish(),
+  /** **`gate` is the one field in this app with a write path of its own** (ADR-0222 §7): the
+   *  lifted hero's `ValueToken` sends `{ gate }` and nothing else, because routing two
+   *  characters through the stepped form means re-committing the whole booking (ADR-0155).
+   *  `nullish` so that path can also CLEAR a gate that changed — the same null-clears rule
+   *  the place FKs above document, and the reason neither is merely `optional` here. */
+  gate: z.string().max(MAX_GATE_LENGTH).nullish(),
+  flightNumber: z.string().max(MAX_SERVICE_NUMBER_LENGTH).nullish(),
 });
 export type UpdateBookingInput = z.infer<typeof updateBookingSchema>;
 
@@ -523,6 +554,156 @@ export const updateNoteSchema = z
   });
 export type UpdateNoteInput = z.infer<typeof updateNoteSchema>;
 
+// --- Tasks (tasks brief §5, ADR-0188) -------------------------------------------------
+// Notes' sibling, so the host rule below is the same rule, enforced the same way at both
+// edges (ADR-0023). What differs is the ONE refusal: a note needs a body or a url, and a
+// task needs a title — "a task with no title is nothing".
+
+const taskHostCount = (data: Partial<Record<TaskHostKey, unknown>>): number =>
+  TASK_HOST_KEYS.filter((key) => data[key] != null).length;
+
+const hasTitle = (data: { title?: string | null }): boolean => !!data.title?.trim();
+
+/** **What a SUB-TASK may not carry** (ADR-0196 §1/§8), refused at both edges rather than
+ *  trusted to a form. Each entry has its own reason in that ADR, and one of them pays for the
+ *  rest: a step with no deadline cannot be urgent, cannot be overdue, and therefore has
+ *  nothing to say on any surface ordered by urgency — which is what makes nineteen of the
+ *  twenty-three task derivations correct about children *vacuously* instead of by remembering.
+ *
+ *  `parentTaskId` itself is in the list, and that is the depth cap: a step may not be a
+ *  parent. `assignedToAll` is not here only because it is not built yet (brief §6, phase 6) —
+ *  when it lands it joins this array, and §1's third refusal (a task is a checklist or an
+ *  `everyone` task, never both) becomes its own `.refine`. */
+const SUBTASK_REFUSED_KEYS = [
+  'parentTaskId',
+  'dueAt',
+  'dueHasTime',
+  'displayTimezone',
+  'important',
+  'body',
+  'derivedKey',
+  ...TASK_HOST_KEYS,
+] as const;
+
+/** **Carries a VALUE, not merely a key.** `null`/`undefined` is an absent field; `false` and
+ *  `''` are a form sending its own defaults, and refusing those would reject a perfectly good
+ *  step for the values nobody chose — `important: false` and `dueHasTime: false` are exactly
+ *  what `TaskSheet` fills in. The suite caught this on the accept case that sits beside the
+ *  refusals. */
+const carries = (value: unknown): boolean => value != null && value !== false && value !== '';
+
+/** True when this input is a step AND carries something a step may not. Written over the
+ *  SUBMITTED keys so a sparse patch is judged on what it actually sends: a tick on a step
+ *  sends `status` alone and must not be refused for the fields it never mentioned. */
+const subtaskCarriesRefused = (
+  data: Record<string, unknown>,
+  parentTaskId: string | null | undefined,
+): boolean =>
+  parentTaskId != null &&
+  SUBTASK_REFUSED_KEYS.some((key) => key !== 'parentTaskId' && carries(data[key]));
+
+export const createTaskSchema = z
+  .object({
+    id: entityIdSchema.optional(),
+    title: z.string(),
+    body: z.string().optional(),
+    /** An ISO instant. Resolved from the typed wall-clock through `authoringZone` at the
+     *  form, never from whatever zone the call site happened to hold (ADR-0107 §2). */
+    dueAt: z.string().optional(),
+    dueHasTime: z.boolean().optional(),
+    /** The zone the deadline was typed in (2026-08-17). Absent → derived, as before. */
+    displayTimezone: timezoneSchema.optional(),
+    assigneeUserId: entityIdSchema.optional(),
+    important: z.boolean().optional(),
+    /** Set only when the row overlays a readiness check (brief §4) — a human dismissing,
+     *  assigning or flagging a derivation is what mints it. */
+    derivedKey: taskDerivedKeySchema.optional(),
+    /** **The task this one is a step of** (ADR-0196 §1). See the refusal below for what a
+     *  step may not carry alongside it. */
+    parentTaskId: entityIdSchema.optional(),
+    /** **Present so that the act which MINTS an overlay row can be the dismissal itself.**
+     *  A check nobody has touched has no row, and "a dismissal is a human decision and
+     *  cannot be derived" (brief §4) — so dismissing one is a create, not an update, and
+     *  without this it would have to be a create followed by a patch: two writes for one
+     *  press, with the second orphaned if the first fails. Defaults to `open` everywhere
+     *  else, which is every manual task. */
+    status: taskStatusSchema.optional(),
+    eventId: entityIdSchema.optional(),
+    bookingId: entityIdSchema.optional(),
+    placeId: entityIdSchema.optional(),
+    maybeItemId: entityIdSchema.optional(),
+    documentId: entityIdSchema.optional(),
+  })
+  .refine(hasTitle, { message: 'a task needs a title', path: ['title'] })
+  .refine((data) => taskHostCount(data) <= 1, {
+    message: 'a task has at most one host',
+    path: ['eventId'],
+  })
+  // **A step is its title and its assignee, and nothing else** (ADR-0196 §8). Marked on
+  // `parentTaskId` because that is the field which makes the rest refusable — a form that
+  // got here sent a step, and the cure is to send a top-level task instead.
+  .refine((data) => !subtaskCarriesRefused(data, data.parentTaskId), {
+    message: 'a sub-task carries only a title and an assignee',
+    path: ['parentTaskId'],
+  });
+export type CreateTaskInput = z.infer<typeof createTaskSchema>;
+
+/** `PATCH /trips/:tripId/tasks/:taskId` — **sparse throughout, and clearing a field is an
+ *  explicit `null`.** This is the one place tasks deliberately part company with
+ *  `updateNoteSchema`, whose absent-means-cleared rule is bought by a note having exactly
+ *  one edit surface. A task has two: the editor, which holds every field, and **the tick**,
+ *  which settles a task without opening anything and so sends `status` alone. Under the
+ *  note's rule that tick would erase the task's own words and its deadline.
+ *
+ *  So an absent field means untouched, a `null` means cleared, and the refusal below reads
+ *  the SUBMITTED fields — `title` is optional here and refused only when it is actually
+ *  sent, or a tick would be told the task needs a title it already has. */
+export const updateTaskSchema = z
+  .object({
+    title: z.string().optional(),
+    body: z.string().nullish(),
+    dueAt: z.string().nullish(),
+    dueHasTime: z.boolean().optional(),
+    /** `nullish` and not `optional`, for the reason the sparse patch already has one
+     *  `nullish` field: absent = untouched, **`null` = un-pin back to derived**. Without the
+     *  null a pinned zone could be set and never cleared. */
+    displayTimezone: timezoneSchema.nullish(),
+    assigneeUserId: entityIdSchema.nullish(),
+    important: z.boolean().optional(),
+    status: taskStatusSchema.optional(),
+    eventId: entityIdSchema.nullish(),
+    bookingId: entityIdSchema.nullish(),
+    placeId: entityIdSchema.nullish(),
+    maybeItemId: entityIdSchema.nullish(),
+    documentId: entityIdSchema.nullish(),
+    // **No `parentTaskId`, deliberately.** A step's parent is set at create and never
+    // changes: there is no move-between-checklists verb and no promote-to-task verb in v1,
+    // so an editable field here would be surface nothing sends. Removing a step is
+    // `deleteTask`. And the refusal it would gate cannot live here anyway — a sparse patch
+    // does not say whether its target is a step, so only the server, which loads the row,
+    // can enforce what a step may not carry (`TasksService.update`).
+  })
+  .refine((data) => data.title === undefined || hasTitle(data), {
+    message: 'a task needs a title',
+    path: ['title'],
+  })
+  .refine((data) => taskHostCount(data) <= 1, {
+    message: 'a task has at most one host',
+    path: ['eventId'],
+  });
+export type UpdateTaskInput = z.infer<typeof updateTaskSchema>;
+
+/** **What a patch may touch on a STEP** (ADR-0196 §8) — the server's half of the refusal
+ *  above, exported so `TasksService.update` and its spec read the same list. A sparse patch
+ *  cannot say whether its target is a step, so this is checked against the loaded row.
+ *
+ *  A step is its title, its assignee and its status: rename it, hand it to someone, tick it.
+ *  Everything else is the parent's. */
+export const subtaskPatchRefuses = (input: UpdateTaskInput): boolean =>
+  SUBTASK_REFUSED_KEYS.some(
+    (key) => key !== 'parentTaskId' && carries((input as Record<string, unknown>)[key]),
+  );
+
 // --- Document attachments (ADR-0173) --------------------------------------------------
 // The link between an existing document and a booking or an event. There is no update
 // schema and there never will be: a link has no content, so it is created and removed.
@@ -596,6 +777,70 @@ export type JoinTripInput = z.infer<typeof joinTripSchema>;
  *  exactly the way ADR-0107's zone chip clears a manual override to null.
  *  `displayName` is trimmed and length-capped because it renders on every
  *  co-member's roster — it is shared state, not a private label. */
+/** `POST /notifications/subscription` — the browser's `PushSubscription`, as the browser
+ *  gives it (ADR-0197 §2). Three fields and a courtesy label; there is nothing here we
+ *  choose, which is why the shape is this literal.
+ *
+ *  `endpoint` is checked as a URL because it IS one, and it is the row's identity — a
+ *  garbage endpoint would be a row that can never be reached and never be replaced. The
+ *  key material is length-bounded rather than decoded: base64url of a P-256 point and a
+ *  16-byte secret have known sizes, and a value outside them cannot be either, but the
+ *  authority on whether they are valid is the push service at send time, not us. */
+/**
+ * One of a subscription's two keys: base64url that decodes to exactly the length RFC 8291
+ * fixes for it.
+ *
+ * **Checked here because the alternative is a silent failure hours later.** `web-push`
+ * validates both lengths and throws before it makes any request, so a wrong-length key
+ * produces a rejection carrying no status — a subscribe that succeeded and a send that
+ * failed with nothing to point at. `validateVapid` already makes this exact argument for
+ * the server's own keypair ("a swap is caught at boot instead of at the first send"); this
+ * is the device half of it, caught at the one moment somebody is still holding the phone.
+ */
+function pushKey(which: 'p256dh' | 'auth') {
+  const base = z.string().min(1).max(MAX_PUSH_KEY_LENGTH);
+  // `p256dh` is an equality and `auth` a floor, because that is what `web-push` enforces —
+  // see `PUSH_KEY_BYTES`. A check stricter than the sender's would refuse a subscription
+  // that would have worked.
+  return which === 'p256dh'
+    ? base.refine((value) => decodedByteLength(value) === PUSH_KEY_BYTES.p256dh, {
+        message: `p256dh must be base64url that decodes to exactly ${PUSH_KEY_BYTES.p256dh} bytes`,
+      })
+    : base.refine((value) => decodedByteLength(value) >= PUSH_KEY_BYTES.authMin, {
+        message: `auth must be base64url that decodes to at least ${PUSH_KEY_BYTES.authMin} bytes`,
+      });
+}
+
+/** Byte length of a base64url string, or `-1` if it is not base64url at all. Length is
+ *  computed rather than decoded: no Buffer (this package runs in a browser too) and no
+ *  allocation for a value that may be hostile. */
+function decodedByteLength(value: string): number {
+  const body = value.replace(/=+$/, '');
+  if (!/^[A-Za-z0-9_-]*$/.test(body)) return -1;
+  const remainder = body.length % 4;
+  // 1 leftover base64 char cannot encode any whole byte, so it is malformed.
+  if (remainder === 1) return -1;
+  return Math.floor((body.length * 3) / 4);
+}
+
+export const createPushSubscriptionSchema = z.object({
+  endpoint: z.string().url().max(MAX_PUSH_ENDPOINT_LENGTH),
+  p256dh: pushKey('p256dh'),
+  auth: pushKey('auth'),
+  /** The device label a person recognises their own row by. Trimmed and capped because it
+   *  is rendered; absent is fine and renders as the generic "this device". */
+  userAgent: z.string().trim().max(MAX_USER_AGENT_LENGTH).optional(),
+});
+export type CreatePushSubscriptionInput = z.infer<typeof createPushSubscriptionSchema>;
+
+/** `DELETE /notifications/subscription` — by endpoint, because that is the identity, and
+ *  in a body rather than a path segment: an endpoint is a URL and a bearer capability, so
+ *  it has no business being percent-encoded into a path or written to an access log. */
+export const deletePushSubscriptionSchema = z.object({
+  endpoint: z.string().url().max(MAX_PUSH_ENDPOINT_LENGTH),
+});
+export type DeletePushSubscriptionInput = z.infer<typeof deletePushSubscriptionSchema>;
+
 export const updateMeSchema = z
   .object({
     displayName: z.string().trim().min(1).max(MAX_DISPLAY_NAME_LENGTH).optional(),
@@ -605,6 +850,11 @@ export const updateMeSchema = z
     // default (ADR-0184 §2) — the same nullable-means-unchosen shape as
     // `avatarHue` above, so the patch needs no separate "reset" verb.
     preferredCurrency: currencyCodeSchema.nullable().optional(),
+    // A plain boolean, NOT nullable: there is no "unchosen" state to clear back to
+    // (ADR-0198 §6). The device's permission is the opt-in; this only narrows it.
+    notifyTasks: z.boolean().optional(),
+    notifyObligations: z.boolean().optional(),
+    notifyMemories: z.boolean().optional(),
   })
   .refine((v) => Object.keys(v).length > 0, { message: 'patch must change at least one field' });
 export type UpdateMeInput = z.infer<typeof updateMeSchema>;

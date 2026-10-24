@@ -54,11 +54,30 @@ let tripEnrichments: Record<string, unknown> = {};
 const updateBooking = vi.fn(() => Promise.resolve());
 
 const tripNotes: unknown[] = [];
+vi.mock('../state/mode-state', () => import('../test/mode-from-trip'));
 vi.mock('../state/trip-state', () => ({
   // `bookings` + `maybeItems` are here for the picker sheet, not the detail: opening
   // it mounts `usePlaceSearch`, which derives `referencedPlaceIds` over all four
   // collections to answer "already in trip".
   useTrip: () => ({
+    zoneCrossings: [],
+    // The read renders each end in its OWN resolved zone (ADR-0107), so the sheet needs
+    // the same evidence every other zone-aware surface reads.
+    zoneEvidence: {
+      events: tripEvents,
+      bookings: tripBookings,
+      places: tripPlaces,
+      crossings: [],
+      primaryZone: 'Asia/Tokyo',
+    },
+    // Tasks ride the same snapshot since phase 1; the mark and the sections read them.
+    tasks: [],
+    taskVerbs: {
+      createTask: async () => undefined,
+      updateTask: async () => {},
+      deleteTask: async () => {},
+      tickTask: async () => {},
+    },
     documents: [],
     // The attachment link list every documents surface reads (ADR-0173/0174).
     documentAttachments: [],
@@ -247,6 +266,72 @@ describe('BookingDetail — the linked-event facts still read (regression guard)
     open(bk({ id: 'b8', type: BOOKING_TYPE.HOTEL, placeId: 'pl-1' }));
     expect(screen.getByText(t.index.detail.hardNote, { exact: false })).toBeTruthy();
     expect(screen.getByText('2-14-5 Kabukicho')).toBeTruthy();
+  });
+});
+
+// **The owner's field report** (2026-08-21): the day card read the flight `15:30–18:15`
+// and this sheet, one tap away, read `12:30` / `16:15` for the same two instants. The sheet
+// painted every fact in `trip.timezone` — the trip's PRIMARY zone — so a Tel Aviv departure
+// was stated in the destination country's clock, against a duration computed from the
+// instants and therefore already right. Each end now reads in its own resolved zone
+// (ADR-0107), which is what the day card and `EventDetail` had done since session 89.
+describe('BookingDetail — each end reads in its OWN zone (ADR-0107)', () => {
+  const tlv = pl('pl-tlv', 'נתב״ג', { lat: 32.0, lng: 34.88, timezone: 'Asia/Jerusalem' });
+  const vie = pl('pl-vie', 'וינה', { lat: 48.11, lng: 16.57, timezone: 'Europe/Vienna' });
+  const flight = bk({
+    id: 'b-fl',
+    type: BOOKING_TYPE.FLIGHT,
+    title: 'נתב״ג ← וינה',
+    fromPlaceId: 'pl-tlv',
+    toPlaceId: 'pl-vie',
+  });
+
+  beforeEach(() => {
+    setSimulatedNow(Date.parse(NOW));
+    showPlaceOnMap = null;
+    tripPlaces = [tlv, vie];
+    tripBookings = [flight];
+    tripEvents = [
+      {
+        id: 'e-fl',
+        tripId: 't1',
+        date: '2026-07-20',
+        title: 'נתב״ג ← וינה',
+        kind: EVENT_KIND.HARD,
+        // 15:30 in Tel Aviv → 18:15 in Vienna. A 3h45 flight that reads as 2h45 of
+        // wall clock, which is exactly why neither end may borrow the other's zone.
+        startsAt: '2026-07-20T12:30:00Z',
+        endsAt: '2026-07-20T16:15:00Z',
+        status: EVENT_STATUS.PLANNED,
+        bookingId: 'b-fl',
+        sortOrder: 0,
+        source: EVENT_SOURCE.MANUAL,
+        createdAt: NOW,
+        updatedAt: NOW,
+        updatedBy: 'u1',
+      },
+    ];
+  });
+  afterEach(() => {
+    cleanup();
+    setSimulatedNow(null);
+    tripBookings = [];
+  });
+
+  it('states the departure in the origin zone and the arrival in the destination zone', () => {
+    open(flight);
+    expect(screen.getByText('15:30', { exact: false })).toBeTruthy();
+    expect(screen.getByText('18:15', { exact: false })).toBeTruthy();
+    // The trip primary is Tokyo in this harness; neither end may be read in it.
+    expect(screen.queryByText('21:30', { exact: false })).toBeNull();
+    expect(screen.queryByText('01:15', { exact: false })).toBeNull();
+  });
+
+  // The duration was always instant-based and so was always right — which is what made the
+  // wrong clocks hard to spot: `3:45` beside `12:30`/`16:15` looks self-consistent.
+  it('keeps the instant-based duration, which the zones never touched', () => {
+    open(flight);
+    expect(screen.getByText('3:45', { exact: false })).toBeTruthy();
   });
 });
 
@@ -628,5 +713,154 @@ describe('BookingDetail — the heading', () => {
   it('reads as the stored names when nothing has resolved at all', () => {
     render(wrapNav(<BookingDetail booking={flight} onClose={() => {}} onEdit={() => {}} />));
     expect(screen.getByText('נמל התעופה בן גוריון')).toBeTruthy();
+  });
+});
+
+/**
+ * **THE BOOKING'S READ KNOWS ITS PLACE TOO** (ADR-0219 §6, which named this surface as the next
+ * host — _"`BookingDetail` may pass the same later"_ — and the owner asked for it: _"bookings
+ * with place enrichment should also have the place details in the booking"_).
+ *
+ * One place, one enrichment, two read surfaces: an event's read showed the photograph and the
+ * summary while a booking's read showed neither, which is the same fact drawn two ways. The
+ * component's own rules are tested where it lives; what is only observable here is that this
+ * screen connects it to the right place — the booking's, by the same authority rule the location
+ * fact above already follows.
+ */
+describe('BookingDetail · what the world knows about the place', () => {
+  const IMAGE = {
+    url: '/enrichment/images/granbell',
+    mimeType: 'image/jpeg',
+    width: 1200,
+    height: 800,
+    sizeBytes: 90_000,
+    source: 'commons',
+    license: 'CC BY-SA 4.0',
+    attribution: 'A. Photographer',
+    fetchedAt: '2026-08-01T00:00:00.000Z',
+    method: 'name_proximity',
+    ref: 'Q38519',
+    confidence: 1,
+  };
+  const SUMMARY = {
+    en: {
+      value: 'A hotel in Kabukicho, Shinjuku.',
+      lang: 'en',
+      source: 'wikipedia',
+      license: 'CC BY-SA 4.0',
+      fetchedAt: '2026-08-01T00:00:00.000Z',
+      confidence: 1,
+      method: 'settled_id',
+      ref: 'Q1585881',
+    },
+  };
+
+  beforeEach(() => {
+    setSimulatedNow(Date.parse(NOW));
+    tripPlaces = [placed, lite];
+    tripEvents = [];
+    tripBookings = [];
+    tripEnrichments = {};
+  });
+  afterEach(() => {
+    cleanup();
+    setSimulatedNow(null);
+  });
+
+  it('shows the picture, its credit and the summary', () => {
+    tripEnrichments = { 'pl-1': { image: IMAGE, summary: SUMMARY } };
+    open(bk({ id: 'b1', type: BOOKING_TYPE.HOTEL, placeId: 'pl-1' }));
+
+    expect(document.querySelector('.map-hero img')).toBeTruthy();
+    expect(document.querySelector('.map-credit')?.textContent).toContain('A. Photographer');
+    expect(document.querySelector('.map-sum-t')?.textContent).toContain('Kabukicho');
+  });
+
+  // The majority case, and the one that must cost nothing: most places are known for nothing.
+  it('renders no knowledge block at all when nothing is known', () => {
+    open(bk({ id: 'b2', type: BOOKING_TYPE.HOTEL, placeId: 'pl-1' }));
+    expect(document.querySelector('.map-hero')).toBeNull();
+    expect(document.querySelector('.map-sum')).toBeNull();
+  });
+
+  // **The booking's OWN place, by the authority rule the location fact follows** — a transport
+  // booking is at its origin, and nothing else on this sheet would have caught it reading the
+  // wrong end.
+  it('reads the place the booking is at, not the event’s cleared column', () => {
+    tripEnrichments = { 'pl-lite': { image: IMAGE } };
+    open(bk({ id: 'b3', type: BOOKING_TYPE.RESTAURANT, placeId: 'pl-lite' }));
+    expect(document.querySelector('.map-hero img')).toBeTruthy();
+  });
+
+  // A coordless Place-lite has no map to focus and is still a place we may know a great deal
+  // about — the same distinction `EventDetail` records (ADR-0147's Place-lite).
+  it('does not gate the knowledge on coordinates', () => {
+    tripEnrichments = { 'pl-lite': { summary: SUMMARY } };
+    open(bk({ id: 'b4', type: BOOKING_TYPE.RESTAURANT, placeId: 'pl-lite' }));
+    expect(document.querySelector('.map-sum-t')?.textContent).toContain('Kabukicho');
+  });
+});
+
+/* ── A SERVICE'S NUMBER, AND WHERE YOU BOARD IT (ADR-0222 §1/§3) ────────────────────────
+   The colour split is the part worth pinning: `.mono` carries a typeface AND `--amber-deep`,
+   which was right while the confirmation code was its only caller. A flight number wants the
+   face and must not take the hue, because rule 4 spends amber on time and commitment. */
+describe('BookingDetail — the flight number and the gate', () => {
+  beforeEach(() => {
+    setSimulatedNow(Date.parse(NOW));
+    tripPlaces = [placed, lite];
+    tripEvents = [];
+    showPlaceOnMap = null;
+    startErrand = () => {};
+    updateBooking.mockClear();
+  });
+  afterEach(() => {
+    cleanup();
+    setSimulatedNow(null);
+  });
+
+  it('reads both facts under the words its own type uses', () => {
+    open(bk({ id: 'b1', type: BOOKING_TYPE.FLIGHT, flightNumber: 'LY315', gate: 'B7' }));
+    expect(screen.getByText(t.index.sheet.numberLabel[BOOKING_TYPE.FLIGHT])).toBeTruthy();
+    expect(screen.getByText('LY315')).toBeTruthy();
+    expect(screen.getByText(t.index.sheet.gateLabel[BOOKING_TYPE.FLIGHT])).toBeTruthy();
+    expect(screen.getByText('B7')).toBeTruthy();
+  });
+
+  // One `Record`, two readers — a train says `מספר הרכבת` and `רציף` off the same table the
+  // form reads (ADR-0163 §2's shape), so the two surfaces cannot drift apart.
+  it('says platform, not gate, for a train', () => {
+    open(bk({ id: 'b2', type: BOOKING_TYPE.TRAIN, flightNumber: 'Hikari 503', gate: '14' }));
+    expect(screen.getByText(t.index.sheet.gateLabel[BOOKING_TYPE.TRAIN])).toBeTruthy();
+    expect(screen.getByText(t.index.sheet.numberLabel[BOOKING_TYPE.TRAIN])).toBeTruthy();
+  });
+
+  // **The split, asserted rather than described.** The number takes the mono face without the
+  // amber; the code keeps both; the gate takes neither, because teal in this sheet is an
+  // affordance and never a text colour.
+  it('gives the number the mono face WITHOUT the code’s amber, and the gate neither', () => {
+    open(
+      bk({
+        id: 'b3',
+        type: BOOKING_TYPE.FLIGHT,
+        flightNumber: 'LY315',
+        gate: 'B7',
+        confirmationCode: '8JHEI4',
+      }),
+    );
+    expect(screen.getByText('LY315').className).toContain('ident');
+    expect(screen.getByText('LY315').className).not.toContain('mono');
+    expect(screen.getByText(/8JHEI4/).className).toContain('mono');
+    const gate = screen.getByText('B7').className;
+    expect(gate).not.toContain('mono');
+    expect(gate).not.toContain('ident');
+  });
+
+  // A booking type with no such fields draws no empty rows — the labels are '' in the
+  // `Record`, and an empty label is the switch rather than a per-type branch at the call site.
+  it('draws neither fact on a type that has no notion of them', () => {
+    open(bk({ id: 'b4', type: BOOKING_TYPE.RESTAURANT, flightNumber: 'X', gate: 'Y' }));
+    expect(screen.queryByText('X')).toBeNull();
+    expect(screen.queryByText('Y')).toBeNull();
   });
 });

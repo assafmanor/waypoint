@@ -4,6 +4,200 @@
 **Date:** 2026-07-17
 **Refines:** [0045](0045-trip-home-real-data-only.md) (the day-at-a-glance card this fixes), [0041](0041-parallel-overlapping-events.md) (`buildTimeTree` / the block model an ambient span must sit outside of), [0018](0018-timeline-data-model-shape.md) (the `endDate` ambient-span field that becomes the discriminator), [0047](0047-booking-event-linkage-and-notes.md) (a hotel = one Booking backing one Event with an `endDate` span), [0037](0037-overnight-events.md) (distinguishes a true multi-day span from a single overnight tail), [0011](0011-hard-soft-event-model.md) (hard/soft is orthogonal; ambient is a third, presentational axis)
 
+## Amendment (2026-09-05) — the ambient STRIP retires; the span's edges and the day head carry what it said ([ADR-0219](0219-a-day-is-a-place-you-can-see.md) §2/§4)
+
+The "backdrop" this ADR introduced became `.day-ambient` on the day surfaces: a teal card per span on its middle days, later also the home of the day's distance total, Plan's fit verdict and every untimed hard event (ADR-0171 §10a-i). The owner: _"I don't really like how ambient events look anyway."_ ADR-0219 splits the strip by what each thing is and deletes it: the total and the verdict become lines in the day head; an untimed commitment becomes a `.transition-row` at the top of the list; and a span's **middle day says nothing on the day** (ADR-0163's 2026-09-05 amendment) — its edges are rows (ADR-0209 for stays, ADR-0184 §9 for the rest) and its count stays on the Index and the Home glance. §2's rule that a span is **off the counted schedule** is untouched; what changes is that it no longer has a band of its own above it.
+
+## Amendment (2026-08-25) — off the day's SCHEDULE, on the day's ROUTE
+
+Owner, running the shipped map polyline on a real trip: _"Now that we have real paths, I'm starting
+to feel the absence of some stops from the day schedule (the numbered stops), mostly the hotels …
+Basically on most days you can infer for certain that you're gonna start the day in a hotel and end
+in a hotel, so you can add poly lines to them and place them first/last on the schedule."_
+
+§2 below is about a **count** and a **rail**: a stay must not eat the glance's width or inflate
+`נותרו היום`, because a hotel is not something you _perform_ at a point in the day. All of that
+stands, unchanged. What it could not have contemplated is that a day would one day be drawn as a
+**line on a map** ([ADR-0206](0206-a-travel-time-belongs-between-two-points.md) §AB5) — and a route
+is not a schedule. A schedule is a claim about what you committed to; a route is a claim about where
+your feet went, and the stay is the one point on it that needs no scheduling to be certain of.
+
+So the exclusion splits, the same way the 2026-08-05 amendment split `isAmbient` itself when one flag
+turned out to be answering two questions:
+
+- **Off the counted schedule** — unchanged. No block, no rail width, no `remaining`, and **no row of
+  its own**: asked directly whether the day timeline should grow one, the owner said _"sequence only,
+  no new rows"_.
+- **On the day's stop SEQUENCE**, as its first and/or last member (`buildDayStopSequence`) — which
+  is what feeds the map's polyline, the day's Google Maps directions link, and the selection card's
+  traversal.
+
+**Which end it takes needs no rule of its own.** The stay covered last night → you woke there, so it
+is the day's first stop; it covers tonight → you end there, so it is the last. A check-in day is
+therefore last only, a check-out day first only, and a strictly middle night is **both** — which is
+exactly the day that has a hotel at each end. A day you change hotels comes out as _A's check-out …
+B's check-in_ for free, because each span only ever answers about itself.
+
+**AMENDED 2026-08-26 — the map has to SAY which end of the day the stay was.** Owner: _"you can't
+see from the map where you check in or out from (unless you connect the lines)"_ — and, on being
+asked, they rejected numbering for the right reason: on a middle night one pin would wear two
+numbers. That objection is diagnostic. A number is an **ordinal** and one pin cannot hold two; _which
+end of the day this is_ is not an ordinal, and "both ends" is a single coherent state. So the answer
+is the word slot the pin already has (ADR-0141), not a new mark. Three things were swallowing it, and
+none of them was the design:
+
+1. **A zoom rule that asked about the wrong thing.** `map-pane.css` dropped the neutral tag under
+   `[data-pins='dot']` in every scope, on the reasoning that "a text-scale claim on a ⁦5px⁩ dot" is a
+   smudge. But the dot tier is **scoped**: in day scope only `.aside` degrades, so a full-size
+   numbered stop below ⁦zoom 11⁩ — a ~⁦30km⁩ span, i.e. every view wider than a town — kept its size and
+   silently lost its word. **Deleted rather than rescoped**, because the corrected rule is inert:
+   the only day-scope pin that becomes a dot is `.aside`, and `Map.tsx` withholds the word from
+   aside pins outright. The trap generalises — a rule keyed only on `[data-pins='dot']` has assumed
+   both scopes degrade alike, and they never have.
+2. **`behind` silenced the check-out you had already done.** ADR-0141 silences that tier because
+   "the transition happened, so a word naming it as ahead is a lie" — right for _what happens next
+   here_, wrong for a stay, whose word says which END of the day this place was. The afternoon does
+   not falsify that. **A stay is exempt; every other tier stays silent**, so a departed flight still
+   cannot name itself as ahead. The grey continues to carry "behind you"; the word only says which
+   moment it was.
+3. **A middle night had no word at all to un-silence**, carrying neither end by construction. It
+   takes one of its own — `לינת לילה`, neutral rather than amber, because it is where you are
+   sleeping and not a commitment on the clock. Owner's wording and owner's call: _"maybe it should
+   just read as a different label … then nothing needs mocking up"_, which is right — this spends no
+   new axis on a pin ladder ADR-0206 §AC3 already recorded as full.
+
+**Not verifiable in the suite:** (1) is CSS at a zoom tier, which jsdom cannot see; it was
+established by reading the `--pin-u` rules it sits beside rather than by a test. (2) and (3) are
+`pinTransition`, and are specced.
+
+**AMENDED 2026-08-26 — a bookend does not outrank what brought you in through the night.** Owner,
+from the shipped map: _"we rent the car at 00:00 and then go to check in at the hotel … it shows the
+hotel as starting before the car rental"_. A hotel counts a 02:00 arrival as the previous night, so
+the day reads that stay as a check-out and pinned it first; the midnight pick-up that brought them
+there was drawn after it, and the route left the airport, teleported to bed, and came back for the
+car.
+
+**This is the second rule written for it, and the first one is worth keeping on the page.** That one
+said: _nothing whose instant precedes the stay's own check-in can sort after it_ — a zone-free
+instant comparison, chosen over a dawn cut-off precisely because it looked like it needed no day
+boundary. The sentence is fine. **`startsAt` is not the arrival.** A lodging start is a **floor** —
+the hour the room opens — which is the one thing
+[ADR-0171](0171-a-time-can-be-a-floor-or-a-ceiling.md) §10b exists to say is not a moment, and it
+was then used as one. On the owner's day the room was available from 15:00 the previous afternoon
+while they were still in the air until 23:20, so every stop of the day fell after it, the comparison
+moved nothing, and the report came back unchanged.
+
+**The specs shipped green through all of it, and that is the transferable part.** The fixture carried
+`startsAt: 02:00` on the day itself — a check-in instant, because that is what the rule was reasoning
+about. A fixture built from the rule proves the rule. Worse, the spec covering the owner's actual
+shape (a floor on the previous afternoon) existed and asserted `moves NOTHING`, in a comment arguing
+that the ordering was genuinely unknown. **Before writing the fixture, take the shape from the
+report.**
+
+The rule that replaces it asks **two** questions, and either alone answers a different day wrongly:
+
+|                                             | before dawn               | after dawn |
+| ------------------------------------------- | ------------------------- | ---------- |
+| a **floor** (a hire "available from 00:00") | **sorts before the stay** | stays put  |
+| a **known** moment (a 06:30 flight)         | stays put                 | stays put  |
+
+- **Dawn** is `dayWindowMs(date, zone).startMs` — ADR-0045's own 07:00 window boundary, resolved by
+  the screen and handed to the derivation as an **instant**, because a wall-clock hour needs a zone
+  and `map-pins.ts` deliberately holds none. Absent, nothing moves and the sequence behaves as it
+  did. It was lifted out of `Home.tsx`, where it was two inline calls and a private `hourLabel`, so
+  the glance's rail and the day's route cannot disagree about where dawn is (root rule 8).
+- **`knowsMoment`** is the half a bare cut-off misses: a 06:30 flight is an exact commitment you left
+  the bed for, while a car claiming no hour at all is the shape of a night arrival.
+
+**Its cost, stated rather than buried:** a pre-dawn stop with an exact time that you genuinely went
+out for after checking in (a 01:00 table) keeps the hotel ahead of it. That leaves the bookend where
+it already was, which is the safer of the two wrong answers, and it is what buys the early-flight
+morning.
+
+A day you check out of one hotel and into another needs nothing further: each span answers only about
+itself, so the compressed stay takes the head and the new one the tail.
+
+**EXTENDED the same day — the DAY LIST asks it too, and had been answering the opposite.** Owner,
+off the M6a/ADR-0209 deploy: _"it doesn't handle a car rental late at the night before. Should be
+handled like the map handles this."_ The screenshot is the same Iceland day, one surface over: the
+hotel row at the head of the day, the midnight pick-up beneath it, and a 25 km journey block drawn
+between them — the list reading "wake up, then drive out to the counter", which is exactly the
+teleport this amendment removed from the route.
+
+[ADR-0209](0209-a-stay-is-named-once-in-the-day-it-belongs-to.md) is what surfaced it. Before it,
+the stay had no row of its own on an edge day, so nothing could sort ahead of anything; giving the
+day a **first row** created the ordering question the map had already answered a day earlier, and
+neither day surface knew about it. That is [ADR-0159](0159-what-sits-between-two-rows.md) §1's line
+— posture may differ, a fact may not — and "you picked the car up before you reached the hotel" is
+a fact.
+
+So the predicate moved out of `map-pins.ts`'s `buildDayStopSequence`, where it was a local `early`,
+and became `broughtInOvernight` in `place-usage.ts` beside the `knowsMoment` it asks (root rule 8:
+it had one reader and now has three). Its two questions and its stated cost are unchanged — this
+extension is about **who reads it**, not what it says.
+
+**In the list it is a bucket rather than a sort.** `placeDayEntries` returns the overnight edges in
+their own `overnight` array, out of `positioned`, and both day surfaces render that run above the
+stay row. Two reasons it is not a comparator:
+
+- **The day list's order is not the route's.** The list interleaves rows by instant and the stay
+  row is not in that stream at all (ADR-0209 §3: it carries no clock), so there is nothing for a
+  midnight edge to sort against.
+- **A bucket is provably free of side effects, and a re-sort is not.** Only **transition** entries
+  are diverted, and a span edge is never a leg's endpoint — a flexible one is already transparent
+  to `prevEnd` ([ADR-0171](0171-a-time-can-be-a-floor-or-a-ceiling.md) §5) — so no gap, journey or
+  adjacency can change. The one thing that did have to follow the entry is the ambient strip's
+  sentence, which reads the PLACED edge (`placedEdgeOf` now looks in both buckets, or a midnight
+  pick-up silently fell back to `יום 1 מתוך 10`).
+
+**And no journey block into the bed above it**, deliberately: a stay has no per-day arrival
+instant, so the only deadline available is its check-in floor from _yesterday_, and counting back
+from a bound the app invented is the whole of
+[ADR-0206](0206-a-travel-time-belongs-between-two-points.md) §AI. The drive from the counter to the
+hotel really happened, and the app cannot say when — so it says the two rows in the right order and
+nothing about the road between them.
+
+**REVERSED the same day — the block is drawn, and this paragraph was a workaround for a bug.** Owner,
+within the hour: _"btw it should also show the way from the car rental to the hotel, right?"_ Yes. The
+reasoning above accurately describes what [ADR-0206](0206-a-travel-time-belongs-between-two-points.md)
+§AI's code did to a leg into a check-in floor (`אין זמן לדרך`, measured against a deadline eight hours
+behind its own origin) and it is not a reason to withhold a row. §AJ1 makes a floor a non-deadline, so
+the leg says the one thing it can — `הגעה ~00:31` — which is what somebody landing at midnight wants
+to know. What it needs that no other leg did is on `DayLeg`: the **edge's** own instant, because a
+hire's `endsAt` is its return nine days out, and which **end** of the span it leaves from, because a
+pickup's place is the span's origin where a landing's is its destination.
+
+**The transferable half:** a design decision whose only argument is "the derivation cannot express
+this" is a bug report wearing a decision's clothes. This one was written as `deliberately` and read as
+settled for six hours.
+
+**And the label was not wrong.** The same report asked why the pin read `צ׳ק-אאוט` rather than
+`לינת לילה`. It is a one-night stay, so that day **is** the check-out day and `צ׳ק-אאוט` is the true
+word; `לינת לילה` belongs to a strictly middle night, which this day is not. Nothing changed there.
+
+**A bookend holds a POSITION and wears no NUMBER.** `knowsMoment` still refuses it the mark — "from
+15:00" is a floor and any hour after it will do ([ADR-0171](0171-a-time-can-be-a-floor-or-a-ceiling.md)
+§10b) — so nothing on screen renumbers, and the day's known stops still count 1, 2, 3 with no hole.
+Put to the owner as a fork, and answered: _"sequence + route, no number."_
+
+**The discriminator is `countsNights`, not `isAmbient` alone**
+([ADR-0163](0163-a-hire-is-not-a-journey.md) §4). You sleep in a hotel, so it
+brackets your day; you merely _hold_ a car, so a hire's pick-up and return are ordinary stops at
+their own instants and its middle days stay pure backdrop. That is also the owner's own second class,
+named when asked what else qualifies: _"other non hard times like car rentals etc. that are from time
+X or until Y"_ — they wanted those **placed**, which is a different fix from being bracketed. Both
+halves are read off [ADR-0162](0162-a-car-hire-is-transport-you-drive-yourself.md)'s profile, so a
+future ambient category inherits the answer with nobody naming it here.
+
+**What it cost elsewhere, in two places that had each made a defensible bet:**
+
+- [ADR-0182](0182-a-day-is-a-sequence-you-can-step-through.md) §3 had made the sequence's ORDER ask
+  the numbering's own question, so a stop could not sort as timed and read as unnumbered. Right for a
+  list, wrong for a route — see its 2026-08-25 amendment.
+- `screens/Map.tsx` gated the line on `pin.order != null`, i.e. on the **visible number**. That is
+  what made a hotel unreachable by the line even once the sequence held it, and it is why the fix is
+  in two files rather than one: it now reads the sequence.
+
 ## Amendment (2026-08-05, session 215) — ambient is how a span RENDERS; a journey is what its middle IS
 
 Owner, from the shipped hero: _"when the flight (or anything really) crossed the day boundary, the hero doesn't recognize it as currently happening and just has the landing as the next event."_

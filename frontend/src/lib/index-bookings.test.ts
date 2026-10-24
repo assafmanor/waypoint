@@ -8,7 +8,7 @@ import {
   type Place,
   type TripEvent,
 } from '@waypoint/shared';
-import { type Trip } from '@waypoint/shared';
+import { type ZoneEvidence } from './places';
 import {
   CATEGORY_ALL,
   matchesCategory,
@@ -24,6 +24,9 @@ import { FILTER_STAGGER_MAX_MS, FILTER_STAGGER_MS } from '../constants';
 
 const TZ = 'Asia/Tokyo';
 const NOW = Date.parse('2026-07-07T12:00:00+09:00'); // "today" = 2026-07-07 in Tokyo
+// A window that CONTAINS the tests' today, so the schedule line reads relative (`dayLabel`);
+// the off-trip day-number reading is asserted on its own below.
+const TRIP = { startDate: '2026-07-01', endDate: '2026-07-31' };
 const ISO = '2026-07-01T00:00:00Z';
 
 const booking = (
@@ -87,7 +90,16 @@ const span_ = (event: TripEvent, endDate: string, hhmm: string): TripEvent => ({
   endsAt: `${endDate}T${hhmm}:00+09:00`,
 });
 
-const TRIP = { startDate: '2026-07-05', timezone: TZ } as Trip;
+/** The zone evidence the two schedule readers now take (ADR-0107): with no places and no
+ *  crossings every event resolves to the primary zone, which is what these cases assert.
+ *  The cross-zone case builds its own below. */
+const EVIDENCE: ZoneEvidence = {
+  events: [],
+  bookings: [],
+  places: [],
+  crossings: [],
+  primaryZone: TZ,
+};
 
 describe('splitBookings', () => {
   it('files a booking whose linked event is before today under past', () => {
@@ -190,7 +202,7 @@ describe('scheduleLabel (span-aware, ADR-0053)', () => {
 
   it('shows the check-in time before the stay begins', () => {
     const ev = span_(linkedEvent('h', '2026-07-10', '15:00'), '2026-07-14', '11:00');
-    const label = scheduleLabel(ev, hotel, TRIP, new Date(NOW)); // today 07-07, before check-in
+    const label = scheduleLabel(ev, hotel, EVIDENCE, new Date(NOW), TRIP); // today 07-07, before check-in
     expect(label).toContain('צ׳ק-אין');
     expect(label).toContain('15:00');
     expect(label).not.toContain('צ׳ק-אאוט');
@@ -202,22 +214,53 @@ describe('scheduleLabel (span-aware, ADR-0053)', () => {
     const tomorrow = scheduleLabel(
       linkedEvent('f', '2026-07-08', '08:30'),
       flight,
-      TRIP,
+      EVIDENCE,
       new Date(NOW),
+      TRIP,
     );
     expect(tomorrow).toBe('המראה · מחר · 08:30');
     const soon = scheduleLabel(
       linkedEvent('f', '2026-07-10', '08:30'),
       flight,
-      TRIP,
+      EVIDENCE,
       new Date(NOW),
+      TRIP,
     );
     expect(soon).toContain('עוד 3 ימים');
   });
 
+  it('names the day by its TRIP-DAY NUMBER before the trip starts (ADR-0085 amendment)', () => {
+    // The rows in the field report: from 2026-11-29 a trip on 12-11..12-22 printed
+    // `עוד 13 ימים` / `עוד 14` / `עוד 15` down consecutive rows — each one the trip-day
+    // number plus 11, the one constant the screen never states.
+    const flight = booking('f', 'flight', BOOKING_TYPE.FLIGHT);
+    const preTrip = { startDate: '2026-12-11', endDate: '2026-12-22' };
+    const before = new Date('2026-11-29T12:00:00+09:00');
+    const label = (date: string) =>
+      scheduleLabel(linkedEvent('f', date, '08:30'), flight, EVIDENCE, before, preTrip);
+    expect(label('2026-12-11')).toBe('המראה · יום 1 · 08:30');
+    expect(label('2026-12-13')).toBe('המראה · יום 3 · 08:30');
+    expect(label('2026-12-22')).toBe('המראה · יום 12 · 08:30');
+  });
+
+  it('names a finished trip\'s days by number too, in place of "לפני N ימים"', () => {
+    const flight = booking('f', 'flight', BOOKING_TYPE.FLIGHT);
+    const pastTrip = { startDate: '2026-07-05', endDate: '2026-07-14' };
+    const after = new Date('2026-09-01T12:00:00+09:00');
+    const label = scheduleLabel(
+      linkedEvent('f', '2026-07-07', '08:30'),
+      flight,
+      EVIDENCE,
+      after,
+      pastTrip,
+    );
+    expect(label).toContain('יום 3');
+    expect(label).not.toContain('לפני');
+  });
+
   it('shows the check-out day (no time) mid-stay', () => {
     const ev = span_(linkedEvent('h', '2026-07-05', '15:00'), '2026-07-14', '11:00');
-    const label = scheduleLabel(ev, hotel, TRIP, new Date(NOW)); // today 07-07, mid-stay
+    const label = scheduleLabel(ev, hotel, EVIDENCE, new Date(NOW), TRIP); // today 07-07, mid-stay
     expect(label).toContain('צ׳ק-אאוט');
     expect(label).not.toContain('11:00');
     expect(label).not.toContain('צ׳ק-אין');
@@ -226,7 +269,7 @@ describe('scheduleLabel (span-aware, ADR-0053)', () => {
   it('drops the verb once check-out has passed, even on the same day', () => {
     // checked out today at 11:00, now is 12:00 — already behind you (ADR-0089).
     const ev = span_(linkedEvent('h', '2026-07-04', '15:00'), '2026-07-07', '11:00');
-    const label = scheduleLabel(ev, hotel, TRIP, new Date(NOW));
+    const label = scheduleLabel(ev, hotel, EVIDENCE, new Date(NOW), TRIP);
     expect(label).not.toContain('צ׳ק-אאוט');
     expect(label).toBe('היום · 11:00');
   });
@@ -236,8 +279,9 @@ describe('scheduleLabel (span-aware, ADR-0053)', () => {
     const past = scheduleLabel(
       linkedEvent('f', '2026-07-05', '08:30'),
       flight,
-      TRIP,
+      EVIDENCE,
       new Date(NOW),
+      TRIP,
     );
     expect(past).not.toContain('המראה');
     expect(past).toBe('שלשום · 08:30');
@@ -245,15 +289,16 @@ describe('scheduleLabel (span-aware, ADR-0053)', () => {
     const ahead = scheduleLabel(
       linkedEvent('f', '2026-07-09', '08:30'),
       flight,
-      TRIP,
+      EVIDENCE,
       new Date(NOW),
+      TRIP,
     );
     expect(ahead).toContain('המראה');
   });
 
   it('shows the check-in day on the check-in day itself', () => {
     const ev = span_(linkedEvent('h', '2026-07-07', '15:00'), '2026-07-10', '11:00');
-    const label = scheduleLabel(ev, hotel, TRIP, new Date(NOW)); // today 07-07 = check-in day
+    const label = scheduleLabel(ev, hotel, EVIDENCE, new Date(NOW), TRIP); // today 07-07 = check-in day
     expect(label).toContain('צ׳ק-אין');
     expect(label).toContain('היום');
     expect(label).toContain('15:00');
@@ -465,14 +510,14 @@ describe('scheduleParts (ADR-0179 §2d) — which EDGE the row is reading', () =
 
   it('reads the START edge before and on the opening day', () => {
     const ahead = span_(linkedEvent('h', '2026-07-10', '15:00'), '2026-07-14', '11:00');
-    expect(scheduleParts(ahead, hotel, TRIP, new Date(NOW)).edge).toBe('start');
+    expect(scheduleParts(ahead, hotel, EVIDENCE, new Date(NOW), TRIP).edge).toBe('start');
     const onTheDay = span_(linkedEvent('h', '2026-07-07', '15:00'), '2026-07-10', '11:00');
-    expect(scheduleParts(onTheDay, hotel, TRIP, new Date(NOW)).edge).toBe('start');
+    expect(scheduleParts(onTheDay, hotel, EVIDENCE, new Date(NOW), TRIP).edge).toBe('start');
   });
 
   it('flips to the CLOSING edge once the opening day has passed — the one row the verb is kept for', () => {
     const midStay = span_(linkedEvent('h', '2026-07-05', '15:00'), '2026-07-14', '11:00');
-    const parts = scheduleParts(midStay, hotel, TRIP, new Date(NOW));
+    const parts = scheduleParts(midStay, hotel, EVIDENCE, new Date(NOW), TRIP);
     expect(parts.edge).toBe('end');
     // The verb is the only thing that can say WHICH end this is — `11:00` cannot.
     expect(parts.verb).toBe('צ׳ק-אאוט');
@@ -483,8 +528,9 @@ describe('scheduleParts (ADR-0179 §2d) — which EDGE the row is reading', () =
     const parts = scheduleParts(
       linkedEvent('f', '2026-07-09', '08:30'),
       flight,
-      TRIP,
+      EVIDENCE,
       new Date(NOW),
+      TRIP,
     );
     expect(parts.edge).toBe('start');
     expect(parts.day).toBe('מחרתיים');
@@ -493,15 +539,66 @@ describe('scheduleParts (ADR-0179 §2d) — which EDGE the row is reading', () =
 
   it('still drops the verb entirely once the booking is behind you (ADR-0089 unchanged)', () => {
     const checkedOut = span_(linkedEvent('h', '2026-07-04', '15:00'), '2026-07-07', '11:00');
-    const parts = scheduleParts(checkedOut, hotel, TRIP, new Date(NOW));
+    const parts = scheduleParts(checkedOut, hotel, EVIDENCE, new Date(NOW), TRIP);
     expect(parts.edge).toBe('end');
     expect(parts.verb).toBeUndefined();
+  });
+
+  // **The owner's field report, as the Index row states it** (2026-08-21). The trip's primary
+  // zone is Iceland; the flight leaves Tel Aviv. The row read the departure in Reykjavik and
+  // so named a time no clock on the itinerary shows — the same defect `BookingDetail` had,
+  // one tap away, while the day card beside it was already right.
+  it('reads a departure in its ORIGIN zone, not the trip primary (ADR-0107)', () => {
+    const flight = booking('f', 'TLV→VIE', BOOKING_TYPE.FLIGHT);
+    const withRoute: Booking = { ...flight, fromPlaceId: 'pl-tlv', toPlaceId: 'pl-vie' };
+    const ev: TripEvent = {
+      ...linkedEvent('f', '2026-07-09', '09:00'),
+      startsAt: '2026-07-09T12:30:00Z', // 15:30 in Tel Aviv, 16:15Z arrival in Vienna
+      endsAt: '2026-07-09T16:15:00Z',
+    };
+    const evidence: ZoneEvidence = {
+      events: [ev],
+      bookings: [withRoute],
+      places: [
+        { ...place('pl-tlv', 'נתב״ג'), timezone: 'Asia/Jerusalem' },
+        { ...place('pl-vie', 'וינה'), timezone: 'Europe/Vienna' },
+      ],
+      crossings: [],
+      primaryZone: 'Atlantic/Reykjavik',
+    };
+    expect(scheduleParts(ev, withRoute, evidence, new Date(NOW), TRIP).time).toBe('15:30');
+  });
+
+  // The closing edge takes the OTHER zone — the row's two edges cannot share one answer,
+  // which is the whole reason this reads through `eventDisplayZones` rather than one zone.
+  it('reads a closing edge in its DESTINATION zone', () => {
+    const hire = booking('c', 'hire', BOOKING_TYPE.CAR);
+    const withRoute: Booking = { ...hire, fromPlaceId: 'pl-tlv', toPlaceId: 'pl-vie' };
+    const ev: TripEvent = {
+      ...linkedEvent('c', '2026-07-05', '09:00'),
+      endDate: '2026-07-07',
+      endsAt: '2026-07-07T09:00:00Z', // 11:00 in Vienna
+    };
+    const evidence: ZoneEvidence = {
+      events: [ev],
+      bookings: [withRoute],
+      places: [
+        { ...place('pl-tlv', 'נתב״ג'), timezone: 'Asia/Jerusalem' },
+        { ...place('pl-vie', 'וינה'), timezone: 'Europe/Vienna' },
+      ],
+      crossings: [],
+      primaryZone: 'Atlantic/Reykjavik',
+    };
+    // today (07-07 in Tokyo) is past the opening day, so the row reads the closing edge.
+    const parts = scheduleParts(ev, withRoute, evidence, new Date(NOW), TRIP);
+    expect(parts.edge).toBe('end');
+    expect(parts.time).toBe('11:00');
   });
 
   it('an untimed event still reports its day, so the row keeps a when line to hang the lock on', () => {
     const flight = booking('f', 'flight', BOOKING_TYPE.FLIGHT);
     const untimed = { ...linkedEvent('f', '2026-07-09', '08:30'), startsAt: undefined };
-    const parts = scheduleParts(untimed, flight, TRIP, new Date(NOW));
+    const parts = scheduleParts(untimed, flight, EVIDENCE, new Date(NOW), TRIP);
     expect(parts.time).toBeUndefined();
     expect(parts.day).toBe('מחרתיים');
   });

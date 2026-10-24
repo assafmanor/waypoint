@@ -13,10 +13,14 @@ import type {
   EventKind,
   EventSource,
   EventStatus,
+  LegTravelMode,
   MembershipRole,
   NoteHostKey,
   NoteSource,
   PlaceSearchKind,
+  TaskDerivedKey,
+  TaskStatus,
+  TravelMode,
 } from './entities';
 
 export const AUTH_PROVIDER = { GOOGLE: 'google' } as const satisfies Record<string, AuthProvider>;
@@ -67,10 +71,49 @@ export const EVENT_CATEGORY = {
   OTHER: 'other',
 } as const satisfies Record<string, EventCategory>;
 
+/** How you get from one stop to the next (ADR-0205 / ADR-0206) — see `travelModeSchema` for
+ *  why there are three and why a transit member is absent rather than disabled. */
+export const TRAVEL_MODE = {
+  WALKING: 'walking',
+  DRIVING: 'driving',
+  CYCLING: 'cycling',
+} as const satisfies Record<string, TravelMode>;
+
+/** **Every mode there is**, which is what a batch asks for by default (ADR-0205 §Y2: a mode
+ *  switch must not cost a round-trip, so all of them are fetched together). Derived from the
+ *  object above rather than written out again, so a fourth mode is one line, not two. */
+export const TRAVEL_MODES: readonly TravelMode[] = Object.values(TRAVEL_MODE);
+
+/** **The one value a leg can hold that no router can answer** (ADR-0206 §AA4). Named rather than
+ *  spelled at each call site for ADR-0095's reason, and named SEPARATELY from `TRAVEL_MODE` above
+ *  because the separation is the whole point: `TRAVEL_MODE` is what may be asked for. */
+export const TRANSIT_LEG_MODE = 'transit' as const satisfies LegTravelMode;
+
+/** Every mode a LEG may be, in the order the mode control draws them — the routable three, then
+ *  the declared one. Derived from `TRAVEL_MODES` so a fourth routable mode is still one line. */
+export const LEG_TRAVEL_MODES: readonly LegTravelMode[] = [...TRAVEL_MODES, TRANSIT_LEG_MODE];
+
+/**
+ * **The single narrowing at the provider boundary** (ADR-0206 §AM5).
+ *
+ * "No request is ever made for תחב״צ" is a rule that would otherwise have to be remembered at
+ * every call site that builds a batch, reads the gate, or picks a costing. Here it is one guard,
+ * and the type system carries it: a `LegTravelMode` cannot reach `TRAVEL_GATE` or the provider's
+ * `COSTING` without passing through this.
+ */
+export function isRoutableMode(mode: LegTravelMode): mode is TravelMode {
+  return mode !== TRANSIT_LEG_MODE;
+}
+
 /** The kinds a place search can be restricted to (field report #6). A form names the kind;
  *  the proxy owns the mapping to Google's own type vocabulary. */
 export const PLACE_SEARCH_KIND = {
   AIRPORT: 'airport',
+  /** A platform rather than a terminal (ADR-0203 §8). `TRANSIT_STATION` is the wider one —
+   *  a bus or a ferry — and is deliberately separate from `TRAIN_STATION` so the proxy can
+   *  keep answering a train with rail only. */
+  TRAIN_STATION: 'train_station',
+  TRANSIT_STATION: 'transit_station',
 } as const satisfies Record<string, PlaceSearchKind>;
 
 export const MEMBERSHIP_ROLE = {
@@ -172,8 +215,41 @@ export const ENTITY_TYPE = {
   TRIP: 'trip',
   MEMBERSHIP: 'membership',
   NOTE: 'note',
+  TASK: 'task',
   DOCUMENT_ATTACHMENT: 'documentAttachment',
+  TRAVEL_MODE_OVERRIDE: 'travelModeOverride',
 } as const satisfies Record<string, EntityType>;
+
+/** A task's lifecycle (tasks brief §5). `dismissed` is a real outcome and not a soft
+ *  delete: it stopped mattering, which the row says by struck-through rather than by
+ *  disappearing. */
+export const TASK_STATUS = {
+  OPEN: 'open',
+  DONE: 'done',
+  DISMISSED: 'dismissed',
+} as const satisfies Record<string, TaskStatus>;
+
+/** The five readiness checks a task row can overlay (tasks brief §4) — the same ids
+ *  `computeReadiness` returns, named here because both layers branch on them. */
+export const TASK_DERIVED_KEY = {
+  FLIGHTS: 'flights',
+  LODGING: 'lodging',
+  ITINERARY: 'itinerary',
+  DOCUMENTS: 'documents',
+  GROUP: 'group',
+} as const satisfies Record<string, TaskDerivedKey>;
+
+/** **How many steps one task may hold** (ADR-0196 §1). Refused at the editor with a
+ *  sentence rather than silently truncated.
+ *
+ *  **Thirty** (owner's call, 2026-08-19, raised from twenty). The original number came from a
+ *  measurement — a step row costs **26.8px**, so twenty is 536px, the whole of a 640px
+ *  viewport — and that measurement answered the wrong question: how many steps fit on one
+ *  screen, not how many a packing list has. A real one runs past twenty, and the open region
+ *  scrolls. What the cap is actually for is the runaway case, which is far above either
+ *  figure. Here rather than in the frontend because the server refuses the thirty-first too:
+ *  a cap only the client knows is a cap the outbox can replay past. */
+export const TASK_SUBTASK_CAP = 30;
 
 /** Where a note came from (ADR-0152 §1). One value in v1 — §9 registers no strategy. */
 export const NOTE_SOURCE = {
@@ -199,6 +275,12 @@ export const NOTE_HOST_FIELD = {
   [ENTITY_TYPE.MAYBE_ITEM]: 'maybeItemId',
   [ENTITY_TYPE.DOCUMENT]: 'documentId',
 } as const satisfies Partial<Record<EntityType, NoteHostKey>>;
+
+/** **Which FK holds a task's host** — an alias of the note lookup above, for the reason
+ *  `TASK_HOST_KEYS` states: the two entities host off the same five FKs under the same
+ *  cascade rule, so the compiler holds them identical rather than a reviewer having to.
+ *  Nothing consults it until phase 4 wires the hosts. */
+export const TASK_HOST_FIELD = NOTE_HOST_FIELD;
 
 /** **Which FK holds an attachment's host, per host entity type** (ADR-0173 §1/§7) — the
  *  same lookup as `NOTE_HOST_FIELD` above and for the same reason: the host FKs are
@@ -288,6 +370,26 @@ export const MAX_TRIP_NAME_LENGTH = 18;
  *  client-side by the input's `maxLength`. */
 export const MAX_PLACE_NICKNAME_LENGTH = 60;
 
+/** **A service's own number, and where you board it** (ADR-0222 §1). Both are typed by
+ *  hand from a ticket or a departure board, so both are bounded — and bounded SHORT,
+ *  because a long value here is a paste of something else rather than a long gate.
+ *  `LY315`, `Hikari 503`, `B7`, `רציף 14` are the shapes these hold. */
+export const MAX_SERVICE_NUMBER_LENGTH = 20;
+export const MAX_GATE_LENGTH = 12;
+
+/** **How long before departure a gate is worth drawing** (ADR-0222 §5).
+ *
+ *  The board rations, so a fact only earns a slot while you can act on it — which is
+ *  ADR-0214 §3's rule about the confirmation code ("a commitment you cannot act on for
+ *  eight hours decides nothing at 22:40") applied to the fact with the sharpest window
+ *  in the app. Three hours is early enough to be there when you leave for the airport
+ *  and late enough that the value on screen is the one the departure boards will carry.
+ *
+ *  **A feel call that a device pass owns.** The mockup made it a control (T-4h · T-3h ·
+ *  T-2h) rather than pretending to have settled it; this is the recommendation, and it
+ *  is a number to re-tune rather than a rule to re-derive. */
+export const GATE_WINDOW_MINUTES = 180;
+
 /** Display-name length cap. Roomier than the trip name because it is a person's
  *  name rather than a pill that must stay on one line, but bounded because it
  *  renders on every co-member's roster row (ADR-0133 §7). Validated server-side
@@ -297,6 +399,44 @@ export const MAX_DISPLAY_NAME_LENGTH = 40;
 /** Document upload cap (T-046) — passport/insurance/visa scans are single-page
  *  PDFs or phone photos, never large media; the whole file is buffered in memory
  *  for encryption, so this also bounds worst-case per-request memory use. */
+/** Caps on a push subscription's fields (ADR-0197 §2). Not guesses: a real FCM endpoint
+ *  is ~200 chars and Mozilla's ~100, so 1 KB is an order of magnitude of headroom while
+ *  still bounding a hostile body; `p256dh` is base64url of a 65-byte uncompressed P-256
+ *  point (88 chars) and `auth` of a 16-byte secret (22), so 256 covers both with room for
+ *  padding variants.
+ *
+ *  **AMENDED 2026-08-21 (a production no-status failure).** This used to end "they exist to
+ *  bound the column, not to validate the crypto — the push service is the authority on
+ *  whether the keys work, at send time". The caps still only bound the column, but that
+ *  reasoning was wrong about WHERE a bad key is caught: `web-push` validates both lengths
+ *  itself and throws **before** any request, so a wrong-length key never reaches a push
+ *  service and there is no verdict to defer to — it surfaces as a rejection with no status,
+ *  hours later, on a subscription that accepted happily. Both lengths are fixed by RFC 8291,
+ *  so `PUSH_KEY_BYTES` below is checkable at the only moment a person is still holding the
+ *  device: the subscribe. Exactly the argument `validateVapid` already makes for the
+ *  server's own keypair, applied to the half that had been left out. */
+export const MAX_PUSH_ENDPOINT_LENGTH = 1024;
+export const MAX_PUSH_KEY_LENGTH = 256;
+
+/**
+ * **What the two subscription keys must decode to**, and the asymmetry is not a typo.
+ *
+ * RFC 8291 says `p256dh` is an uncompressed P-256 point (`0x04` + two 32-byte coordinates,
+ * so 65) and `auth` a 16-byte secret. But the numbers here mirror **what `web-push` itself
+ * refuses**, which is the only gate that matters: measured against the library, a `p256dh` of
+ * any other length throws locally ("should be 65 bytes long"), while `auth` is checked as
+ * "at least 16" — a 32-byte one is encrypted and sent, and the push service answers it.
+ *
+ * So `auth` is a floor, not an equality. Validating it as exactly 16 would have refused a
+ * subscription the sender would have delivered, which is a worse failure than the one this
+ * check exists to prevent: this must never be stricter than the thing it is protecting.
+ */
+export const PUSH_KEY_BYTES = { p256dh: 65, authMin: 16 } as const;
+
+/** The device label shown beside a subscription. A real UA string is ~120 chars; this is
+ *  a rendered label rather than a forensic record, so it is capped well below the endpoint. */
+export const MAX_USER_AGENT_LENGTH = 256;
+
 export const MAX_DOCUMENT_SIZE_BYTES = 10 * 1024 * 1024;
 
 /** Server-enforced upload allow-list (ADR-0069 / backend-review B-03). Documents
@@ -363,3 +503,12 @@ export function isAllowedAvatarMimeType(mimeType: string): boolean {
 export function isInlineOpenableDocumentMimeType(mimeType: string): boolean {
   return mimeType === 'application/pdf';
 }
+
+/** Where a distance changes precision (ADR-0109 §7): sub-kilometre distances round to a walkable
+ *  10 m, then read as one decimal of a kilometre, then as whole kilometres once the decimal stops
+ *  meaning anything. The near-me chip and the recap's figures both step here. */
+export const DISTANCE_STEP = {
+  NEAR_ROUND_M: 10,
+  KM_FROM_M: 1000,
+  WHOLE_KM_FROM: 10,
+} as const;

@@ -18,7 +18,7 @@
 // from the spec, so a new draft must be a new component instance — `key`ing the element on the
 // draft's identity is how a form built out of `useState` is reset without a synchronising
 // effect, and it is the only reason there is no `useEffect` in this file.
-import { useId, useState } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import { MAX_PLACE_NICKNAME_LENGTH, type EventCategory } from '@waypoint/shared';
 import { useDerivedField } from '../../lib/useDerivedField';
 import { placeGlyph } from '../../lib/map-pins';
@@ -112,6 +112,14 @@ export interface MapPlaceFormValue {
   notes: string[];
 }
 
+/** What the form hands a host that shows the place's existing notes: the composer, as the
+ *  last row of the host's own notes section — `EventForm`'s shape (ADR-0192 §2). */
+export interface MapPlaceNotesSlot {
+  onAdd: () => void;
+  compose: ReactNode;
+  composeActive: boolean;
+}
+
 export function MapPlaceForm({
   spec,
   busy,
@@ -119,8 +127,14 @@ export function MapPlaceForm({
   onConfirm,
   onCancel,
   onValueChange,
+  renderNotes,
 }: {
   spec: MapPlaceFormSpec;
+  /** **A place that already exists has notes to show** (owner's report: a rename opened on an
+   *  empty box, as if nothing had ever been written). The host renders its connected notes
+   *  section around the composer, since this file reads no trip state. Absent on the add
+   *  sources, where there is nothing yet to read. */
+  renderNotes?: (slot: MapPlaceNotesSlot) => ReactNode;
   /** A write is in flight: the confirm is disabled rather than removed, because it is about
    *  to come back. */
   busy?: boolean;
@@ -160,7 +174,7 @@ export function MapPlaceForm({
   // **A note is written on the way** (ADR-0152 §6b) — the same composer every other host form
   // carries, so a place is the fifth host and not a fifth way of writing a note. Local state,
   // read once at confirm: this file stays presentational and the host does the writing.
-  const composer = useNoteComposer();
+  const composer = useNoteComposer({ standalone: !renderNotes });
   const noteId = useId();
 
   const report = (next: Partial<MapPlaceFormValue>) =>
@@ -295,6 +309,29 @@ export function MapPlaceForm({
             });
           }}
         />
+        {/* **Above the nickname, because it is what gets READ** (owner, 2026-09-27: _"still no
+            notes in the place editing"_). The card's height is a budget (`--map-card-max`), so
+            whatever comes last scrolls out of sight; a place's existing notes are content, a
+            nickname is a rarely-set label. It is the region ADR-0148 §1 built for exactly
+            this: the head (what am I naming), the actions (how do I get out) and now the note
+            box are three different jobs, and only the first two must survive a keyboard.
+
+            **And it carries NO hint**, where every other host's composer does. Two reasons, and
+            the second is the real one: a place has no category of its own, so the sentence the
+            hint exists to say (`יורש את הקטגוריה והסמל`) is not true here — and this is the one
+            card in the app whose height is arithmetic, where ADR-0148 §1 spent a session
+            refusing "two competing quiet lines". The `＋` beside the box says the rest. */}
+        {renderNotes ? (
+          renderNotes({
+            onAdd: composer.openNew,
+            compose: <NoteComposer state={composer} id={noteId} />,
+            composeActive: composer.open || composer.drafts.length > 0,
+          })
+        ) : (
+          <Field label={t.notes.composer.label} htmlFor={noteId}>
+            <NoteComposer state={composer} id={noteId} />
+          </Field>
+        )}
         {/* **The short label** (ADR-0166 §18), in the scroll region and not the pinned head —
             the head is what you are naming and the actions are how you get out, and this card's
             height is arithmetic (ADR-0148 §1). It is `Field` + an input like every other text
@@ -323,18 +360,6 @@ export function MapPlaceForm({
             />
           </Field>
         )}
-        {/* The scroll region's SECOND child, which is the region ADR-0148 §1 built for exactly
-            this: the head (what am I naming), the actions (how do I get out) and now the note
-            box are three different jobs, and only the first two must survive a keyboard.
-
-            **And it carries NO hint**, where every other host's composer does. Two reasons, and
-            the second is the real one: a place has no category of its own, so the sentence the
-            hint exists to say (`יורש את הקטגוריה והסמל`) is not true here — and this is the one
-            card in the app whose height is arithmetic, where ADR-0148 §1 spent a session
-            refusing "two competing quiet lines". The `＋` beside the box says the rest. */}
-        <Field label={t.notes.composer.label} htmlFor={noteId}>
-          <NoteComposer state={composer} id={noteId} />
-        </Field>
       </div>
       <div className="map-draft-acts">
         {spec.vetUrl && (

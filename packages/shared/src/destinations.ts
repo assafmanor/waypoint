@@ -97,26 +97,61 @@ export const DESTINATIONS: readonly Destination[] = [
   { code: 'IE', he: 'אירלנד', aliases: ['ireland', 'דבלין', 'dublin'] },
   { code: 'BE', he: 'בלגיה', aliases: ['belgium', 'בריסל', 'brussels'] },
   { code: 'PL', he: 'פולין', aliases: ['poland', 'ורשה', 'warsaw', 'קרקוב'] },
-  { code: 'CY', he: 'קפריסין', aliases: ['cyprus'] },
+  {
+    code: 'CY',
+    he: 'קפריסין',
+    aliases: ['cyprus', 'פאפוס', 'paphos', 'לרנקה', 'larnaca', 'איה נאפה', 'לימסול'],
+  },
   { code: 'IL', he: 'ישראל', aliases: ['israel', 'תל אביב', 'tel aviv', 'ירושלים'] },
 ];
 
-/** Best-effort flag from a free-text destination (auto-suggest, overridable).
- *  Short (≤2-char) aliases match only as whole tokens to avoid false hits
- *  (e.g. "us" inside "australia"); longer aliases match as substrings. */
-export const suggestFlagFromDestination = (text: string | undefined): string | undefined => {
+/** The flag for a **resolved** ISO country code, or undefined when there is no
+ *  code to trust. Same degrade-don't-guess contract as `currencyForCountry`
+ *  below: a pick that resolved nothing leaves the icon alone. */
+export const flagForCountry = (countryCode?: string | null): string | undefined => {
+  const code = countryCode?.trim() ?? '';
+  return /^[a-z]{2}$/i.test(code) ? flagFromCode(code) : undefined;
+};
+
+/** The one-letter clitics Hebrew glues onto the front of a name — ליפן, בקפריסין —
+ *  which is why a term is matched at a word boundary rather than as a bare token. */
+const HEBREW_CLITICS = 'בהוכלמש';
+
+/** A term matches only where it STARTS a word (after at most one Hebrew clitic)
+ *  and ENDS one. Matching it as a bare substring is what made קפריסין read as
+ *  סין (China's Hebrew name is its last three letters, final nun and all), and
+ *  a boundary rule is what a token rule cannot do in Hebrew, where the
+ *  preposition is glued to the word. */
+const wordMatcher = (term: string): RegExp =>
+  new RegExp(
+    `(?<![\\p{L}\\p{N}])[${HEBREW_CLITICS}]?${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\p{L}\\p{N}])`,
+    'u',
+  );
+
+// Built once, at module load: the same ~230 terms are re-tested on every
+// keystroke-driven re-suggest, and a compiled RegExp per term is the cheap half.
+const DESTINATION_MATCHERS: readonly { flag: string; terms: readonly RegExp[] }[] =
+  DESTINATIONS.map((d) => ({
+    flag: flagFromCode(d.code),
+    terms: [d.he, ...d.aliases].map(normalizeSearchTerm).filter(Boolean).map(wordMatcher),
+  }));
+
+/** The flag to auto-suggest for a destination (ADR-0038 §5, overridable).
+ *
+ *  **A resolved country code wins over the text**, because it is an answer where
+ *  the text is a guess: a city-level pick (פאפוס) is nowhere in the curated
+ *  list yet arrives carrying `CY`, and every country resolves — not just the
+ *  ~57 popular ones. The text match is the "use as typed" fallback, where no
+ *  pick resolved and the words are all we have. */
+export const suggestFlagFromDestination = (
+  text: string | undefined,
+  countryCode?: string | null,
+): string | undefined => {
+  const resolved = flagForCountry(countryCode);
+  if (resolved) return resolved;
   if (!text?.trim()) return undefined;
   const n = normalizeSearchTerm(text);
-  const tokens = new Set(n.split(' '));
-  for (const d of DESTINATIONS) {
-    for (const alias of [...d.aliases, d.he]) {
-      const a = normalizeSearchTerm(alias);
-      if (!a) continue;
-      const hit = a.length <= 2 ? tokens.has(a) : n.includes(a);
-      if (hit) return flagFromCode(d.code);
-    }
-  }
-  return undefined;
+  return DESTINATION_MATCHERS.find((m) => m.terms.some((re) => re.test(n)))?.flag;
 };
 
 /**

@@ -121,6 +121,24 @@ const groups = await page.evaluate(() => {
 const themes = groups.themes.length ? groups.themes : [null];
 const widths = groups.widths.length ? groups.widths : [null];
 
+/* A THROWAWAY SHOT BEFORE THE LOOP, AND IT IS LOAD-BEARING.
+ *
+ * `document.fonts.ready` (and `document.fonts.load`) resolve when a face has been
+ * FETCHED; Chromium may still be laying the page out in the fallback until something
+ * forces the application, and `requestAnimationFrame` does not reliably do it for
+ * content far below the fold. Playwright's own screenshot DOES — it waits for fonts —
+ * so shooting once and discarding it makes every pass of the loop measure the same
+ * typeface as every other.
+ *
+ * Found on `the-now-line-is-inside-something-v1.html`: one `.wp-event-timemeta` came
+ * back ⁦105.8px⁩ wide in the first pass and ⁦123.4px⁩ in the third, which is the
+ * difference between a grid cell that wraps and one that does not — so the file
+ * reported ⁦72px⁩ for `light-360` and ⁦91px⁩ for `dark-360` FOR THE SAME BOX, with no
+ * error and a full measurement table either way. The shape of that failure is the
+ * dangerous one: the wrong number was the one saying the change cost nothing. */
+await page.screenshot({ fullPage: true });
+await page.waitForTimeout(150);
+
 const report = [
   `# ${path.basename(abs)}`,
   '',

@@ -5,15 +5,22 @@
 // tab → Home rule; a nested BookingDetail/BookingManageSheet/BookingSheet
 // registers on top of that via its own Modal, so it closes first in turn.
 import { useEffect, useMemo, useState } from 'react';
-import { BOOKING_TYPE, type Booking, type Place, type Trip } from '@waypoint/shared';
+import { BOOKING_TYPE, type Booking, type Place, type TripEnrichments } from '@waypoint/shared';
+import type { DayNaming } from '../lib/time';
 import { useTrip } from '../state/trip-state';
 import { usePlaceErrandReturn, useShowPlaceOnMap } from '../state/map-scope-state';
-import { bookingShowOnMap, type ShowPlaceOnMap } from '../lib/places';
+import {
+  bookingShowOnMap,
+  eventDisplayZones,
+  type ShowPlaceOnMap,
+  type ZoneEvidence,
+} from '../lib/places';
 import { useMode } from '../state/mode-state';
 import { useBackLayer, type BackResult } from '../state/nav-state';
 import { useClock } from '../lib/useClock';
 import {
   CATEGORY_ALL,
+  bookingRows,
   countByCategory,
   scheduleParts,
   splitBookings,
@@ -22,8 +29,12 @@ import {
   typeChipAddsMeaning,
   visibleRows,
 } from '../lib/index-bookings';
+import { apiAssetUrl } from '../lib/api-asset';
 import { countVisible } from '../lib/filter-reveal';
-import { noteCountForContext, noteCountsByHost } from '../lib/notes';
+import { rowPhoto } from '../lib/place-photo';
+import { hostCountForContext, noteCountsByHost } from '../lib/notes';
+import { openTaskCountsByHost } from '../lib/tasks';
+import { useSettledHosts } from './HostTasks';
 import { attachmentCountForContext, attachmentCountsByHost } from '../lib/attachments';
 import { resolveHostContext } from '../lib/host-context';
 import { bookingDurationUnit, formatBookingDuration } from '../lib/booking-timing';
@@ -37,7 +48,7 @@ import { BookingTitle } from './BookingTitle';
 import { IndexBackRow } from './IndexBackRow';
 import { Icon } from './Icon';
 import { HardLock } from './HardLock';
-import { DocumentMark, ListRow, NoteMark, type BadgeTone } from './domain';
+import { DocumentMark, ListRow, NoteMark, type BadgeTone, TaskMark } from './domain';
 import { ChoiceGrid, type Choice } from './primitives/ChoiceGrid';
 import { Collapsible, CollapseToggle } from './primitives/Collapsible';
 import { RevealList } from './primitives/RevealList';
@@ -54,21 +65,42 @@ export function IndexBookingsView({
    *  that booking's detail on top of this screen once mounted. */
   initialBookingId?: string;
 }) {
-  const { trip, bookings, places, events, notes, documentAttachments, hostContexts } = useTrip();
-  const { mode } = useMode();
+  const {
+    trip,
+    bookings,
+    places,
+    events,
+    notes,
+    documentAttachments,
+    hostContexts,
+    tasks,
+    zoneEvidence,
+    enrichments,
+  } = useTrip();
+  // **A finished trip is a record** (ADR-0239 §4, building ADR-0049 §2): every booking in one
+  // open list, since all of them are past and the fold would hide the trip, and nothing writes.
+  const { mode, isFinished: finished } = useMode();
   // This screen is the Index's topmost overlay (ADR-0098 §5), so it closes before
   // the tab changes — the same ordering `BookingDetail` needs, one level out.
   const showPlaceOnMap = useShowPlaceOnMap();
   const now = useClock();
   // Built once per note-list change rather than filtered per row (ADR-0152 §6c).
   const noteCounts = useMemo(() => noteCountsByHost(notes), [notes]);
+  // The third mark's tally (ADR-0191 §2) — OPEN tasks only, unlike the two beside it.
+  const settledHosts = useSettledHosts();
+  const taskCounts = useMemo(
+    () => openTaskCountsByHost(tasks, settledHosts),
+    [tasks, settledHosts],
+  );
   // Its twin for attachments (ADR-0174 §1) — the count `lib/attachments.ts` shipped with
   // ADR-0173 and that nothing rendered.
   const docCounts = useMemo(
     () => attachmentCountsByHost(documentAttachments),
     [documentAttachments],
   );
-  const { upcoming, past } = splitBookings(bookings, events, trip.timezone, now.getTime());
+  const { upcoming, past } = finished
+    ? { upcoming: bookingRows(bookings, events), past: [] }
+    : splitBookings(bookings, events, trip.timezone, now.getTime());
 
   const [category, setCategory] = useState<CategoryFilter>(CATEGORY_ALL);
   const [searchMode, setSearchMode] = useState(false);
@@ -183,16 +215,22 @@ export function IndexBookingsView({
     <BookingLi
       row={row}
       places={places}
-      trip={trip}
+      enrichments={enrichments}
+      zoneEvidence={zoneEvidence}
+      tripWindow={trip}
       now={now}
       onOpen={openDetail}
-      onManage={setManage}
-      notes={noteCountForContext(
+      onManage={finished ? undefined : setManage}
+      notes={hostCountForContext(
         noteCounts,
         resolveHostContext(hostContexts, { kind: 'booking', id: row.booking.id }),
       )}
       documents={attachmentCountForContext(
         docCounts,
+        resolveHostContext(hostContexts, { kind: 'booking', id: row.booking.id }),
+      )}
+      tasks={hostCountForContext(
+        taskCounts,
         resolveHostContext(hostContexts, { kind: 'booking', id: row.booking.id }),
       )}
       showPlaceOnMap={showPlaceOnMap}
@@ -220,9 +258,11 @@ export function IndexBookingsView({
           </div>
           <div className="et">{t.index.emptyTitle}</div>
           <div className="es">{t.index.emptyBody}</div>
-          <button type="button" className="ea" onClick={() => setSheet('create')}>
-            <Icon name="plus" /> {t.index.form.add}
-          </button>
+          {!finished && (
+            <button type="button" className="ea" onClick={() => setSheet('create')}>
+              <Icon name="plus" /> {t.index.form.add}
+            </button>
+          )}
         </div>
       ) : (
         // Hidden (not just covered) while search mode is open — SearchOverlay
@@ -249,9 +289,11 @@ export function IndexBookingsView({
               </button>
             </div>
 
-            <button type="button" className="addbtn" onClick={() => setSheet('create')}>
-              <Icon name="plus" /> {t.index.form.add}
-            </button>
+            {!finished && (
+              <button type="button" className="addbtn" onClick={() => setSheet('create')}>
+                <Icon name="plus" /> {t.index.form.add}
+              </button>
+            )}
 
             {upcomingMatchCount > 0 ? (
               <RevealList
@@ -304,6 +346,7 @@ export function IndexBookingsView({
           title={t.index.search.modeTitle}
           contextLabel={trip.name}
           mode={mode}
+          finished={finished}
           query={query}
           onQueryChange={setQuery}
           placeholder={t.index.search.placeholder}
@@ -335,6 +378,7 @@ export function IndexBookingsView({
           onClose={() => setDetail(null)}
           onOpen={setDetail}
           onEdit={editFrom}
+          frozen={finished}
         />
       )}
       {manage && (
@@ -360,33 +404,54 @@ export function IndexBookingsView({
 function BookingLi({
   row,
   places,
-  trip,
+  enrichments,
+  zoneEvidence,
+  tripWindow,
   now,
   onOpen,
   onManage,
   notes,
   documents,
+  tasks,
   showPlaceOnMap,
   onLeaveForMap,
 }: {
   row: BookingRow;
   places: Place[];
-  trip: Trip;
+  /** What the world knows about the trip's places — for the badge's photograph, the same
+   *  `rowPhoto` the two day surfaces spend (ADR-0219 §1). */
+  enrichments: TripEnrichments;
+  /** The row's clocks read in each event's OWN resolved zone (ADR-0107); this replaced the
+   *  `Trip` prop, which the row only ever consulted for `timezone`. */
+  zoneEvidence: ZoneEvidence;
+  /** The trip's calendar window — how the schedule line names a day (`dayLabel`): its
+   *  day number off-trip, relative on it. The window only, not the `Trip` the prop above
+   *  replaced: the row still has no business reading trip fields. */
+  tripWindow: DayNaming['trip'];
   now: Date;
   onOpen: (booking: Booking) => void;
-  onManage: (booking: Booking) => void;
+  /** Absent on a finished trip, whose row has nothing to manage. */
+  onManage?: (booking: Booking) => void;
   /** How many notes this booking carries (ADR-0152 §6): a mark on the row, never a body. */
   notes: number;
   /** …and how many documents (ADR-0174 §1). Two marks, not one combined "has content" glyph:
    *  a note is something someone wrote and a document is a file you may have to show at a
    *  border, and one silhouette cannot say which a tap will get you. */
   documents: number;
+  /** OPEN tasks on this row's context — the third mark (ADR-0191). */
+  tasks: number;
   showPlaceOnMap: ShowPlaceOnMap;
   /** Close this screen before the tab changes underneath it. */
   onLeaveForMap: () => void;
 }) {
   const { booking, event } = row;
   const icon = chosenIcon(event?.icon) ?? BOOKING_TYPE_ICON[booking.type];
+  // **AND THE INDEX WEARS THE SAME BADGE THE DAY DOES** (ADR-0219 §1, extended 2026-09-05;
+  // owner: _"the bookings screen should also render the same as the day"_). One booking read
+  // two ways — a photograph on the day surface and a ticket glyph here — is a difference about
+  // a FACT between two surfaces, which is what ADR-0159 §1 forbids between the day pair and is
+  // no more defensible across this one. Same function, so the picked-icon rule cannot drift.
+  const photo = rowPhoto(event, booking, places, enrichments);
   // Shared booking grammar (ADR-0059 §3): the badge is tinted by category (teal
   // for a stay, amber for transport), and a hard booking wears the lock.
   const badgeClass = badgeClassForBookingType(booking.type);
@@ -396,18 +461,25 @@ function BookingLi({
   // A queued (pending) write fades the row to read as provisional (ADR-0092).
   const unsynced = useUnsynced(booking.id);
 
-  const schedule = event ? scheduleParts(event, booking, trip, now) : undefined;
+  const schedule = event ? scheduleParts(event, booking, zoneEvidence, now, tripWindow) : undefined;
   // THE VERB IS DRAWN WHERE IT DISAMBIGUATES (ADR-0179 §2d): on a span's closing edge it
   // is the only thing that can say which end this time is, and on a start edge the badge
   // glyph already says it — the type→verb map is 1:1.
   const showVerb = !!schedule?.verb && schedule.edge === 'end';
   const duration = event
-    ? formatBookingDuration(event, trip.timezone, bookingDurationUnit(booking.type))
+    ? // The booking's own zone, for the same reason `BookingDetail` reads it that way: this
+      // only turns an instant into a calendar day for the nights count (ADR-0107).
+      formatBookingDuration(
+        event,
+        eventDisplayZones(event, zoneEvidence).start,
+        bookingDurationUnit(booking.type),
+      )
     : null;
 
   return (
     <ListRow
       icon={icon}
+      photoUrl={photo && apiAssetUrl(photo.url)}
       badgeTone={badgeTone}
       onOpen={() => onOpen(booking)}
       openLabel={booking.title}
@@ -431,6 +503,7 @@ function BookingLi({
               their DAY to the ellipsis. The title line has the slack. */}
           <NoteMark count={notes} />
           <DocumentMark count={documents} />
+          <TaskMark count={tasks} />
         </>
       }
       meta={
@@ -491,7 +564,7 @@ function BookingLi({
             showPlaceOnMap(placeId);
           }),
       )}
-      onManage={() => onManage(booking)}
+      onManage={onManage && (() => onManage(booking))}
       manageLabel={t.index.detail.actions}
     />
   );

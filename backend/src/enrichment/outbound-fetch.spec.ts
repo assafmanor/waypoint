@@ -8,13 +8,15 @@ import {
 } from './outbound-fetch';
 
 describe('isAllowedEnrichmentUrl', () => {
-  it('allows the four Wikimedia hosts enrichment actually reads', () => {
+  it('allows the Wikimedia hosts enrichment actually reads', () => {
     for (const url of [
       'https://www.wikidata.org/w/api.php?action=wbgetentities',
       'https://he.wikipedia.org/api/rest_v1/page/summary/Tokyo',
       'https://en.wikipedia.org/api/rest_v1/page/summary/Tokyo',
       'https://commons.wikimedia.org/w/api.php?action=query&prop=imageinfo',
       'https://upload.wikimedia.org/wikipedia/commons/thumb/4/43/Sensoji_2023.jpg/500px-x.jpg',
+      // Where Commons' `thumburl` points since 2026-09 — refusing it dropped every image.
+      'https://thumb.wikimedia.org/wikipedia/commons/thumb/7/77/Trevi_Fountain%2C_Rome.jpg/960px-Trevi_Fountain%2C_Rome.jpg',
     ]) {
       expect(isAllowedEnrichmentUrl(url), url).toBe(true);
     }

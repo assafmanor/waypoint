@@ -144,6 +144,17 @@ Facts about the real-world entity a `Place` refers to: a summary, an image, open
 - **No Google-sourced value is ever written here** (§2), enforced by each source's declared `storable` policy plus one guard (`enrichment.policy.ts`), not by anyone remembering the caching terms.
 - `Place` is **unchanged** by this table's existence — no migration, no column moved, no behaviour altered.
 
+### PushSubscription (ADR-0197) — a device, not a trip
+
+A device this user can be reached on. Control plane, for the same three structural reasons `PlaceEnrichment` above is: **no `tripId`**, one writer, and nothing anyone would undo — so it is outside `ChangeService`, out of the sync protocol, and absent from the trip snapshot. Nothing about it is mirrored into memory or Dexie, which is why its `User` cascade owes no client applier the way the trip-scoped ones do.
+
+- `endpoint @unique` — **the push service's own URL, and the row's real identity.** The browser issues exactly one per (profile, origin, subscription), so a device id of ours would be a second name for the same thing, and a re-subscribe after a key rotation would leave the old row addressable.
+- `p256dh`, `auth` — the client's public key and auth secret, base64url as the browser hands them over. Not secrets of ours: they are what let **only that device** decrypt a payload, and without them the endpoint is useless to us.
+- `userAgent?` — the label a person recognises their own row by. A rendered string, not a forensic record.
+- `lastSentAt?`, `lastFailedAt?` — diagnostics, and the two facts a settings surface can honestly show. Deliberately **not a failure counter**: a `404`/`410` from the push service deletes the row outright, because that is a subscription's normal death rather than an error to count (§10).
+- **Sign-out deletes it** (§2.3), and that is a security property rather than tidiness: a subscription is not client-local data, so `wipeLocalData` cannot reach it, and a phone handed to somebody else would otherwise keep waking with the previous person's deadlines.
+- **The send ledger (`NotificationSend`) does not exist yet.** It lands with the sweep that reads it (§3, phase 3) — a new table costs nothing to add later, so there is no reason to ship one nothing writes.
+
 ### Note (ADR-0152)
 
 **One entity, and what it is about is a field.** No host = a general note; exactly one host FK set = that entity's note. Same row, same editor, same list, same sync channel, same offline story either way — which is the whole reason the entity exists rather than a `notes` column on each of five tables (five editors and no unified view).
@@ -168,6 +179,35 @@ Facts about the real-world entity a `Place` refers to: a summary, an image, open
 - **A cascade writes no `Change` rows**, exactly as for `Note` above: the sync half is `lib/attachments.ts`'s `dropAttachmentsForHostChange`, keyed off `ATTACHMENT_HOST_FIELD` and registered in both the memory channels and `CACHE_CHANNELS` (ADR-0094).
 - **An attachment never widens visibility** (ADR-0173 §6). A `Document` may be owned; this row is a pointer, not a permission, and a reader resolves it through the document list they already have — so an attachment whose document they cannot see renders as nothing.
 - Which hosts share one attachment list is **derived, never stored** — `lib/host-context.ts`, the same module Notes read (ADR-0172 §1–§3). Notes and attachments share the derivation and the grammar; they do not share the storage.
+
+### TripShare, TripShareDocument, ItineraryNarrative (ADR-0213)
+
+**The public face of a trip, as policy rather than content.** One `TripShare` per trip
+(`tripId @unique`), holding a code and a projection policy — and holding **no itinerary at
+all**. Every public read projects the live rows, which is exactly what makes revoking the
+row sufficient to stop disclosure.
+
+- `TripShare`: `id`, `tripId @unique`, `code @unique` (8 base58, the same durable-row
+  technique as `Invite` — ADR-0067), `detailLevel` (`summary`|`full`|`everything`), the three
+  `include*` booleans, `createdBy`, `createdAt`, `updatedAt`, `revokedAt?`. Cascades from
+  `Trip`.
+- **`revokedAt` rather than a delete**, so stopping a share keeps the owner's configuration
+  for when they come back. Re-sharing mints a **fresh** code: reviving the old one would
+  silently reopen a URL somebody has already pasted somewhere, which is the opposite of what
+  "stop sharing" said.
+- `TripShareDocument`: `@@id([shareId, documentId])`, cascading from both ends. Explicit rows
+  rather than a "share my documents" flag — a promise about a whole folder is one nobody can
+  check later, and this row IS the download route's authorization.
+- `ItineraryNarrative`: `@@unique([shareId, locale, inputHash, skillVersion])`, plus
+  `provider`, `model`, `output Json`, `generatedAt`. **The compound unique is the eligibility
+  rule made structural**: change any of those four — an event was renamed, the locale differs,
+  the prompt was revised — and there is simply no row to find, so the deterministic fallback
+  serves while regeneration runs behind the response. That is why staleness needs no expiry
+  column and no sweeper.
+- **None of the three writes a `Change` row.** A share is not trip content: it is not synced,
+  not undoable, and not part of any client's timeline. Owner writes go straight to the server
+  and are online-only (a queued "stop sharing" that lands ten minutes later is a promise the
+  app did not keep).
 
 ### Change (the sync/undo/feed substrate — ADR-0019)
 

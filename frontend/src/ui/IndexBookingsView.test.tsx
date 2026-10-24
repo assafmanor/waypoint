@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, describe, it, expect, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type ReactNode } from 'react';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
@@ -83,6 +83,7 @@ let tripBookings = [flight, hotel];
 let tripEvents: TripEvent[] = [];
 // ADR-0174 §1's document mark, so ADR-0179 §5's claim that the marks moved to the
 // title line is asserted rather than described.
+let tripEnrichments: Record<string, unknown> = {};
 let tripAttachments: { id: string; tripId: string; documentId: string; bookingId: string }[] = [];
 
 // A coord-bearing place for the hotel, so its row can reach the map; the flight has
@@ -110,6 +111,23 @@ vi.mock('../state/map-scope-state', () => ({
 
 vi.mock('../state/trip-state', () => ({
   useTrip: () => ({
+    zoneCrossings: [],
+    // The row's clocks read in each event's OWN resolved zone (ADR-0107).
+    zoneEvidence: {
+      events: tripEvents,
+      bookings: tripBookings,
+      places: [hotelPlace],
+      crossings: [],
+      primaryZone: 'Asia/Tokyo',
+    },
+    // Tasks ride the same snapshot since phase 1; the mark and the sections read them.
+    tasks: [],
+    taskVerbs: {
+      createTask: async () => undefined,
+      updateTask: async () => {},
+      deleteTask: async () => {},
+      tickTask: async () => {},
+    },
     // The attachment link list every documents surface reads (ADR-0173/0174).
     documentAttachments: tripAttachments,
     // The one context index every note surface resolves through (ADR-0172 §1);
@@ -130,9 +148,10 @@ vi.mock('../state/trip-state', () => ({
     places: [hotelPlace],
     events: tripEvents,
     documents: [],
-    // The booking detail reads it for the airport codes (ADR-0166 §18). Empty is the
-    // normal state for most places, and the fact is simply absent.
-    enrichments: {},
+    // The booking detail reads it for the airport codes (ADR-0166 §18) and the row's badge
+    // for its photograph (ADR-0219 §1). Empty is the normal state for most places, so the
+    // fact is simply absent and the badge keeps its glyph.
+    enrichments: tripEnrichments,
     notes: [],
     users: [],
     noteVerbs: {
@@ -142,7 +161,9 @@ vi.mock('../state/trip-state', () => ({
     },
   }),
 }));
-vi.mock('../lib/useClock', () => ({ useClock: () => new Date('2026-07-20T00:00:00Z') }));
+const LIVE_NOW = '2026-07-20T00:00:00Z';
+let clockNow = LIVE_NOW;
+vi.mock('../lib/useClock', () => ({ useClock: () => new Date(clockNow) }));
 vi.mock('../lib/outbox', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../lib/outbox')>();
   return {
@@ -178,6 +199,7 @@ describe('IndexBookingsView (ADR-0098/ADR-0101)', () => {
     tripBookings = [flight, hotel];
     tripEvents = [];
     showPlaceOnMap = null;
+    clockNow = LIVE_NOW;
   });
 
   it('renders both booking rows on the shared ListRow, with per-row sync + manage kebab', () => {
@@ -337,6 +359,42 @@ describe('IndexBookingsView (ADR-0098/ADR-0101)', () => {
 
     fireEvent.click(screen.getByRole('radio', { name: t.index.bookingType.flight }));
     expect(screen.getByText(t.index.pastToggle.show(1))).toBeTruthy();
+  });
+
+  it("offers the add button, the row kebab and the detail's writes on a live trip", () => {
+    render(wrap(<IndexBookingsView onClose={() => {}} />));
+    expect(document.querySelector('.addbtn')).not.toBeNull();
+    expect(screen.getAllByRole('button', { name: t.index.detail.actions })).toHaveLength(2);
+    fireEvent.click(screen.getByRole('button', { name: 'טוקיו' }));
+    const sheet = screen.getByRole('dialog');
+    expect(sheet.querySelector('.bk-edit')).not.toBeNull();
+    expect(sheet.querySelectorAll('.note-sec .add')).toHaveLength(2);
+  });
+
+  // A FINISHED TRIP IS A RECORD (ADR-0239 §4). The trip ends 07-25; five days later every
+  // linked booking is past, and the live screen's fold hid the whole trip under it (F7).
+  it('lists every booking open and chronological on a finished trip, with nothing to write', () => {
+    clockNow = '2026-07-30T03:00:00Z';
+    tripBookings = [flight, hotel, pastFlight];
+    tripEvents = [pastFlightEvent];
+    const { container } = render(wrap(<IndexBookingsView onClose={() => {}} />));
+
+    expect(container.querySelector('.addbtn')).toBeNull();
+    expect(screen.queryByText(t.index.pastToggle.show(1))).toBeNull();
+    expect(container.querySelector('.listcard.past')).toBeNull();
+    const titles = [...container.querySelectorAll('.listcard .bk-title-txt')].map(
+      (el) => el.textContent,
+    );
+    // Scheduled first by when, then the unscheduled ones: `bookingRows`' one order.
+    expect(titles).toEqual(['הגעה מטוקיו', 'Shinjuku Granbell', 'טוקיו']);
+    expect(screen.queryByRole('button', { name: t.index.detail.actions })).toBeNull();
+
+    // Its read still opens, and carries no way to write.
+    fireEvent.click(screen.getByRole('button', { name: 'הגעה מטוקיו' }));
+    const sheet = screen.getByRole('dialog');
+    expect(within(sheet).getByText('הגעה מטוקיו')).toBeTruthy();
+    expect(sheet.querySelector('.bk-edit')).toBeNull();
+    expect(sheet.querySelectorAll('.note-sec .add')).toHaveLength(0);
   });
 });
 
@@ -502,5 +560,57 @@ describe('IndexBookingsView — the way to the map', () => {
     expect(screen.queryByRole('button', { name: t.actions.showOnMap })).toBeNull();
     // The rows themselves are unaffected — absent, not broken.
     expect(screen.getByRole('button', { name: 'Shinjuku Granbell' })).toBeTruthy();
+  });
+});
+
+/**
+ * **THE INDEX WEARS THE SAME BADGE THE DAY DOES** (ADR-0219 §1, extended 2026-09-05; owner:
+ * _"the bookings screen should also render the same as the day (with place icons etc)"_).
+ *
+ * `PlaceBadge` has taken a photograph since ADR-0167 §1 and `ListRow` simply never forwarded
+ * one, so the booking whose day row showed its picture showed a ticket glyph here. One booking
+ * read two ways is a difference about a FACT between two surfaces — the thing ADR-0159 §1
+ * forbids between the day pair, and no more defensible across this one.
+ */
+describe('IndexBookingsView — the row’s badge photograph', () => {
+  const IMAGE = {
+    url: '/enrichment/images/granbell',
+    mimeType: 'image/jpeg',
+    width: 1200,
+    height: 800,
+    sizeBytes: 90_000,
+    source: 'commons',
+    license: 'CC BY-SA 4.0',
+    attribution: 'A. Photographer',
+    fetchedAt: '2026-08-01T00:00:00.000Z',
+    method: 'name_proximity',
+    ref: 'Q38519',
+    confidence: 1,
+  };
+
+  beforeEach(() => {
+    cleanup();
+    tripBookings = [hotel];
+    tripEvents = [];
+    tripEnrichments = {};
+    showPlaceOnMap = null;
+  });
+  afterEach(() => {
+    cleanup();
+    tripEnrichments = {};
+  });
+
+  it('fills the badge from the booking’s own place', () => {
+    tripEnrichments = { 'pl-hotel': { image: IMAGE } };
+    render(wrap(<IndexBookingsView onClose={() => {}} />));
+    expect(document.querySelector('.wp-listrow-badge .wp-placebadge-photo img')).toBeTruthy();
+  });
+
+  // The majority case: a place nobody has looked up keeps the type's glyph, and the row is
+  // unchanged from what shipped.
+  it('keeps the type glyph when nothing is known about the place', () => {
+    render(wrap(<IndexBookingsView onClose={() => {}} />));
+    expect(document.querySelector('.wp-listrow-badge .wp-placebadge-photo')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Shinjuku Granbell' }).textContent).toContain('🏨');
   });
 });

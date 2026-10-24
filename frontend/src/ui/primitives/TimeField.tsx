@@ -14,7 +14,7 @@
 // flex-basis:100% + order (via .tp-panel) so inside the flex-wrap field row it
 // wraps to a full-width line BELOW all the row's triggers — never nested in a
 // flex trigger, never an absolute popover the overflow-y:auto sheet would clip.
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { useBackLayer } from '../../state/nav-state';
 import { useCenterSelected } from '../../lib/useCenterSelected';
 import { MINUTES_PER_DAY } from '../../constants';
@@ -28,6 +28,32 @@ const STEP = 15;
 import { toHHMM, toMin } from '../../lib/time';
 export { toHHMM, toMin };
 const ALL_TIMES = Array.from({ length: MINUTES_PER_DAY / STEP }, (_, i) => i * STEP);
+
+/** **What a moment that FOLLOWS another one offers, and in what order** (ADR-0203 §10).
+ *
+ *  Reported from the field: _"it always starts at 00:00 no matter the departure… it should
+ *  always start ahead of the departure time… If it crosses midnight maybe even make it
+ *  circular"_. The list is rotated to begin one step after `afterMin` and wrap through
+ *  midnight back to `afterMin` itself, which lands last.
+ *
+ *  **This is not a scroll position, it is the rule the days already follow.**
+ *  `resolveJourneyDays` resolves every moment to the nearest FORWARD instant after the one
+ *  before it, and a list that opens at 00:00 is the only part of the rail that does not read
+ *  forward. Rotating it makes scrolling DOWN mean later, which is what the derivation means.
+ *
+ *  **Rotated, never filtered.** `minTime` filters, and that is right for a bound — an end
+ *  before its own start on the same date is impossible. Here nothing is impossible: an
+ *  arrival at 00:45 after a 20:30 departure is tomorrow, not an error, so removing it would
+ *  remove the answer. All 96 slots stay; only the order changes.
+ *
+ *  What that buys is measured rather than asserted: the row a one-hour leg lands on runs
+ *  2–86 today depending on where midnight happens to fall relative to the departure, and is
+ *  always 3 rotated. The distance stops being decided by a fact about nothing. */
+export function offeredFrom(afterMin: number, times: readonly number[]): number[] {
+  const at = times.indexOf(afterMin);
+  if (at < 0) return [...times];
+  return [...times.slice(at + 1), ...times.slice(0, at + 1)];
+}
 
 /** The nearest round (15-min) slot to a minute-of-day, capped at the last slot
  *  (23:45) so the suggestion is always a real list row. Suggests — never mutates
@@ -56,6 +82,8 @@ export function TimeField({
   onClear,
   minTime,
   maxTime,
+  afterTime,
+  dayOffsetOf,
   triggerClassName,
 }: {
   value: string; // HH:MM or ''
@@ -79,6 +107,27 @@ export function TimeField({
    *  deadline beside it. Same posture as its twin: the impossible slot is never offered,
    *  so no refusal has to explain it afterwards. */
   maxTime?: string;
+  /** **The moment this one FOLLOWS**, `HH:MM` — the previous clock in a chain. Rotates the
+   *  offered order to start just after it and wrap through midnight (see `offeredFrom`); it
+   *  never removes a slot, so it is safe on a hard commitment.
+   *
+   *  Its one caller today is the journey rail, and that is by construction rather than by
+   *  omission: `transportProfile` sets `inMotion: true` for flight, train and transit and
+   *  nothing else, and all three also title from their route — so every booking type whose
+   *  span is spent in motion IS a journey. What is left in `WhenField` is a stay and a hire,
+   *  whose two endpoints are independent times of day, and where anchoring the second on the
+   *  first would be WRONG rather than merely unnecessary: a checkout at 11:00 does not
+   *  follow from a check-in at 15:00, and anchoring would bury it 44 rows down. */
+  afterTime?: string;
+  /** **How many days after the journey's date a given clock lands on**, so the list can say
+   *  where the day turns without ever computing one.
+   *
+   *  It cannot be drawn at local midnight: Tokyo 21:00 → Honolulu 09:00 is the SAME day,
+   *  because the flight also crossed nineteen hours westward — the case ADR-0203 §2 exists
+   *  for, and one a midnight divider would announce as `למחרת` while the derivation reads it
+   *  as today. So the host, which owns the two zones, answers it through the same
+   *  `resolveJourneyDays` everything else reads. Omitted → no divider. */
+  dayOffsetOf?: (hhmm: string) => number;
   triggerClassName?: string;
 }) {
   const [openState, setOpenState] = useState(false);
@@ -87,9 +136,26 @@ export function TimeField({
 
   const floor = minTime ? toMin(minTime) : null;
   const ceiling = maxTime ? toMin(maxTime) : null;
-  const times = ALL_TIMES.filter(
+  const bounded = ALL_TIMES.filter(
     (m) => (floor == null || m > floor) && (ceiling == null || m < ceiling),
   );
+  // Bounds first, then order: a filter decides WHICH slots exist and the anchor decides the
+  // order they are read in, so composing them is well-defined even though no caller passes
+  // both today.
+  const times = afterTime ? offeredFrom(toMin(afterTime), bounded) : bounded;
+  /** The first offered slot that lands on a later day than the one before it — where the
+   *  divider goes. Read off `dayOffsetOf`, never from midnight: a westward crossing keeps the
+   *  same day past 00:00, and guessing here is the bug ADR-0203 §2 exists to prevent. */
+  const turnAt = (() => {
+    if (!dayOffsetOf || times.length === 0) return null;
+    let previous = dayOffsetOf(toHHMM(times[0]));
+    for (let i = 1; i < times.length; i++) {
+      const offset = dayOffsetOf(toHHMM(times[i]));
+      if (offset > previous) return times[i];
+      previous = offset;
+    }
+    return null;
+  })();
   // The native input's `min`/`max` are inclusive, so each bound's neighbouring minute is
   // the first legal one — clamped away entirely at the ends of the day, where there is no
   // later (or earlier) minute to name.
@@ -150,15 +216,26 @@ export function TimeField({
           </div>
           <div className="tp-list">
             {times.map((m) => (
-              <button
-                key={m}
-                ref={m === min || m === suggest ? centredRow : undefined}
-                type="button"
-                className={m === min ? 'tp-list-on' : m === suggest ? 'tp-list-suggest' : undefined}
-                onClick={() => pick(m)}
-              >
-                <span dir="auto">{toHHMM(m)}</span>
-              </button>
+              <Fragment key={m}>
+                {/* The day turning, INSIDE the list — so the relative day is visible while
+                    choosing rather than stated afterwards. Not a `<button>`: that class owns
+                    a row's border and its 44px box, and reusing it drew a dead option. */}
+                {m === turnAt && (
+                  <div className="tp-list-turn" aria-hidden="true">
+                    {t.journey.nextDay}
+                  </div>
+                )}
+                <button
+                  ref={m === min || m === suggest ? centredRow : undefined}
+                  type="button"
+                  className={
+                    m === min ? 'tp-list-on' : m === suggest ? 'tp-list-suggest' : undefined
+                  }
+                  onClick={() => pick(m)}
+                >
+                  <span dir="auto">{toHHMM(m)}</span>
+                </button>
+              </Fragment>
             ))}
           </div>
           {onClear && value && (

@@ -31,6 +31,12 @@ export interface TripStreamHandlers {
    *  (flush the outbox + replay `changes?sinceSeq=`) since frames may have been
    *  missed while the socket was down. Not fired on the very first connect. */
   onReconnect?: () => void;
+  /** **This socket says we are live, and our cursor is already current** — a `hello` whose
+   *  `latestSeq` is not ahead of ours, on any connect including the first. Nothing to fetch,
+   *  which is exactly why it needs saying: a caller showing cached data has no other way to
+   *  learn it is online. `onResync` is the same proof with work attached, so the two are
+   *  mutually exclusive and every `hello` fires one of them. */
+  onLive?: () => void;
   /** **Enrichment landed for a place this trip holds** (ADR-0166 §6). Not a `Change` and
    *  carries no `seq`, so missing one costs nothing: the value is in the next snapshot. */
   onEnrichment?: (placeId: string, fields: DeliveredEnrichmentFields) => void;
@@ -163,6 +169,7 @@ export function openTripStream(
       }
       if (msg.type === WS_MESSAGE_TYPE.HELLO) {
         if (BigInt(msg.latestSeq) > lastSeq) handlers.onResync();
+        else handlers.onLive?.();
         lastSeq = BigInt(msg.latestSeq);
       } else if (msg.type === WS_MESSAGE_TYPE.CHANGE) {
         const seq = BigInt(msg.seq);

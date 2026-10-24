@@ -44,6 +44,9 @@ export type AppShellProps = {
   bodyKey?: Key | null;
   /** Mode identity, applied as `data-mode` so the existing chrome CSS keys off it. */
   mode?: string;
+  /** The trip's phase, applied as `data-phase`: `past` is what puts the archive's band on the
+   *  chrome (ADR-0240 §3). Separate from `mode`, which a finished trip still reads as `plan`. */
+  phase?: string;
   /** Mode-switch transition state, applied as `data-switching` (omitted when unset). */
   switching?: string;
   /** Chrome state a SURFACE declares, applied as `data-chrome` (omitted when unset).
@@ -82,6 +85,7 @@ export function AppShell({
   children,
   bodyKey,
   mode,
+  phase,
   switching,
   chrome,
   holdChrome,
@@ -105,6 +109,7 @@ export function AppShell({
       ref={setFrameEl}
       className={cx('app', className)}
       data-mode={mode}
+      data-phase={phase}
       data-switching={switching}
       // `data-chrome` is the SURFACE'S statement; `data-chrome-row` is where the
       // body's scroll has got to. They are separate attributes because only the first

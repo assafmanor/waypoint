@@ -1,0 +1,25 @@
+<!doctype html>
+<!-- The REAL `SnapSheet` in a real engine, with nothing else on the page. Served by the Vite
+     dev server only (a production bundle never emits it), which is why the spec that loads it
+     skips under `E2E_PREVIEW`. Query: `?view=half|full&content=<px>`. -->
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SnapSheet harness</title>
+    <style>
+      body {
+        margin: 0;
+      }
+      .pane {
+        position: relative;
+        height: 600px;
+        background: #ddd;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./snap-sheet-harness.tsx"></script>
+  </body>
+</html>

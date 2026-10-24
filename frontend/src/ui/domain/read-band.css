@@ -1,0 +1,110 @@
+/* **The way from an open day card into the read** (ADR-0229 §2) — `ui/domain/ReadBand`.
+
+   Short on purpose, and the shortness is the argument: the band is `PhotoBand` at `card`
+   density, so what is new here is a wrapper that makes the whole picture a button, a pill
+   saying where the tap goes, and the one-line fallback for a place with no photograph. A second
+   shot primitive is what this deliberately is not. */
+
+/* Both shapes wear the panel's own gutter and rule, so the read reads as one more band in the
+   open card rather than as a control bolted onto it — the same `var(--space-3) 14px` and
+   `--line` the documents, tasks and notes sections already take (`event-card.css`). */
+.rd-band,
+.rd-line {
+  inline-size: 100%;
+  border: 0;
+  border-block-start: 1px solid var(--line);
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.rd-band {
+  display: block;
+  padding: 0;
+  position: relative;
+}
+
+.rd-band:active,
+.rd-line:active {
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+}
+
+/* **The way in sits at the band's TOP trailing corner, and rendering is why** (ADR-0229's
+   build). At the bottom it had to reserve a track inside the caption, which then ellipsised the
+   CREDIT from its start (`…A 2.0 · Ulrich Latzenhofer`) — a mangled attribution, which is the
+   one line on this band that is a licence obligation rather than a nicety (ADR-0166 §12.2). Up
+   here the caption keeps its full width. Move the control, not the obligation. */
+.rd-go {
+  position: absolute;
+  inset-block-start: 10px;
+  inset-inline-end: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 9px;
+  border-radius: 9px;
+  font-size: var(--text-caption);
+  font-weight: 700;
+  /* It sits on a photograph, so it carries its own ground in both themes — the same reasoning
+     as the scrim beneath it, which is black in light and dark alike (ADR-0219 §6). */
+  background: rgb(0 0 0 / 46%);
+  color: #fff;
+  /* Decoration over a control that is already named by its own accessible text; the tap belongs
+     to the band. */
+  pointer-events: none;
+}
+
+.rd-go .icon {
+  inline-size: 14px;
+  block-size: 14px;
+}
+
+/* ── The place with no photograph, which is most of them (ADR-0166 §11.3) ───────────────────── */
+
+.rd-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  /* ADR-0017's floor, stated rather than hoped for: the label alone is 2px under it. */
+  min-block-size: 44px;
+  padding: var(--space-3) 14px;
+}
+
+.rd-line-main {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+/* Neutral `--cta`: a way out is neither a time nor a place, which is rule 4 read literally
+   (ADR-0028). The same spend `HostNotes`' own add control already makes in this panel. */
+.rd-t {
+  font-size: var(--text-caption);
+  font-weight: 700;
+  color: var(--cta);
+}
+
+/* The one fact the row above cannot say. One line: an address is a thing you SHOW somebody, so
+   it is worth a line, and a second line of it is a paragraph nobody reads on a glance surface. */
+.rd-sub {
+  font-size: var(--text-caption);
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rd-line-go {
+  flex: 0 0 auto;
+  color: var(--muted);
+  display: inline-flex;
+}
+
+.rd-line-go .icon {
+  inline-size: 16px;
+  block-size: 16px;
+}

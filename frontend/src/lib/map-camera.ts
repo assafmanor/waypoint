@@ -66,6 +66,16 @@ export function boundsOfPoints(points: readonly LatLng[]): MapBounds | null {
   return { north, south, east, west };
 }
 
+/** **The middle of a set of points, as a fit would centre them** — the centre of their extent,
+ *  not the average of them, so a dense cluster at one end of a leg cannot drag it. `null` for an
+ *  empty set, like `boundsOfPoints`. Read by the camera to keep the SUBJECT of a selection in
+ *  the visible band when the card under it changes size (ADR-0206 §AC8). */
+export function centreOfPoints(points: readonly LatLng[]): LatLng | null {
+  const bounds = boundsOfPoints(points);
+  if (!bounds) return null;
+  return { lat: (bounds.north + bounds.south) / 2, lng: (bounds.east + bounds.west) / 2 };
+}
+
 export function pointInBounds(bounds: MapBounds, point: LatLng): boolean {
   return (
     point.lat <= bounds.north &&
@@ -322,6 +332,26 @@ export function zoomStepIn(
 }
 
 /**
+ * **The zoom a pan may keep when the camera could not frame what the pan is ABOUT** — `cap` when
+ * the camera is tighter than that, and `null` for "keep the one you are on", which is `moveTo`'s
+ * existing contract rather than a second dialect.
+ *
+ * It exists because a refusal is not the same as "nothing happened". `framePath` declines a leg it
+ * could only frame from country zoom, and before this the fallback pan inherited whatever zoom the
+ * camera was at — which, since the camera started framing legs itself, is the zoom IT chose for the
+ * previous, shorter leg. So walking a day from two stops on one street to two an hour apart left
+ * you at street zoom on a leg that leaves the canvas immediately (owner, 2026-08-28: _"after moving
+ * from close stops to more far stops, the zoom stays instead of zooming out"_).
+ *
+ * **It only ever pulls BACK.** A view already wider than `cap` is owed nothing — the rule the
+ * re-fit guard runs one level up — and zooming IN on a subject the camera has just admitted it
+ * cannot frame is movement nobody asked for.
+ */
+export function zoomNoTighterThan(current: number | null | undefined, cap: number): number | null {
+  return current != null && current > cap ? cap : null;
+}
+
+/**
  * **How much ground to show around a place you were sent to look at** (ADR-0129 §2).
  *
  * A fixed zoom cannot know whether it is dropping you in a dense district or an empty
@@ -480,6 +510,40 @@ export function cameraTargetFor(points: readonly LatLng[], view: MapBounds | nul
 export interface CameraAt {
   center: LatLng;
   zoom: number;
+  /** **Which way is up, in degrees clockwise from north** (ADR-0234). Optional, and that is
+   *  not laziness: almost every camera move in this app is a pan or a fit and has no opinion
+   *  about the angle, so `undefined` means "leave it where it is" and only the orientation
+   *  control ever sets it. A required field would make every existing call site state a
+   *  number it does not care about, and the first one to state it wrongly would silently
+   *  straighten a map the user had turned. */
+  bearing?: number;
+}
+
+/** Degrees, wrapped into `[0, 360)`. The renderer will hand back anything — MapLibre reports
+ *  a bearing in `(-180, 180]` — and every comparison below wants one representation. */
+export function normalizeBearing(degrees: number): number {
+  // `((x % 360) + 360) % 360` rather than a `< 0` branch, because the branch returns **`-0`**
+  // for an exact `-360`: `-0 < 0` is false, so the correction is skipped. Harmless in CSS
+  // and not harmless in a comparison — `Object.is(-0, 0)` is false, and this value is what
+  // `sameCamera` decides "did a finger move the map" on.
+  return ((degrees % 360) + 360) % 360;
+}
+
+/**
+ * **The short way round**, in degrees, signed: what to ADD to `from` to arrive at `to`.
+ *
+ * Exactly the problem `cameraFrame` already solves for longitude, and for the same reason —
+ * a straight lerp from 350° to 10° sweeps 340° the wrong way, which on a map that is
+ * *turning under the reader* is not a rounding error but a spin. The one difference is that
+ * bearings live on `[0, 360)` where longitudes live on `[-180, 180]`.
+ *
+ * Ties (exactly 180°) resolve **negative**, i.e. counter-clockwise. Nothing recommends one
+ * direction over the other for a half turn; what matters is that it is the same every time,
+ * so this states what the arithmetic does rather than adding a branch to prefer the other.
+ */
+export function shortestTurn(from: number, to: number): number {
+  const delta = (normalizeBearing(to) - normalizeBearing(from) + 540) % 360;
+  return delta - 180;
 }
 
 /**
@@ -504,6 +568,14 @@ export function cameraFrame(from: CameraAt, to: CameraAt, progress: number): Cam
       lng: from.center.lng + dLng * t,
     },
     zoom: from.zoom + (to.zoom - from.zoom) * t,
+    // Only when the move HAS an opinion about the angle, and only when there is one to
+    // interpolate from. Otherwise the key is absent and the renderer keeps what it has —
+    // which is what makes every pan and fit in the app bearing-blind by construction.
+    ...(to.bearing != null && from.bearing != null
+      ? { bearing: normalizeBearing(from.bearing + shortestTurn(from.bearing, to.bearing) * t) }
+      : to.bearing != null
+        ? { bearing: to.bearing }
+        : {}),
   };
 }
 

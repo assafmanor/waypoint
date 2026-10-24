@@ -8,11 +8,20 @@
 // `PlaceUsage` the list rows read, the same `comparePlacesBySchedule` order the
 // Day view renders. That is the property the list-first investment was for — a
 // chip that changes the list changes the pins in the same pass (ADR-0110 §2).
-import { iconForCategory, type EventCategory, type TripEvent } from '@waypoint/shared';
+import {
+  iconForCategory,
+  isAmbient,
+  recapHappened,
+  EVENT_STATUS,
+  type EventCategory,
+  type TripEvent,
+} from '@waypoint/shared';
+import { buildTimeTree, byPeer, peerEntry, peerExit, type TimeGroup } from './time';
 import { chosenIcon, DEFAULT_PLACE_ICON, MAP_PIN } from '../constants';
 import {
   isDayUsagePast,
   isOnShelf,
+  broughtInOvernight,
   knowsMoment,
   placeDay,
   relevantMoment,
@@ -22,6 +31,11 @@ import {
   type PlaceUsage,
 } from './place-usage';
 import { eventEdgeTransition } from './transitions';
+// The one derivation that says whether an ambient span is a STAY (ADR-0163 §4) — a hotel
+// brackets your day, a car hire does not. Read, not re-asked: its docblock already exports it
+// for a second shape.
+import { ambientSpanPosition, countsNights, isStayRow } from './glance';
+import { t } from '../i18n/he';
 
 /**
  * The prominence ladder, one tier per pin (ADR-0121 §6). The list separates
@@ -72,6 +86,10 @@ export type PinContext = Pick<PlaceOrderContext, 'onDate' | 'nowMs' | 'today'> &
    *  faded stop is one you are least able to see while doing it. The screen decides
    *  this, exactly as it decides the amber cues — the lib takes the answer. */
   planning?: boolean;
+  /** **A finished trip** (ADR-0241 §1), in place of `planning`: after the trip everything is
+   *  behind you, so the clock's grey would wash the whole map, and the pin says instead what
+   *  the RECORD says (`recapHappened`, ADR-0239 §9) — which needs the rows, hence the lookup. */
+  finished?: { eventById: (id: string) => TripEvent | undefined };
 };
 
 /**
@@ -109,7 +127,10 @@ export function placePinTier(usage: PlaceUsage, ctx: PinContext): PinTier {
     if (!ctx.onDate) return ideaOrUpcoming(usage);
     return usage.days.length === 0 && isOnShelf(usage) ? PIN_TIER.shelf : PIN_TIER.ghost;
   }
-  if (!ctx.planning && ctx.nowMs != null && isDayUsagePast(day, ctx.nowMs, ctx.today)) {
+  if (ctx.finished) {
+    // The grey keeps one meaning after the trip: somewhere we did not go.
+    if (placeRecord(usage, ctx) === 'skipped') return PIN_TIER.behind;
+  } else if (!ctx.planning && ctx.nowMs != null && isDayUsagePast(day, ctx.nowMs, ctx.today)) {
     return PIN_TIER.behind;
   }
   if (day.prominence === 'ambient') return PIN_TIER.ambient;
@@ -122,7 +143,7 @@ const ideaOrUpcoming = (usage: PlaceUsage): PinTier =>
 /** What a human said happened at a place, as the canvas draws it. The stored vocabulary
  *  (`DayUsage['outcome']`, ADR-0117 §1), never a second one — the row and the pin have to
  *  be answering with the same word. */
-export type PinOutcome = NonNullable<DayUsage['outcome']>;
+export type PinOutcome = NonNullable<DayUsage['outcome']> | 'open';
 
 /**
  * The outcome mark a pin carries, or `undefined` for none (ADR-0137, keeping the promise
@@ -170,6 +191,13 @@ export type PinOutcome = NonNullable<DayUsage['outcome']>;
  */
 export function pinOutcome(usage: PlaceUsage, ctx: PinContext): PinOutcome | undefined {
   const tier = placePinTier(usage, ctx);
+  // **A finished trip's pin reads the record, not the day** (ADR-0241 §1): happened needs no
+  // mark, skipped is the ✕, and a place nobody answered for is the empty ring. A ghost is still
+  // about another day, so it keeps the day's reading below.
+  if (ctx.finished && tier !== PIN_TIER.ghost) {
+    const record = placeRecord(usage, ctx);
+    return record === 'happened' ? undefined : record;
+  }
   if (tier !== PIN_TIER.behind && tier !== PIN_TIER.ghost) return undefined;
   // A ghost is out of the scope by definition, so asking about `onDate` returns nothing;
   // dropping it asks the question the ghost is actually answering ("which day is this
@@ -179,6 +207,90 @@ export function pinOutcome(usage: PlaceUsage, ctx: PinContext): PinOutcome | und
       ? placeDay(usage, { nowMs: ctx.nowMs, today: ctx.today })
       : placeDay(usage, ctx);
   return day?.prominence === 'ambient' ? undefined : day?.outcome;
+}
+
+/** The rows a place carries, in date order: every day's pointer and every moment's, once each.
+ *  `onDate` narrows it to one day, which is what a day scope asks. */
+function placeEvents(
+  usage: PlaceUsage,
+  eventById: (id: string) => TripEvent | undefined,
+  onDate?: string,
+): TripEvent[] {
+  const ids = new Set<string>();
+  for (const day of usage.days) {
+    if (onDate && day.date !== onDate) continue;
+    if (day.eventId) ids.add(day.eventId);
+    for (const moment of day.moments ?? []) if (moment.eventId) ids.add(moment.eventId);
+  }
+  return [...ids].map(eventById).filter((event): event is TripEvent => event != null);
+}
+
+/**
+ * **What the record says about a place on a finished trip** (ADR-0241 §1): `happened` if any
+ * of its rows happened (`recapHappened`, so a booked dinner nobody skipped counts), `skipped`
+ * if every one was skipped, else `open` — somebody still has to say. `undefined` for a place
+ * with no row at all (a shelf idea), which has no outcome to report.
+ */
+export function placeRecord(
+  usage: PlaceUsage,
+  ctx: PinContext,
+): 'happened' | 'skipped' | 'open' | undefined {
+  if (!ctx.finished) return undefined;
+  const events = placeEvents(usage, ctx.finished.eventById, ctx.onDate);
+  if (events.length === 0) return undefined;
+  if (events.some(recapHappened)) return 'happened';
+  return events.every((event) => event.status === EVENT_STATUS.SKIPPED) ? 'skipped' : 'open';
+}
+
+/** **The first day a place happened on**, for the finished trip's row button (ADR-0241 §1). */
+export function firstHappenedDate(
+  usage: PlaceUsage,
+  eventById: (id: string) => TripEvent | undefined,
+): string | undefined {
+  const days = [...usage.days].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  return days.find((day) => placeEvents(usage, eventById, day.date).some(recapHappened))?.date;
+}
+
+/** **The nights we slept at a place**, over its stays that happened, for the pin's neutral tag
+ *  on a finished trip (ADR-0241 §1). 0 for anything that is not a bed. */
+export function stayNights(
+  usage: PlaceUsage,
+  eventById: (id: string) => TripEvent | undefined,
+): number {
+  return placeEvents(usage, eventById)
+    .filter((event) => isStayRow(event) && recapHappened(event))
+    .reduce((sum, event) => sum + ambientSpanPosition(event, event.date).total, 0);
+}
+
+/**
+ * **The journey** (ADR-0241 §1, amending ADR-0182 §11): a finished trip's all-days route, which
+ * is each day's {@link buildDayStopSequence} concatenated by date — one derivation, asked once
+ * per day, rather than a second ordering of the whole trip.
+ *
+ * Only stops that happened: a line through a place nobody went is the plan counted as the trip.
+ * The tail is out for the day route's own reason (no position to claim), and consecutive repeats
+ * fold, so the bed that ends one day and starts the next is one point.
+ */
+export function buildJourney(
+  usages: readonly PlaceUsage[],
+  dates: readonly string[],
+  ctx: Omit<DayStopContext, 'onDate' | 'dawnMs' | 'eventById'> & {
+    eventById: (id: string) => TripEvent | undefined;
+    dawnMsOf?: (date: string) => number | undefined;
+  },
+): DayStop[] {
+  const { dawnMsOf, ...dayCtx } = ctx;
+  const happened = (stop: DayStop) => {
+    const id = stop.moment.eventId ?? stop.day.eventId;
+    const event = id ? ctx.eventById(id) : undefined;
+    return event != null && recapHappened(event);
+  };
+  return dates
+    .flatMap((onDate) =>
+      buildDayStopSequence(usages, { ...dayCtx, onDate, dawnMs: dawnMsOf?.(onDate) }),
+    )
+    .filter((stop) => !stop.tail && happened(stop))
+    .filter((stop, i, all) => i === 0 || stop.usage.placeId !== all[i - 1]!.usage.placeId);
 }
 
 /**
@@ -234,12 +346,23 @@ export function pinTransition(
    *  on surfaces that do not resolve journeys, which then behave exactly as before. */
   connectionWordAt?: (placeId: string, date: string) => string | undefined,
 ): string | undefined {
-  if (placePinTier(usage, ctx) === PIN_TIER.behind) return undefined;
   const day = placeMetaDay(usage, ctx);
+  // **A STAY KEEPS ITS WORD WHEN IT IS BEHIND YOU** (ADR-0054's 2026-08-26 amendment).
+  // The silence below is right for a word that means *what happens next here* — naming a
+  // departed flight as ahead is a lie. A stay's word is not that claim: it is which END of
+  // the day this place was, and the day does not stop having started at the hotel because
+  // it is now the afternoon. Without the exemption the map states the check-IN you are
+  // heading for and stays mute about the check-OUT you already did, which is half a route.
+  // The grey still says "behind you"; the word only says which moment it was.
+  const stay = day ? stayEnds(day, day.date, eventById) : undefined;
+  if (!stay && placePinTier(usage, ctx) === PIN_TIER.behind) return undefined;
   const stop = day?.date ? connectionWordAt?.(usage.placeId, day.date) : undefined;
   if (stop) return stop;
   const event = day?.eventId ? eventById(day.eventId) : undefined;
-  return event ? eventEdgeTransition(event, day?.edge) : undefined;
+  const edge = event ? eventEdgeTransition(event, day?.edge) : undefined;
+  // A strictly middle night carries NEITHER end, so there is no transition word to find —
+  // and it is the one pin sitting at both ends of the route. It says what it is instead.
+  return edge ?? (stay ? t.map.stayNight : undefined);
 }
 
 /**
@@ -294,6 +417,10 @@ export interface DayStop {
   day: DayUsage;
   moment: DayStopMoment;
   order?: number;
+  /** **The stop this is one member of** (ADR-0225 §2) — set on every peer of an ADR-0041
+   *  cluster, keyed by the cluster's first member. Peers share `order` and the route draws no
+   *  leg between them: a stop you are at once is one stop, whatever the count of places. */
+  peerKey?: string;
   /** **The tail** (ADR-0182 §2): on the day, but with no schedule slot to hold a position —
    *  an idea pencilled in with no event. It is traversable and it is never numbered. */
   tail?: true;
@@ -309,6 +436,114 @@ export interface DayStopContext {
    *  derivation the day's band and the pin's word already read (ADR-0159 §6). Absent
    *  where journeys are not resolved. */
   isConnectionStop?: (placeId: string, date: string) => boolean;
+  /** **When this day's morning begins**, as an instant — `dayWindowMs(onDate, zone).startMs`
+   *  (ADR-0045's window / ADR-0037's dawn). Resolved by the screen because a wall-clock hour
+   *  needs a zone and these derivations deliberately hold none. Absent means no stop is ever
+   *  read as a night arrival, so the sequence behaves exactly as it did. */
+  dawnMs?: number;
+}
+
+/** A stop before it is numbered: a place, the day it sits on, and one of that day's moments. */
+type DayStopEntry = { usage: PlaceUsage; day: DayUsage; moment: DayStopMoment };
+
+/**
+ * **Which stops are peers of one stop** (ADR-0225 §2): a stop's cluster key, for every stop whose
+ * start-edge moment belongs to an ADR-0041 cluster on this day. Read off `buildTimeTree` over the
+ * stops' own events — the day's brace and the map's number cannot then disagree about who shares
+ * a stop. Nested clusters count too (a beach day holding two things that clash), because a peer
+ * is a peer at whatever depth; an ambient stay is left out, as it is everywhere on this canvas.
+ * Empty without an event resolver, which is every surface that numbers moments as before.
+ */
+function peerKeysOf(
+  stops: readonly DayStopEntry[],
+  eventById: DayStopContext['eventById'],
+): Map<DayStopEntry, string> {
+  const out = new Map<DayStopEntry, string>();
+  if (!eventById) return out;
+  const candidates = stops.filter(
+    (stop) => stop.moment.edge !== 'end' && stop.moment.eventId && stop.moment.at != null,
+  );
+  const events = new Map<string, TripEvent>();
+  for (const stop of candidates) {
+    const event = eventById(stop.moment.eventId!);
+    if (event && !isAmbient(event)) events.set(event.id, event);
+  }
+  const keyByEvent = new Map<string, string>();
+  const walk = (groups: TimeGroup[]) => {
+    for (const g of groups) {
+      if (g.kind === 'cluster') {
+        const key = g.items[0]!.event.id;
+        for (const item of g.items) {
+          keyByEvent.set(item.event.id, key);
+          walk(item.children);
+        }
+      } else walk(g.item.children);
+    }
+  };
+  walk(buildTimeTree([...events.values()]));
+  for (const stop of candidates) {
+    const key = keyByEvent.get(stop.moment.eventId!);
+    if (key) out.set(stop, key);
+  }
+  return out;
+}
+
+/** **The peers in the order the route runs through the stop** (ADR-0225 §5): the entry first,
+ *  the exit last, the rest by `byPeer` between them. With two peers of equal span that is
+ *  "the one you added first, then the other" — and it is the order the day's brace lists them. */
+function orderPeers(
+  peers: readonly DayStopEntry[],
+  eventById: NonNullable<DayStopContext['eventById']>,
+): DayStopEntry[] {
+  const eventOf = (stop: DayStopEntry) => eventById(stop.moment.eventId!)!;
+  const events = peers.map(eventOf);
+  const entry = peerEntry(events);
+  const exit = peerExit(events);
+  const head = peers.find((stop) => eventOf(stop) === entry)!;
+  const tail = peers.find((stop) => eventOf(stop) === exit)!;
+  const rest = peers
+    .filter((stop) => stop !== head && stop !== tail)
+    .sort((a, b) => byPeer(eventOf(a), eventOf(b)));
+  return head === tail ? [head, ...rest] : [head, ...rest, tail];
+}
+
+/**
+ * **Which ends of `date` a stay bookends**, or `undefined` when this day is not a night of
+ * one (ADR-0054's 2026-08-25 amendment).
+ *
+ * A night-counting ambient span is the only thing that can answer, and both halves of that
+ * are load-bearing: `isAmbient` is what makes a stay backdrop rather than a stop, and
+ * `countsNights` is what separates a hotel from a car hire — you sleep in one, so it brackets
+ * your day, and you merely hold the other, so its pickup and return are ordinary stops at
+ * their own (unnumbered) instants. Both are read off ADR-0162's profile, so a future ambient
+ * category inherits the answer without anyone naming it here.
+ *
+ * It walks **every** moment on the day rather than the day's own pointer, because the pointer
+ * names the earliest reference and a hotel you also eat dinner at would hide behind the
+ * dinner. Two stays on one day (you moved) both get their say, which is what makes the
+ * change-over day come out as `A's check-out … B's check-in` with no rule of its own.
+ *
+ * `eventById` absent means no stay is ever found, so every surface that cannot resolve events
+ * behaves exactly as it did — the same shape the rest of this file uses, and the same one that
+ * keeps `knowsMoment` inert there.
+ */
+function stayEnds(
+  day: DayUsage,
+  date: string,
+  eventById?: (id: string) => TripEvent | undefined,
+): { first: boolean; last: boolean } | undefined {
+  const moments = day.moments?.length ? day.moments : [{ eventId: day.eventId }];
+  let found = false;
+  let first = false;
+  let last = false;
+  for (const moment of moments) {
+    const event = moment.eventId ? eventById?.(moment.eventId) : undefined;
+    if (!event?.endDate || !isAmbient(event) || !countsNights(event)) continue;
+    found = true;
+    first ||= event.date < date;
+    last ||= date < event.endDate;
+  }
+  return found ? { first, last } : undefined;
 }
 
 /**
@@ -326,17 +561,22 @@ export interface DayStopContext {
  * enters exactly one line, in `buildPinOrderIndex`, deciding which of its own stops a
  * twice-visited place is currently about.
  *
- * The order is: the day's timed stops by their moment, with one connection collapsed to one
- * stop; then the untimed ones; then the **tail** — places on the day with no schedule slot at
- * all, which never entered this function's first step and are what "untimed items come after
- * the timed portion" actually names. `ambient` is excluded throughout, because a strictly
- * middle night of a stay is backdrop and not a stop ({@link PIN_TIER}).
+ * The order is: the stay you woke in; then the day's stops by their moment, with one
+ * connection collapsed to one stop and the clockless ones after; then the stay you are
+ * sleeping in; then the **tail** — places on the day with no schedule slot at all, which
+ * never entered this function's first step and are what "untimed items come after the timed
+ * portion" actually names.
+ *
+ * **`ambient` is no longer excluded outright** (ADR-0054's 2026-08-25 amendment). A strictly
+ * middle night of a stay is still backdrop as a PIN — {@link PIN_TIER} is untouched — and it
+ * is now also the two ends of the day's route, because it is the one place you can be sure
+ * you both started and finished at. Nothing else ambient enters.
  */
 export function buildDayStopSequence(
   usages: readonly PlaceUsage[],
   ctx: DayStopContext,
 ): DayStop[] {
-  const { nameOf, onDate, eventById, isConnectionStop } = ctx;
+  const { nameOf, onDate, eventById, isConnectionStop, dawnMs } = ctx;
   // No day, no sequence to be an index in — and renumbering per day is worse than
   // nothing: two pins both reading `1` on one canvas, with nothing on either saying
   // which day it belongs to. Which is also why an all-days scope has no traversal:
@@ -353,20 +593,24 @@ export function buildDayStopSequence(
       : [{ at: day.at, eventId: day.eventId, edge: day.edge }]
     ).map((moment) => ({ usage, day, moment })),
   );
-  // The day's own order, and no clock in it: **known** stops by their moment, the rest after
-  // (they cannot claim a position they do not have), then the manual `sortOrder` and the name
-  // — the same tail `comparePlacesBySchedule` breaks its ties with.
+  // The day's own order, and no clock in it: stops carrying a moment sort by that moment,
+  // the rest after (they cannot claim a position they do not have), then the manual
+  // `sortOrder` and the name — the same tail `comparePlacesBySchedule` breaks its ties with.
   //
-  // AMENDED (ADR-0182 §3's reversal): this sank only the CLOCKLESS, so a floor or a ceiling
-  // sorted among the numbered stops on a time it cannot defend — a hotel check-in at "from
-  // 15:00" between the stops at 14:00 and 16:00, wearing no number. It asks `knowsMoment`
-  // now, which is the same question the numbering asks one block down, so a stop cannot sort
-  // as timed and read as unnumbered.
-  const known = (m: DayStopMoment) => knowsMoment(m, eventById);
+  // **It ORDERS on the instant and NUMBERS on `knowsMoment`, and the two questions are
+  // deliberately different again** (ADR-0182 §3's 2026-08-25 amendment, reversing its
+  // 2026-08-11 one *here only*). They were made one question so that a stop could not sort
+  // as timed and read as unnumbered — right for a LIST, where a position is a claim about
+  // the schedule, and `comparePlacesBySchedule` still asks it that way. This sequence is
+  // now also the map's **route**, where a position is a claim about GEOGRAPHY: a car
+  // collected "from 09:00" is somewhere you go at 09:00-ish, and sinking it to the day's
+  // tail draws the line through it in an order you were never in. The number still refuses
+  // to guess (`knowsMoment`, one block down); the line no longer has to.
+  const clocked = (m: DayStopMoment) => m.at != null;
   stops.sort((a, b) => {
-    if (known(a.moment) && known(b.moment) && a.moment.at !== b.moment.at)
+    if (clocked(a.moment) && clocked(b.moment) && a.moment.at !== b.moment.at)
       return a.moment.at! - b.moment.at!;
-    if (known(a.moment) !== known(b.moment)) return known(a.moment) ? -1 : 1;
+    if (clocked(a.moment) !== clocked(b.moment)) return clocked(a.moment) ? -1 : 1;
     const sa = a.day.sortOrder ?? 0;
     const sb = b.day.sortOrder ?? 0;
     if (sa !== sb) return sa - sb;
@@ -388,6 +632,103 @@ export function buildDayStopSequence(
     if (!prev || prev.usage.placeId !== stop.usage.placeId) return true;
     return !isConnectionStop?.(stop.usage.placeId, onDate);
   });
+  // ── A DAY STARTS AND ENDS WHERE YOU SLEEP ───────────────────────────────────────────
+  // (ADR-0054's 2026-08-25 amendment. Owner: _"on most days you can infer for certain that
+  // you're gonna start the day in a hotel and end in a hotel, so you can add poly lines to
+  // them and place them first/last on the schedule"_.)
+  //
+  // The stay you slept in is the one stop of the day nobody schedules and everybody makes,
+  // and it was missing from this sequence for **two different reasons**, which is why one
+  // fix could not have found it: a strictly middle night is `ambient`, which this function
+  // drops as backdrop, and a check-in / check-out day carries a floor or a ceiling, which
+  // the sort above used to sink past every stop that had a defensible clock.
+  //
+  // **A bookend is a POSITION, not a number.** `knowsMoment` still refuses the mark — "from
+  // 15:00" is any hour after — so it joins the sequence and the map's route wearing nothing
+  // (owner's call: _"sequence + route, no number"_), and the numbering below is untouched by
+  // construction rather than by an exclusion.
+  //
+  // **Which end needs no third rule**: the stay covered last night → you woke there
+  // (`first`); it covers tonight → you end there (`last`). So a check-in day is `last` only,
+  // a check-out day `first` only, and a middle night is **both** — the day with a hotel at
+  // each end. A day you change hotels gets A's check-out first and B's check-in last, for
+  // free, because each answers about its own span.
+  const first: DayStopEntry[] = [];
+  const middle: DayStopEntry[] = [];
+  const last: DayStopEntry[] = [];
+  for (const stop of merged) {
+    const ends = stayEnds(stop.day, onDate, eventById);
+    if (!ends) {
+      middle.push(stop);
+      continue;
+    }
+    if (ends.first) first.push(stop);
+    if (ends.last) last.push(stop);
+    if (!ends.first && !ends.last) middle.push(stop);
+  }
+  // The nights `hasScheduleSlot` never let in. Same rule, second population — a middle night
+  // has no edge and no clock at all, so it can only ever have been found this way.
+  for (const usage of usages) {
+    const day = placeDay(usage, { onDate });
+    if (!day || hasScheduleSlot(day)) continue;
+    const ends = stayEnds(day, onDate, eventById);
+    if (!ends) continue;
+    const stop = { usage, day, moment: { eventId: day.eventId, edge: day.edge } };
+    if (ends.first) first.push(stop);
+    if (ends.last) last.push(stop);
+  }
+  // **WHAT BROUGHT YOU IN THROUGH THE NIGHT SORTS BEFORE THE BED** — and this is the SECOND
+  // answer this question has had, because the first one used a number that proves nothing.
+  //
+  // Earlier today this compared each stop against the stay's own `startsAt`, on the reasoning
+  // that "nothing that happened before you arrived can sort after the stay you woke in". The
+  // sentence is fine; `startsAt` is not the arrival. A lodging start is a **floor** — the hour
+  // the room opens — which is exactly what `knowsMoment` already refuses to treat as a moment
+  // (ADR-0171 §10b), and I then treated it as one. Owner's day: the room was available from
+  // ⁦15:00⁩ the previous afternoon, they landed at ⁦23:20⁩, collected a car at ⁦00:00⁩ and reached
+  // the hotel around ⁦02:00⁩. Every stop of the day is after ⁦15:00⁩ the day before, so the
+  // comparison moved nothing and the route still ran bed → car.
+  //
+  // What actually separates "this brought me in" from "I left the hotel for this" is
+  // `broughtInOvernight` (`place-usage.ts`), whose two questions and known cost are written
+  // there. **It moved out of this file on 2026-08-26**, when the day list needed the same
+  // answer: the list drew the bed first and the midnight car hire beneath it, which is one
+  // fact answered two ways on two surfaces (ADR-0159 §1) — and the owner reported the list's.
+  const early = (stop: DayStopEntry) => broughtInOvernight(stop.moment, { dawnMs, eventById });
+  const bookended = [
+    ...middle.filter(early),
+    ...first,
+    ...middle.filter((s) => !early(s)),
+    ...last,
+  ];
+  // ── TWO THINGS AT ONE TIME ARE ONE STOP (ADR-0225 §2, §5) ─────────────────────────────
+  // Two events that overlap are ONE cluster on the day (ADR-0041), and this sequence used to
+  // number them 1 and 2 and hand the route a leg between them — a drive the day list never
+  // had. The peers now sit together at the slot of whichever came first, ordered the way the
+  // route runs through the stop (entry first, exit last, `peerEntry`/`peerExit`, the same
+  // rule the day's journey rows measure by), and the numbering below counts the stop once.
+  //
+  // The clusters are the DAY'S OWN — `buildTimeTree` over the stops' events, read rather than
+  // re-derived (rule 8) — and only a start-edge moment can be a peer: a same-day hire's
+  // return is a second visit to the counter, not a second place you are at during the pickup.
+  const peerKeyOf = peerKeysOf(bookended, eventById);
+  const grouped: DayStopEntry[] = [];
+  const placedKeys = new Set<string>();
+  for (const stop of bookended) {
+    const key = peerKeyOf.get(stop);
+    if (!key) {
+      grouped.push(stop);
+      continue;
+    }
+    if (placedKeys.has(key)) continue;
+    placedKeys.add(key);
+    grouped.push(
+      ...orderPeers(
+        bookended.filter((s) => peerKeyOf.get(s) === key),
+        eventById!,
+      ),
+    );
+  }
   // **A NUMBER IS ONLY EVER THE INDEX OF A MOMENT THE APP KNOWS** (ADR-0171 §10b). A
   // number asserts "this is the Nth place you were at", and a floor, a ceiling and a row
   // with no clock cannot back that up: "from 15:00" is any hour after, and numbering a
@@ -395,11 +736,22 @@ export function buildDayStopSequence(
   // Tel Aviv. The unknown ones keep their place in the list and lose the mark — so the
   // known stops still count 1, 2, 3 with no hole, unlike a filter's informative gaps,
   // because nothing is hidden here to hint at.
+  //
+  // **And a stop is counted once** (ADR-0225 §2): every peer wears the stop's number, because
+  // both places ARE the N-th stop of the day.
   let counted = 0;
-  const sequence: DayStop[] = merged.map((stop) => ({
-    ...stop,
-    order: knowsMoment(stop.moment, eventById) ? ++counted : undefined,
-  }));
+  const numberOfStop = new Map<string, number>();
+  const sequence: DayStop[] = grouped.map((stop) => {
+    const key = peerKeyOf.get(stop);
+    let order: number | undefined;
+    if (knowsMoment(stop.moment, eventById)) {
+      if (key) {
+        if (!numberOfStop.has(key)) numberOfStop.set(key, ++counted);
+        order = numberOfStop.get(key);
+      } else order = ++counted;
+    }
+    return { ...stop, order, ...(key ? { peerKey: key } : {}) };
+  });
   // **THE TAIL** (ADR-0182 §2). `hasScheduleSlot` above wants `prominence === 'edge'` AND an
   // `eventId`, so an idea pencilled to this day with no event never entered the sequence at
   // all — while the list shows it, because the list asks the much wider `inDayScope`. That
@@ -423,6 +775,84 @@ export function buildDayStopSequence(
     )
     .map(({ usage, day }): DayStop => ({ usage, day, moment: {}, tail: true }));
   return [...sequence, ...tail];
+}
+
+/**
+ * **Which of a place's stops the day is CURRENTLY about**, as an index into an ordered route.
+ *
+ * A place visited twice in one day is two stops, and since M7c's bookends that is the ORDINARY
+ * case rather than an edge one: on a middle night the stay is the day's first stop and its last.
+ * So "the stop you asked about" cannot be answered from a place id alone, and the reported defect
+ * is what happens when you try — `findIndex` on a place id returns the FIRST occurrence, so
+ * selecting the evening visit drew the leg into the morning one.
+ *
+ * The rule is not new and is deliberately not re-invented here: {@link relevantMoment} already
+ * decides which visit a place is about, and {@link buildPinOrderIndex} already uses it to pick the
+ * NUMBER the pin wears. Reading it here too is what makes the amber line agree with the badge on
+ * the pin it is drawn to — which is the whole of what a reader expects when they tap `5` and watch
+ * for a line from `4`.
+ *
+ * `-1` when the place is not in this route at all.
+ */
+export function stopIndexOf(
+  route: readonly DayStop[],
+  placeId: string,
+  ctx: { eventById?: DayStopContext['eventById']; nowMs?: number } = {},
+): number {
+  const mine = route
+    .map((stop, index) => ({ stop, index }))
+    .filter(({ stop }) => stop.usage.placeId === placeId);
+  if (mine.length === 0) return -1;
+  if (mine.length === 1) return mine[0]!.index;
+  const naming = relevantMoment(mine[0]!.stop.day, ctx.nowMs);
+  if (!naming) return mine[0]!.index;
+  const at = mine.find(
+    ({ stop }) =>
+      stop.moment.at === naming.at &&
+      stop.moment.eventId === naming.eventId &&
+      stop.moment.edge === naming.edge,
+  );
+  return (at ?? mine[0]!).index;
+}
+
+/**
+ * **The one leg the day spends its solid amber on** (ADR-0206 §D8 / §AC2) — the journey INTO the
+ * stop you are asking about: the selected one, or the next one in Trip mode.
+ *
+ * Pure and here rather than a `useMemo` in `screens/Map.tsx`, which is where it was when it got
+ * the twice-visited case wrong: `frontend/CLAUDE.md` puts every decision about what the canvas
+ * draws in a `lib/` function precisely so it can be tested without a renderer.
+ *
+ * `-1` for "spend none", which is a real answer: Plan mode with nothing selected spends no amber
+ * at all (§AC1), and a route of fewer than two stops has no leg to spend it on.
+ */
+export function amberLegIndex(
+  route: readonly DayStop[],
+  ctx: {
+    selectedPlaceId?: string;
+    /** **Where the journey you are INSIDE is taking you** (`currentDestination`'s
+     *  `inTransit`). It outranks `nextStopPlaceId` because the leg arriving there is the
+     *  one you are on: after a layover the "next stop" is whatever waits past the landing,
+     *  and drawing ITS leg leaves the flight in the air unmarked — which is the reported
+     *  defect, a map that still reads as the layover you took off from. */
+    transitPlaceId?: string;
+    nextStopPlaceId?: string;
+    eventById?: DayStopContext['eventById'];
+    nowMs?: number;
+  },
+): number {
+  if (route.length < 2) return -1;
+  const askedPlaceId = ctx.selectedPlaceId ?? ctx.transitPlaceId ?? ctx.nextStopPlaceId;
+  let asked = askedPlaceId ? stopIndexOf(route, askedPlaceId, ctx) : -1;
+  if (asked < 0) return -1;
+  // **The leg INTO a stop arrives at its entry peer** (ADR-0225 §3/§5): asking about the
+  // second place of a two-place stop must not spend the amber on the tether between them,
+  // which is not a journey at all.
+  while (asked > 0 && route[asked]!.peerKey && route[asked - 1]!.peerKey === route[asked]!.peerKey)
+    asked -= 1;
+  // The day's first stop is the one place with no leg arriving at it, so it takes the leg
+  // departing it instead. Leg `i` runs from stop `i` to stop `i + 1`.
+  return Math.max(asked, 1) - 1;
 }
 
 export function buildPinOrderIndex(

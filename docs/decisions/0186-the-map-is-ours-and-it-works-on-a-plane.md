@@ -935,3 +935,128 @@ the live map instance and the latest style key, with an out-of-order regression 
 
 None of these changes identifies field report #35's original cause. Every concrete failure fixed on
 2026-08-14 was introduced by this migration. The renderer swap remains the experiment, not the cure.
+
+## Amendment (2026-08-14, session 269i) — world space kept Google's scale, and every px↔coordinate conversion was doubled
+
+§2's whole argument is that `useMapCamera` is not about Google, so the port narrows what it asks
+for to seven methods and hands MapLibre a facade with that shape. That held. What did not is the
+one **number** the facade carries: the adapter scaled `MercatorCoordinate` (normalised [0,1]) by
+**256**, Google's world-px at zoom 0, while MapLibre draws a **512**px world at zoom 0
+(`Transform.worldSize = tileSize × 2^zoom`, `tileSize = 512`).
+
+Every conversion between a pixel and a coordinate was therefore **2× too large** — exactly, at
+every zoom. Two reports, one cause:
+
+- a long press dropped its pin twice as far from the canvas centre as the finger was;
+- the pan that lifts a selected place clear of its card overshot the visible band by the same
+  factor, so the pin sat high instead of centred in it.
+
+The anchored double-tap zoom (`zoomAboutPoint`) drifted for the same reason and was not reported.
+
+**Why nothing caught it.** The arithmetic above the seam — `worldPointAtOffset`,
+`offsetPxOfWorldPoint`, `zoomAboutPoint` — is scale-free and self-consistent at any world size, so
+a wrong scale produces a camera that moves _plausibly_ wrong rather than one that throws. And the
+adapter's own test asserted `point.x ≈ mercator.x * 256`: it restated the constant instead of
+checking the invariant the constant exists to satisfy, so it certified the defect. It now asserts
+`screenPx = worldUnits × 2^zoom` against **MapLibre's** `worldSize`, and fails on the old value.
+
+**The general form, which is the part worth keeping:** a ported constant that belongs to the
+_renderer_ is not covered by an adapter that speaks the old _dialect_. §2's "the dialect is the
+contract; the vendor behind it is not" is right about method shapes and silent about units — a unit
+has to come from whoever is drawing.
+
+## Amendment (2026-08-14, session 269j) — our markers now live inside a vendor-styled container
+
+A MapLibre marker is a DOM element **inside the map's own container**, which Google's
+`OverlayView` host never was in any way that mattered: `maplibre-gl.css` opens with
+`.maplibregl-map { font: 12px/20px Helvetica Neue, Arial, Helvetica, sans-serif }` — a `font`
+**shorthand** on the very element we hand MapLibre. Every pin inherits it. Measured, Hebrew pin
+copy rendered in the Latin stack rather than Assistant, and every pin carried a fixed 20px line
+box on a surface where ADR-0123 makes each length a fraction of `--pin-u`.
+
+The reported symptom was the second half of a pair, and the other half was ours. `.map-marker`
+— the wrapper this migration introduced — set `line-height: 0`, meaning to keep the wrapper from
+gaining line-box height around the pin. `.map-pin` is `display: block`, so there was no line box
+to collapse and the wrapper is `--pin-u` tall either way: the rule bought **nothing**. What it
+did do is inherit, and `.pin-tag` is the one part of a pin whose height comes from its line box.
+At zero the pill collapsed to 8px around 17px of text, so `היעד הבא` spilled 5px above and 4px
+below its own card ground. Removing the declaration restores the mockup's box exactly (28.41px,
+measured against `mockups/map-basemap-ours-v2.html`).
+
+**The rule worth keeping:** a vendor stylesheet is now an ancestor of our markers, so anything a
+pin does not state for itself, MapLibre may. `.map-pane .map-canvas { font: inherit }` closes the
+typography half at the seam — two classes deep, because `.map-canvas` and `.maplibregl-map` tie on
+specificity and bundle order would otherwise decide it (measured: the vendor won).
+
+Neither half can fail in the component suite — jsdom computes no layout, so a collapsed line box
+and a substituted font family are both invisible to it. `styles/map-pin-typography.contract.test.ts`
+asserts both as CSS contracts, the shape `map-stacking.contract.test.ts` already used.
+
+## Amendment (2026-08-21) — §6 gains a freshness rule: a downloaded archive is not permanent
+
+Owner, immediately after the live source stopped being pinned to a build id ([ADR-0187's
+2026-08-21 amendment](0187-detail-is-live-and-an-extract-is-only-for-the-plane.md)):
+
+> _"I guess that offline maps have to be updated too then, not because they won't work but because we prefer updated maps."_
+
+**Correct, and until now nothing in this ADR could.** §6 is entirely about _deleting_ archives —
+trip end, trip delete, the byte budget, surviving eviction — and every one of its rules assumes the
+only reason to drop an archive is space or correctness. There was no rule for **age**, and the
+result was an archive frozen at the build it was cut from for as long as the device held it. Worse
+at the origin: `WORLD_KEY` was one fixed string, so the shared world layer was cut **once per
+deploy** and never again — a device could not have fresher ground even if it asked for it, because
+the server had none.
+
+### The rule
+
+**§6 gains rule 6: an archive is replaced when it is a vintage behind and older than the vintage
+window.** Retention still owns _whether we keep a map_; this owns _how old that map may be_.
+
+- **A vintage is 30 days** (`MAP_ARCHIVE_VINTAGE_DAYS`), taken from the date of the build the
+  archive was cut from. Deliberately **not** the upstream cadence: the live source follows a
+  **daily** build, and matching it offline is a 42.7 MB world layer plus a city extract per device
+  per day — §5's exact nightmare, arrived at from the other direction. Two clocks, and the slow one
+  is the one that touches somebody's data plan.
+- **The server states the current vintage on `/me`** (`map.archiveVintage`, beside `liveBuild`) and
+  puts it in the storage key. A rolled vintage is therefore a plain **cache miss**, so the existing
+  "serve what is stored, cut in the background, `503` + `Retry-After` meanwhile" flow carries the
+  refresh with no new machinery at all.
+- **A device replaces a copy only when both are true**: the server is cutting a different vintage,
+  **and** its copy is older than the window. The second half is load-bearing — without it, a
+  download late in one window is chased by the next one days later, which is 80 MB for a few days
+  of OSM edits. With it, a refresh lands at most once per window and usually less.
+- **A refresh never asks and never spends metered bytes.** §5's one-time prompt is earned by a
+  _missing_ archive — the difference between having a map on the plane and not. A stale one already
+  works, so on a connection we cannot vouch for (Safari, where `navigator.connection` does not
+  exist) what is on the device stays, silently. This is the one place this amendment is deliberately
+  more conservative than §5.
+- **A stale archive keeps rendering until a replacement is stored**, which is rule 5's spirit rather
+  than a new idea: the refresh reuses the same URL, so the old bytes answer every read until the new
+  ones are complete. You cannot lose your map to a refresh.
+- **On the device a refresh REPLACES, it does not accumulate.** The URL is unchanged, so
+  `makeRoom` treats it as a replacement (the old entry's bytes come off the total and it is
+  excluded from eviction) and the `put` overwrites the same key. One entry per archive, before and
+  after — the manage row's size does not double. And a failed replace now restores the meta it
+  overwrote rather than deleting it: the old rollback was written when every put was a first write,
+  and against a replace it stranded the previous archive's bytes with nothing describing them —
+  invisible to `entries()`, uncounted by the budget, unreachable by eviction.
+- **Server-side, nothing is purged, and that is now a growth axis rather than a footnote.** A
+  superseded archive stays in the bucket: `isExtractKeyFor` was written "for eviction" and has no
+  caller outside its own spec. That was already true per region signature; the vintage adds a
+  second axis, so the bucket grows by roughly one archive per trip per window. Serving the previous
+  vintage is _wanted_ (devices still holding it read it) — keeping every vintage before it is not.
+  A sweep needs a key listing the byte sink does not have (`storage.ts` is get/put/delete only), so
+  it is named on the backlog rather than half-built here.
+
+### What it costs, stated rather than discovered later
+
+Once per window, the first read of the world layer after the vintage rolls is a `503` while the new
+cut runs (~4s measured) — the same cold-start path a fresh deploy already takes, and the live
+detail source is unaffected, so the online map keeps its labels throughout. Serving the previous
+vintage during that window was considered and rejected: it would hand a device bytes labelled with
+a vintage they are not, which is exactly the class of quiet mislabelling ADR-0187 §1 puts build ids
+in URLs to avoid.
+
+**Not built, and named so it is a decision:** nothing tells a person their map is a month old. The
+manage surface (§5's "offline maps · 180 MB · manage") lists size, not age. If a refresh ever needs
+to be _asked_ for rather than taken silently on wifi, that row is where it goes.

@@ -20,6 +20,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import {
   ENRICHMENT_ABSENCE_REASON,
   ENRICHMENT_FIELD,
+  ENRICHMENT_PIPELINE_VERSION,
   enrichmentFieldsSchema,
   isTextVariantField,
   type EnrichedTextValue,
@@ -225,9 +226,12 @@ export class EnrichmentService {
       osmRef: identity.osmRef ?? existing?.osmRef ?? undefined,
     };
     const matches = new Map<EnrichmentSource, ProviderMatch>();
+    // Sources that THREW this pass, as opposed to answering "nothing": a miss behind one of
+    // these is `unavailable`, not a fact about the place.
+    const failed = new Set<EnrichmentSource>();
 
     for (const provider of this.providersToMatch(wanted)) {
-      const match = await this.matchSafely(provider, running);
+      const match = await this.matchSafely(provider, running, failed);
       if (!match) continue;
       matches.set(provider.id, match);
       if (match.settled) running = mergeSettled(running, match.settled);
@@ -235,7 +239,7 @@ export class EnrichmentService {
 
     const resolved: EnrichmentFields = { ...fields };
     for (const field of wanted) {
-      setFieldState(resolved, field, await this.resolveField(field, matches, now));
+      setFieldState(resolved, field, await this.resolveField(field, matches, failed, now));
     }
 
     const stored = await this.persist(existing?.id, running, resolved, now);
@@ -282,6 +286,7 @@ export class EnrichmentService {
   private async resolveField(
     field: EnrichmentField,
     matches: Map<EnrichmentSource, ProviderMatch>,
+    failed: Set<EnrichmentSource>,
     now: Date,
   ): Promise<FieldState> {
     const asked: EnrichmentSource[] = [];
@@ -301,7 +306,7 @@ export class EnrichmentService {
         continue;
       }
 
-      const value = await this.fetchSafely(provider, match, field);
+      const value = await this.fetchSafely(provider, match, field, failed);
       if (!value) continue;
 
       const declined = valueRefusal(field, provider.id, value);
@@ -334,12 +339,17 @@ export class EnrichmentService {
     }
 
     // "We looked and there is nothing" — stored, per §6.4, with which sources were asked so
-    // a later pass can tell "Wikipedia has no article" from "Wikipedia was down".
+    // a later pass can tell "Wikipedia has no article" from "Wikipedia was down". A failed
+    // identity source counts for every field: without the QID nothing downstream was asked.
+    const sourceFailed =
+      this.registry.identityProviders().some((provider) => failed.has(provider.id)) ||
+      this.registry.providersFor(field).some((provider) => failed.has(provider.id));
     return {
       state: 'absent',
       attemptedAt: now.toISOString(),
       sources: asked,
-      reason: refusal,
+      reason: sourceFailed ? ENRICHMENT_ABSENCE_REASON.UNAVAILABLE : refusal,
+      pipeline: ENRICHMENT_PIPELINE_VERSION,
     };
   }
 
@@ -400,10 +410,12 @@ export class EnrichmentService {
   private async matchSafely(
     provider: EnrichmentProvider,
     identity: PlaceIdentity,
+    failed: Set<EnrichmentSource>,
   ): Promise<ProviderMatch | null> {
     try {
       return await provider.match(identity);
     } catch (err) {
+      failed.add(provider.id);
       this.logger.warn(`${provider.id} match failed: ${(err as Error).message}`);
       return null;
     }
@@ -413,11 +425,13 @@ export class EnrichmentService {
     provider: EnrichmentProvider,
     match: ProviderMatch,
     field: EnrichmentField,
+    failed: Set<EnrichmentSource>,
   ): Promise<ProviderValue | null> {
     try {
       const values = await provider.fetch(match, [field]);
       return values[field] ?? null;
     } catch (err) {
+      failed.add(provider.id);
       this.logger.warn(`${provider.id} fetch failed for ${field}: ${(err as Error).message}`);
       return null;
     }

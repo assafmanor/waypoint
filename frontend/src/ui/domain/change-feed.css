@@ -35,8 +35,10 @@
   border-radius: var(--radius-8);
   cursor: pointer;
 }
-.cf-clear:hover {
-  color: var(--ink);
+@media (hover: hover) and (pointer: fine) {
+  .cf-clear:hover {
+    color: var(--ink);
+  }
 }
 
 .cf-list {
@@ -98,6 +100,8 @@
   border-radius: var(--radius-8);
   cursor: pointer;
 }
-.cf-x:hover {
-  color: var(--ink);
+@media (hover: hover) and (pointer: fine) {
+  .cf-x:hover {
+    color: var(--ink);
+  }
 }
