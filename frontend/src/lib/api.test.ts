@@ -311,6 +311,25 @@ const place = {
   updatedBy: 'u1',
 };
 
+describe('uploadDocument', () => {
+  it('sends an in-memory copy of the file, never the stored blob itself (WebKit bug 319985)', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 500 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const stored = new File(['%PDF-1.4'], 'passport.pdf', { type: 'application/pdf' });
+
+    await expect(
+      uploadDocument(TRIP.id, { type: DOCUMENT_TYPE.PASSPORT, title: 'p' }, stored),
+    ).rejects.toThrow();
+
+    const sent = (fetchMock.mock.calls[0][1] as RequestInit).body as FormData;
+    const file = sent.get('file') as File;
+    expect(file).not.toBe(stored);
+    expect(file.name).toBe('passport.pdf');
+    expect(file.type).toBe('application/pdf');
+    expect(await file.text()).toBe('%PDF-1.4');
+  });
+});
+
 describe('booking + place write calls', () => {
   it('createBooking posts the input to /bookings and parses the returned booking', async () => {
     const fetchMock = vi

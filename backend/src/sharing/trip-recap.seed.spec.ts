@@ -8,7 +8,7 @@
 // hard rows that stand, six still unresolved, one flight TLV → NRT and four ideas.
 import 'reflect-metadata';
 import { afterAll, describe, expect, it } from 'vitest';
-import { RECAP_ABSENT } from '@waypoint/shared';
+import { RECAP_ABSENT, zoneOffsetMinutes } from '@waypoint/shared';
 import type { EnrichmentService } from '../enrichment/enrichment.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { TripRecapService } from './trip-recap.service';
@@ -49,8 +49,13 @@ describe('the trip recap over the seeded trip', () => {
     expect(figures.airMeters).not.toHaveProperty('estimate');
     expect(figures.airMinutes).toEqual({ state: 'present', value: 595 });
     expect(figures.zonesCrossed).toEqual({ state: 'present', value: 1 });
-    // Tel Aviv is +03:00 in September and Tokyo +09:00.
-    expect(figures.zoneShiftMinutes).toEqual({ state: 'present', value: 360 });
+    // The seed dates the flight relative to today, so Tel Aviv's offset is whatever it is that
+    // week: +03:00 in summer makes the shift 360, +02:00 in winter makes it 420.
+    const flight = await prisma.event.findUniqueOrThrow({ where: { id: 'ev-flight-out' } });
+    const shift =
+      zoneOffsetMinutes(flight.startsAt!, 'Asia/Tokyo') -
+      zoneOffsetMinutes(flight.startsAt!, 'Asia/Jerusalem');
+    expect(figures.zoneShiftMinutes).toEqual({ state: 'present', value: shift });
     expect(superlatives.longestFlight).toMatchObject({ value: { bookingId: 'bk-flight' } });
   });
 
