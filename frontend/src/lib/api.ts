@@ -998,7 +998,14 @@ export async function resolveDestination(input: {
 }
 
 /** Upload a document (multipart). The browser sets the multipart `Content-Type`
- *  boundary, so we must NOT set it ourselves. */
+ *  boundary, so we must NOT set it ourselves.
+ *
+ *  **The file is copied into memory before it is sent.** Every upload rides the outbox, so
+ *  `file` is the one IndexedDB handed back — and WebKit (every iOS browser) sends such a
+ *  `File` in a `FormData` with an EMPTY body (WebKit bug 319985). The server then answers
+ *  `Multipart: Unexpected end of form` as a plain 400, and the notes and attachments queued
+ *  behind the upload fail after it for want of their document. Reading the bytes works where
+ *  sending the stored blob does not, so the copy is the repair, not a defensive extra. */
 export async function uploadDocument(
   tripId: string,
   input: CreateDocumentInput,
@@ -1009,7 +1016,7 @@ export async function uploadDocument(
   form.set('title', input.title);
   if (input.id) form.set('id', input.id);
   if (input.ownerUserId) form.set('ownerUserId', input.ownerUserId);
-  form.set('file', file);
+  form.set('file', new File([await file.arrayBuffer()], file.name, { type: file.type }));
   const res = await apiFetch(documentsUrl(tripId), { method: HTTP_METHOD.POST, body: form });
   if (!res.ok) return throwApiError(res);
   return tripDocumentSchema.parse(await readJson(res));
