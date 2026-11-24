@@ -21,6 +21,7 @@ import {
   placeResultSchema,
   placeSchema,
   removedMemberSchema,
+  ROUTE_BATCH_MAX_STOPS,
   routeBatchSchema,
   taskSchema,
   tripDocumentSchema,
@@ -939,8 +940,44 @@ export async function resolvePlace(tripId: string, input: ResolvePlaceInput): Pr
  * A caller that ignores the field renders a correct day with fewer numbers in it.
  *
  * The gate runs server-side (§3), so an out-of-range pair costs a refusal and never a `400`.
+ *
+ * **A day longer than `ROUTE_BATCH_MAX_STOPS` is asked in windows**, each overlapping the next by
+ * one stop so the seam leg is still asked. The server rejects the whole request past the bound,
+ * so an uncapped long day read `בלי הערכת זמן` on every leg, not just the ones past the 24th.
  */
 export async function fetchRoutes(
+  tripId: string,
+  input: RouteBatchRequest,
+  signal?: AbortSignal,
+): Promise<RouteBatch> {
+  if (input.stops.length <= ROUTE_BATCH_MAX_STOPS) return fetchRouteWindow(tripId, input, signal);
+  const starts: number[] = [];
+  for (let start = 0; start + 1 < input.stops.length; start += ROUTE_BATCH_MAX_STOPS - 1) {
+    starts.push(start);
+  }
+  const windows = await Promise.all(
+    starts.map((start) =>
+      fetchRouteWindow(
+        tripId,
+        { ...input, stops: input.stops.slice(start, start + ROUTE_BATCH_MAX_STOPS) },
+        signal,
+      ),
+    ),
+  );
+  const waits = windows.flatMap((batch) => batch.retryAfterSeconds ?? []);
+  return {
+    legs: windows.flatMap((batch, i) =>
+      batch.legs.map((leg) => ({
+        ...leg,
+        fromIndex: leg.fromIndex + starts[i]!,
+        toIndex: leg.toIndex + starts[i]!,
+      })),
+    ),
+    ...(waits.length > 0 ? { retryAfterSeconds: Math.max(...waits) } : {}),
+  };
+}
+
+async function fetchRouteWindow(
   tripId: string,
   input: RouteBatchRequest,
   signal?: AbortSignal,

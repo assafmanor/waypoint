@@ -619,7 +619,8 @@ export function legModeOverride<T extends LegModeOverrideRow>(
  * stops**: measured live, `sources_to_targets` refuses past **2,500 sources × targets**
  * (`error_code 150`), so 26 points answers and 51 does not. 24 stops is 576 cells — under a
  * quarter of that, which is the headroom that lets M4 merge a run of a day's legs into one
- * request without ever approaching the limit. It stays well above any real day either way.
+ * request without ever approaching the limit. It is NOT above every real day: a long walking day
+ * plus its seams passes it, so the client's `fetchRoutes` asks such a day in windows.
  */
 export const ROUTE_BATCH_MAX_STOPS = 24;
 
